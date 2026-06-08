@@ -1,0 +1,5 @@
+
+
+class GC:
+    def __init__(self):
+        pass
