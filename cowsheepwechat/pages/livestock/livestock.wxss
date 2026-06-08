@@ -49,9 +49,13 @@ page {
   border-color: #a5d6a7;
 }
 
-.upload-btn {
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-  border-color: #90caf9;
+.refresh-btn {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border-color: #ffcc80;
+}
+
+.refresh-btn .btn-icon {
+  background: #ff9800;
 }
 
 .btn-icon {
@@ -68,13 +72,6 @@ page {
 
 .add-btn .btn-icon {
   background: #07c160;
-}
-
-.upload-btn .btn-icon {
-  background: #1565c0;
-}
-.upload-icon {
-  font-size: 32rpx !important;
 }
 
 .btn-label {
@@ -201,42 +198,6 @@ page {
   color: #fff;
 }
 
-/* ========== 上传图片区 ========== */
-.upload-img-box {
-  width: 100%;
-  height: 260rpx;
-  border: 3rpx dashed #b0bec5;
-  border-radius: 14rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 32rpx;
-  overflow: hidden;
-  background: #fafafa;
-}
-
-.upload-img-preview {
-  width: 100%;
-  height: 100%;
-}
-
-.upload-img-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.upload-img-icon {
-  font-size: 56rpx;
-  margin-bottom: 12rpx;
-}
-
-.upload-img-text {
-  font-size: 26rpx;
-  color: #999;
-}
-
 /* ========== 牛羊列表 ========== */
 .list-panel {
   margin: 0 20rpx 24rpx;
@@ -327,6 +288,12 @@ page {
   margin-top: 4rpx;
 }
 
+.item-device {
+  font-size: 22rpx;
+  color: #07c160;
+  margin-top: 4rpx;
+}
+
 .item-edit-btn {
   width: 72rpx;
   height: 72rpx;
@@ -350,24 +317,24 @@ page {
   font-weight: bold;
 }
 
-.item-upload-btn {
+.item-connect-btn {
   width: 72rpx;
   height: 72rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #e3f2fd;
+  background: #e8f5e9;
   border-radius: 50%;
   flex-shrink: 0;
   margin-left: 16rpx;
 }
 
-.item-upload-btn:active {
-  background: #bbdefb;
+.item-connect-btn:active {
+  background: #c8e6c9;
   transform: scale(0.92);
 }
 
-.item-upload-icon {
+.item-connect-icon {
   font-size: 32rpx;
 }
 

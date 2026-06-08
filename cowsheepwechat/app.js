@@ -7,6 +7,8 @@ App({
   },
 
   globalData: {
-    gpsData: null // 以后放定位数据
+    gpsData: null,       // 定位数据
+    deviceCache: null,   // 设备列表缓存
+    livestockCache: null // 牛羊列表缓存
   }
 })

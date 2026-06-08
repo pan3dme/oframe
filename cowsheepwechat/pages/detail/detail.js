@@ -1,5 +1,130 @@
 // detail.js
 const API_URL = 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run'
+const OSS_CONFIG = require('../../config/oss-config.js')
+const dataCache = require('../../config/data-cache.js')
+
+// ==================== 时间格式化 ====================
+function formatDate(date) {
+  const y = date.getFullYear()
+  const m = date.getMonth() + 1
+  const d = date.getDate()
+  const h = date.getHours()
+  const min = date.getMinutes()
+  const s = date.getSeconds()
+  const pad = (n) => n < 10 ? '0' + n : n
+  return y + '/' + m + '/' + d + ' ' + pad(h) + ':' + pad(min) + ':' + pad(s)
+}
+
+// ==================== SHA1 / HMAC-SHA1 纯 JS 实现 ====================
+function _sha1Core(msgBytes) {
+  const rotl = (n, s) => (n << s) | (n >>> (32 - s))
+  const len = msgBytes.length * 8
+  const blocks = []
+  for (let i = 0; i < msgBytes.length; i += 4) {
+    blocks[i >> 2] = (msgBytes[i] << 24) | (msgBytes[i + 1] << 16) | (msgBytes[i + 2] << 8) | msgBytes[i + 3]
+  }
+  blocks[len >> 5] |= 0x80 << (24 - (len % 32))
+  blocks[((len + 64 >> 9) << 4) + 15] = len
+  let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0
+  for (let i = 0; i < blocks.length; i += 16) {
+    let a = h0, b = h1, c = h2, d = h3, e = h4
+    const w = []
+    for (let j = 0; j < 80; j++) {
+      w[j] = j < 16 ? (blocks[i + j] || 0) : rotl(w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16], 1)
+      let f, k
+      if (j < 20) { f = (b & c) | (~b & d); k = 0x5A827999 }
+      else if (j < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1 }
+      else if (j < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC }
+      else { f = b ^ c ^ d; k = 0xCA62C1D6 }
+      const temp = (rotl(a, 5) + f + e + k + (w[j] >>> 0)) >>> 0
+      e = d; d = c; c = rotl(b, 30); b = a; a = temp
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0
+    h3 = (h3 + d) >>> 0; h4 = (h4 + e) >>> 0
+  }
+  const buf = new ArrayBuffer(20), dv = new DataView(buf)
+  dv.setUint32(0, h0); dv.setUint32(4, h1); dv.setUint32(8, h2)
+  dv.setUint32(12, h3); dv.setUint32(16, h4)
+  return buf
+}
+
+function _strToBytes(str) {
+  const bytes = new Uint8Array(str.length)
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xFF
+  return bytes
+}
+
+function _hmacSha1(key, msg) {
+  const blockSize = 64
+  let keyBytes = _strToBytes(key)
+  if (keyBytes.length > blockSize) {
+    keyBytes = new Uint8Array(_sha1Core(keyBytes))
+  }
+  const padded = new Uint8Array(blockSize)
+  padded.set(keyBytes)
+  const ipad = new Uint8Array(blockSize), opad = new Uint8Array(blockSize)
+  for (let i = 0; i < blockSize; i++) {
+    ipad[i] = padded[i] ^ 0x36
+    opad[i] = padded[i] ^ 0x5C
+  }
+  const inner = _sha1Core(_concatBytes(ipad, _strToBytes(msg)))
+  return _sha1Core(_concatBytes(opad, new Uint8Array(inner)))
+}
+
+function _concatBytes(a, b) {
+  const c = new Uint8Array(a.length + b.length)
+  c.set(a); c.set(b, a.length); return c
+}
+
+function _base64(arrayBuffer) {
+  return wx.arrayBufferToBase64(arrayBuffer)
+}
+
+// ==================== OSS 上传 ====================
+function uploadToOSS(filePath, objectKey) {
+  return new Promise((resolve, reject) => {
+    const { region, bucket, accessKeyId, accessKeySecret } = OSS_CONFIG
+    const host = `https://${bucket}.${region}.aliyuncs.com/`
+
+    const expire = new Date(Date.now() + 86400000).toISOString()
+    const policyObj = {
+      expiration: expire,
+      conditions: [
+        { bucket: bucket },
+        ['starts-with', '$key', OSS_CONFIG.uploadDir],
+        { 'x-oss-object-acl': 'public-read' },
+        ['content-length-range', 0, 104857600]
+      ]
+    }
+    const policyStr = JSON.stringify(policyObj)
+    const policyBase64 = _base64(_strToBytes(policyStr).buffer)
+    const signature = _base64(_hmacSha1(accessKeySecret, policyBase64))
+
+    wx.uploadFile({
+      url: host,
+      filePath: filePath,
+      name: 'file',
+      formData: {
+        key: objectKey,
+        policy: policyBase64,
+        OSSAccessKeyId: accessKeyId,
+        signature: signature,
+        'x-oss-object-acl': 'public-read',
+        success_action_status: '200'
+      },
+      success: (res) => {
+        if (res.statusCode === 200 || res.statusCode === 204) {
+          resolve(host + objectKey)
+        } else {
+          reject(new Error('OSS 返回 ' + res.statusCode))
+        }
+      },
+      fail: (err) => {
+        reject(err)
+      }
+    })
+  })
+}
 
 Page({
   data: {
@@ -15,7 +140,15 @@ Page({
     deviceBindMap: {},          // deviceId -> link_cowsheep_id 映射
     mediaList: [],              // 图像/视频列表
     showMedia: false,           // 是否显示媒体区域
-    mediaLoading: false         // 加载中
+    mediaLoading: false,        // 加载中
+    editMode: false,            // 编辑模式（显示复选框）
+    selectedCount: 0,           // 选中数量
+    showDeleteModal: false,     // 删除确认弹窗
+    currentVideo: '',           // 当前播放视频 URL
+    showVideoPlayer: false,     // 视频播放弹窗
+    showUploadModal: false,     // 上传媒体弹窗
+    uploadFilePath: '',         // 选中的文件路径
+    uploadFileType: ''          // 'image' | 'video'
   },
 
   onLoad(options) {
@@ -31,60 +164,61 @@ Page({
     this.loadDeviceInfo()
   },
 
-  // 加载所有设备信息
+  // 加载所有设备信息（优先使用缓存）
   loadDeviceInfo() {
-    wx.request({
-      url: API_URL,
-      method: 'POST',
-      data: {
-        action: 'getDeviceTaleAll'
-      },
-      success: (res) => {
-        console.log('======== 设备所有数据 ========')
-        console.log(JSON.stringify(res.data, null, 2))
-        console.log('==============================')
-        const recordList = this.parseRecordList(res.data)
-        // 提取去重 deviceId 作为下拉选项，并构建绑定映射
-        const idSet = new Set()
-        const bindMap = {}
-        recordList.forEach(r => {
-          if (r.deviceId && r.deviceId !== '-') {
-            idSet.add(r.deviceId)
-            // 取最新的 link_cowsheep_id（记录已按时间降序，首次遇到的即最新）
-            if (!bindMap[r.deviceId] && r.link_cowsheep_id) {
-              bindMap[r.deviceId] = r.link_cowsheep_id
-            }
-          }
-        })
-        const deviceIdOptions = Array.from(idSet).sort()
-        // 在选项最前面插入"未连接"
-        deviceIdOptions.unshift('未连接')
+    dataCache.getDeviceList((cachedData) => {
+      const { recordList, deviceIdOptions, deviceBindMap } = cachedData
 
-        // 查找是否有设备已绑定当前牛羊
-        let boundDeviceId = ''
-        let selectedIndex = 0
-        for (const [devId, linkId] of Object.entries(bindMap)) {
-          if (linkId === this.data.cowsheepId) {
-            boundDeviceId = devId
-            break
-          }
+      // 查找是否有设备已绑定当前牛羊
+      let boundDeviceId = ''
+      let selectedIndex = 0
+      for (const [devId, linkId] of Object.entries(deviceBindMap)) {
+        if (linkId === this.data.cowsheepId) {
+          boundDeviceId = devId
+          break
         }
-        if (boundDeviceId) {
-          selectedIndex = deviceIdOptions.indexOf(boundDeviceId)
-          if (selectedIndex < 0) selectedIndex = 0
-        }
-
-        this.setData({
-          deviceList: recordList,
-          deviceIdOptions,
-          deviceBindMap: bindMap,
-          selectedDeviceId: boundDeviceId || '未连接',
-          selectedDeviceIndex: selectedIndex
-        })
-      },
-      fail: (err) => {
-        console.error('获取设备信息失败:', err)
       }
+      if (boundDeviceId) {
+        selectedIndex = deviceIdOptions.indexOf(boundDeviceId)
+        if (selectedIndex < 0) selectedIndex = 0
+      }
+
+      this.setData({
+        deviceList: recordList,
+        deviceIdOptions,
+        deviceBindMap,
+        selectedDeviceId: boundDeviceId || '未连接',
+        selectedDeviceIndex: selectedIndex
+      })
+    })
+  },
+
+  // 强制刷新设备列表
+  refreshDeviceInfo() {
+    dataCache.refreshDeviceList((cachedData) => {
+      const { recordList, deviceIdOptions, deviceBindMap } = cachedData
+
+      let boundDeviceId = ''
+      let selectedIndex = 0
+      for (const [devId, linkId] of Object.entries(deviceBindMap)) {
+        if (linkId === this.data.cowsheepId) {
+          boundDeviceId = devId
+          break
+        }
+      }
+      if (boundDeviceId) {
+        selectedIndex = deviceIdOptions.indexOf(boundDeviceId)
+        if (selectedIndex < 0) selectedIndex = 0
+      }
+
+      this.setData({
+        deviceList: recordList,
+        deviceIdOptions,
+        deviceBindMap,
+        selectedDeviceId: boundDeviceId || '未连接',
+        selectedDeviceIndex: selectedIndex
+      })
+      wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
     })
   },
 
@@ -220,7 +354,7 @@ Page({
       const isImage = lower.endsWith('.jpg') || lower.endsWith('.jpeg') ||
                       lower.endsWith('.png') || lower.endsWith('.gif') || lower.endsWith('.webp')
       const type = isVideo ? 'video' : (isImage ? 'image' : 'unknown')
-      return { ossurl, time, video_id, type }
+      return { ossurl, time, video_id, type, selected: false }
     })
     // 按时间降序
     mediaList.sort((a, b) => {
@@ -236,11 +370,15 @@ Page({
 
   // 预览媒体
   onPreviewMedia(e) {
+    // 编辑模式下不预览，走勾选逻辑
+    if (this.data.editMode) {
+      this.onToggleSelect(e)
+      return
+    }
     const index = e.currentTarget.dataset.index
     const item = this.data.mediaList[index]
     if (!item || !item.ossurl) return
     if (item.type === 'image') {
-      // 收集所有图片 URL 用于预览
       const urls = this.data.mediaList.filter(m => m.type === 'image').map(m => m.ossurl)
       wx.previewImage({
         current: item.ossurl,
@@ -252,14 +390,177 @@ Page({
         }
       })
     } else if (item.type === 'video') {
-      // 复制视频链接
-      wx.setClipboardData({
-        data: item.ossurl,
-        success: () => {
-          wx.showToast({ title: '视频链接已复制', icon: 'success' })
-        }
-      })
+      this.setData({ currentVideo: item.ossurl, showVideoPlayer: true })
     }
+  },
+
+  // ========== 编辑/删除媒体 ==========
+  onToggleEditMode() {
+    if (this.data.editMode) {
+      // 退出编辑，清空所有勾选
+      const list = this.data.mediaList.map(item => ({ ...item, selected: false }))
+      this.setData({ editMode: false, mediaList: list, selectedCount: 0 })
+    } else {
+      const list = this.data.mediaList.map(item => ({ ...item, selected: false }))
+      this.setData({ editMode: true, mediaList: list, selectedCount: 0 })
+    }
+  },
+
+  onToggleSelect(e) {
+    const index = e.currentTarget.dataset.index
+    if (index === undefined || index === null) return
+
+    const selected = !this.data.mediaList[index].selected
+    const key = 'mediaList[' + index + '].selected'
+    const newCount = selected ? this.data.selectedCount + 1 : this.data.selectedCount - 1
+    this.setData({
+      [key]: selected,
+      selectedCount: newCount
+    })
+  },
+
+  onDeleteMedia() {
+    const count = this.data.mediaList.filter(item => item.selected).length
+    if (count === 0) {
+      wx.showToast({ title: '请先选择要删除的图像', icon: 'none' })
+      return
+    }
+    this.setData({ showDeleteModal: true })
+  },
+
+  onDeleteClose() {
+    this.setData({ showDeleteModal: false })
+  },
+
+  onCloseVideo() {
+    this.setData({ showVideoPlayer: false, currentVideo: '' })
+  },
+
+  onDeleteConfirm() {
+    const ossUrls = this.data.mediaList.filter(item => item.selected).map(item => item.ossurl)
+    if (ossUrls.length === 0) return
+
+    this.setData({ showDeleteModal: false })
+    wx.showLoading({ title: '删除中...' })
+
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'deletecowsheepvideo',
+        info: { oss_urls: ossUrls }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('=== deletecowsheepvideo 返回 ===')
+        console.log(JSON.stringify(res, null, 2))
+        let result = res.data
+        if (typeof result === 'string') {
+          try { result = JSON.parse(result) } catch (e) {}
+        }
+        if (result && result.status === 'success') {
+          wx.showToast({ title: result.msg || '删除成功', icon: 'success', duration: 1500 })
+          this.setData({ editMode: false, selectedCount: 0 })
+          this.fetchMedia()
+        } else {
+          wx.showToast({ title: (result && result.msg) || '删除失败', icon: 'none', duration: 2000 })
+        }
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('删除媒体失败:', err)
+        wx.showToast({ title: '网络请求失败', icon: 'error', duration: 2000 })
+      }
+    })
+  },
+
+  // ========== 上传媒体弹窗 ==========
+  onUploadPhoto() {
+    this.setData({
+      showUploadModal: true,
+      uploadFilePath: '',
+      uploadFileType: ''
+    })
+  },
+
+  onUploadChooseMedia() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image', 'video'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['compressed'],
+      success: (res) => {
+        const file = res.tempFiles[0]
+        this.setData({
+          uploadFilePath: file.tempFilePath,
+          uploadFileType: file.fileType
+        })
+      },
+      fail: () => {
+        console.log('取消选择媒体')
+      }
+    })
+  },
+
+  onUploadClose() {
+    this.setData({ showUploadModal: false })
+  },
+
+  onUploadConfirm() {
+    const name = this.data.name
+    const cowsheepId = this.data.cowsheepId
+    const filePath = this.data.uploadFilePath
+    const fileType = this.data.uploadFileType
+
+    if (!name) {
+      wx.showToast({ title: '缺少牛羊名称', icon: 'none' })
+      return
+    }
+    if (!cowsheepId) {
+      wx.showToast({ title: '缺少ID', icon: 'none' })
+      return
+    }
+    if (!filePath) {
+      wx.showToast({ title: '请选择图片或视频', icon: 'none' })
+      return
+    }
+
+    const ext = fileType === 'video' ? 'mp4' : 'jpg'
+    const objectKey = OSS_CONFIG.uploadDir + name + '_' + Date.now() + '.' + ext
+
+    this.setData({ showUploadModal: false })
+    wx.showLoading({ title: '上传到 OSS...' })
+
+    uploadToOSS(filePath, objectKey)
+      .then((ossUrl) => {
+        wx.showLoading({ title: '保存记录...' })
+        wx.request({
+          url: API_URL,
+          method: 'POST',
+          data: {
+            action: 'uploadLivestockPhoto',
+            info: {
+              cowsheep_id: cowsheepId,
+              time: formatDate(new Date()),
+              ossUrl: ossUrl
+            }
+          },
+          success: (res) => {
+            wx.hideLoading()
+            wx.showToast({ title: '上传成功', icon: 'success', duration: 1500 })
+          },
+          fail: (err) => {
+            wx.hideLoading()
+            console.error('保存记录失败:', err)
+            wx.showToast({ title: '文件已上传，但记录保存失败', icon: 'none', duration: 2500 })
+          }
+        })
+      })
+      .catch((err) => {
+        wx.hideLoading()
+        console.error('OSS 上传失败:', err)
+        wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
+      })
   },
 
   // 统一解析接口返回数据，提取 deviceId / lorastr / time

@@ -11,6 +11,12 @@
       <view class="btn-label">新增牛羊</view>
     </view>
 
+    <!-- 刷新列表 -->
+    <view class="action-btn refresh-btn" bindtap="refreshLivestockList">
+      <view class="btn-icon">🔄</view>
+      <view class="btn-label">刷新列表</view>
+    </view>
+
   </view>
 
   <!-- 牛羊列表 -->
@@ -22,16 +28,17 @@
       <view class="item-info">
         <view class="item-name">{{item.name}}</view>
         <view class="item-meta">
-          <text class="item-birthday">{{item.birthday}}</text>
+          <text class="item-birthday">{{item.age}}</text>
           <text class="item-gender {{item.gender === '公' ? 'gender-male' : 'gender-female'}}">{{item.gender}}</text>
         </view>
         <view class="item-id" wx:if="{{item.cowsheepId}}">ID: {{item.cowsheepId}}</view>
+        <view class="item-device" wx:if="{{item.connectedDevice}}">连接设备: {{item.connectedDevice}}</view>
       </view>
       <view class="item-edit-btn" data-name="{{item.name}}" catchtap="onItemEdit">
         <text class="item-edit-icon">✎</text>
       </view>
-      <view class="item-upload-btn" data-name="{{item.name}}" catchtap="onItemUploadPhoto">
-        <text class="item-upload-icon">📷</text>
+      <view class="item-connect-btn" data-name="{{item.name}}" catchtap="onItemConnectDevice">
+        <text class="item-connect-icon">🔗</text>
       </view>
     </view>
   </view>
@@ -76,37 +83,26 @@
   </view>
 </view>
 
-<!-- 上传媒体弹窗 -->
-<view class="modal" wx:if="{{showUploadModal}}">
-  <view class="modal-mask" bindtap="onUploadClose"></view>
+<!-- 连接设备弹窗 -->
+<view class="modal" wx:if="{{showDeviceModal}}">
+  <view class="modal-mask" bindtap="onBindDeviceClose"></view>
   <view class="modal-dialog">
-    <view class="modal-close" bindtap="onUploadClose">✕</view>
-    <view class="modal-title">上传牛羊相片/视频</view>
+    <view class="modal-close" bindtap="onBindDeviceClose">✕</view>
+    <view class="modal-title">连接设备</view>
 
-    <!-- 选择牛羊 -->
-    <view class="modal-label">选择牛羊</view>
-    <picker mode="selector" range="{{livestockNames}}" value="{{uploadNameIndex}}" bindchange="onUploadNameChange">
-      <view class="modal-picker">{{uploadName || '请先新增牛羊'}}</view>
+    <!-- 当前牛羊 -->
+    <view class="modal-label">绑定至：{{bindCowsheepName}}</view>
+
+    <!-- 选择设备 -->
+    <view class="modal-label">选择设备</view>
+    <picker mode="selector" range="{{deviceIdOptions}}" value="{{bindDeviceIndex}}" bindchange="onBindDevicePickerChange">
+      <view class="modal-picker">{{deviceIdOptions[bindDeviceIndex] || '未连接'}}</view>
     </picker>
-
-    <!-- 选择图片/视频 -->
-    <view class="modal-label">选择图片或视频</view>
-    <view class="upload-img-box" bindtap="onUploadChooseMedia">
-      <!-- 图片预览 -->
-      <image wx:if="{{uploadFileType === 'image'}}" class="upload-img-preview" src="{{uploadFilePath}}" mode="aspectFill" />
-      <!-- 视频预览 -->
-      <video wx:elif="{{uploadFileType === 'video'}}" class="upload-img-preview" src="{{uploadFilePath}}" muted autoplay loop />
-      <!-- 占位 -->
-      <view wx:else class="upload-img-placeholder">
-        <view class="upload-img-icon">📷</view>
-        <view class="upload-img-text">点击选择图片或视频</view>
-      </view>
-    </view>
 
     <!-- 按钮 -->
     <view class="modal-btns">
-      <button class="modal-btn modal-btn-gray" bindtap="onUploadClose">取消</button>
-      <button class="modal-btn modal-btn-confirm" bindtap="onUploadConfirm">确认上传</button>
+      <button class="modal-btn modal-btn-gray" bindtap="onBindDeviceClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onBindDeviceConfirm">确认连接</button>
     </view>
   </view>
 </view>

@@ -1,5 +1,6 @@
 // features.js
 const API_URL = 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run'
+const dataCache = require('../../config/data-cache.js')
  
 Page({
   data: {
@@ -146,39 +147,18 @@ Page({
         insertLorastr: '1|v3-1|26.000000,109.360000|1'
       })
     } else if (id === 3) {
-      // 获取设备最新数据
-      wx.request({
-        url: API_URL,
-        method: 'POST',
-        data: {
-          action: 'getDeviceTaleAll' 
-        },
-        success: (res) => {
-          console.log('设备最新数据:', JSON.stringify(res.data))
-          wx.showToast({
-            title: '获取成功',
-            icon: 'success',
-            duration: 1500
-          })
-          const recordList = this.parseRecordList(res.data)
-          // 提取去重设备编号列表
-          const idSet = new Set()
-          recordList.forEach(r => { if (r.deviceId && r.deviceId !== '-') idSet.add(r.deviceId) })
-          const deviceIdList = Array.from(idSet).sort()
-          this.setData({
-            recordList,
-            deviceIdList,
-            showRecordTable: recordList.length > 0
-          })
-        },
-        fail: (err) => {
-          console.error('获取失败:', err)
-          wx.showToast({
-            title: '获取失败',
-            icon: 'error',
-            duration: 2000
-          })
-        }
+      // 获取设备最新数据（强制刷新）
+      dataCache.refreshDeviceList((cachedData) => {
+        const { recordList } = cachedData
+        const idSet = new Set()
+        recordList.forEach(r => { if (r.deviceId && r.deviceId !== '-') idSet.add(r.deviceId) })
+        const deviceIdList = Array.from(idSet).sort()
+        this.setData({
+          recordList,
+          deviceIdList,
+          showRecordTable: recordList.length > 0
+        })
+        wx.showToast({ title: '获取成功', icon: 'success', duration: 1500 })
       })
     } else if (id === 4) {
       // 查看设备轨迹 - 弹出下拉选择

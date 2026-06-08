@@ -39,6 +39,11 @@
     </view>
   </view>
 
+  <!-- 上传图片/视频按钮 -->
+  <view class="fetch-media-btn upload-media-btn" bindtap="onUploadPhoto">
+    <text>📤 上传图片或视频</text>
+  </view>
+
   <!-- 获取更多图像按钮 -->
   <view class="fetch-media-btn" bindtap="fetchMedia">
     <text>{{mediaLoading ? '加载中...' : '📷 获取更多详细图像'}}</text>
@@ -46,8 +51,17 @@
 
   <!-- 媒体展示区域 -->
   <view class="media-section" wx:if="{{showMedia && mediaList.length > 0}}">
+    <!-- 编辑/删除按钮 -->
+    <view class="media-toolbar">
+      <view wx:if="{{!editMode}}" class="media-edit-btn" bindtap="onToggleEditMode">
+        <text>✎ 编辑</text>
+      </view>
+      <view wx:else class="media-delete-btn" bindtap="onDeleteMedia">
+        <text>🗑 删除图像 ({{selectedCount}})</text>
+      </view>
+    </view>
     <view class="media-grid">
-      <view class="media-item" wx:for="{{mediaList}}" wx:key="video_id" data-index="{{index}}" bindtap="onPreviewMedia">
+      <view class="media-item {{editMode ? 'media-item-edit' : ''}}" wx:for="{{mediaList}}" wx:key="video_id" data-index="{{index}}" bindtap="onPreviewMedia">
         <image wx:if="{{item.type === 'image'}}" class="media-thumb" src="{{item.ossurl}}" mode="aspectFill" />
         <view wx:elif="{{item.type === 'video'}}" class="media-video-thumb">
           <image class="media-thumb" src="{{item.ossurl}}?x-oss-process=video/snapshot,t_1000,f_jpg" mode="aspectFill" />
@@ -55,7 +69,100 @@
         </view>
         <view wx:else class="media-unknown">?</view>
         <view class="media-time">{{item.time}}</view>
+        <!-- 编辑模式下的复选框 -->
+        <view class="media-checkbox" wx:if="{{editMode}}">
+          <view class="checkbox-icon {{item.selected ? 'checkbox-checked' : ''}}">
+            <text wx:if="{{item.selected}}">✓</text>
+          </view>
+        </view>
       </view>
     </view>
   </view>
 </scroll-view>
+
+<!-- 上传媒体弹窗 -->
+<view class="modal" wx:if="{{showUploadModal}}">
+  <view class="modal-mask" bindtap="onUploadClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onUploadClose">✕</view>
+    <view class="modal-title">上传图片/视频</view>
+
+    <view class="modal-label">当前牛羊：{{name}}</view>
+
+    <view class="modal-label">选择图片或视频</view>
+    <view class="upload-img-box" bindtap="onUploadChooseMedia">
+      <image wx:if="{{uploadFileType === 'image'}}" class="upload-img-preview" src="{{uploadFilePath}}" mode="aspectFill" />
+      <video wx:elif="{{uploadFileType === 'video'}}" class="upload-img-preview" src="{{uploadFilePath}}" muted autoplay loop />
+      <view wx:else class="upload-img-placeholder">
+        <view class="upload-img-icon">📷</view>
+        <view class="upload-img-text">点击选择图片或视频</view>
+      </view>
+    </view>
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onUploadClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onUploadConfirm">确认上传</button>
+    </view>
+  </view>
+</view>
+
+<!-- 视频播放弹窗 -->
+<view class="video-player-overlay" wx:if="{{showVideoPlayer}}" bindtap="onCloseVideo">
+  <view class="video-player-box" catchtap="">
+    <view class="video-close-btn" bindtap="onCloseVideo">✕</view>
+    <video
+      class="video-player"
+      src="{{currentVideo}}"
+      autoplay
+      controls
+      show-center-play-btn
+      enable-progress-gesture
+    />
+  </view>
+</view>
+
+<!-- 删除确认弹窗 -->
+<view class="modal" wx:if="{{showDeleteModal}}">
+  <view class="modal-mask" bindtap="onDeleteClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onDeleteClose">✕</view>
+    <view class="modal-title">确认删除</view>
+    <view class="modal-label" style="text-align:center;font-size:30rpx;color:#333;margin:20rpx 0;">
+      确定要删除选中的图像/视频吗？
+    </view>
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onDeleteClose">取消</button>
+      <button class="modal-btn modal-btn-del" bindtap="onDeleteConfirm">确认删除</button>
+    </view>
+  </view>
+</view>
+
+<!-- 视频播放弹窗 -->
+<view class="video-player-overlay" wx:if="{{showVideoPlayer}}" bindtap="onCloseVideo">
+  <view class="video-player-box" catchtap="">
+    <view class="video-close-btn" bindtap="onCloseVideo">✕</view>
+    <video
+      class="video-player"
+      src="{{currentVideo}}"
+      autoplay
+      controls
+      show-center-play-btn
+      enable-progress-gesture
+    />
+  </view>
+</view>
+
+<!-- 视频播放弹窗 -->
+<view class="video-player-overlay" wx:if="{{showVideoPlayer}}" bindtap="onCloseVideo">
+  <view class="video-player-box" catchtap="">
+    <view class="video-close-btn" bindtap="onCloseVideo">✕</view>
+    <video
+      class="video-player"
+      src="{{currentVideo}}"
+      autoplay
+      controls
+      show-center-play-btn
+      enable-progress-gesture
+    />
+  </view>
+</view>

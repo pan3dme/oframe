@@ -1,6 +1,7 @@
 // livestock.js - 管理牛羊
 const API_URL = 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run'
 const OSS_CONFIG = require('../../config/oss-config.js')
+const dataCache = require('../../config/data-cache.js')
 
 // ==================== 时间格式化 ====================
 function formatDate(date) {
@@ -139,14 +140,15 @@ Page({
     addGenderIndex: 0,
     genderOptions: ['公', '母'],
 
-    // 上传媒体弹窗（图片/视频）
-    showUploadModal: false,
+    // 连接设备弹窗
+    showDeviceModal: false,
+    bindCowsheepId: '',
+    bindCowsheepName: '',
+    bindDeviceIndex: 0,
+    deviceIdOptions: [],
+    deviceBindMap: {},           // deviceId → link_cowsheep_id
+
     livestockNames: [],
-    uploadNameIndex: 0,
-    uploadName: '',
-    uploadCowsheepId: '',
-    uploadFilePath: '',
-    uploadFileType: '',   // 'image' | 'video'
 
     // 修改记录弹窗
     showEditModal: false,
@@ -185,66 +187,69 @@ Page({
     })
   },
 
-  // 从服务器获取牛羊列表
-  fetchLivestockList() {
-    wx.request({
-      url: API_URL,
-      method: 'POST',
-      data: {
-        action: 'getLivestockList'
-      },
-      success: (res) => {
-        console.log('牛羊列表返回:', JSON.stringify(res.data))
-
-        let list = []
-        const data = res.data
-        if (data && data.data && Array.isArray(data.data)) {
-          data.data.forEach(item => {
-            let name = ''
-            let cowsheepId = ''
-            let birthday = ''
-            let gender = false
-
-            // cowsheep_id 在 primaryKey 中
-            if (item.primaryKey && Array.isArray(item.primaryKey)) {
-              item.primaryKey.forEach(pk => {
-                if (pk.name === 'cowsheep_id') cowsheepId = String(pk.value)
-              })
-            }
-
-            // name / birthday / gender / avatar 在 attributes 中
-            let avatar = ''
-            if (item.attributes) {
-              item.attributes.forEach(attr => {
-                if (attr.columnName === 'rename') name = attr.columnValue
-                if (attr.columnName === 'birthday') birthday = attr.columnValue
-                if (attr.columnName === 'gender') gender = attr.columnValue === true || attr.columnValue === 'true'
-                if (attr.columnName === 'avatar') avatar = attr.columnValue || ''
-              })
-            }
-
-            if (name) {
-              list.push({
-                name,
-                cowsheepId,
-                birthday: birthday || '-',
-                gender: gender ? '公' : '母',
-                avatar
-              })
+  // 从服务器获取牛羊列表（优先使用缓存）
+  fetchLivestockList(forceRefresh) {
+    dataCache.getLivestockList((cachedData) => {
+      // 同时获取设备列表，建立 cowsheep_id → deviceId 映射
+      dataCache.getDeviceList((deviceData) => {
+        const deviceBindMap = {}  // cowsheep_id → deviceId
+        if (deviceData && deviceData.recordList) {
+          deviceData.recordList.forEach(record => {
+            if (record.link_cowsheep_id && record.deviceId && record.deviceId !== '-') {
+              // 一个牛羊可能绑多个设备，只显示第一个
+              if (!deviceBindMap[record.link_cowsheep_id]) {
+                deviceBindMap[record.link_cowsheep_id] = record.deviceId
+              }
             }
           })
         }
 
-        const names = list.map(item => item.name)
+        // 给每条牛羊附上连接设备信息 + 年龄
+        const enrichedList = cachedData.livestockList.map(item => ({
+          ...item,
+          connectedDevice: deviceBindMap[item.cowsheepId] || '',
+          age: this._calcAge(item.birthday)
+        }))
+
         this.setData({
-          livestockList: list,
-          livestockNames: names
+          livestockList: enrichedList,
+          livestockNames: cachedData.livestockNames,
+          deviceIdOptions: deviceData.deviceIdOptions || ['未连接'],
+          deviceBindMap: deviceData.deviceBindMap || {}
         })
-      },
-      fail: (err) => {
-        console.error('获取牛羊列表失败:', err)
-      }
-    })
+        if (forceRefresh) {
+          wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
+        }
+      }, forceRefresh)
+    }, forceRefresh)
+  },
+
+  // 强制刷新牛羊列表
+  refreshLivestockList() {
+    this.fetchLivestockList(true)
+  },
+
+  // 计算年龄：生日到今天，返回 "1年3个月" 格式
+  _calcAge(birthdayStr) {
+    if (!birthdayStr || birthdayStr === '-') return '-'
+    const str = birthdayStr.replace(/\//g, '-')
+    const birth = new Date(str)
+    if (isNaN(birth.getTime())) return birthdayStr
+
+    const today = new Date()
+    let years = today.getFullYear() - birth.getFullYear()
+    let months = today.getMonth() - birth.getMonth()
+    // 如果还没到生日月，年-1，月+12
+    if (months < 0) {
+      years -= 1
+      months += 12
+    }
+
+    if (years > 0) {
+      return years + '年' + (months > 0 ? months + '个月' : '')
+    } else {
+      return months > 0 ? months + '个月' : '不足1个月'
+    }
   },
 
   // 获取当天日期字符串
@@ -375,7 +380,7 @@ Page({
         wx.hideLoading()
         console.log('修改牛羊返回:', JSON.stringify(res.data))
         wx.showToast({ title: '修改成功', icon: 'success', duration: 1500 })
-        this.fetchLivestockList()
+        this.fetchLivestockList(true)
       },
       fail: (err) => {
         wx.hideLoading()
@@ -451,8 +456,8 @@ onAddGenderChange(e) {
         wx.hideLoading()
         console.log('新增牛羊返回:', JSON.stringify(res.data))
         wx.showToast({ title: '新增成功', icon: 'success', duration: 1500 })
-        // 刷新列表
-        this.fetchLivestockList()
+        // 强制刷新列表
+        this.fetchLivestockList(true)
       },
       fail: (err) => {
         wx.hideLoading()
@@ -462,120 +467,92 @@ onAddGenderChange(e) {
     })
   },
 
-  // ========== 列表项点击上传 — 打开弹窗（预填名称 + cowsheep_id） ==========
-  onItemUploadPhoto(e) {
+  // ========== 列表项点击连接设备 — 打开弹窗 ==========
+  onItemConnectDevice(e) {
     const name = e.currentTarget.dataset.name
     if (!name) return
-
-    const names = this.data.livestockNames
-    const idx = names.indexOf(name)
-    // 从列表中查找对应的 cowsheepId
     const item = this.data.livestockList.find(v => v.name === name)
-    const cowsheepId = item ? item.cowsheepId : ''
+    if (!item) return
+
+    // 查找当前牛羊是否已绑定设备
+    let boundIndex = 0
+    const deviceBindMap = this.data.deviceBindMap
+    for (const [devId, linkId] of Object.entries(deviceBindMap)) {
+      if (linkId === item.cowsheepId) {
+        boundIndex = this.data.deviceIdOptions.indexOf(devId)
+        if (boundIndex < 0) boundIndex = 0
+        break
+      }
+    }
 
     this.setData({
-      uploadName: name,
-      uploadCowsheepId: cowsheepId,
-      uploadNameIndex: idx >= 0 ? idx : 0,
-      uploadFilePath: '',
-      uploadFileType: '',
-      showUploadModal: true
+      showDeviceModal: true,
+      bindCowsheepId: item.cowsheepId,
+      bindCowsheepName: item.name,
+      bindDeviceIndex: boundIndex
     })
   },
 
-  // 弹窗内事件
-  onUploadNameChange(e) {
-    const idx = parseInt(e.detail.value)
-    const name = this.data.livestockNames[idx] || ''
-    const item = this.data.livestockList.find(v => v.name === name)
-    this.setData({
-      uploadNameIndex: idx,
-      uploadName: name,
-      uploadCowsheepId: item ? item.cowsheepId : ''
-    })
+  // 连接设备弹窗 — 选择器变更
+  onBindDevicePickerChange(e) {
+    this.setData({ bindDeviceIndex: parseInt(e.detail.value) })
   },
 
-  onUploadChooseMedia() {
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ['image', 'video'],
-      sourceType: ['album', 'camera'],
-      sizeType: ['compressed'],
-      success: (res) => {
-        const file = res.tempFiles[0]
-        this.setData({
-          uploadFilePath: file.tempFilePath,
-          uploadFileType: file.fileType   // 'image' | 'video'
-        })
+  // 关闭连接设备弹窗
+  onBindDeviceClose() {
+    this.setData({ showDeviceModal: false })
+  },
+
+  // 确认连接设备
+  onBindDeviceConfirm() {
+    const index = this.data.bindDeviceIndex
+    const deviceId = this.data.deviceIdOptions[index] || ''
+    const cowsheepId = this.data.bindCowsheepId
+
+    if (index === 0 || deviceId === '未连接') {
+      wx.showToast({ title: '请选择一个设备', icon: 'none' })
+      return
+    }
+
+    // 已绑定当前牛羊，无需重复
+    if (this.data.deviceBindMap[deviceId] === cowsheepId) {
+      this.setData({ showDeviceModal: false })
+      wx.showToast({ title: '设备已连接，无需重复绑定', icon: 'none' })
+      return
+    }
+
+    this.setData({ showDeviceModal: false })
+    wx.showLoading({ title: '绑定中...' })
+
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'bindDeviceCow',
+        info: { deviceId, cowsheepId }
       },
-      fail: () => {
-        console.log('取消选择媒体')
+      success: (res) => {
+        wx.hideLoading()
+        let result = res.data
+        if (typeof result === 'string') {
+          try { result = JSON.parse(result) } catch (e) {}
+        }
+        if (result && result.status === 'success') {
+          // 更新本地绑定映射 + 刷新列表
+          const newBindMap = { ...this.data.deviceBindMap }
+          newBindMap[deviceId] = cowsheepId
+          this.setData({ deviceBindMap: newBindMap })
+          this.fetchLivestockList(true)
+          wx.showToast({ title: result.msg || '连接成功', icon: 'success', duration: 1500 })
+        } else {
+          wx.showToast({ title: (result && result.msg) || '连接失败', icon: 'none', duration: 2500 })
+        }
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('设备绑定失败:', err)
+        wx.showToast({ title: '网络请求失败', icon: 'error', duration: 2000 })
       }
     })
-  },
-
-  onUploadClose() {
-    this.setData({ showUploadModal: false })
-  },
-
-  onUploadConfirm() {
-    const name = this.data.uploadName
-    const cowsheepId = this.data.uploadCowsheepId
-    const filePath = this.data.uploadFilePath
-    const fileType = this.data.uploadFileType
-
-    if (!name) {
-      wx.showToast({ title: '请选择牛羊', icon: 'none' })
-      return
-    }
-    if (!cowsheepId) {
-      wx.showToast({ title: '缺少ID，请重新选择牛羊', icon: 'none' })
-      return
-    }
-    if (!filePath) {
-      wx.showToast({ title: '请选择图片或视频', icon: 'none' })
-      return
-    }
-
-    // 生成 OSS 对象 Key: uploadDir/name_timestamp.ext
-    const ext = fileType === 'video' ? 'mp4' : 'jpg'
-    const objectKey = OSS_CONFIG.uploadDir + name + '_' + Date.now() + '.' + ext
-
-    this.setData({ showUploadModal: false })
-    wx.showLoading({ title: '上传到 OSS...' })
-
-    uploadToOSS(filePath, objectKey)
-      .then((ossUrl) => {
-        // OSS 上传成功后，通知服务器记录文件地址
-        wx.showLoading({ title: '保存记录...' })
-        wx.request({
-          url: API_URL,
-          method: 'POST',
-          data: {
-            action: 'uploadLivestockPhoto',
-            info: {
-              cowsheep_id: cowsheepId,
-              time: formatDate(new Date()),
-              ossUrl: ossUrl
-            }
-          },
-          success: (res) => {
-            wx.hideLoading()
-            console.log('=== 上传图片记录 POST 返回数据 ===')
-            console.log(JSON.stringify(res, null, 2))
-            wx.showToast({ title: '上传成功', icon: 'success', duration: 1500 })
-          },
-          fail: (err) => {
-            wx.hideLoading()
-            console.error('保存记录失败:', err)
-            wx.showToast({ title: '文件已上传，但记录保存失败', icon: 'none', duration: 2500 })
-          }
-        })
-      })
-      .catch((err) => {
-        wx.hideLoading()
-        console.error('OSS 上传失败:', err)
-        wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
-      })
   },
 })
