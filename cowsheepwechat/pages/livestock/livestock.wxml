@@ -1,0 +1,155 @@
+<!--livestock.wxml-->
+<navigation-bar title="管理牛羊" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <!-- 功能面板 -->
+  <view class="feature-panel">
+    <view class="feature-title">牛羊管理</view>
+
+    <!-- 新增牛羊 -->
+    <view class="action-btn add-btn" bindtap="onAdd">
+      <view class="btn-icon">+</view>
+      <view class="btn-label">新增牛羊</view>
+    </view>
+
+  </view>
+
+  <!-- 牛羊列表 -->
+  <view class="list-panel" wx:if="{{livestockList.length > 0}}">
+    <view class="list-title">牛羊列表 ({{livestockList.length}})</view>
+    <view class="list-item" wx:for="{{livestockList}}" wx:key="name" bindtap="onItemTap" data-name="{{item.name}}">
+      <image class="item-avatar" src="{{item.avatar}}" mode="aspectFill" wx:if="{{item.avatar}}" />
+      <view class="item-avatar-placeholder" wx:else>🐂</view>
+      <view class="item-info">
+        <view class="item-name">{{item.name}}</view>
+        <view class="item-meta">
+          <text class="item-birthday">{{item.birthday}}</text>
+          <text class="item-gender {{item.gender === '公' ? 'gender-male' : 'gender-female'}}">{{item.gender}}</text>
+        </view>
+        <view class="item-id" wx:if="{{item.cowsheepId}}">ID: {{item.cowsheepId}}</view>
+      </view>
+      <view class="item-edit-btn" data-name="{{item.name}}" catchtap="onItemEdit">
+        <text class="item-edit-icon">✎</text>
+      </view>
+      <view class="item-upload-btn" data-name="{{item.name}}" catchtap="onItemUploadPhoto">
+        <text class="item-upload-icon">📷</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view class="list-panel" wx:else>
+    <view class="empty-tip">暂无牛羊数据，点击上方按钮新增</view>
+  </view>
+</scroll-view>
+
+<!-- 新增牛羊弹窗 -->
+<view class="modal" wx:if="{{showAddModal}}">
+  <view class="modal-mask" bindtap="onAddClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onAddClose">✕</view>
+    <view class="modal-title">新增牛羊</view>
+
+    <!-- 唯一编号 -->
+    <view class="modal-label">唯一编号 (cowsheep_id)</view>
+    <input class="modal-input" 
+      value="{{addCowsheepId}}" 
+      placeholder="请输入唯一编号" 
+      bindinput="onAddCowsheepIdInput" />
+
+    <!-- 生日 -->
+    <view class="modal-label">生日</view>
+    <picker mode="date" value="{{addBirthday}}" bindchange="onAddBirthdayChange">
+      <view class="modal-picker">{{addBirthday || '请选择生日'}}</view>
+    </picker>
+
+    <!-- 性别 -->
+    <view class="modal-label">性别</view>
+    <picker mode="selector" range="{{genderOptions}}" value="{{addGenderIndex}}" bindchange="onAddGenderChange">
+      <view class="modal-picker">{{genderOptions[addGenderIndex]}}</view>
+    </picker>
+
+    <!-- 按钮 -->
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onAddClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onAddConfirm">确认新增</button>
+    </view>
+  </view>
+</view>
+
+<!-- 上传媒体弹窗 -->
+<view class="modal" wx:if="{{showUploadModal}}">
+  <view class="modal-mask" bindtap="onUploadClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onUploadClose">✕</view>
+    <view class="modal-title">上传牛羊相片/视频</view>
+
+    <!-- 选择牛羊 -->
+    <view class="modal-label">选择牛羊</view>
+    <picker mode="selector" range="{{livestockNames}}" value="{{uploadNameIndex}}" bindchange="onUploadNameChange">
+      <view class="modal-picker">{{uploadName || '请先新增牛羊'}}</view>
+    </picker>
+
+    <!-- 选择图片/视频 -->
+    <view class="modal-label">选择图片或视频</view>
+    <view class="upload-img-box" bindtap="onUploadChooseMedia">
+      <!-- 图片预览 -->
+      <image wx:if="{{uploadFileType === 'image'}}" class="upload-img-preview" src="{{uploadFilePath}}" mode="aspectFill" />
+      <!-- 视频预览 -->
+      <video wx:elif="{{uploadFileType === 'video'}}" class="upload-img-preview" src="{{uploadFilePath}}" muted autoplay loop />
+      <!-- 占位 -->
+      <view wx:else class="upload-img-placeholder">
+        <view class="upload-img-icon">📷</view>
+        <view class="upload-img-text">点击选择图片或视频</view>
+      </view>
+    </view>
+
+    <!-- 按钮 -->
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onUploadClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onUploadConfirm">确认上传</button>
+    </view>
+  </view>
+</view>
+
+<!-- 修改记录弹窗 -->
+<view class="modal" wx:if="{{showEditModal}}">
+  <view class="modal-mask" bindtap="onEditClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onEditClose">✕</view>
+    <view class="modal-title">修改记录</view>
+
+    <!-- 头像 -->
+    <view class="modal-label">头像（双击更换）</view>
+    <view class="edit-avatar-box" bindtap="onEditAvatarTap">
+      <image wx:if="{{editAvatarUrl}}" class="edit-avatar-img" src="{{editAvatarUrl}}" mode="aspectFill" />
+      <image wx:elif="{{editAvatar}}" class="edit-avatar-img" src="{{editAvatar}}" mode="aspectFill" />
+      <view wx:else class="edit-avatar-placeholder">🐂</view>
+      <view class="edit-avatar-tag" wx:if="{{editAvatarUrl}}">已更新</view>
+    </view>
+
+    <!-- 名称 -->
+    <view class="modal-label">名称</view>
+    <input class="modal-input" 
+      value="{{editName}}" 
+      placeholder="请输入名称" 
+      bindinput="onEditNameInput" />
+
+    <!-- 生日 -->
+    <view class="modal-label">生日</view>
+    <picker mode="date" value="{{editBirthday}}" bindchange="onEditBirthdayChange">
+      <view class="modal-picker">{{editBirthday || '请选择生日'}}</view>
+    </picker>
+
+    <!-- 性别 -->
+    <view class="modal-label">性别</view>
+    <picker mode="selector" range="{{genderOptions}}" value="{{editGenderIndex}}" bindchange="onEditGenderChange">
+      <view class="modal-picker">{{genderOptions[editGenderIndex]}}</view>
+    </picker>
+
+    <!-- 按钮 -->
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onEditConfirm">确认修改</button>
+    </view>
+  </view>
+</view>

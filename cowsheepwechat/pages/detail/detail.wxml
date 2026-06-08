@@ -1,0 +1,61 @@
+<!--detail.wxml-->
+<navigation-bar title="{{name}}的详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="detail-scroll" scroll-y>
+  <!-- 大头像 -->
+  <view class="avatar-section">
+    <image class="detail-avatar" src="{{avatar}}" mode="aspectFit" wx:if="{{avatar}}" />
+    <view class="detail-avatar-placeholder" wx:else>🐂</view>
+  </view>
+
+  <!-- 信息卡片 -->
+  <view class="info-card">
+    <view class="info-title">{{name}}</view>
+
+    <view class="info-row">
+      <view class="info-label">编号</view>
+      <view class="info-value">{{cowsheepId || '-'}}</view>
+    </view>
+
+    <view class="info-row">
+      <view class="info-label">性别</view>
+      <view class="info-value">
+        <text class="gender-tag {{gender === '公' ? 'gender-male' : 'gender-female'}}">{{gender || '-'}}</text>
+      </view>
+    </view>
+
+    <view class="info-row">
+      <view class="info-label">生日</view>
+      <view class="info-value">{{birthday || '-'}}</view>
+    </view>
+
+    <view class="info-row">
+      <view class="info-label">连接设备</view>
+      <picker class="info-picker" mode="selector" range="{{deviceIdOptions}}" value="{{selectedDeviceIndex}}" bindchange="onDeviceChange">
+        <view class="info-picker-value">
+          <text>{{selectedDeviceId}}</text>
+          <text class="info-arrow">▼</text>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <!-- 获取更多图像按钮 -->
+  <view class="fetch-media-btn" bindtap="fetchMedia">
+    <text>{{mediaLoading ? '加载中...' : '📷 获取更多详细图像'}}</text>
+  </view>
+
+  <!-- 媒体展示区域 -->
+  <view class="media-section" wx:if="{{showMedia && mediaList.length > 0}}">
+    <view class="media-grid">
+      <view class="media-item" wx:for="{{mediaList}}" wx:key="video_id" data-index="{{index}}" bindtap="onPreviewMedia">
+        <image wx:if="{{item.type === 'image'}}" class="media-thumb" src="{{item.ossurl}}" mode="aspectFill" />
+        <view wx:elif="{{item.type === 'video'}}" class="media-video-thumb">
+          <image class="media-thumb" src="{{item.ossurl}}?x-oss-process=video/snapshot,t_1000,f_jpg" mode="aspectFill" />
+          <view class="media-play-icon">▶</view>
+        </view>
+        <view wx:else class="media-unknown">?</view>
+        <view class="media-time">{{item.time}}</view>
+      </view>
+    </view>
+  </view>
+</scroll-view>

@@ -1,0 +1,27 @@
+<!--trackmap.wxml-->
+<navigation-bar title="轨迹地图" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<canvas type="2d" id="iconCanvas" style="width:24px;height:24px;position:fixed;left:-999px"></canvas>
+
+<movable-area class="map-area" scale-area wx:if="{{baiduMapUrl}}">
+  <movable-view class="map-view" direction="all" scale scale-min="1" scale-max="5"
+    scale-value="{{scale}}" bindscale="onScale" inertia="{{true}}" out-of-bounds="{{false}}">
+    <image class="map-image" src="{{baiduMapUrl}}" mode="aspectFill" binderror="onImageError" />
+  </movable-view>
+</movable-area>
+
+<map wx:if="{{showNativeMap}}" id="trackMap" class="map"
+  latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
+  markers="{{markers}}" polyline="{{polyline}}" show-location="{{true}}" enable-satellite="{{isSatellite}}" />
+
+<!-- 右下角功能按钮组 -->
+<view class="map-toolbar">
+  <view class="tool-btn" bindtap="moveToMyLocation">
+    <text class="tool-icon">◎</text>
+    <text class="tool-label">定位</text>
+  </view>
+  <view class="tool-btn" bindtap="onToolBtn2">
+    <text class="tool-icon">↻</text>
+    <text class="tool-label">刷新</text>
+  </view>
+</view>

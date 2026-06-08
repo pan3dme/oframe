@@ -1,0 +1,304 @@
+/**features.wxss**/
+page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+}
+.scrollarea {
+  flex: 1;
+  overflow-y: hidden;
+}
+
+/* 接收消息面板 */
+.msg-panel {
+  margin: 0 24rpx 16rpx;
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  border-left: 6rpx solid #1989fa;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.msg-label {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 12rpx;
+}
+
+.msg-content {
+  font-size: 30rpx;
+  color: #333;
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+/* 记录表格 */
+.record-table {
+  margin-top: 16rpx;
+  border-radius: 10rpx;
+  overflow: hidden;
+  border: 1rpx solid #e0e0e0;
+}
+
+.table-header {
+  display: flex;
+  background: #f0f6ff;
+  font-weight: bold;
+  font-size: 26rpx;
+  color: #1a6fb5;
+}
+
+.table-body {
+  font-size: 26rpx;
+  color: #333;
+}
+
+.table-row {
+  display: flex;
+  align-items: center;
+}
+
+.table-row:nth-child(even) {
+  background: #fafbfc;
+}
+
+.th, .td {
+  padding: 16rpx 12rpx;
+  word-break: break-all;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.th {
+  border-bottom: 2rpx solid #d0ddf0;
+}
+
+.td {
+  border-bottom: 1rpx solid #eee;
+}
+
+.th-deviceId, .td-deviceId {
+  width: 16%;
+  text-align: center;
+}
+
+.th-lorastr, .td-lorastr {
+  width: 49%;
+  text-align: center;
+}
+
+.th-time, .td-time {
+  width: 35%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.time-date {
+  font-size: 22rpx;
+  color: #666;
+  line-height: 1.3;
+}
+
+.time-clock {
+  font-size: 22rpx;
+  color: #333;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* 功能面板 */
+.feature-panel {
+  margin: 0 20rpx 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.feature-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 20rpx;
+  padding-left: 8rpx;
+  border-left: 6rpx solid #07c160;
+}
+
+.feature-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.feature-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: calc((100% - 32rpx) / 3);
+  margin-right: 16rpx;
+  margin-bottom: 16rpx;
+  padding: 24rpx 8rpx;
+  background: linear-gradient(135deg, #f0faf5 0%, #e8f8ef 100%);
+  border-radius: 14rpx;
+  border: 2rpx solid #d4edda;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.feature-btn:nth-child(3n) {
+  margin-right: 0;
+}
+
+.feature-btn:active {
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  transform: scale(0.96);
+}
+
+.feature-num {
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: bold;
+  color: #fff;
+  background: #07c160;
+  border-radius: 50%;
+  margin-bottom: 10rpx;
+}
+
+.feature-label {
+  font-size: 22rpx;
+  color: #333;
+  font-weight: 500;
+  text-align: center;
+  word-break: keep-all;
+}
+
+/* 查看轨迹弹窗 */
+.track-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.track-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.track-dialog {
+  position: relative;
+  width: 600rpx;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 50rpx 40rpx 40rpx;
+  box-shadow: 0 10rpx 40rpx rgba(0, 0, 0, 0.15);
+}
+
+.track-close {
+  position: absolute;
+  top: 16rpx;
+  right: 24rpx;
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  text-align: center;
+  font-size: 32rpx;
+  color: #999;
+  border-radius: 50%;
+  background: #f5f5f5;
+}
+
+.track-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #333;
+  text-align: center;
+  margin-bottom: 10rpx;
+}
+
+.track-subtitle {
+  font-size: 26rpx;
+  color: #999;
+  text-align: center;
+  margin-bottom: 36rpx;
+}
+
+.track-input {
+  width: 100%;
+  height: 80rpx;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  font-size: 30rpx;
+  box-sizing: border-box;
+  margin-bottom: 24rpx;
+}
+
+.track-date-label {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 12rpx;
+}
+
+.track-date-picker {
+  width: 100%;
+  height: 80rpx;
+  line-height: 80rpx;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  font-size: 30rpx;
+  color: #333;
+  box-sizing: border-box;
+  margin-bottom: 40rpx;
+}
+
+.track-btns {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.track-btn {
+  flex: 1;
+  height: 80rpx;
+  line-height: 80rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  padding: 0;
+}
+
+.track-btn-cancel {
+  background: #07c160;
+  color: #fff;
+}
+
+.track-btn-confirm {
+  background: #07c160;
+  color: #fff;
+}
+
+.track-btn-gray {
+  background: #999;
+  color: #fff;
+}

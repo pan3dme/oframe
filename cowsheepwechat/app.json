@@ -1,0 +1,23 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/features/features",
+    "pages/detail/detail",
+    "pages/map/map",
+    "pages/trackmap/trackmap",
+    "pages/livestock/livestock"
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationStyle": "custom"
+  },
+  "style": "v2",
+  "renderer": "webview",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "需要获取你的位置信息用于地图展示"
+    }
+  }
+}

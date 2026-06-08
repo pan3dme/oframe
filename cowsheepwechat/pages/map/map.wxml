@@ -1,0 +1,30 @@
+<!--map.wxml-->
+<navigation-bar title="百度地图" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<movable-area class="map-area" scale-area wx:if="{{useBaidu && baiduMapUrl}}">
+  <movable-view class="map-view" direction="all" scale scale-min="1" scale-max="5"
+    scale-value="{{scale}}" bindscale="onScale" inertia="{{true}}" out-of-bounds="{{false}}">
+    <image class="map-image" src="{{baiduMapUrl}}" mode="aspectFill" binderror="onImageError" />
+  </movable-view>
+</movable-area>
+
+<map wx:if="{{showNativeMap}}" id="cowMap" class="map"
+  latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
+  markers="{{markers}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
+  bindregionchange="onRegionChange" />
+
+<!-- 右下角功能按钮组 -->
+<view class="map-toolbar">
+  <view class="tool-btn" bindtap="moveToMyLocation">
+    <text class="tool-icon">◎</text>
+    <text class="tool-label">定位</text>
+  </view>
+  <view class="tool-btn" bindtap="onToolBtn2">
+    <text class="tool-icon">↻</text>
+    <text class="tool-label">刷新</text>
+  </view>
+  <view class="tool-btn" bindtap="nextMarker">
+    <text class="tool-icon">▸</text>
+    <text class="tool-label">巡点</text>
+  </view>
+</view>
