@@ -170,29 +170,19 @@ Page({
     this.fetchLivestockList()
   },
 
-  // ========== 列表项双击 → 跳转详情页 ==========
+  // ========== 列表项点击 → 跳转详情页 ==========
   onItemTap(e) {
     const name = e.currentTarget.dataset.name
     if (!name) return
-    const now = Date.now()
-    if (now - this._tapItemTime < 500 && this._tapItemName === name) {
-      this._tapItemTime = 0
-      this._tapItemName = ''
-      // 双击：跳转详情页
-      const item = this.data.livestockList.find(v => v.name === name)
-      if (!item) return
-      wx.navigateTo({
-        url: '/pages/detail/detail?name=' + encodeURIComponent(item.name) +
-          '&cowsheepId=' + encodeURIComponent(item.cowsheepId || '') +
-          '&birthday=' + encodeURIComponent(item.birthday || '') +
-          '&gender=' + encodeURIComponent(item.gender || '') +
-          '&avatar=' + encodeURIComponent(item.avatar || '')
-      })
-    } else {
-      this._tapItemTime = now
-      this._tapItemName = name
-      setTimeout(() => { this._tapItemTime = 0; this._tapItemName = '' }, 500)
-    }
+    const item = this.data.livestockList.find(v => v.name === name)
+    if (!item) return
+    wx.navigateTo({
+      url: '/pages/detail/detail?name=' + encodeURIComponent(item.name) +
+        '&cowsheepId=' + encodeURIComponent(item.cowsheepId || '') +
+        '&birthday=' + encodeURIComponent(item.birthday || '') +
+        '&gender=' + encodeURIComponent(item.gender || '') +
+        '&avatar=' + encodeURIComponent(item.avatar || '')
+    })
   },
 
   // 从服务器获取牛羊列表

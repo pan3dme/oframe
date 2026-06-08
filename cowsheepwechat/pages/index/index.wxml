@@ -51,22 +51,25 @@
     <view class="device-stop" wx:if="{{bluetoothScanning}}" bindtap="stopScanDevices">停止搜索</view>
   </view>
 
-  <!-- 功能按钮 -->
-  <view class="section">
-    <view class="section-title">快捷功能</view>
-    <view class="btn-bar">
-      <view class="icon-item">
-        <button class="btn-features" bindtap="goToFeatures">🛠️</button>
-        <text class="icon-label">功能</text>
-      </view>
-      <view class="icon-item">
-        <button class="btn-map" bindtap="goToMap">🗺️</button>
-        <text class="icon-label">地图</text>
-      </view>
-      <view class="icon-item">
-        <button class="btn-livestock" bindtap="goToLivestock">🐮</button>
-        <text class="icon-label">牛羊管理</text>
-      </view>
+  <!-- 底部占位，防止内容被快捷功能遮挡 -->
+  <view class="section-placeholder"></view>
+</scroll-view>
+
+<!-- 快捷功能（固定在页面底部，移出scroll-view以确保iOS兼容） -->
+<view class="section">
+  <view class="section-title">快捷功能</view>
+  <view class="btn-bar">
+    <view class="icon-item">
+      <button class="btn-features" bindtap="goToFeatures">🛠️</button>
+      <text class="icon-label">功能</text>
+    </view>
+    <view class="icon-item">
+      <button class="btn-map" bindtap="goToMap">🗺️</button>
+      <text class="icon-label">地图</text>
+    </view>
+    <view class="icon-item">
+      <button class="btn-livestock" bindtap="goToLivestock">🐮</button>
+      <text class="icon-label">牛羊管理</text>
     </view>
   </view>
-</scroll-view>
+</view>
