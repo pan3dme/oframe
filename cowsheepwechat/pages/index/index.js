@@ -345,7 +345,7 @@ Page({
         }
       }
       console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '队列剩余:', queue.length)
-      const API_URL = 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run'
+      const API_URL = getApp().globalData.apiUrl
       const that = this
       wx.request({
         url: API_URL,
@@ -395,6 +395,13 @@ Page({
   goToLivestock() {
     wx.navigateTo({
       url: '/pages/livestock/livestock'
+    })
+  },
+
+  // 跳转到设备管理页面
+  goToDevice() {
+    wx.navigateTo({
+      url: '/pages/device/device'
     })
   },
 

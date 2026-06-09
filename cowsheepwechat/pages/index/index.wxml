@@ -71,5 +71,9 @@
       <button class="btn-livestock" bindtap="goToLivestock">🐮</button>
       <text class="icon-label">牛羊管理</text>
     </view>
+    <view class="icon-item">
+      <button class="btn-device" bindtap="goToDevice">📡</button>
+      <text class="icon-label">设备管理</text>
+    </view>
   </view>
 </view>

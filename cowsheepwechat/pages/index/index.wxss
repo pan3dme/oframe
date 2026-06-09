@@ -170,6 +170,27 @@ page {
   border: none;
 }
 
+/* 设备管理按钮 */
+.btn-device {
+  width: 100rpx;
+  height: 100rpx;
+  min-width: 100rpx;
+  max-width: 100rpx;
+  line-height: 100rpx;
+  font-size: 48rpx;
+  color: #fff;
+  background: #1565c0;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.btn-device::after {
+  border: none;
+}
+
 /* 已连接提示 */
 .connected-tip {
   margin: 0 24rpx 12rpx;

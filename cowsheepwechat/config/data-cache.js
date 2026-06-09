@@ -1,8 +1,8 @@
 // config/data-cache.js — 全局数据缓存模块
 // 设备列表和牛羊列表缓存，避免每次页面切换都请求服务器
 
-const API_URL = 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run'
 const app = getApp()
+const API_URL = app.globalData.apiUrl
 
 // ==================== 设备数据缓存 ====================
 
@@ -79,11 +79,14 @@ function _parseDeviceRecords(data) {
       })
     }
     const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
+    const device_key = attr.device_key || record.device_key || ''
+    const rename = attr.rename || record.rename || ''
     const lorastr = attr.lorastr || record.lorastr || '-'
     const link_cowsheep_id = attr.link_cowsheep_id || record.link_cowsheep_id || ''
+    const picurl = attr.picurl || record.picurl || ''
     const rawTime = attr.time || record.time || '-'
     const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-    return { deviceId, lorastr, link_cowsheep_id, date: date || '-', time_part: time_part || '', rawTime }
+    return { deviceId, device_key, rename, lorastr, link_cowsheep_id, picurl, date: date || '-', time_part: time_part || '', rawTime }
   })
   records.sort((a, b) => {
     const ta = new Date(a.rawTime).getTime()

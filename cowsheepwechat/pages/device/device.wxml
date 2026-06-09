@@ -1,0 +1,130 @@
+<!--device.wxml-->
+<navigation-bar title="设备管理" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <!-- 功能面板 -->
+  <view class="feature-panel">
+    <view class="feature-title">设备管理</view>
+
+    <!-- 新增设备 -->
+    <view class="action-btn add-btn" bindtap="onAdd">
+      <view class="btn-icon">+</view>
+      <view class="btn-label">新增设备</view>
+    </view>
+
+    <!-- 刷新列表 -->
+    <view class="action-btn refresh-btn" bindtap="refreshDeviceList">
+      <view class="btn-icon">🔄</view>
+      <view class="btn-label">刷新列表</view>
+    </view>
+  </view>
+
+  <!-- 设备列表 -->
+  <view class="list-panel" wx:if="{{deviceList.length > 0}}">
+    <view class="list-title">设备列表 ({{deviceList.length}})</view>
+    <view class="list-item" wx:for="{{deviceList}}" wx:key="deviceId" data-deviceid="{{item.deviceId}}" bindtap="onTapDevice">
+      <image class="item-device-pic" wx:if="{{item.picurl}}" src="{{item.picurl}}" mode="aspectFill" />
+      <view class="item-avatar-placeholder" wx:else>📡</view>
+      <view class="item-info">
+        <view class="item-name">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}</view>
+        <view class="item-meta">
+          <text class="item-time" wx:if="{{item.device_key}}">编码: {{item.device_key}}</text>
+          <text class="item-time" wx:else style="color:#ff9800;">请输入唯一编码</text>
+        </view>
+        <view class="item-id" wx:if="{{item.link_cowsheep_id}}">绑定牛羊: {{item.bindName || item.link_cowsheep_id}}</view>
+        <view class="item-id" wx:else style="color:#ccc;">未绑定牛羊</view>
+      </view>
+      <view class="item-edit-btn" data-devicekey="{{item.device_key || item.deviceId}}" catchtap="onItemEdit">
+        <text class="item-edit-icon">✏️</text>
+      </view>
+      <view class="item-connect-btn" data-deviceid="{{item.deviceId}}" catchtap="onItemBind">
+        <text class="item-connect-icon">🔗</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view class="list-panel" wx:else>
+    <view class="empty-tip">暂无设备数据，点击上方按钮新增</view>
+  </view>
+</scroll-view>
+
+<!-- 新增设备弹窗 -->
+<view class="modal" wx:if="{{showAddModal}}">
+  <view class="modal-mask" bindtap="onAddClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onAddClose">✕</view>
+    <view class="modal-title">新增设备</view>
+
+    <view class="modal-label">设备ID</view>
+    <input class="modal-input"
+      value="{{addDeviceId}}"
+      placeholder="请输入设备ID"
+      bindinput="onAddDeviceIdInput" />
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onAddClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onAddConfirm">确认新增</button>
+    </view>
+  </view>
+</view>
+
+<!-- 连接牛羊弹窗 -->
+<view class="modal" wx:if="{{showBindModal}}">
+  <view class="modal-mask" bindtap="onBindClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onBindClose">✕</view>
+    <view class="modal-title">连接牛羊</view>
+
+    <view class="modal-label">绑定设备：{{bindDeviceId}}</view>
+
+    <view class="modal-label">选择牛羊</view>
+    <picker mode="selector" range="{{livestockNames}}" value="{{bindNameIndex}}" bindchange="onBindNameChange">
+      <view class="modal-picker">{{livestockNames[bindNameIndex] || '请新增牛羊'}}</view>
+    </picker>
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onBindClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onBindConfirm">确认连接</button>
+    </view>
+  </view>
+</view>
+
+<!-- 编辑设备弹窗 -->
+<view class="modal" wx:if="{{showEditModal}}">
+  <view class="modal-mask" bindtap="onEditClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onEditClose">✕</view>
+    <view class="modal-title">编辑设备</view>
+
+    <!-- 设备图片 -->
+    <view class="modal-label">设备图片</view>
+    <view class="edit-pic-wrap" bindtap="onEditPic">
+      <image class="edit-pic-img" wx:if="{{editPicurl}}" src="{{editPicurl}}" mode="aspectFill" />
+      <view class="edit-pic-placeholder" wx:else>📡 点击选图</view>
+    </view>
+
+    <!-- deviceId（不可编辑） -->
+    <view class="modal-label">deviceId</view>
+    <view class="edit-readonly">{{editOldDeviceKey}}</view>
+
+    <!-- 设备编码 -->
+    <view class="modal-label">设备编码</view>
+    <input class="modal-input"
+      value="{{editDeviceCode}}"
+      placeholder="请输入设备编码"
+      bindinput="onEditDeviceCodeInput" />
+
+    <!-- 别名 -->
+    <view class="modal-label">别名</view>
+    <input class="modal-input"
+      value="{{editRename}}"
+      placeholder="请输入别名"
+      bindinput="onEditRenameInput" />
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onEditConfirm">确认修改</button>
+    </view>
+  </view>
+</view>
+

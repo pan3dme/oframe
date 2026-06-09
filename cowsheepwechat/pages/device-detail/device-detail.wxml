@@ -1,0 +1,86 @@
+<!--device-detail.wxml-->
+<navigation-bar title="设备详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <block wx:if="{{deviceInfo}}">
+    <!-- 设备图片 -->
+    <view class="pic-area">
+      <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" />
+      <view class="detail-pic-placeholder" wx:else>📡</view>
+    </view>
+
+    <!-- 设备信息卡片 -->
+    <view class="info-card">
+      <view class="info-row">
+        <text class="info-label">deviceId</text>
+        <text class="info-value">{{deviceInfo.deviceId}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">别名</text>
+        <text class="info-value">{{deviceInfo.rename || '-'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">设备编码</text>
+        <text class="info-value">{{deviceInfo.device_key || '-'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">Lora串</text>
+        <text class="info-value">{{deviceInfo.lorastr || '-'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">绑定牛羊</text>
+        <text class="info-value">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">记录时间</text>
+        <text class="info-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
+      </view>
+    </view>
+
+    <!-- 查看设备记录按钮 -->
+    <view class="record-btn" bindtap="onViewRecords">
+      <text>{{showRecords ? '收起设备记录' : '查看设备记录'}}</text>
+    </view>
+
+    <!-- 设备记录列表 -->
+    <block wx:if="{{showRecords}}">
+      <view class="empty-tip" wx:if="{{recordLoading}}">查询中...</view>
+
+      <block wx:elif="{{recordList.length > 0}}">
+        <view class="record-summary">今日记录 {{recordList.length}} 条</view>
+
+        <view class="record-item" wx:for="{{recordList}}" wx:key="auto_id">
+          <view class="rec-row">
+            <text class="rec-label">deviceId</text>
+            <text class="rec-value">{{item.deviceId}}</text>
+          </view>
+          <view class="rec-row">
+            <text class="rec-label">auto_id</text>
+            <text class="rec-value">{{item.auto_id}}</text>
+          </view>
+          <view class="rec-row">
+            <text class="rec-label">lorastr</text>
+            <text class="rec-value">{{item.lorastr || '-'}}</text>
+          </view>
+          <view class="rec-row">
+            <text class="rec-label">time</text>
+            <text class="rec-value">{{item.time || '-'}}</text>
+          </view>
+          <view class="rec-row">
+            <text class="rec-label">upDateDevice</text>
+            <text class="rec-value">{{item.upDateDevice || '-'}}</text>
+          </view>
+          <view class="rec-row">
+            <text class="rec-label">picurl</text>
+            <text class="rec-value" wx:if="{{item.picurl}}">{{item.picurl}}</text>
+            <text class="rec-value" wx:else>-</text>
+          </view>
+        </view>
+      </block>
+
+      <view class="empty-tip" wx:else>该设备今日暂无记录</view>
+    </block>
+  </block>
+
+  <!-- 加载中 -->
+  <view class="empty-tip" wx:else>加载中...</view>
+</scroll-view>

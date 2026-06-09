@@ -1,11 +1,12 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel)
-from PyQt6.QtGui import QFont, QPalette, QColor
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QPalette, QColor, QResizeEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
 
 from tablestore import Direction, INF_MAX, INF_MIN
 
 from crowui.submenu.button_panel import ButtonPanel
 from crowui.submenu.tab_allcorw_list import TobAllcorwList
+from crowui.submenu.tab_alldivice_list import TabAllDiviceList
 from crowui.submenu.tab_refrish_info import TobRefrishInfo
 from config import settings
 
@@ -68,12 +69,30 @@ class RightTabMenu(QWidget):
         layout.addWidget(self.tab_widget)
         # 初始化TableStore客户端
 
+
+        self.create_cow_status_tab()  # 设备列表
+        self.create_cowsheep_status_tab()  # 牛羊列表
         self.create_latest_data_tab()  # 最新数据
-        self.create_cow_status_tab()  # 牛最新动态
         self.create_cruise_view_tab()  # 巡航画面
 
+        # 连接页签切换信号，切换时触发表格自适应列宽
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
 
 
+
+
+    def on_tab_changed(self, index):
+        """页签切换时，对当前页签中包含表格的组件触发 resizeEvent 以自适应列宽"""
+        widget = self.tab_widget.widget(index)
+        if widget is None:
+            return
+        # 遍历页签内的子组件，找到带有 table 属性的面板
+        for child in widget.children():
+            if hasattr(child, 'table') and child.table is not None:
+                # 发送一个 resizeEvent 触发表格列宽重新计算
+                old_size = child.size()
+                event = QResizeEvent(old_size, old_size)
+                child.resizeEvent(event)
 
     def create_latest_data_tab(self):
         """创建最新数据选项卡"""
@@ -81,11 +100,6 @@ class RightTabMenu(QWidget):
         tab_layout = QVBoxLayout(tab_widget)
         tab_layout.setContentsMargins(10, 10, 10, 10)
 
-        # 添加标题
-        title = QLabel("最新数据")
-        title.setFont(QFont("Microsoft YaHei", 14, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        tab_layout.addWidget(title)
 
         panel = TobRefrishInfo(client=self.ots_client)
         tab_layout.addWidget(panel)
@@ -93,21 +107,29 @@ class RightTabMenu(QWidget):
         self.tab_widget.addTab(tab_widget, "最新数据")
 
     def create_cow_status_tab(self):
-        """创建牛最新动态选项卡"""
+        """创建设备列表选项卡"""
         tab_widget = QWidget()
         tab_layout = QVBoxLayout(tab_widget)
         tab_layout.setContentsMargins(10, 10, 10, 10)
 
-        # 添加标题
-        title = QLabel("所有设备列表")
-        title.setFont(QFont("Microsoft YaHei", 14, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        tab_layout.addWidget(title)
 
-        panel = TobAllcorwList(client=self.ots_client)
+
+        panel = TabAllDiviceList(client=self.ots_client)
         tab_layout.addWidget(panel)
 
         self.tab_widget.addTab(tab_widget, "设备动态")
+        
+    def create_cowsheep_status_tab(self):
+        """创建牛羊列表选项卡"""
+        tab_widget = QWidget()
+        tab_layout = QVBoxLayout(tab_widget)
+        tab_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 创建牛羊列表组件
+        panel = TobAllcorwList(client=self.ots_client)
+        tab_layout.addWidget(panel)
+
+        self.tab_widget.addTab(tab_widget, "牛羊列表")
 
     def create_cruise_view_tab(self):
         """创建巡航画面选项卡"""

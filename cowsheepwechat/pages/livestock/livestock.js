@@ -1,5 +1,5 @@
 // livestock.js - 管理牛羊
-const API_URL = 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run'
+const API_URL = getApp().globalData.apiUrl
 const OSS_CONFIG = require('../../config/oss-config.js')
 const dataCache = require('../../config/data-cache.js')
 

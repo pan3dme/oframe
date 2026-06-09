@@ -7,6 +7,8 @@ App({
   },
 
   globalData: {
+    apiUrl: 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run',
+    api_cowsheep_Url: 'https://cowsheep-updata-dxnlqxjkzc.cn-shanghai.fcapp.run',
     gpsData: null,       // 定位数据
     deviceCache: null,   // 设备列表缓存
     livestockCache: null // 牛羊列表缓存

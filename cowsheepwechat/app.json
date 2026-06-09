@@ -5,7 +5,9 @@
     "pages/detail/detail",
     "pages/map/map",
     "pages/trackmap/trackmap",
-    "pages/livestock/livestock"
+    "pages/livestock/livestock",
+    "pages/device/device",
+    "pages/device-detail/device-detail"
   ],
   "window": {
     "navigationBarTextStyle": "black",
