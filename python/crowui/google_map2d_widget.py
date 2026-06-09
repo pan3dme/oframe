@@ -16,7 +16,7 @@ class NoWheelScrollArea(QScrollArea):
         event.ignore()
 
 
-class BasePicWidget(QWidget):
+class GoogleMap2DWidget(QWidget):
     """加载res目录下的切片图片拼接成大图，在300x300区域内支持上下左右滑动和GPS标记"""
 
     TILE_ROWS = 10

@@ -1,20 +1,23 @@
-import os
-
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton,
-                              QRadioButton, QCheckBox, QDialogButtonBox, QLineEdit,
-                              QTabWidget, QLabel, QGridLayout, QScrollArea)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel)
 from PyQt6.QtGui import QFont, QPalette, QColor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-from tablestore import OTSClient, client
+from tablestore import Direction, INF_MAX, INF_MIN
 
-from crowui.button_panel import ButtonPanel
-from crowui.tabmenu.tab_allcorw_list import TobAllcorwList
-from crowui.tabmenu.tab_refrish_info import TobRefrishInfo
+from crowui.submenu.button_panel import ButtonPanel
+from crowui.submenu.tab_allcorw_list import TobAllcorwList
+from crowui.submenu.tab_refrish_info import TobRefrishInfo
+from config import settings
 
 
 class RightTabMenu(QWidget):
+    # 定义信号，用于通知刷新数据
+    refresh_data_signal = pyqtSignal()
+
+    # 全局变量，用于存储设备表和牛羊表数据
+    device_table_data = None
+    cowsheep_table_data = None
+
     def __init__(self, parent=None, ots_client=None):
         # 如果传入的是 OTSClient，则不将其作为 parent
         if parent is not None and not isinstance(parent, QWidget):
@@ -22,6 +25,9 @@ class RightTabMenu(QWidget):
             parent = None
         super().__init__(parent)
         self.ots_client = ots_client
+
+        # 初始化后加载数据表
+        self.load_table_data()
 
         # 设置背景颜色
         self.setAutoFillBackground(True)
@@ -119,3 +125,52 @@ class RightTabMenu(QWidget):
         tab_layout.addWidget(panel)
 
         self.tab_widget.addTab(tab_widget, "巡航画面")
+
+    def load_table_data(self):
+        """加载设备表和牛羊表数据到全局变量中"""
+        try:
+            # 加载设备表数据
+            print(f"加载设备表数据: {settings.DEVICETTABLE_NAME}")
+            columns_to_get = ['gps', 'lorastr', 'time', 'upDateDevice']
+            # 2. 定义主键范围：覆盖全表
+            # 起始主键 (inclusive_start_primary_key) 设为最大值，表示从主键最大的行开始
+            inclusive_start_primary_key = [('deviceId', INF_MAX)]
+            # 结束主键 (exclusive_end_primary_key) 设为最小值，表示扫描到主键最小的行为止
+            exclusive_end_primary_key = [('deviceId', INF_MIN)]
+
+            # 3. 执行范围查询，direction=BACKWARD 为倒序读取
+            # 使用时间戳排序获取最新记录
+            consumed, next_start_primary_key, self.device_table_data, next_token = self.ots_client.get_range(
+                table_name=settings.DEVICETTABLE_NAME,
+                direction=Direction.BACKWARD,  # 关键参数：反向查询
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,  # 可选，指定要获取的列
+                limit=100  # 限制返回的行数，获取最新100条记录
+            )
+            print(f"设备表数据加载完成，共 {len(self.device_table_data)} 条记录")
+
+            # 加载牛羊表数据
+            print(f"加载牛羊表数据: {settings.COWSHEEP_TABLE_NAME}")
+            # 使用类似的方法加载牛羊表数据
+            columns_to_get = ['avatar', 'birthday', 'gender', 'rename']
+            inclusive_start_primary_key = [('cowsheep_id', INF_MAX)]
+            exclusive_end_primary_key = [('cowsheep_id', INF_MIN)]
+
+            consumed, next_start_primary_key, self.cowsheep_table_data, next_token = self.ots_client.get_range(
+                table_name=settings.COWSHEEP_TABLE_NAME,
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=100
+            )
+            print(f"牛羊表数据加载完成，共 {len(self.cowsheep_table_data)} 条记录")
+
+        except Exception as e:
+            print(f"加载数据表失败: {str(e)}")
+
+    def refresh_table_data(self):
+        """刷新设备表和牛羊表数据"""
+        print("刷新数据表...")
+        self.load_table_data()

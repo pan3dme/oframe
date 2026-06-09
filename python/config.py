@@ -6,7 +6,10 @@ class _Config:
     DATABASE_URL = "mysql://localhost:3306/db"
     API_KEY = "12345"
     LOG_TABLE_NAME = 'devicelog001'
+    # 设备表
     DEVICETTABLE_NAME = 'devicetable001'
+    # 牛羊表
+    COWSHEEP_TABLE_NAME = 'cowsheep002'
     ROUTETABLE_NAME = 'routetabel001'
     PLACETABLE_NAME = 'placetable001'
 

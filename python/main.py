@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout,QHBo
 from tablestore import OTSClient
 
 from display3d.google_scene3d import GoogleScene3D
-from crowui.base_pic_widget import BasePicWidget
+from crowui.google_map2d_widget import GoogleMap2DWidget
 from crowui.right_tab_menu import RightTabMenu
 
 
@@ -64,7 +64,7 @@ class MapWindow(QMainWindow):
             bottom_layout.setSpacing(0)
             left_layout.addWidget(bottom_widget, stretch=1)
 
-            self.basepic = BasePicWidget(self.client)
+            self.basepic = GoogleMap2DWidget(self.client)
             self.basepic.receive_map_move_gps= self.googleMapScene3D.receive_gps_coordinates
             self.googleMapScene3D.change_map_gps=self.basepic.change_map_gps
 
