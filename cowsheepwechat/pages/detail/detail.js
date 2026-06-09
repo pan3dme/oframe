@@ -1,5 +1,5 @@
 // detail.js
-const API_URL = getApp().globalData.apiUrl
+const API_URL = getApp().globalData.api_cowsheep_Url
 const OSS_CONFIG = require('../../config/oss-config.js')
 const dataCache = require('../../config/data-cache.js')
 

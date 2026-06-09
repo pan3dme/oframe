@@ -2,7 +2,8 @@
 // 设备列表和牛羊列表缓存，避免每次页面切换都请求服务器
 
 const app = getApp()
-const API_URL = app.globalData.apiUrl
+const API_DEVICE_URL = app.globalData.api_device_Url
+const API_COWSHEEP_URL = app.globalData.api_cowsheep_Url
 
 // ==================== 设备数据缓存 ====================
 
@@ -19,7 +20,7 @@ function getDeviceList(callback, forceRefresh) {
   }
 
   wx.request({
-    url: API_URL,
+    url: API_DEVICE_URL,
     method: 'POST',
     data: { action: 'getDeviceTaleAll' },
     success: (res) => {
@@ -113,7 +114,7 @@ function getLivestockList(callback, forceRefresh) {
   }
 
   wx.request({
-    url: API_URL,
+    url: API_COWSHEEP_URL,
     method: 'POST',
     data: { action: 'getLivestockList' },
     success: (res) => {

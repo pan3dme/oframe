@@ -345,7 +345,7 @@ Page({
         }
       }
       console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '队列剩余:', queue.length)
-      const API_URL = getApp().globalData.apiUrl
+      const API_URL = getApp().globalData.api_device_Url
       const that = this
       wx.request({
         url: API_URL,

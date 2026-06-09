@@ -1,5 +1,5 @@
 // features.js
-const API_URL = getApp().globalData.apiUrl
+const API_URL = getApp().globalData.api_device_Url
 const dataCache = require('../../config/data-cache.js')
  
 Page({

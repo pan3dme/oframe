@@ -1,5 +1,5 @@
 // device-detail.js - 设备详情
-const API_URL = getApp().globalData.apiUrl
+const API_URL = getApp().globalData.api_device_Url
 const dataCache = require('../../config/data-cache.js')
 
 Page({

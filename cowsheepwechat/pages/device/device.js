@@ -1,5 +1,6 @@
 // device.js - 设备管理
-const API_URL = getApp().globalData.apiUrl
+const API_DEVICE_URL = getApp().globalData.api_device_Url
+const API_COWSHEEP_URL = getApp().globalData.api_cowsheep_Url
 const OSS_CONFIG = require('../../config/oss-config.js')
 const dataCache = require('../../config/data-cache.js')
 
@@ -202,7 +203,7 @@ Page({
     wx.showLoading({ title: '提交中...' })
 
     wx.request({
-      url: API_URL,
+      url: API_DEVICE_URL,
       method: 'POST',
       data: {
         action: 'addDevice',
@@ -268,10 +269,10 @@ Page({
       wx.showLoading({ title: '绑定中...' })
 
       wx.request({
-        url: API_URL,
-        method: 'POST',
-        data: {
-          action: 'bindDeviceCow',
+      url: API_COWSHEEP_URL,
+      method: 'POST',
+      data: {
+        action: 'bindDeviceCow',
           info: { deviceId, cowsheepId: item.cowsheepId }
         },
         success: (res) => {
@@ -375,7 +376,7 @@ Page({
   _doEditConfirm(oldKey, device_key, rename, picurl) {
     wx.showLoading({ title: '更新中...' })
     wx.request({
-      url: API_URL,
+      url: API_DEVICE_URL,
       method: 'POST',
       data: {
         action: 'updateDevice',
