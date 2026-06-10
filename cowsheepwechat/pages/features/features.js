@@ -148,8 +148,9 @@ Page({
       this.setData({
         showInsertModal: true,
         insertDeviceId: 'v4-1',
-        insertLorastr: '1|v3-1|26.000000,109.360000|1'
+        insertLorastr: '1|v3-1|26.530033, 109.390391|wechat'
       })
+
     } else if (id === 3) {
       // 设备最新数据 - 直接跳转设备列表页
       wx.navigateTo({ url: '/pages/device/device' })
@@ -265,6 +266,7 @@ Page({
         info: {
           deviceId: deviceId,
           lorastr: lorastr,
+          upDateDevice:"wechat",
           time: getApp().formatTime()
         }
 

@@ -127,7 +127,7 @@ page {
   display: flex;
   padding: 0;
   justify-content: center;
-  gap: 48rpx;
+  gap: 32rpx;
 }
 
 .icon-item {
@@ -200,4 +200,73 @@ page {
 
 .btn-device::after {
   border: none;
+}
+
+.btn-map {
+  width: 100rpx;
+  height: 100rpx;
+  min-width: 100rpx;
+  max-width: 100rpx;
+  line-height: 100rpx;
+  font-size: 48rpx;
+  color: #fff;
+  background: #2e7d32;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.btn-map::after {
+  border: none;
+}
+
+/* ========== IoT 新数据飘窗通知 ========== */
+.iot-notify {
+  position: fixed;
+  top: 88rpx;
+  left: 24rpx;
+  right: 24rpx;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 28rpx;
+  background: linear-gradient(135deg, #1565c0, #1e88e5);
+  border-radius: 0 0 16rpx 16rpx;
+  box-shadow: 0 4rpx 20rpx rgba(21, 101, 192, 0.4);
+  transform: translateY(calc(-100% - 88rpx));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
+}
+.iot-notify-show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.iot-notify-icon {
+  font-size: 36rpx;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+.iot-notify-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+}
+.iot-notify-line1 {
+  font-size: 26rpx;
+  color: #fff;
+  font-weight: 600;
+}
+.iot-notify-line2 {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.9);
+}
+.iot-notify-line3 {
+  font-size: 20rpx;
+  color: rgba(255, 255, 255, 0.65);
 }

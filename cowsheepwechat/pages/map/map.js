@@ -1,13 +1,15 @@
 // map.js
+const dataCache = require('../../config/data-cache.js')
+
 Page({
   data: {
     scale: 1,
     baiduMapUrl: '',
     useBaidu: false,
-    coords: { lng: 116.397, lat: 39.908 },
+    coords: { lng: 109.390224, lat: 26.529950 },
     showNativeMap: false,
-    nativeLat: 39.908,
-    nativeLng: 116.397,
+    nativeLat: 26.529950,
+    nativeLng: 109.390224,
     nativeScale: 15,
     markers: [],
     baiduAK: '',  // ⚠️ 填入百度 AK
@@ -18,9 +20,13 @@ Page({
     currentMarker: -1    // 当前巡览到的 marker 索引，-1=未选中
   },
 
+  _cowMarkers: [],
+  _deviceMarkers: [],
+
   onLoad() {
     this.loadMap()
     this.fetchCrowData()
+    this.fetchDeviceLotData()
   },
 
   buildBaiduUrl(lng, lat, zoom) {
@@ -79,10 +85,11 @@ Page({
     return this.gcjToBd(gcj.lng, gcj.lat)
   },
 
-  // 统一的标记点渲染：接收 recordList，生成 markers 并 setData
+  // 统一的标记点渲染：接收 recordList，生成 markers 并加入合并
   renderMarkersFromData(recordList) {
     if (!recordList || recordList.length === 0) {
-      this.setData({ markers: [], currentMarker: -1 })
+      this._cowMarkers = []
+      this._applyAllMarkers()
       return
     }
     // 归一化 recordList，兼容 features 页传入的格式（crow_id/gps/rawTime）
@@ -132,6 +139,92 @@ Page({
       })
       .filter(item => item !== null)
 
+    console.log('[地图] 牛群标记点:', markers.length, '个')
+    this._cowMarkers = markers
+    this._applyAllMarkers()
+  },
+
+  // ==================== 设备 LOT 标记点 ====================
+
+  fetchDeviceLotData() {
+    dataCache.getDeviceLotRefresh((data) => {
+      const lotList = data.lotList || []
+      console.log('[地图] 设备LOT数据:', lotList.length, '条')
+      this._renderDeviceMarkers(lotList)
+      this._applyAllMarkers()
+      wx.hideLoading()
+    }, true)
+  },
+
+  _renderDeviceMarkers(lotList) {
+    if (!lotList || lotList.length === 0) {
+      this._deviceMarkers = []
+      return
+    }
+
+    // 从一条记录中提取 lat/lng，支持多种格式
+    function extractCoord(item) {
+      // 1) 优先用 gps 字段
+      if (item.gps && item.gps !== '-') {
+        // 支持 | 或 , 或 ,+空格 分隔
+        const parts = item.gps.split(/[｜|,，]\s*/)
+        if (parts.length >= 2) {
+          const lat = parseFloat(parts[0])
+          const lng = parseFloat(parts[1])
+          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng, src: 'gps' }
+        }
+      }
+      // 2) 回退：从 lorastr 提取第3段（格式: type|v3-x|lat,lng|...）
+      if (item.lorastr) {
+        const segs = item.lorastr.split(/[｜|]/)
+        if (segs.length >= 3 && segs[2]) {
+          const parts = segs[2].split(/[,，]\s*/)
+          if (parts.length >= 2) {
+            const lat = parseFloat(parts[0])
+            const lng = parseFloat(parts[1])
+            if (!isNaN(lat) && !isNaN(lng)) return { lat, lng, src: 'lorastr' }
+          }
+        }
+      }
+      return null
+    }
+
+    const markers = []
+    lotList.forEach((item, index) => {
+      const coord = extractCoord(item)
+      if (!coord) return
+      const gcj = this.wgs84ToGcj02(coord.lng, coord.lat)
+      const shortId = (item.deviceId || '-').substring(0, 10)
+      markers.push({
+        id: index + 50000,
+        latitude: gcj.lat,
+        longitude: gcj.lng,
+        title: '设备 ' + (item.deviceId || '-'),
+        callout: {
+          content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng,
+          display: 'BYCLICK',
+          textAlign: 'center'
+        },
+        label: {
+          content: shortId,
+          color: '#ffffff',
+          fontSize: 13,
+          anchorX: 0,
+          anchorY: 3,
+          textAlign: 'center'
+        }
+      })
+    })
+    console.log('[地图] 设备标记点:', markers.length, '个')
+    this._deviceMarkers = markers
+  },
+
+  // ==================== 合并标记点并统一调整邻近标签 ====================
+
+  _applyAllMarkers() {
+    const all = [...(this._cowMarkers || []), ...(this._deviceMarkers || [])]
+    all.forEach((m, i) => { m.id = i })
+
     // 邻近标记点的标签围绕红点均匀分布，避免文字叠压
     const PROXIMITY = 0.001
     const LABEL_RADIUS = 26
@@ -145,19 +238,19 @@ Page({
       return (180 + posIdx * step) % 360
     }
 
-    const visited = new Array(markers.length).fill(false)
-    for (let i = 0; i < markers.length; i++) {
+    const visited = new Array(all.length).fill(false)
+    for (let i = 0; i < all.length; i++) {
       if (visited[i]) continue
       const cluster = [i]
       visited[i] = true
       let expanded = true
       while (expanded) {
         expanded = false
-        for (let j = 0; j < markers.length; j++) {
+        for (let j = 0; j < all.length; j++) {
           if (visited[j]) continue
           for (const ci of cluster) {
-            if (Math.abs(markers[ci].latitude - markers[j].latitude) < PROXIMITY &&
-                Math.abs(markers[ci].longitude - markers[j].longitude) < PROXIMITY) {
+            if (Math.abs(all[ci].latitude - all[j].latitude) < PROXIMITY &&
+                Math.abs(all[ci].longitude - all[j].longitude) < PROXIMITY) {
               cluster.push(j)
               visited[j] = true
               expanded = true
@@ -170,13 +263,13 @@ Page({
       cluster.forEach((mi, posIdx) => {
         const angleDeg = getAngle(cluster.length, posIdx)
         const rad = angleDeg * Math.PI / 180
-        markers[mi].label.anchorX = Math.round(useRadius * Math.sin(rad))
-        markers[mi].label.anchorY = -Math.round(useRadius * Math.cos(rad))
+        all[mi].label.anchorX = Math.round(useRadius * Math.sin(rad))
+        all[mi].label.anchorY = -Math.round(useRadius * Math.cos(rad))
       })
     }
 
-    console.log('地图页标记点:', JSON.stringify(markers))
-    this.setData({ markers, currentMarker: -1 })
+    console.log('[地图] 合并标记点总数:', all.length)
+    this.setData({ markers: all, currentMarker: -1 })
   },
 
   fetchCrowData() {
@@ -254,8 +347,11 @@ Page({
         }
       },
       fail: () => {
+        // 定位失败 → 默认湖南怀化基准点
+        const baseLat = 26.529950
+        const baseLon = 109.390224
         if (that.data.baiduAK) {
-          const bd = that.gcjToBd(116.397, 39.908)
+          const bd = that.gcjToBd(baseLon, baseLat)
           that.setData({
             coords: bd,
             baiduMapUrl: that.buildBaiduUrl(bd.lng, bd.lat, 14),
@@ -263,7 +359,11 @@ Page({
             showNativeMap: false
           })
         } else {
-          that.setData({ showNativeMap: true })
+          that.setData({
+            nativeLat: baseLat,
+            nativeLng: baseLon,
+            showNativeMap: true
+          })
         }
       }
     })
@@ -328,9 +428,12 @@ Page({
 
   onToolBtn2() {
     // 清掉旧标记，重新拉取最新数据
+    this._cowMarkers = []
+    this._deviceMarkers = []
     this.setData({ markers: [] })
     wx.showLoading({ title: '刷新中...' })
     this.fetchCrowData()
+    this.fetchDeviceLotData()
   },
 
   // 监听原生 map 手势缩放：超过卫星图可用级别自动拉回

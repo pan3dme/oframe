@@ -1,5 +1,16 @@
 <!--index.wxml-->
 <navigation-bar title="牛羊显示" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+
+<!-- IoT 新数据飘窗通知 -->
+<view class="iot-notify {{showIotNotify ? 'iot-notify-show' : ''}}" bindtap="onIotNotifyTap">
+  <text class="iot-notify-icon">📡</text>
+  <view class="iot-notify-body">
+    <text class="iot-notify-line1">{{iotNotifyLine1}}</text>
+    <text class="iot-notify-line2" wx:if="{{iotNotifyLine2}}">{{iotNotifyLine2}}</text>
+    <text class="iot-notify-line3" wx:if="{{iotNotifyLine3}}">{{iotNotifyLine3}}</text>
+  </view>
+</view>
+
 <scroll-view class="scrollarea" scroll-y type="list">
   <!-- 设备摘要 -->
   <view class="summary-card" bindtap="goToDevice">
@@ -37,16 +48,20 @@
   <view class="section-title">快捷功能</view>
   <view class="btn-bar">
     <view class="icon-item">
-      <button class="btn-features" bindtap="goToFeatures">🛠️</button>
-      <text class="icon-label">功能</text>
+      <button class="btn-device" bindtap="goToDevice">📡</button>
+      <text class="icon-label">设备管理</text>
     </view>
     <view class="icon-item">
       <button class="btn-livestock" bindtap="goToLivestock">🐮</button>
       <text class="icon-label">牛羊管理</text>
     </view>
     <view class="icon-item">
-      <button class="btn-device" bindtap="goToDevice">📡</button>
-      <text class="icon-label">设备管理</text>
+      <button class="btn-features" bindtap="goToFeatures">🛠️</button>
+      <text class="icon-label">功能</text>
+    </view>
+    <view class="icon-item">
+      <button class="btn-map" bindtap="goToMap">🗺️</button>
+      <text class="icon-label">地图</text>
     </view>
   </view>
 </view>
