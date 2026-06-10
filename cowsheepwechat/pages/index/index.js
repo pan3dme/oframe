@@ -30,15 +30,8 @@ Page({
   // 预加载设备列表和牛羊列表到全局缓存，并更新首页摘要
   _preloadData(force) {
     dataCache.getDeviceList((data) => {
-      const recordList = data.recordList || []
       const deviceCount = data.deviceIdOptions ? data.deviceIdOptions.length - 1 : 0 // 去掉"未连接"
-      // 取最新一条记录的时间（已按时间降序排列）
-      let deviceUpdateTime = ''
-      if (recordList.length > 0) {
-        const latest = recordList[0]
-        deviceUpdateTime = latest.date + ' ' + latest.time_part
-      }
-      this.setData({ deviceCount, deviceUpdateTime })
+      this.setData({ deviceCount })
       console.log('设备表缓存已就绪:', deviceCount + '个设备')
       // 尝试计算绑定数
       this._calcBoundCount()
@@ -52,11 +45,36 @@ Page({
       this._calcBoundCount()
     }, force)
 
-    // 加载设备LOT最新数据表
+    // 加载设备LOT最新数据表，首页设备"最后更新"时间从这里取
     dataCache.getDeviceLotRefresh((data) => {
-      const lotCount = data.lotList ? data.lotList.length : 0
-      console.log('设备LOT最新数据缓存已就绪:', lotCount + '条记录')
+      const lotList = data.lotList || []
+      let deviceUpdateTime = ''
+      if (lotList.length > 0) {
+        const latest = lotList[0]
+        const absolute = latest.date + ' ' + latest.time_part
+        const relative = this._formatRelativeTime(latest.rawTime)
+        deviceUpdateTime = absolute + '（' + relative + '）'
+      }
+      this.setData({ deviceUpdateTime })
+      console.log('设备LOT最新数据缓存已就绪:', lotList.length + '条记录')
     }, force)
+  },
+
+  // 相对时间：刚刚 / X分钟前 / X小时前 / X天前
+  _formatRelativeTime(rawTime) {
+    if (!rawTime || rawTime === '-') return ''
+    const past = new Date(rawTime).getTime()
+    const now = Date.now()
+    if (isNaN(past)) return rawTime
+    const diff = now - past
+    const seconds = Math.floor(diff / 1000)
+    if (seconds < 60) return '刚刚'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return minutes + '分钟前'
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return hours + '小时前'
+    const days = Math.floor(hours / 24)
+    return days + '天前'
   },
 
   // 计算已绑定设备的牛羊数量
