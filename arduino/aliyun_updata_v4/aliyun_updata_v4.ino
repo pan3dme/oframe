@@ -116,8 +116,8 @@ String generateGpsData(int index) {
   }
 
   // 2. 随机漫步 (每次增加微小偏移)
-  g_gpsPoints[index].lat += (random(-100, 100) / 1000000.0);
-  g_gpsPoints[index].lon += (random(-100, 100) / 1000000.0);
+  g_gpsPoints[index].lat += (random(-500, 500) / 1000000.0);
+  g_gpsPoints[index].lon += (random(-500, 500) / 1000000.0);
 
   // 3. 格式化输出
   char buffer[32];

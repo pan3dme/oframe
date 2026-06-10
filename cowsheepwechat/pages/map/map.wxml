@@ -1,5 +1,6 @@
 <!--map.wxml-->
-<navigation-bar title="百度地图" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="地图中心" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<canvas type="2d" id="yellowDotCanvas" style="width:40px;height:40px;position:fixed;left:-9999px"></canvas>
 
 <movable-area class="map-area" scale-area wx:if="{{useBaidu && baiduMapUrl}}">
   <movable-view class="map-view" direction="all" scale scale-min="1" scale-max="5"
@@ -10,8 +11,14 @@
 
 <map wx:if="{{showNativeMap}}" id="cowMap" class="map"
   latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
-  markers="{{markers}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
+  markers="{{markers}}" polyline="{{polylines}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
   bindregionchange="onRegionChange" />
+
+<!-- 左下角图层切换按钮 -->
+<view class="layer-toggle {{showRoadLayer ? 'layer-on' : ''}}" bindtap="toggleLayer">
+  <text class="layer-icon">🗺️</text>
+  <text class="layer-label">{{showRoadLayer ? '已开启' : '图层'}}</text>
+</view>
 
 <!-- 右下角功能按钮组 -->
 <view class="map-toolbar">

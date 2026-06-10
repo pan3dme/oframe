@@ -1,6 +1,8 @@
 // map.js
 const dataCache = require('../../config/data-cache.js')
 
+const ROAD_API_URL = 'https://route-pe-updata-ynprgfalkj.cn-shanghai.fcapp.run'
+
 Page({
   data: {
     scale: 1,
@@ -12,6 +14,8 @@ Page({
     nativeLng: 109.390224,
     nativeScale: 15,
     markers: [],
+    polylines: [],
+    showRoadLayer: false,
     baiduAK: '',  // ⚠️ 填入百度 AK
     baiduZoom: 16,     // 当前卫星图 zoom 级别（限制<=16避免无图）
     zoomRetries: 0,    // zoom 降级重试次数
@@ -22,6 +26,11 @@ Page({
 
   _cowMarkers: [],
   _deviceMarkers: [],
+  _roadPolylines: [],   // 缓存已构建的道路折线数据
+  _roadFetched: false,  // 是否已请求过道路数据
+  _placeFetched: false, // 是否已请求过地名数据
+  _placeMarkers: [],    // 缓存已构建的地名黄点标记
+  _yellowDotPath: '',   // 黄点图标临时文件路径
 
   onLoad() {
     this.loadMap()
@@ -121,6 +130,8 @@ Page({
           id: index,
           latitude: gcj.lat,
           longitude: gcj.lng,
+          width: 30,
+          height: 30,
           title: '牛群 ' + item.crow_id,
           callout: {
             content: 'ID:' + item.crow_id + '\n时间:' + currentTime,
@@ -199,6 +210,8 @@ Page({
         id: index + 50000,
         latitude: gcj.lat,
         longitude: gcj.lng,
+        width: 30,
+        height: 30,
         title: '设备 ' + (item.deviceId || '-'),
         callout: {
           content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng,
@@ -222,7 +235,10 @@ Page({
   // ==================== 合并标记点并统一调整邻近标签 ====================
 
   _applyAllMarkers() {
-    const all = [...(this._cowMarkers || []), ...(this._deviceMarkers || [])]
+    const base = [...(this._cowMarkers || []), ...(this._deviceMarkers || [])]
+    // 图层开启时追加地名黄点（放在末尾，不参与邻近标签分散）
+    const places = this.data.showRoadLayer ? (this._placeMarkers || []) : []
+    const all = [...base, ...places]
     all.forEach((m, i) => { m.id = i })
 
     // 邻近标记点的标签围绕红点均匀分布，避免文字叠压
@@ -239,6 +255,8 @@ Page({
     }
 
     const visited = new Array(all.length).fill(false)
+    // 地名黄点不参与邻近标签分散，保持 label 在正下方
+    for (let i = base.length; i < all.length; i++) { visited[i] = true }
     for (let i = 0; i < all.length; i++) {
       if (visited[i]) continue
       const cluster = [i]
@@ -513,5 +531,360 @@ Page({
       icon: 'none',
       duration: 1000
     })
-  }
+  },
+
+  toggleLayer() {
+    if (!this._roadFetched) {
+      // 首次点击：并行请求道路 + 地名数据
+      this.fetchRoadData()
+      this.fetchPlaceData()
+      return
+    }
+    // 已加载：切换显隐
+    const show = !this.data.showRoadLayer
+    this.setData({
+      showRoadLayer: show,
+      polylines: show ? this._roadPolylines : []
+    })
+    this._applyAllMarkers()
+    wx.showToast({
+      title: show ? '道路图层已显示' : '道路图层已隐藏',
+      icon: 'none',
+      duration: 1000
+    })
+  },
+
+  fetchRoadData() {
+    wx.showLoading({ title: '加载道路...' })
+    const that = this
+    wx.request({
+      url: ROAD_API_URL,
+      method: 'POST',
+      data: {
+        time: new Date().toLocaleString(),
+        action: 'getroutetableall'
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('[道路] 返回原始数据:', JSON.stringify(res.data))
+        let rawList = []
+        const data = res.data
+        if (data && data.data && Array.isArray(data.data)) {
+          rawList = data.data
+        } else if (Array.isArray(data)) {
+          rawList = data
+        }
+        if (rawList.length === 0) {
+          wx.showToast({ title: '暂无道路数据', icon: 'none' })
+          that._roadFetched = true
+          return
+        }
+        // 解析每条记录
+        const roadList = rawList.map(record => {
+          const attr = {}
+          if (record.attributes) {
+            record.attributes.forEach(item => {
+              attr[item.columnName] = item.columnValue
+            })
+          }
+          if (record.primaryKey) {
+            record.primaryKey.forEach(item => {
+              attr[item.name] = item.value
+            })
+          }
+          return {
+            route_id: attr.route_id || record.route_id || '-',
+            roadname: attr.roadname || record.roadname || '',
+            roadinfo: attr.roadinfo || record.roadinfo || ''
+          }
+        })
+        console.log('[道路] 解析后:', roadList.length, '条')
+        that._buildRoadPolylines(roadList)
+        that._roadFetched = true
+        // 默认显示
+        that.setData({
+          showRoadLayer: true,
+          polylines: that._roadPolylines
+        })
+        that._applyAllMarkers()
+        wx.showToast({
+          title: '已加载 ' + roadList.length + ' 条道路',
+          icon: 'none',
+          duration: 1200
+        })
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('[道路] 请求失败:', err)
+        wx.showToast({ title: '道路数据加载失败', icon: 'error' })
+      }
+    })
+  },
+
+  // ==================== 地名黄点 ====================
+
+  /**
+   * 从单条 GPS 字符串中提取 lat/lng
+   * 兼容: "lat|lng" 或 "lat,lng" 或 "lat, lng"
+   */
+  _parseSingleGPS(gpsStr) {
+    if (!gpsStr || gpsStr === '-') return null
+    const parts = gpsStr.split(/[｜|,，]\s*/)
+    if (parts.length < 2) return null
+    const lat = parseFloat(parts[0])
+    const lng = parseFloat(parts[1])
+    if (isNaN(lat) || isNaN(lng)) return null
+    return { lat, lng }
+  },
+
+  /**
+   * 用 Canvas 绘制一个 16x16 黄点图标，返回临时文件路径
+   */
+  _generateYellowDot() {
+    return new Promise((resolve) => {
+      const query = wx.createSelectorQuery()
+      query.select('#yellowDotCanvas').fields({ node: true, size: true }).exec((res) => {
+        if (!res || !res[0] || !res[0].node) {
+          // Canvas 节点未就绪，用空字符串（回退到系统默认标记）
+          resolve('')
+          return
+        }
+        const canvas = res[0].node
+        const ctx = canvas.getContext('2d')
+        const dpr = wx.getSystemInfoSync().pixelRatio
+        canvas.width = 40 * dpr
+        canvas.height = 40 * dpr
+        ctx.scale(dpr, dpr)
+
+        // 绘制黄色实心圆
+        ctx.beginPath()
+        ctx.arc(20, 20, 14, 0, 2 * Math.PI)
+        ctx.fillStyle = '#FFD600'
+        ctx.fill()
+        ctx.strokeStyle = '#F9A825'
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        wx.canvasToTempFilePath({
+          canvas: canvas,
+          success: (fileRes) => resolve(fileRes.tempFilePath),
+          fail: () => resolve('')
+        })
+      })
+    })
+  },
+
+  fetchPlaceData() {
+    const that = this
+    // 先生成黄点图标（仅首次）
+    const iconPromise = this._yellowDotPath
+      ? Promise.resolve(this._yellowDotPath)
+      : this._generateYellowDot().then(path => {
+          that._yellowDotPath = path
+          return path
+        })
+
+    iconPromise.then((iconPath) => {
+      wx.request({
+        url: ROAD_API_URL,
+        method: 'POST',
+        data: {
+          time: new Date().toLocaleString(),
+          action: 'getplacetableall'
+        },
+        success: (res) => {
+          console.log('[地名] 返回原始数据:', JSON.stringify(res.data))
+          let rawList = []
+          const data = res.data
+          if (data && data.data && Array.isArray(data.data)) {
+            rawList = data.data
+          } else if (Array.isArray(data)) {
+            rawList = data
+          }
+          if (rawList.length === 0) {
+            console.log('[地名] 暂无数据')
+            that._placeFetched = true
+            that._markBothReady()
+            return
+          }
+          // 解析每条记录
+          const placeList = rawList.map(record => {
+            const attr = {}
+            if (record.attributes) {
+              record.attributes.forEach(item => {
+                attr[item.columnName] = item.columnValue
+              })
+            }
+            if (record.primaryKey) {
+              record.primaryKey.forEach(item => {
+                attr[item.name] = item.value
+              })
+            }
+            return {
+              placeid: attr.placeid || record.placeid || '-',
+              name: attr.name || record.name || '',
+              gps: attr.gps || record.gps || ''
+            }
+          })
+          console.log('[地名] 解析后:', placeList.length, '条')
+          that._buildPlaceMarkers(placeList, iconPath)
+          that._placeFetched = true
+          that._markBothReady()
+        },
+        fail: (err) => {
+          console.error('[地名] 请求失败:', err)
+          that._placeFetched = true
+          that._markBothReady()
+        }
+      })
+    })
+  },
+
+  _buildPlaceMarkers(placeList, iconPath) {
+    const markers = []
+    // 地名黄点 ID 从 90000 起，避免与牛群(0~N)和设备(50000~N)冲突
+    const ID_BASE = 90000
+    placeList.forEach((place, index) => {
+      const coord = this._parseSingleGPS(place.gps)
+      if (!coord) return
+      const gcj = this.wgs84ToGcj02(coord.lng, coord.lat)
+      const name = place.name || place.placeid || '-'
+      markers.push({
+        id: ID_BASE + index,
+        latitude: gcj.lat,
+        longitude: gcj.lng,
+        width: 24,
+        height: 24,
+        iconPath: iconPath || '',
+        title: name,
+        callout: {
+          content: name + '\n' + coord.lat.toFixed(6) + ',' + coord.lng.toFixed(6),
+          display: 'BYCLICK',
+          textAlign: 'center',
+          bgColor: '#FFD600',
+          color: '#333333'
+        },
+        label: {
+          content: name,
+          color: '#F9A825',
+          fontSize: 12,
+          anchorX: 0,
+          anchorY: -20,
+          textAlign: 'center'
+        }
+      })
+    })
+    console.log('[地名] 构建黄点:', markers.length, '个')
+    this._placeMarkers = markers
+  },
+
+  /**
+   * 道路和地名都完成（或失败）后，刷新地图显示
+   */
+  _markBothReady() {
+    if (this._roadFetched && this._placeFetched && this.data.showRoadLayer) {
+      this._applyAllMarkers()
+    }
+  },
+
+  /**
+   * 解析 roadinfo 中的 GPS 坐标，构建绿色 polyline
+   * roadinfo 格式兼容：
+   *   lat1,lng1|lat2,lng2|...        (逗号分隔经纬度，竖线分隔点)
+   *   lat1|lng1|lat2|lng2|...        (竖线交替)
+   *   lat1,lng1;lat2,lng2;...        (分号分隔点)
+   */
+  _parseRoadPoints(roadinfo) {
+    if (!roadinfo || roadinfo === '-') return []
+
+    // Strategy 0: flat lat, lng, lat, lng, ... (逗号交替平铺)
+    const commaAll = roadinfo.split(/[,，]\s*/)
+    if (commaAll.length >= 4 && commaAll.length % 2 === 0) {
+      const points = []
+      let allValid = true
+      for (let i = 0; i + 1 < commaAll.length; i += 2) {
+        const lat = parseFloat(commaAll[i])
+        const lng = parseFloat(commaAll[i + 1])
+        if (isNaN(lat) || isNaN(lng)) { allValid = false; break }
+        points.push({ lat, lng })
+      }
+      if (allValid && points.length >= 2) return points
+    }
+
+    // Strategy 1: split by | → for each segment try lat,lng
+    const segs = roadinfo.split(/[｜|]/)
+    if (segs.length >= 2) {
+      const points = []
+      for (const seg of segs) {
+        const parts = seg.split(/[,，]\s*/)
+        if (parts.length >= 2) {
+          const lat = parseFloat(parts[0])
+          const lng = parseFloat(parts[1])
+          if (!isNaN(lat) && !isNaN(lng)) {
+            points.push({ lat, lng })
+          }
+        }
+      }
+      if (points.length >= 2) return points
+    }
+
+    // Strategy 2: split by | → alternating lat|lng|lat|lng...
+    if (segs.length >= 4) {
+      const points = []
+      for (let i = 0; i + 1 < segs.length; i += 2) {
+        const lat = parseFloat(segs[i])
+        const lng = parseFloat(segs[i + 1])
+        if (!isNaN(lat) && !isNaN(lng)) {
+          points.push({ lat, lng })
+        }
+      }
+      if (points.length >= 2) return points
+    }
+
+    // Strategy 3: split by ; for point groups
+    const semicolonSegs = roadinfo.split(';')
+    if (semicolonSegs.length >= 2) {
+      const points = []
+      for (const seg of semicolonSegs) {
+        const parts = seg.split(/[,，]\s*/)
+        if (parts.length >= 2) {
+          const lat = parseFloat(parts[0])
+          const lng = parseFloat(parts[1])
+          if (!isNaN(lat) && !isNaN(lng)) {
+            points.push({ lat, lng })
+          }
+        }
+      }
+      if (points.length >= 2) return points
+    }
+
+    return []
+  },
+
+  _buildRoadPolylines(roadList) {
+    const polylines = []
+    roadList.forEach((road) => {
+      const points = this._parseRoadPoints(road.roadinfo)
+      if (points.length < 2) {
+        console.warn('[道路] 坐标点不足，跳过:', road.roadname || road.route_id)
+        return
+      }
+      // WGS-84 → GCJ-02 转换全部点
+      const gcjPoints = points.map(p => {
+        const gcj = this.wgs84ToGcj02(p.lng, p.lat)
+        return { latitude: gcj.lat, longitude: gcj.lng }
+      })
+      polylines.push({
+        points: gcjPoints,
+        color: '#00E676CC',
+        width: 5,
+        borderColor: '#00C853',
+        borderWidth: 1,
+        arrowLine: false,
+        dottedLine: false
+      })
+    })
+    console.log('[道路] 构建折线:', polylines.length, '条')
+    this._roadPolylines = polylines
+  },
 })

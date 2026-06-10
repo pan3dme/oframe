@@ -1,9 +1,7 @@
 <!--trackmap.wxml-->
 <navigation-bar title="轨迹地图" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 
-<canvas type="2d" id="iconCanvas" style="width:24px;height:24px;position:fixed;left:-999px"></canvas>
-
-<movable-area class="map-area" scale-area wx:if="{{baiduMapUrl}}">
+<movable-area class="map-area" scale-area wx:if="{{useBaidu && baiduMapUrl}}">
   <movable-view class="map-view" direction="all" scale scale-min="1" scale-max="5"
     scale-value="{{scale}}" bindscale="onScale" inertia="{{true}}" out-of-bounds="{{false}}">
     <image class="map-image" src="{{baiduMapUrl}}" mode="aspectFill" binderror="onImageError" />

@@ -204,6 +204,7 @@ Page({
         deviceId: attr.deviceId || record.deviceId || '-',
         auto_id: attr.auto_id || record.auto_id || '-',
         gps: attr.gps || record.gps || '',
+        lorastr: attr.lorastr || record.lorastr || '',
         crow_id: attr.crow_idx || record.crow_idx || '',
         time: attr.time || record.time || ''
       }

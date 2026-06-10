@@ -3,6 +3,7 @@ const API_DEVICE_URL = getApp().globalData.api_device_Url
 const API_COWSHEEP_URL = getApp().globalData.api_cowsheep_Url
 const OSS_CONFIG = require('../../config/oss-config.js')
 const dataCache = require('../../config/data-cache.js')
+const { compressImage } = require('../../utils/image-compress.js')
 
 // ==================== SHA1 / HMAC-SHA1 纯 JS 实现（OSS签名用） ====================
 function _sha1Core(msgBytes) {
@@ -377,10 +378,11 @@ Page({
 
     // 如果选了新图片，先上传 OSS
     if (picFilePath) {
-      wx.showLoading({ title: '上传图片...' })
+      wx.showLoading({ title: '压缩上传...' })
       const objectKey = 'device/' + (device_key || oldKey) + '_' + Date.now() + '.jpg'
-      uploadToOSS(picFilePath, objectKey)
-        .then((ossUrl) => {
+      compressImage(picFilePath).then((compressedPath) => {
+        return uploadToOSS(compressedPath, objectKey)
+      }).then((ossUrl) => {
           this._doEditConfirm(oldKey, device_key, rename, ossUrl)
         })
         .catch((err) => {

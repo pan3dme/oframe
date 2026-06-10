@@ -2,6 +2,7 @@
 const API_URL = getApp().globalData.api_cowsheep_Url
 const OSS_CONFIG = require('../../config/oss-config.js')
 const dataCache = require('../../config/data-cache.js')
+const { compressImage } = require('../../utils/image-compress.js')
 
 // ==================== 时间格式化 ====================
 function formatDate(date) {
@@ -529,10 +530,14 @@ Page({
     const objectKey = OSS_CONFIG.uploadDir + name + '_' + Date.now() + '.' + ext
 
     this.setData({ showUploadModal: false })
-    wx.showLoading({ title: '上传到 OSS...' })
+    wx.showLoading({ title: '压缩上传...' })
 
-    uploadToOSS(filePath, objectKey)
-      .then((ossUrl) => {
+    // 视频直接上传，图片先压缩
+    const uploadPromise = fileType === 'video'
+      ? uploadToOSS(filePath, objectKey)
+      : compressImage(filePath).then((compressedPath) => uploadToOSS(compressedPath, objectKey))
+
+    uploadPromise.then((ossUrl) => {
         wx.showLoading({ title: '保存记录...' })
         wx.request({
           url: API_URL,

@@ -2,6 +2,7 @@
 const API_URL = getApp().globalData.api_cowsheep_Url
 const OSS_CONFIG = require('../../config/oss-config.js')
 const dataCache = require('../../config/data-cache.js')
+const { compressImage } = require('../../utils/image-compress.js')
 
 // ==================== 时间格式化 ====================
 function formatDate(date) {
@@ -314,10 +315,11 @@ Page({
         const cowsheepId = this.data.editCowsheepId
         const objectKey = OSS_CONFIG.uploadDir + 'avatar_' + (cowsheepId || Date.now()) + '_' + Date.now() + '.jpg'
 
-        wx.showLoading({ title: '上传头像...' })
+        wx.showLoading({ title: '压缩上传...' })
 
-        uploadToOSS(filePath, objectKey)
-          .then((ossUrl) => {
+        compressImage(filePath).then((compressedPath) => {
+          return uploadToOSS(compressedPath, objectKey)
+        }).then((ossUrl) => {
             wx.hideLoading()
             this.setData({ editAvatarUrl: ossUrl })
             wx.showToast({ title: '头像已更新', icon: 'success', duration: 1200 })
