@@ -29,10 +29,12 @@ Page({
   _roadPolylines: [],   // 缓存已构建的道路折线数据
   _roadFetched: false,  // 是否已请求过道路数据
   _placeFetched: false, // 是否已请求过地名数据
-  _placeMarkers: [],    // 缓存已构建的地名黄点标记
-  _yellowDotPath: '',   // 黄点图标临时文件路径
+  _placeMarkers: [],    // 缓存已构建的地名图钉标记
+  _pinIconPath: '',     // 地名蓝色图钉图标路径
+  _deviceIconPath: '',  // 设备红色圆点图标路径
 
   onLoad() {
+    this._generateDeviceDot()  // 提前生成设备图标
     this.loadMap()
     this.fetchCrowData()
     this.fetchDeviceLotData()
@@ -132,6 +134,7 @@ Page({
           longitude: gcj.lng,
           width: 30,
           height: 30,
+          iconPath: this._deviceIconPath || '',
           title: '牛群 ' + item.crow_id,
           callout: {
             content: 'ID:' + item.crow_id + '\n时间:' + currentTime,
@@ -211,7 +214,6 @@ Page({
         latitude: gcj.lat,
         longitude: gcj.lng,
         width: 30,
-        height: 30,
         title: '设备 ' + (item.deviceId || '-'),
         callout: {
           content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng,
@@ -638,14 +640,56 @@ Page({
   },
 
   /**
-   * 用 Canvas 绘制一个 16x16 黄点图标，返回临时文件路径
+   * 用 Canvas 绘制红色圆点图标（设备/牛群用），返回临时文件路径
+   */
+  _generateDeviceDot() {
+    const query = wx.createSelectorQuery()
+    query.select('#deviceDotCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return
+      const canvas = res[0].node
+      const ctx = canvas.getContext('2d')
+      const dpr = wx.getSystemInfoSync().pixelRatio
+      canvas.width = 30 * dpr
+      canvas.height = 30 * dpr
+      ctx.scale(dpr, dpr)
+
+      // 红色实心圆 + 深色描边
+      ctx.beginPath()
+      ctx.arc(15, 15, 12, 0, 2 * Math.PI)
+      ctx.fillStyle = '#F44336'
+      ctx.fill()
+      ctx.strokeStyle = '#B71C1C'
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      // 内部高光小白点
+      ctx.beginPath()
+      ctx.arc(12, 11, 4, 0, 2 * Math.PI)
+      ctx.fillStyle = '#FFCDD2'
+      ctx.fill()
+
+      wx.canvasToTempFilePath({
+        canvas: canvas,
+        success: (fileRes) => {
+          this._deviceIconPath = fileRes.tempFilePath
+          // 如果牛群标记已构建，刷新图标
+          if ((this._cowMarkers || []).length > 0) {
+            this._cowMarkers.forEach(m => { m.iconPath = this._deviceIconPath })
+            this._applyAllMarkers()
+          }
+        }
+      })
+    })
+  },
+
+  /**
+   * 用 Canvas 绘制经典定位图钉图标，返回临时文件路径
    */
   _generateYellowDot() {
     return new Promise((resolve) => {
       const query = wx.createSelectorQuery()
-      query.select('#yellowDotCanvas').fields({ node: true, size: true }).exec((res) => {
+      query.select('#pinCanvas').fields({ node: true, size: true }).exec((res) => {
         if (!res || !res[0] || !res[0].node) {
-          // Canvas 节点未就绪，用空字符串（回退到系统默认标记）
           resolve('')
           return
         }
@@ -656,14 +700,23 @@ Page({
         canvas.height = 40 * dpr
         ctx.scale(dpr, dpr)
 
-        // 绘制黄色实心圆
+        // 绘制蓝色定位图钉（泪滴形）
+        const cx = 20, cy = 18, r = 13
         ctx.beginPath()
-        ctx.arc(20, 20, 14, 0, 2 * Math.PI)
-        ctx.fillStyle = '#FFD600'
+        ctx.arc(cx, cy, r, Math.PI, 0)          // 上半圆
+        ctx.lineTo(cx, 34)                        // 右侧斜到尖端
+        ctx.closePath()
+        ctx.fillStyle = '#2979FF'
         ctx.fill()
-        ctx.strokeStyle = '#F9A825'
-        ctx.lineWidth = 2
+        ctx.strokeStyle = '#0D47A1'
+        ctx.lineWidth = 1.5
         ctx.stroke()
+
+        // 内部白色小圆（高光）
+        ctx.beginPath()
+        ctx.arc(cx, cy - 2, 5, 0, 2 * Math.PI)
+        ctx.fillStyle = '#ffffff'
+        ctx.fill()
 
         wx.canvasToTempFilePath({
           canvas: canvas,
@@ -676,11 +729,11 @@ Page({
 
   fetchPlaceData() {
     const that = this
-    // 先生成黄点图标（仅首次）
-    const iconPromise = this._yellowDotPath
-      ? Promise.resolve(this._yellowDotPath)
+    // 先生成图钉图标（仅首次）
+    const iconPromise = this._pinIconPath
+      ? Promise.resolve(this._pinIconPath)
       : this._generateYellowDot().then(path => {
-          that._yellowDotPath = path
+          that._pinIconPath = path
           return path
         })
 
@@ -742,7 +795,7 @@ Page({
 
   _buildPlaceMarkers(placeList, iconPath) {
     const markers = []
-    // 地名黄点 ID 从 90000 起，避免与牛群(0~N)和设备(50000~N)冲突
+    // 地名图钉 ID 从 90000 起，避免与牛群(0~N)和设备(50000~N)冲突
     const ID_BASE = 90000
     placeList.forEach((place, index) => {
       const coord = this._parseSingleGPS(place.gps)
@@ -753,8 +806,8 @@ Page({
         id: ID_BASE + index,
         latitude: gcj.lat,
         longitude: gcj.lng,
-        width: 24,
-        height: 24,
+        width: 30,
+        height: 36,
         iconPath: iconPath || '',
         title: name,
         callout: {
@@ -766,15 +819,15 @@ Page({
         },
         label: {
           content: name,
-          color: '#F9A825',
+          color: '#ffffff',
           fontSize: 12,
           anchorX: 0,
-          anchorY: -20,
+          anchorY: 4,
           textAlign: 'center'
         }
       })
     })
-    console.log('[地名] 构建黄点:', markers.length, '个')
+    console.log('[地名] 构建图钉:', markers.length, '个')
     this._placeMarkers = markers
   },
 
@@ -876,10 +929,11 @@ Page({
       })
       polylines.push({
         points: gcjPoints,
-        color: '#00E676CC',
-        width: 5,
-        borderColor: '#00C853',
-        borderWidth: 1,
+        color: '#C8C8C8',
+        width: 4,
+        borderColor: '#808080',
+        borderWidth: 1.2,
+        borderWidth: 1.5,
         arrowLine: false,
         dottedLine: false
       })

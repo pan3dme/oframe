@@ -1,6 +1,7 @@
 <!--map.wxml-->
 <navigation-bar title="地图中心" back="{{true}}" color="black" background="#FFF"></navigation-bar>
-<canvas type="2d" id="yellowDotCanvas" style="width:40px;height:40px;position:fixed;left:-9999px"></canvas>
+<canvas type="2d" id="pinCanvas" style="width:40px;height:40px;position:fixed;left:-9999px"></canvas>
+<canvas type="2d" id="deviceDotCanvas" style="width:30px;height:30px;position:fixed;left:-9999px"></canvas>
 
 <movable-area class="map-area" scale-area wx:if="{{useBaidu && baiduMapUrl}}">
   <movable-view class="map-view" direction="all" scale scale-min="1" scale-max="5"
