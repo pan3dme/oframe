@@ -66,7 +66,7 @@ uint64_t allowedDevices[] = {
 #define FEM_PA    46   //收发切换脚
 
 // ================================== LoRa 参数 ==================================
-#define RF_FREQUENCY 915000000    // 频率 (美标915MHz段)
+#define RF_FREQUENCY 433000000    // 频率 (美标915MHz段)
 #define LORA_BANDWIDTH 0          // 带宽 125kHz
 #define LORA_SPREADING_FACTOR 10  // 扩频因子 (平衡距离和速度)
 #define LORA_CODINGRATE 1         // 纠错率
