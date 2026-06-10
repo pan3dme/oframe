@@ -38,49 +38,49 @@
 
     <!-- 查看设备记录按钮 -->
     <view class="record-btn" bindtap="onViewRecords">
-      <text>{{showRecords ? '收起设备记录' : '查看设备记录'}}</text>
+      <text>查看设备轨迹</text>
     </view>
 
-    <!-- 设备记录列表 -->
-    <block wx:if="{{showRecords}}">
-      <view class="empty-tip" wx:if="{{recordLoading}}">查询中...</view>
-
-      <block wx:elif="{{recordList.length > 0}}">
-        <view class="record-summary">今日记录 {{recordList.length}} 条</view>
-
-        <view class="record-item" wx:for="{{recordList}}" wx:key="auto_id">
-          <view class="rec-row">
-            <text class="rec-label">deviceId</text>
-            <text class="rec-value">{{item.deviceId}}</text>
-          </view>
-          <view class="rec-row">
-            <text class="rec-label">auto_id</text>
-            <text class="rec-value">{{item.auto_id}}</text>
-          </view>
-          <view class="rec-row">
-            <text class="rec-label">lorastr</text>
-            <text class="rec-value">{{item.lorastr || '-'}}</text>
-          </view>
-          <view class="rec-row">
-            <text class="rec-label">time</text>
-            <text class="rec-value">{{item.time || '-'}}</text>
-          </view>
-          <view class="rec-row">
-            <text class="rec-label">upDateDevice</text>
-            <text class="rec-value">{{item.upDateDevice || '-'}}</text>
-          </view>
-          <view class="rec-row">
-            <text class="rec-label">picurl</text>
-            <text class="rec-value" wx:if="{{item.picurl}}">{{item.picurl}}</text>
-            <text class="rec-value" wx:else>-</text>
+    <!-- 轨迹数据表格 -->
+    <view class="msg-panel" wx:if="{{showRecordTable}}">
+      <view class="record-table">
+        <view class="table-header">
+          <view class="th th-deviceId">deviceId</view>
+          <view class="th th-lorastr">lorastr</view>
+          <view class="th th-time">time</view>
+        </view>
+        <view class="table-body">
+          <view class="table-row" wx:for="{{recordList}}" wx:key="rawTime">
+            <view class="td td-deviceId">{{item.deviceId}}</view>
+            <view class="td td-lorastr">{{item.lorastr}}</view>
+            <view class="td td-time">
+              <view class="time-date">{{item.date}}</view>
+              <view class="time-clock">{{item.time_part}}</view>
+            </view>
           </view>
         </view>
-      </block>
-
-      <view class="empty-tip" wx:else>该设备今日暂无记录</view>
-    </block>
+      </view>
+    </view>
   </block>
 
   <!-- 加载中 -->
   <view class="empty-tip" wx:else>加载中...</view>
 </scroll-view>
+
+<!-- 设备轨迹日期选择弹窗 -->
+<view class="track-modal" wx:if="{{showTrackModal}}">
+  <view class="track-mask" bindtap="onTrackClose"></view>
+  <view class="track-dialog">
+    <view class="track-close" bindtap="onTrackClose">✕</view>
+    <view class="track-title">查看设备轨迹</view>
+    <view class="track-subtitle">设备：{{deviceId}}</view>
+    <view class="track-date-label">选择日期</view>
+    <picker mode="date" value="{{trackDate}}" bindchange="onTrackDateChange">
+      <view class="track-date-picker">{{trackDate}}</view>
+    </picker>
+    <view class="track-btns">
+      <button class="track-btn track-btn-confirm" bindtap="onTrackConfirm">列出数据</button>
+      <button class="track-btn track-btn-map" bindtap="onTrackShowMap">轨迹地图</button>
+    </view>
+  </view>
+</view>

@@ -9,67 +9,102 @@ page {
   flex: 1;
 }
 
-/* 底部占位，高度与快捷功能区域一致 */
-.section-placeholder {
-  height: 200rpx;
-}
-
-/* 蓝牙按钮区 */
-.btn-bar {
+/* 摘要卡片 */
+.summary-card {
+  margin: 24rpx 24rpx 0;
+  padding: 28rpx 28rpx;
+  background: #fff;
+  border-radius: 16rpx;
   display: flex;
-  padding: 24rpx;
-  gap: 20rpx;
-  margin-top: 10px;
+  align-items: center;
+  gap: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
 }
 
-.btn-bluetooth {
-  flex: 1;
+.summary-icon {
+  width: 80rpx;
   height: 80rpx;
-  line-height: 80rpx;
-  font-size: 28rpx;
-  font-weight: bold;
-  color: #fff;
-  background: #07c160;
-  border-radius: 12rpx;
-  border: none;
-  padding: 0;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  flex-shrink: 0;
+}
+.summary-icon-device {
+  background: #e3f2fd;
+}
+.summary-icon-livestock {
+  background: #fbe9e7;
 }
 
-.btn-bluetooth::after {
-  border: none;
-}
-
-.btn-reconnect {
-  background: #ffa500;
-}
-
-.btn-sync {
+.summary-info {
   flex: 1;
-  height: 80rpx;
-  line-height: 80rpx;
-  font-size: 28rpx;
-  font-weight: bold;
-  color: #fff;
-  background: #1989fa;
-  border-radius: 12rpx;
-  border: none;
-  padding: 0;
 }
 
-.btn-sync::after {
-  border: none;
+.summary-count {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #333;
 }
 
-.btn-disabled {
-  background: #ccc;
+.summary-detail {
+  font-size: 24rpx;
   color: #999;
+  margin-top: 6rpx;
 }
 
-.btn-stop {
-  background: #ee0a24 !important;
+/* 统计告警卡片 */
+.alert-card {
+  margin: 24rpx 24rpx 0;
+  padding: 24rpx 28rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
 }
 
-/* 快捷功能区 */
+.alert-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 20rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 14rpx 0;
+}
+.alert-item:last-child {
+  padding-bottom: 0;
+}
+
+.alert-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.alert-icon {
+  font-size: 30rpx;
+  flex-shrink: 0;
+}
+
+.alert-text {
+  font-size: 26rpx;
+  color: #555;
+  flex: 1;
+}
+
+.section-placeholder {
+  height: 180rpx;
+}
+
+/* 快捷功能区（固定底部） */
 .section {
   position: fixed;
   bottom: 0;
@@ -84,12 +119,12 @@ page {
 .section-title {
   font-size: 26rpx;
   color: #999;
-  padding: 16rpx 0 8rpx;
+  padding: 16rpx 0 24rpx;
   text-align: center;
 }
 
 .section .btn-bar {
-  margin-top: 0;
+  display: flex;
   padding: 0;
   justify-content: center;
   gap: 48rpx;
@@ -107,7 +142,6 @@ page {
   color: #999;
 }
 
-/* 进入功能页面按钮 */
 .btn-features {
   width: 100rpx;
   height: 100rpx;
@@ -128,28 +162,6 @@ page {
   border: none;
 }
 
-/* 查看地图按钮 */
-.btn-map {
-  width: 100rpx;
-  height: 100rpx;
-  min-width: 100rpx;
-  max-width: 100rpx;
-  line-height: 100rpx;
-  font-size: 48rpx;
-  color: #fff;
-  background: #2e6b5e;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  box-sizing: border-box;
-  margin: 0;
-}
-
-.btn-map::after {
-  border: none;
-}
-
-/* 牛羊管理按钮 */
 .btn-livestock {
   width: 100rpx;
   height: 100rpx;
@@ -170,7 +182,6 @@ page {
   border: none;
 }
 
-/* 设备管理按钮 */
 .btn-device {
   width: 100rpx;
   height: 100rpx;
@@ -189,120 +200,4 @@ page {
 
 .btn-device::after {
   border: none;
-}
-
-/* 已连接提示 */
-.connected-tip {
-  margin: 0 24rpx 12rpx;
-  padding: 14rpx 24rpx;
-  font-size: 26rpx;
-  color: #07c160;
-  background: #e8f8e8;
-  border-radius: 10rpx;
-  text-align: center;
-}
- 
-/* 接收消息面板 */
-.msg-panel {
-  margin: 0 24rpx 16rpx;
-  padding: 24rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  border-left: 6rpx solid #1989fa;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
-}
-
-.msg-label {
-  font-size: 24rpx;
-  color: #999;
-  margin-bottom: 12rpx;
-}
-
-.msg-content {
-  font-size: 30rpx;
-  color: #333;
-  word-break: break-all;
-  line-height: 1.6;
-}
-
-.msg-content-sm {
-  font-size: 24rpx;
-}
-
-/* 设备列表面板 */
-.device-panel {
-  margin: 0 24rpx 16rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 20rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
-}
-
-.device-title {
-  font-size: 28rpx;
-  color: #333;
-  font-weight: bold;
-  margin-bottom: 16rpx;
-  padding-left: 8rpx;
-}
-
-.device-list {
-  max-height: 400rpx;
-  overflow-y: auto;
-}
-
-.device-item {
-  display: flex;
-  align-items: center;
-  padding: 20rpx 12rpx;
-  border-bottom: 1rpx solid #f0f0f0;
-}
-
-.device-item:last-child {
-  border-bottom: none;
-}
-
-.device-icon {
-  font-size: 40rpx;
-  margin-right: 16rpx;
-}
-
-.device-info {
-  flex: 1;
-}
-
-.device-name {
-  font-size: 28rpx;
-  color: #333;
-  font-weight: bold;
-}
-
-.device-id {
-  font-size: 22rpx;
-  color: #aaa;
-  margin-top: 4rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 400rpx;
-}
-
-.device-signal {
-  flex-shrink: 0;
-}
-
-.signal-db {
-  font-size: 24rpx;
-  color: #1989fa;
-  background: #eaf3ff;
-  padding: 6rpx 16rpx;
-  border-radius: 20rpx;
-}
-
-.device-stop {
-  margin-top: 16rpx;
-  text-align: center;
-  font-size: 26rpx;
-  color: #999;
-  padding: 16rpx 0;
 }

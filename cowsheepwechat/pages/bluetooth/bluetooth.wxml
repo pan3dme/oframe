@@ -1,0 +1,53 @@
+<!--bluetooth.wxml-->
+<navigation-bar title="蓝牙连接" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+  <!-- 蓝牙按钮区 -->
+  <view class="btn-bar">
+    <button class="btn-bluetooth {{bluetoothConnected ? 'btn-reconnect' : ''}}" bindtap="connectBluetooth">
+      {{bluetoothConnected ? '重新连接' : '连接蓝牙'}}
+    </button>
+    <button class="btn-sync {{bluetoothConnected ? (isSyncing ? 'btn-stop' : '') : 'btn-disabled'}}" bindtap="syncData">
+      {{bluetoothConnected ? (isSyncing ? '停止同步' : '同步数据') : '请先连接设备'}}
+    </button>
+  </view>
+
+  <!-- 已连接设备名 -->
+  <view class="connected-tip" wx:if="{{bluetoothConnected && connectedDeviceName}}">
+    已连接设备：{{connectedDeviceName}}
+  </view>
+
+  <!-- 接收到的消息 -->
+  <view class="msg-panel" wx:if="{{receivedMsg}}">
+    <view class="msg-label">收到消息：</view>
+    <view class="msg-content">{{receivedMsg}}</view>
+  </view>
+
+  <!-- 上传进度 -->
+  <view class="msg-panel" wx:if="{{isSyncing}}">
+    <view class="msg-label">上传进度</view>
+    <view class="msg-content msg-content-sm">
+      <view>已上传：{{uploadedCount}} 条</view>
+      <view>队列中：{{gpsQueue.length}} 条</view>
+    </view>
+  </view>
+
+  <!-- 扫描中的设备列表 -->
+  <view class="device-panel" wx:if="{{devices.length > 0}}">
+    <view class="device-title">
+      {{bluetoothScanning ? '正在扫描设备...' : '扫描完成'}}（{{devices.length}}个设备）
+    </view>
+    <view class="device-list">
+      <view class="device-item" wx:for="{{devices}}" wx:key="deviceId" bindtap="connectToDevice" data-deviceid="{{item.deviceId}}" data-devicename="{{item.name}}">
+        <view class="device-icon">📡</view>
+        <view class="device-info">
+          <view class="device-name">{{item.name}}</view>
+          <view class="device-id">{{item.deviceId}}</view>
+        </view>
+        <view class="device-signal">
+          <text class="signal-db">{{item.RSSI}}dBm</text>
+        </view>
+      </view>
+    </view>
+    <view class="device-stop" wx:if="{{bluetoothScanning}}" bindtap="stopScanDevices">停止搜索</view>
+  </view>
+</scroll-view>

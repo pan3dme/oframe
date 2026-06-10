@@ -2,6 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/features/features",
+    "pages/bluetooth/bluetooth",
     "pages/detail/detail",
     "pages/map/map",
     "pages/trackmap/trackmap",

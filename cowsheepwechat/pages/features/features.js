@@ -21,11 +21,11 @@ Page({
       },
       {
         id: 2,
-        label: '插入一条记录'
+        label: '上报设备LORA'
       },
       {
         id: 3,
-        label: '设备最新数据'
+        label: '管理设备'
       },
       {
         id: 4,
@@ -34,6 +34,10 @@ Page({
       {
         id: 5,
         label: '管理牛羊'
+      },
+      {
+        id: 6,
+        label: '连接蓝牙'
       },
     ]
   },
@@ -147,36 +151,33 @@ Page({
         insertLorastr: '1|v3-1|26.000000,109.360000|1'
       })
     } else if (id === 3) {
-      // 获取设备最新数据（强制刷新）
-      dataCache.refreshDeviceList((cachedData) => {
-        const { recordList } = cachedData
-        const idSet = new Set()
-        recordList.forEach(r => { if (r.deviceId && r.deviceId !== '-') idSet.add(r.deviceId) })
-        const deviceIdList = Array.from(idSet).sort()
-        this.setData({
-          recordList,
-          deviceIdList,
-          showRecordTable: recordList.length > 0
-        })
-        wx.showToast({ title: '获取成功', icon: 'success', duration: 1500 })
-      })
+      // 设备最新数据 - 直接跳转设备列表页
+      wx.navigateTo({ url: '/pages/device/device' })
     } else if (id === 4) {
-      // 查看设备轨迹 - 弹出下拉选择
-      const deviceIdList = this.data.deviceIdList
-      if (deviceIdList.length === 0) {
-        wx.showToast({ title: '请先获取设备最新数据', icon: 'none' })
-        return
-      }
-      this.setData({
-        showTrackModal: true,
-        trackDeviceIdIndex: 0,
-        trackDeviceId: deviceIdList[0] || '',
-        trackDate: this.getTodayStr()
+      // 查看设备轨迹 - 直接从缓存取设备列表（首页已预加载）
+      dataCache.getDeviceList((cachedData) => {
+        const deviceIdList = cachedData.deviceIdOptions || []
+        if (deviceIdList.length === 0) {
+          wx.showToast({ title: '暂无设备数据', icon: 'none' })
+          return
+        }
+        this.setData({
+          deviceIdList,
+          showTrackModal: true,
+          trackDeviceIdIndex: 0,
+          trackDeviceId: deviceIdList[0] || '',
+          trackDate: this.getTodayStr()
+        })
       })
     } else if (id === 5) {
       // 管理牛羊 - 跳转管理页面
       wx.navigateTo({
         url: '/pages/livestock/livestock'
+      })
+    } else if (id === 6) {
+      // 连接蓝牙 - 跳转蓝牙页面
+      wx.navigateTo({
+        url: '/pages/bluetooth/bluetooth'
       })
     }
   },
