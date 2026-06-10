@@ -51,6 +51,12 @@ Page({
       // 尝试计算绑定数
       this._calcBoundCount()
     }, force)
+
+    // 加载设备LOT最新数据表
+    dataCache.getDeviceLotRefresh((data) => {
+      const lotCount = data.lotList ? data.lotList.length : 0
+      console.log('设备LOT最新数据缓存已就绪:', lotCount + '条记录')
+    }, force)
   },
 
   // 计算已绑定设备的牛羊数量

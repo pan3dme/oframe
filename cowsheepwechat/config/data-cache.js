@@ -166,12 +166,89 @@ function refreshLivestockList(callback) {
   getLivestockList(callback, true)
 }
 
+// ==================== 设备LOT最新数据缓存 ====================
+
+/**
+ * 获取设备LOT最新数据表 device_lot_refrsh
+ * @param {function} callback - 回调 (cachedData)，cachedData 为 { lotList }
+ * @param {boolean} forceRefresh - 是否强制刷新
+ */
+function getDeviceLotRefresh(callback, forceRefresh) {
+  if (!forceRefresh && app.globalData.deviceLotCache) {
+    callback(app.globalData.deviceLotCache)
+    return
+  }
+
+  wx.request({
+    url: API_DEVICE_URL,
+    method: 'POST',
+    data: { action: 'getDeviceLotRefreshAll' },
+    success: (res) => {
+      const lotList = _parseDeviceLotRecords(res.data)
+      const cachedData = { lotList }
+      app.globalData.deviceLotCache = cachedData
+      callback(cachedData)
+    },
+    fail: (err) => {
+      console.error('获取设备LOT最新数据失败:', err)
+      if (app.globalData.deviceLotCache) {
+        callback(app.globalData.deviceLotCache)
+      }
+    }
+  })
+}
+
+function _parseDeviceLotRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) {
+    rawList = data.data
+  } else if (Array.isArray(data)) {
+    rawList = data
+  }
+  const records = rawList.map(record => {
+    const attr = {}
+    if (record.attributes) {
+      record.attributes.forEach(item => {
+        attr[item.columnName] = item.columnValue
+      })
+    }
+    if (record.primaryKey) {
+      record.primaryKey.forEach(item => {
+        attr[item.name] = item.value
+      })
+    }
+    const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
+    const lorastr = attr.lorastr || record.lorastr || ''
+    const gps = attr.gps || record.gps || ''
+    const rawTime = attr.time || record.time || '-'
+    const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
+    return { deviceId, lorastr, gps, date: date || '-', time_part: time_part || '', rawTime }
+  })
+  records.sort((a, b) => {
+    const ta = new Date(a.rawTime).getTime()
+    const tb = new Date(b.rawTime).getTime()
+    if (isNaN(ta) && isNaN(tb)) return 0
+    if (isNaN(ta)) return 1
+    if (isNaN(tb)) return -1
+    return tb - ta
+  })
+  return records
+}
+
+/**
+ * 强制刷新设备LOT最新数据
+ */
+function refreshDeviceLotRefresh(callback) {
+  getDeviceLotRefresh(callback, true)
+}
+
 /**
  * 清除所有缓存（一般不需要手动调用）
  */
 function clearCache() {
   app.globalData.deviceCache = null
   app.globalData.livestockCache = null
+  app.globalData.deviceLotCache = null
 }
 
 module.exports = {
@@ -179,5 +256,7 @@ module.exports = {
   refreshDeviceList,
   getLivestockList,
   refreshLivestockList,
+  getDeviceLotRefresh,
+  refreshDeviceLotRefresh,
   clearCache
 }
