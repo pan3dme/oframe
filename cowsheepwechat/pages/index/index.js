@@ -333,7 +333,7 @@ Page({
     if (msgType == 1) {
       const deviceId = parts[1] // e.g. "v3-1"
       const lorastr = infoStr
-      const logTime = new Date().toLocaleString()
+      const logTime = getApp().formatTime()
       const postData = {
         time: logTime,
         action: "insertlog",
@@ -430,13 +430,13 @@ Page({
       // 开始同步
       sendText = JSON.stringify({
         syncing: true,
-        time: new Date().toLocaleString()
+        time: getApp().formatTime()
       })
     } else {
       // 停止同步
       sendText = JSON.stringify({
         syncing: false,
-        time: new Date().toLocaleString()
+        time: getApp().formatTime()
       })
     }
 

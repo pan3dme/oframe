@@ -158,7 +158,8 @@ Page({
 
         const deviceList = (deviceData.recordList || []).map(item => ({
           ...item,
-          bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : ''
+          bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
+          relativeTime: this._calcRelativeTime(item.rawTime)
         }))
 
         this.setData({
@@ -174,6 +175,25 @@ Page({
 
   refreshDeviceList() {
     this.fetchDeviceList(true)
+  },
+
+  // 计算相对时间：返回 "1天前" "3小时前" "刚刚" 等
+  _calcRelativeTime(rawTime) {
+    if (!rawTime || rawTime === '-') return ''
+    const t = new Date(rawTime).getTime()
+    if (isNaN(t)) return ''
+    const now = Date.now()
+    const diff = now - t
+    const sec = Math.floor(diff / 1000)
+    const min = Math.floor(sec / 60)
+    const hour = Math.floor(min / 60)
+    const day = Math.floor(hour / 24)
+    if (sec < 60) return sec + '秒前'
+    if (min < 60) return min + '分钟前'
+    if (hour < 24) return hour + '小时前'
+    if (day < 30) return day + '天前'
+    if (day < 365) return Math.floor(day / 30) + '个月前'
+    return Math.floor(day / 365) + '年前'
   },
 
   // ========== 新增设备 ==========

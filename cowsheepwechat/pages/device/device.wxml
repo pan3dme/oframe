@@ -32,6 +32,10 @@
         </view>
         <view class="item-id" wx:if="{{item.link_cowsheep_id}}">绑定牛羊: {{item.bindName || item.link_cowsheep_id}}</view>
         <view class="item-id" wx:else style="color:#ccc;">未绑定牛羊</view>
+        <view class="item-meta">
+          <text class="item-time">{{item.date && item.date !== '-' ? item.date + ' ' + item.time_part : ''}}</text>
+          <text class="item-relative" wx:if="{{item.relativeTime}}">（{{item.relativeTime}}）</text>
+        </view>
       </view>
       <view class="item-edit-btn" data-devicekey="{{item.device_key || item.deviceId}}" catchtap="onItemEdit">
         <text class="item-edit-icon">✏️</text>

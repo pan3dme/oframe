@@ -6,6 +6,19 @@ App({
     console.log("🐂 牛羊GPS小程序运行中1234")
   },
 
+  // 格式化时间为 YYYY/M/D HH:mm:ss（24小时制，无中文）
+  formatTime(date) {
+    if (!date) date = new Date()
+    const y = date.getFullYear()
+    const M = date.getMonth() + 1
+    const d = date.getDate()
+    const h = date.getHours()
+    const m = date.getMinutes()
+    const s = date.getSeconds()
+    const pad2 = n => String(n).padStart(2, '0')
+    return y + '/' + M + '/' + d + ' ' + pad2(h) + ':' + pad2(m) + ':' + pad2(s)
+  },
+
   globalData: {
     api_device_Url: 'https://device-updata-puknouxjhg.cn-shanghai.fcapp.run',
     api_cowsheep_Url: 'https://cowsheep-updata-dxnlqxjkzc.cn-shanghai.fcapp.run',

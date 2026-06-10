@@ -279,6 +279,11 @@ page {
   color: #999;
 }
 
+.item-relative {
+  font-size: 22rpx;
+  color: #ff9800;
+}
+
 .item-id {
   font-size: 22rpx;
   color: #1565c0;

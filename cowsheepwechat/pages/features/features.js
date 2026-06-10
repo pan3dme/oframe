@@ -110,7 +110,7 @@ Page({
           info: {
             limit: 10
           },
-          time: new Date().toLocaleString()
+          time: getApp().formatTime()
         },
         success: (res) => {
           console.log('最近10条返回:', JSON.stringify(res.data))
@@ -213,7 +213,7 @@ Page({
           deviceId: deviceId,
           curdate: this.data.trackDate
         },
-        time: new Date().toLocaleString()
+        time: getApp().formatTime()
       },
       success: (res) => {
         wx.hideLoading()
@@ -264,13 +264,13 @@ Page({
         info: {
           deviceId: deviceId,
           lorastr: lorastr,
-          time: new Date().toLocaleString()
+          time: getApp().formatTime()
         }
 
       },
       success: (res) => {
         wx.hideLoading()
-        console.log('插入成功:', res.data)
+        console.log(JSON.stringify(res.data))
         wx.showToast({ title: '插入成功', icon: 'success', duration: 1500 })
         this.setData({
           receivedMsg: JSON.stringify(res.data),
