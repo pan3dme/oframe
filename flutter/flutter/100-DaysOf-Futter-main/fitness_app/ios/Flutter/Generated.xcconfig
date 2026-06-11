@@ -1,15 +1,16 @@
 // This is a generated file; do not edit or check into version control.
-FLUTTER_ROOT=D:\flutter3.44.0
-FLUTTER_APPLICATION_PATH=D:\oframesrc\flutter\flutter\100-DaysOf-Futter-main\fitness_app
-FLUTTER_FRAMEWORK_SWIFT_PACKAGE_PATH=D:\oframesrc\flutter\flutter\100-DaysOf-Futter-main\fitness_app\ios\Flutter\ephemeral\Packages\.packages\FlutterFramework
+FLUTTER_ROOT=/Users/pan3dme/flutterfile/sdk/flutter_3.30.0
+FLUTTER_APPLICATION_PATH=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app
 COCOAPODS_PARALLEL_CODE_SIGN=true
-FLUTTER_TARGET=lib\main.dart
+FLUTTER_TARGET=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app/lib/main.dart
 FLUTTER_BUILD_DIR=build
 FLUTTER_BUILD_NAME=1.0.0
 FLUTTER_BUILD_NUMBER=1
+CONFIGURATION_BUILD_DIR=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app/build/ios/iphoneos
 EXCLUDED_ARCHS[sdk=iphonesimulator*]=i386
 EXCLUDED_ARCHS[sdk=iphoneos*]=armv7
+DART_DEFINES=Zmx1dHRlci5pbnNwZWN0b3Iuc3RydWN0dXJlZEVycm9ycz10cnVl
 DART_OBFUSCATION=false
 TRACK_WIDGET_CREATION=true
 TREE_SHAKE_ICONS=false
-PACKAGE_CONFIG=.dart_tool/package_config.json
+PACKAGE_CONFIG=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app/.dart_tool/package_config.json
