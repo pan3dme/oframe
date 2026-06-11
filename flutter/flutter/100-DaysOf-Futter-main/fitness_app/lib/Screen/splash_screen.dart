@@ -54,37 +54,113 @@ class MySplashScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 40),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>  FitnessHomeScreen(),
-                        ),
-                      );
-                    },
-                    child: Material(
-                      elevation: 15,
-                      shadowColor: primaryColor.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(100),
-                      child: const CircleAvatar(
-                        radius: 25,
-                        backgroundColor: primaryColor,
-                        child: Icon(
-                          Icons.arrow_forward_ios,
-                          color: Colors.white,
-                        ),
-                      ),
+                // 4个悬浮按钮
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildFloatingButton(
+                      context,
+                      Icons.devices,
+                      "设备管理",
+                      Colors.blue,
+                      () {
+                        print('点击设备管理');
+                      },
                     ),
-                  ),
+                    _buildFloatingButton(
+                      context,
+                      Icons.pets,
+                      "牛羊管理",
+                      Colors.green,
+                      () {
+                        print('点击牛羊管理');
+                      },
+                    ),
+                    _buildFloatingButton(
+                      context,
+                      Icons.list_alt,
+                      "功能列表",
+                      Colors.orange,
+                      () {
+                        print('点击功能列表');
+                      },
+                    ),
+                    _buildFloatingButton(
+                      context,
+                      Icons.map,
+                      "地图中心",
+                      Colors.purple,
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FitnessHomeScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 )
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFloatingButton(
+    BuildContext context,
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: Material(
+            elevation: 8,
+            shadowColor: color.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, color.withOpacity(0.7)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 35,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+      ],
     );
   }
 }
