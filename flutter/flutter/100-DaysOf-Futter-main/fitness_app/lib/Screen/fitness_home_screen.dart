@@ -256,7 +256,63 @@ class _FitnessHomeScreenState extends State<FitnessHomeScreen> {
                     ))
               ],
             ),
-          )
+          ),
+          const SizedBox(height: 20),
+          // 快捷功能区
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.star, color: primaryColor, size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "快捷功能",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 15),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildQuickAction(
+                      Icons.devices,
+                      "设备管理",
+                      Colors.blue,
+                    ),
+                    _buildQuickAction(
+                      Icons.pets,
+                      "牛羊管理",
+                      Colors.green,
+                    ),
+                    _buildQuickAction(
+                      Icons.list_alt,
+                      "功能列表",
+                      Colors.orange,
+                    ),
+                    _buildQuickAction(
+                      Icons.map,
+                      "地图中心",
+                      Colors.purple,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
         ],
       ),
       bottomNavigationBar: const SizedBox(
@@ -361,6 +417,45 @@ class _FitnessHomeScreenState extends State<FitnessHomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildQuickAction(IconData icon, String label, Color color) {
+    return InkWell(
+      onTap: () {
+        // TODO: 添加点击事件
+        print('点击了 $label');
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: color.withOpacity(0.3),
+                width: 1.5,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

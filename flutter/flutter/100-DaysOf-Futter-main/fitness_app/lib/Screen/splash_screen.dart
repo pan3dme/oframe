@@ -38,7 +38,7 @@ class MySplashScreen extends StatelessWidget {
                 SizedBox(
                   width: size.width * 0.75,
                   child: const Text(
-                    "30 Days Fitness\nChallenge",
+                    "31 Days Fitness\nChallenge",
                     style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w900,
