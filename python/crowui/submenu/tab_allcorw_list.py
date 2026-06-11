@@ -1,9 +1,8 @@
-
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton,
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QScrollArea,
                               QRadioButton, QCheckBox, QDialogButtonBox, QLineEdit,
-                              QTableWidget, QTableWidgetItem, QHeaderView, QLabel)
-from PyQt6.QtGui import QFont, QPixmap, QImage
-from PyQt6.QtCore import Qt
+                              QTableWidget, QTableWidgetItem, QHeaderView, QLabel, QFrame)
+from PyQt6.QtGui import QFont, QPixmap, QImage, QPainter, QPainterPath
+from PyQt6.QtCore import Qt, pyqtSignal
 import requests
 import os
 from PyQt6.QtWidgets import QApplication, QMainWindow
@@ -12,6 +11,236 @@ from PyQt6.QtCore import QUrl
 from tablestore import INF_MAX, INF_MIN, Direction
 
 from config import settings
+
+
+class CowSheepCard(QFrame):
+    """牛羊卡片组件"""
+    edit_clicked = pyqtSignal(dict)
+    
+    def __init__(self, cowsheep_data, parent=None):
+        super().__init__(parent)
+        self.cowsheep_data = cowsheep_data
+        self.setup_ui()
+        self.load_data()
+    
+    def setup_ui(self):
+        """初始化UI"""
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+            }
+            QFrame:hover {
+                background-color: #f5f9ff;
+                border: 1px solid #0078d7;
+            }
+        """)
+        
+        # 主布局 - 水平三列
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(12)
+        main_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # 垂直居中对齐
+        
+        # 设置卡片固定高度为120
+        self.setFixedHeight(120)
+        
+        # === 第一列：左侧图片区域 ===
+        # 创建一个容器来让图片垂直居中
+        pic_container = QWidget()
+        pic_container.setFixedSize(120, 100)
+        pic_container_layout = QVBoxLayout(pic_container)
+        pic_container_layout.setContentsMargins(20, 0, 20, 0)
+        pic_container_layout.setSpacing(0)
+        pic_container_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        
+        self.pic_label = QLabel()
+        self.pic_label.setFixedSize(80, 80)
+        self.pic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pic_label.setStyleSheet("""
+            QLabel {
+                border: none;
+                background-color: transparent;
+            }
+        """)
+        pic_container_layout.addWidget(self.pic_label)
+        main_layout.addWidget(pic_container)
+        
+        # === 第二列：中间信息区域 ===
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(0, 5, 10, 10)
+        info_layout.setSpacing(5)
+        
+        # 牛羊ID（cowsheep_id + rename）- 最大最醒目
+        self.cowsheep_id_label = QLabel()
+        self.cowsheep_id_label.setFont(QFont("Microsoft YaHei", 12, QFont.Weight.Bold))
+        self.cowsheep_id_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.cowsheep_id_label.setStyleSheet("""
+            QLabel {
+                color: #1a73e8;
+                padding: 2px 0px;
+                background-color: transparent;
+                border: none;
+            }
+            QLabel:hover {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        self.cowsheep_id_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.cowsheep_id_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
+        info_layout.addWidget(self.cowsheep_id_label)
+        
+        # 性别 - 中等大小
+        self.gender_label = QLabel()
+        self.gender_label.setFont(QFont("Microsoft YaHei", 10))
+        self.gender_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.gender_label.setStyleSheet("""
+            QLabel {
+                color: #5f6368;
+                padding: 1px 0px;
+                background-color: transparent;
+                border: none;
+            }
+            QLabel:hover {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        self.gender_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.gender_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
+        info_layout.addWidget(self.gender_label)
+        
+        # 生日 - 最小
+        self.birthday_label = QLabel()
+        self.birthday_label.setFont(QFont("Microsoft YaHei", 9))
+        self.birthday_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.birthday_label.setStyleSheet("""
+            QLabel {
+                color: #80868b;
+                padding: 1px 0px;
+                background-color: transparent;
+                border: none;
+            }
+            QLabel:hover {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        self.birthday_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.birthday_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
+        info_layout.addWidget(self.birthday_label)
+        
+        main_layout.addWidget(info_widget, stretch=1)
+        
+        # === 第三列：右侧按钮区域 ===
+        button_widget = QWidget()
+        button_layout = QVBoxLayout(button_widget)
+        button_layout.setContentsMargins(15, 0, 15, 0)
+        button_layout.setSpacing(0)
+        
+        # 编辑按钮
+        self.edit_btn = QPushButton("编辑")
+        self.edit_btn.setFont(QFont("Microsoft YaHei", 9))
+        self.edit_btn.setFixedWidth(100)
+        self.edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1a73e8;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1557b0;
+            }
+            QPushButton:pressed {
+                background-color: #0d47a1;
+            }
+        """)
+        self.edit_btn.clicked.connect(self.on_edit_clicked)
+        button_layout.addWidget(self.edit_btn)
+        
+        main_layout.addWidget(button_widget)
+    
+    def on_edit_clicked(self):
+        """编辑按钮点击事件"""
+        self.edit_clicked.emit(self.cowsheep_data)
+    
+    def load_data(self):
+        """加载牛羊数据"""
+        pk_value = self.cowsheep_data.get('cowsheep_id', '')
+        rename = self.cowsheep_data.get('rename', '')
+        gender = self.cowsheep_data.get('gender', '')
+        birthday = self.cowsheep_data.get('birthday', '')
+        avatar = self.cowsheep_data.get('avatar', '')
+        bound_devices = self.cowsheep_data.get('bound_devices', [])
+        
+        # 设置文本信息
+        # 牛羊名字：cowsheep_id，如果有rename则在后面括号显示
+        if rename and rename.strip():
+            self.cowsheep_id_label.setText(f"{pk_value} ({rename})")
+        else:
+            self.cowsheep_id_label.setText(f"{pk_value}")
+        
+        # 性别
+        gender_text = "公" if str(gender).strip() == "1" else "母" if str(gender).strip() == "2" else str(gender)
+        self.gender_label.setText(f"性别: {gender_text}")
+        
+        # 生日
+        if birthday and str(birthday).strip():
+            self.birthday_label.setText(f"生日: {birthday}")
+        else:
+            self.birthday_label.setText("生日: 未知")
+        
+        # 加载图片
+        if avatar and str(avatar).strip():
+            pixmap = QPixmap()
+            avatar_url_str = str(avatar).strip()
+            
+            if avatar_url_str.startswith(('http://', 'https://')):
+                # 网络图片 - 异步加载
+                parent_widget = self.parent()
+                while parent_widget and not hasattr(parent_widget, 'loadImageAsync'):
+                    parent_widget = parent_widget.parent()
+                if parent_widget and hasattr(parent_widget, 'loadImageAsync'):
+                    parent_widget.loadImageAsync(avatar_url_str, self.pic_label)
+            else:
+                # 本地图片
+                if not os.path.isabs(avatar_url_str):
+                    avatar_url_str = os.path.join(os.getcwd(), avatar_url_str)
+                
+                if os.path.exists(avatar_url_str):
+                    pixmap.load(avatar_url_str)
+                    if not pixmap.isNull():
+                        # 按比例缩放并居中裁剪以填满80x80区域
+                        scaled_pixmap = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                        # 计算居中裁剪的位置
+                        x = (scaled_pixmap.width() - 80) // 2
+                        y = (scaled_pixmap.height() - 80) // 2
+                        cropped_pixmap = scaled_pixmap.copy(x, y, 80, 80)
+                        
+                        # 创建带8px圆角的图片
+                        rounded_pixmap = QPixmap(80, 80)
+                        rounded_pixmap.fill(Qt.GlobalColor.transparent)
+                        painter = QPainter(rounded_pixmap)
+                        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                        path = QPainterPath()
+                        path.addRoundedRect(0, 0, 80, 80, 8, 8)
+                        painter.setClipPath(path)
+                        painter.drawPixmap(0, 0, cropped_pixmap)
+                        painter.end()
+                        
+                        self.pic_label.setPixmap(rounded_pixmap)
+                    else:
+                        self.pic_label.setText("加载失败")
+                else:
+                    self.pic_label.setText("图片不存在")
+        else:
+            self.pic_label.setText("无图片")
 class TobAllcorwList(QWidget):
     """按钮面板组件"""
     def __init__(self, parent=None, client=None):
@@ -35,60 +264,44 @@ class TobAllcorwList(QWidget):
         self.button2.clicked.connect(self.loadData)  # 连接按钮点击事件
         self.top_layout.addWidget(self.button2)
 
-        # 创建表格
-        self.table = QTableWidget()
-
-        self.table.setColumnCount(6)  # 设置6列
-        self.table.setHorizontalHeaderLabels(['cowsheep_id','avatar', 'gender', 'rename', 'birthday', '绑定设备'])
-
-
-        # 设置表格样式
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: white;
-                border: 1px solid #cccccc;
-                gridline-color: #e0e0e0;
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
             }
-            QTableWidget::item {
-                padding: 5px;
+            QScrollBar:vertical {
+                border: none;
+                background: #f0f0f0;
+                width: 10px;
+                border-radius: 5px;
             }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                padding: 8px;
-                border: 1px solid #cccccc;
-                font-weight: bold;
+            QScrollBar::handle:vertical {
+                background: #c0c0c0;
+                border-radius: 5px;
+                min-height: 30px;
             }
-            QTableWidget::item:selected {
-                background-color: #0078d7;
-                color: white;
+            QScrollBar::handle:vertical:hover {
+                background: #a0a0a0;
             }
         """)
-
-        # 设置列宽比例为 1:2:2:2:1
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        header.setStretchLastSection(False)
-
-        # 设置表格行高
-        self.table.verticalHeader().setDefaultSectionSize(30)
-        self.table.verticalHeader().setVisible(False)  # 隐藏行号
-
-        self.top_layout.addWidget(self.table)
+        
+        # 创建容器widget用于放置卡片
+        self.cards_container = QWidget()
+        self.cards_layout = QVBoxLayout(self.cards_container)
+        self.cards_layout.setContentsMargins(5, 5, 5, 5)
+        self.cards_layout.setSpacing(10)
+        self.cards_layout.addStretch()
+        
+        scroll_area.setWidget(self.cards_container)
+        
+        self.top_layout.addWidget(scroll_area)
         layout.addWidget(self.top_widget, stretch=1)
         self.loadData()
-
-    def resizeEvent(self, event):
-        """重写 resizeEvent 以保持列宽比例"""
-        super().resizeEvent(event)
-        total_width = self.table.width()
-        # 按比例分配宽度，总共10份
-        col_width = total_width / 10
-        self.table.setColumnWidth(0, int(col_width * 1))
-        self.table.setColumnWidth(1, int(col_width * 2))
-        self.table.setColumnWidth(2, int(col_width * 1))
-        self.table.setColumnWidth(3, int(col_width * 2))
-        self.table.setColumnWidth(4, int(col_width * 2))
-        self.table.setColumnWidth(5, int(col_width * 2))
 
 
 
@@ -144,14 +357,20 @@ class TobAllcorwList(QWidget):
                 limit=100  # 限制返回的行数，获取最新100条记录
             )
 
-            # 处理查询结果并显示在表格中
+            # 处理查询结果并显示在卡片中
             print(f"成功读取 {len(row_list)} 条记录。")
 
-            # 设置表格行数
-            self.table.setRowCount(len(row_list))
+            # 清除旧的卡片
+            while self.cards_layout.count():
+                item = self.cards_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            
+            # 添加stretch确保卡片从顶部开始
+            self.cards_layout.addStretch()
 
-            # 遍历每条记录
-            for row_idx, row in enumerate(row_list):
+            # 遍历每条记录，创建卡片
+            for row in row_list:
                 # 解析主键
                 primary_key_dict = {key[0]: key[1] for key in row.primary_key}
                 pk_value = primary_key_dict.get(pk_name, '')
@@ -163,54 +382,81 @@ class TobAllcorwList(QWidget):
                 gender = attr_dict.get('gender', '')
                 birthday = attr_dict.get('birthday', '')
 
-                # 创建表格项并设置值
-                item_pk = QTableWidgetItem(str(pk_value))
-                item_avatar = QTableWidgetItem('')  # avatar列用图片显示
-                item_rename = QTableWidgetItem(str(rename))
-                item_gender = QTableWidgetItem(str(gender))
-                item_birthday = QTableWidgetItem(str(birthday))
-
                 # 查找绑定设备
                 pk_str = str(pk_value).strip()
                 bound_devices = device_map.get(pk_str, [])
-                device_text = ', '.join(bound_devices) if bound_devices else '未绑定'
-                item_device = QTableWidgetItem(device_text)
-
-                # 设置表格项居中对齐
-                for item in [item_pk, item_avatar, item_gender, item_rename, item_birthday, item_device]:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-                # 将表格项添加到表格中
-                self.table.setItem(row_idx, 0, item_pk)
-                self.table.setItem(row_idx, 1, item_avatar)
-                self.table.setItem(row_idx, 2, item_gender)
-                self.table.setItem(row_idx, 3, item_rename)
-                self.table.setItem(row_idx, 4, item_birthday)
-                self.table.setItem(row_idx, 5, item_device)
-
-                # avatar列加载网络图片
-                if avatar:
-                    self._load_avatar_image(row_idx, str(avatar))
+                
+                # 构建牛羊数据字典
+                cowsheep_data = {
+                    'cowsheep_id': pk_value,
+                    'avatar': avatar,
+                    'rename': rename,
+                    'gender': gender,
+                    'birthday': birthday,
+                    'bound_devices': bound_devices
+                }
+                
+                # 创建牛羊卡片
+                card = CowSheepCard(cowsheep_data, self)
+                
+                # 将卡片插入到stretch之前
+                self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
 
         except Exception as e:
             print(f"查询失败: {e}")
-
-    def _load_avatar_image(self, row_idx, url):
-        """从网络URL加载图片并显示在avatar列"""
+    
+    def loadImageAsync(self, url, label):
+        """异步加载网络图片"""
         try:
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                image = QImage()
-                image.loadFromData(response.content)
-                if not image.isNull():
-                    pixmap = QPixmap.fromImage(image).scaled(
-                        128, 128, Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation
-                    )
-                    label = QLabel()
-                    label.setPixmap(pixmap)
-                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.table.setCellWidget(row_idx, 1, label)
-                    self.table.setRowHeight(row_idx, 135)
+            from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
+            
+            # 创建网络访问管理器（如果不存在）
+            if not hasattr(self, 'network_manager'):
+                self.network_manager = QNetworkAccessManager()
+            
+            # 创建请求
+            request = QNetworkRequest(QUrl(url))
+            request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, "Mozilla/5.0")
+            
+            # 发送请求
+            reply = self.network_manager.get(request)
+            reply.finished.connect(lambda: self.onImageLoaded(reply, label))
         except Exception as e:
-            print(f"加载头像图片失败 (row {row_idx}): {e}")
+            print(f"加载网络图片失败: {e}")
+            label.setText("加载失败")
+    
+    def onImageLoaded(self, reply, label):
+        """图片加载完成回调"""
+        try:
+            if reply.error() == reply.NetworkError.NoError:
+                data = reply.readAll()
+                pixmap = QPixmap()
+                if pixmap.loadFromData(data):
+                    # 按比例缩放并居中裁剪以填满80x80区域
+                    scaled_pixmap = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                    # 计算居中裁剪的位置
+                    x = (scaled_pixmap.width() - 80) // 2
+                    y = (scaled_pixmap.height() - 80) // 2
+                    cropped_pixmap = scaled_pixmap.copy(x, y, 80, 80)
+                    
+                    # 创建带8px圆角的图片
+                    rounded_pixmap = QPixmap(80, 80)
+                    rounded_pixmap.fill(Qt.GlobalColor.transparent)
+                    painter = QPainter(rounded_pixmap)
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                    path = QPainterPath()
+                    path.addRoundedRect(0, 0, 80, 80, 8, 8)
+                    painter.setClipPath(path)
+                    painter.drawPixmap(0, 0, cropped_pixmap)
+                    painter.end()
+                    
+                    label.setPixmap(rounded_pixmap)
+                else:
+                    label.setText("格式错误")
+            else:
+                label.setText("网络错误")
+        except Exception as e:
+            print(f"处理图片数据失败: {e}")
+            label.setText("处理失败")
+        finally:
+            reply.deleteLater()

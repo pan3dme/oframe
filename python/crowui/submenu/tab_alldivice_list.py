@@ -1,9 +1,9 @@
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton,
                               QRadioButton, QCheckBox, QDialogButtonBox, QLineEdit,
-                              QTableWidget, QTableWidgetItem, QHeaderView, QLabel)
+                              QLabel, QScrollArea, QHBoxLayout, QFrame)
 from PyQt6.QtGui import QFont, QPixmap
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 import os
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -11,6 +11,245 @@ from PyQt6.QtCore import QUrl
 from tablestore import INF_MAX, INF_MIN, Direction
 
 from config import settings
+
+
+class DeviceCard(QFrame):
+    """设备卡片组件"""
+    # 定义信号
+    edit_clicked = pyqtSignal(dict)  # 编辑按钮点击信号
+    link_cowsheep_clicked = pyqtSignal(dict)  # 链接牛羊按钮点击信号
+    
+    def __init__(self, device_data, parent=None):
+        super().__init__(parent)
+        self.device_data = device_data
+        self.setup_ui()
+        self.load_data()
+    
+    def setup_ui(self):
+        """设置UI布局 - 三列结构"""
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+            }
+            QFrame:hover {
+                background-color: #f5f9ff;
+                border: 1px solid #0078d7;
+            }
+        """)
+        
+        # 主布局 - 水平三列
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)  # 移除内边距
+        main_layout.setSpacing(12)
+        main_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # 垂直居中对齐
+        
+        # 设置卡片固定高度为120
+        self.setFixedHeight(120)
+        
+        # === 第一列：左侧图片区域 ===
+        # 创建一个容器来让图片垂直居中
+        pic_container = QWidget()
+        pic_container.setFixedSize(120, 100)  # 宽度120，容纳左边距20+图片80+右边距20
+        pic_container_layout = QVBoxLayout(pic_container)
+        pic_container_layout.setContentsMargins(20, 0, 20, 0)  # 左右边距各20px
+        pic_container_layout.setSpacing(0)
+        pic_container_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)  # 水平和垂直居中
+        
+        self.pic_label = QLabel()
+        self.pic_label.setFixedSize(80, 80)  # 图片缩小到80x80
+        self.pic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pic_label.setStyleSheet("""
+            QLabel {
+                border: none;
+                background-color: transparent;
+            }
+        """)
+        pic_container_layout.addWidget(self.pic_label)
+        main_layout.addWidget(pic_container)
+        
+        # === 第二列：中间信息区域 ===
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(0, 5, 10, 10)
+        info_layout.setSpacing(5)
+        
+        # 设备名字（deviceId + rename）- 最大最醒目
+        self.device_id_label = QLabel()
+        self.device_id_label.setFont(QFont("Microsoft YaHei", 12, QFont.Weight.Bold))
+        self.device_id_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.device_id_label.setStyleSheet("""
+            QLabel {
+                color: #1a73e8;
+                padding: 2px 0px;
+                background-color: transparent;
+                border: none;
+            }
+            QLabel:hover {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        self.device_id_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.device_id_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
+        info_layout.addWidget(self.device_id_label)
+        
+        # 设备编号 - 中等大小
+        self.device_key_label = QLabel()
+        self.device_key_label.setFont(QFont("Microsoft YaHei", 10))
+        self.device_key_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.device_key_label.setStyleSheet("""
+            QLabel {
+                color: #5f6368;
+                padding: 1px 0px;
+                background-color: transparent;
+                border: none;
+            }
+            QLabel:hover {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        self.device_key_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.device_key_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
+        info_layout.addWidget(self.device_key_label)
+        
+        # 链接牛羊 - 最小
+        self.link_cowsheep_label = QLabel()
+        self.link_cowsheep_label.setFont(QFont("Microsoft YaHei", 9))
+        self.link_cowsheep_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.link_cowsheep_label.setStyleSheet("""
+            QLabel {
+                color: #80868b;
+                padding: 1px 0px;
+                background-color: transparent;
+                border: none;
+            }
+            QLabel:hover {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        self.link_cowsheep_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self.link_cowsheep_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
+        info_layout.addWidget(self.link_cowsheep_label)
+        
+        main_layout.addWidget(info_widget, stretch=1)
+        
+        # === 第三列：右侧按钮区域 ===
+        button_widget = QWidget()
+        button_layout = QVBoxLayout(button_widget)
+        button_layout.setContentsMargins(15, 0, 15, 0)
+        button_layout.setSpacing(0)
+        
+        # 编辑按钮
+        self.edit_btn = QPushButton("编辑")
+        self.edit_btn.setFont(QFont("Microsoft YaHei", 9))
+        self.edit_btn.setFixedWidth(100)
+        self.edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1a73e8;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1557b0;
+            }
+            QPushButton:pressed {
+                background-color: #0d47a1;
+            }
+        """)
+        self.edit_btn.clicked.connect(self.on_edit_clicked)
+        button_layout.addWidget(self.edit_btn)
+        
+        main_layout.addWidget(button_widget)
+    
+    def on_edit_clicked(self):
+        """编辑按钮点击事件"""
+        self.edit_clicked.emit(self.device_data)
+    
+    def load_data(self):
+        """加载设备数据"""
+        pk_value = self.device_data.get('deviceId', '')
+        rename = self.device_data.get('rename', '')
+        device_key = self.device_data.get('device_key', '')
+        link_cowsheep_id = self.device_data.get('link_cowsheep_id', '')
+        picurl = self.device_data.get('picurl', '')
+        
+        # 调试输出
+        print(f"卡片加载 - deviceId: {pk_value}, device_key: '{device_key}', rename: '{rename}'")
+        
+        # 设置文本信息
+        # 设备名字：deviceId，如果有rename则在后面括号显示
+        if rename and rename.strip():
+            self.device_id_label.setText(f"{pk_value} ({rename})")
+        else:
+            self.device_id_label.setText(f"{pk_value}")
+        
+        # 设备编号：device_key，如果没有则提示输入
+        print(f"检查 device_key: value='{device_key}', bool={bool(device_key)}, strip='{device_key.strip() if device_key else ''}'")
+        if device_key and str(device_key).strip():
+            self.device_key_label.setText(f"设备编号: {device_key}")
+        else:
+            self.device_key_label.setText("设备编号: 请输入唯一编号")
+        
+        if link_cowsheep_id and link_cowsheep_id.strip():
+            self.link_cowsheep_label.setText(f"链接牛羊: {link_cowsheep_id}")
+        else:
+            self.link_cowsheep_label.setText("链接牛羊: 未链接")
+        
+        # 加载图片
+        if picurl and str(picurl).strip():
+            pixmap = QPixmap()
+            pic_url_str = str(picurl).strip()
+            
+            if pic_url_str.startswith(('http://', 'https://')):
+                # 网络图片 - 异步加载
+                parent_widget = self.parent()
+                while parent_widget and not hasattr(parent_widget, 'loadImageAsync'):
+                    parent_widget = parent_widget.parent()
+                if parent_widget and hasattr(parent_widget, 'loadImageAsync'):
+                    parent_widget.loadImageAsync(pic_url_str, self.pic_label)
+            else:
+                # 本地图片
+                if not os.path.isabs(pic_url_str):
+                    pic_url_str = os.path.join(os.getcwd(), pic_url_str)
+                
+                if os.path.exists(pic_url_str):
+                    pixmap.load(pic_url_str)
+                    if not pixmap.isNull():
+                        # 按比例缩放并居中裁剪以填满80x80区域
+                        scaled_pixmap = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                        # 计算居中裁剪的位置
+                        x = (scaled_pixmap.width() - 80) // 2
+                        y = (scaled_pixmap.height() - 80) // 2
+                        cropped_pixmap = scaled_pixmap.copy(x, y, 80, 80)
+                        
+                        # 创建带8px圆角的图片
+                        rounded_pixmap = QPixmap(80, 80)
+                        rounded_pixmap.fill(Qt.GlobalColor.transparent)
+                        from PyQt6.QtGui import QPainter, QPainterPath
+                        painter = QPainter(rounded_pixmap)
+                        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                        path = QPainterPath()
+                        path.addRoundedRect(0, 0, 80, 80, 8, 8)
+                        painter.setClipPath(path)
+                        painter.drawPixmap(0, 0, cropped_pixmap)
+                        painter.end()
+                        
+                        self.pic_label.setPixmap(rounded_pixmap)
+                    else:
+                        self.pic_label.setText("加载失败")
+                else:
+                    self.pic_label.setText("图片不存在")
+        else:
+            self.pic_label.setText("无图片")
+
+
 class TabAllDiviceList(QWidget):
     """按钮面板组件"""
     def __init__(self, parent=None, client=None):
@@ -33,59 +272,46 @@ class TabAllDiviceList(QWidget):
         self.button2.clicked.connect(self.loadData)  # 连接按钮点击事件
         self.top_layout.addWidget(self.button2)
 
-        # 创建表格
-        self.table = QTableWidget()
-
-        self.table.setColumnCount(6)  # 设置6列：deviceId, link_cowsheep_id, gps, time, upDateDevice, 图片
-        self.table.setHorizontalHeaderLabels(['deviceId', 'link_cowsheep_id', 'gps', 'time', 'upDateDevice', '图片'])
-
-        # 设置表格样式
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: white;
-                border: 1px solid #cccccc;
-                gridline-color: #e0e0e0;
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
             }
-            QTableWidget::item {
-                padding: 5px;
+            QScrollBar:vertical {
+                border: none;
+                background: #f0f0f0;
+                width: 10px;
+                border-radius: 5px;
             }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                padding: 8px;
-                border: 1px solid #cccccc;
-                font-weight: bold;
+            QScrollBar::handle:vertical {
+                background: #c0c0c0;
+                border-radius: 5px;
+                min-height: 30px;
             }
-            QTableWidget::item:selected {
-                background-color: #0078d7;
-                color: white;
+            QScrollBar::handle:vertical:hover {
+                background: #a0a0a0;
             }
         """)
-
-        # 设置列宽比例为 1:1:2:2:1:2
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        header.setStretchLastSection(False)
-
-        # 设置表格行高
-        self.table.verticalHeader().setDefaultSectionSize(80)  # 增加行高以显示图片
-        self.table.verticalHeader().setVisible(False)  # 隐藏行号
-
-        self.top_layout.addWidget(self.table)
+        
+        # 创建容器widget用于放置卡片
+        self.cards_container = QWidget()
+        self.cards_layout = QVBoxLayout(self.cards_container)
+        self.cards_layout.setContentsMargins(5, 5, 5, 5)
+        self.cards_layout.setSpacing(10)
+        self.cards_layout.addStretch()
+        
+        scroll_area.setWidget(self.cards_container)
+        
+        self.top_layout.addWidget(scroll_area)
         layout.addWidget(self.top_widget, stretch=1)
         self.loadData()
 
-    def resizeEvent(self, event):
-        """重写 resizeEvent 以保持列宽比例 1:1:2:2:1:2"""
-        super().resizeEvent(event)
-        total_width = self.table.width()
-        # 按比例 1:1:2:2:1:2 分配宽度
-        col_width = total_width / 9  # 总共9份
-        self.table.setColumnWidth(0, int(col_width * 1))
-        self.table.setColumnWidth(1, int(col_width * 1))
-        self.table.setColumnWidth(2, int(col_width * 2))
-        self.table.setColumnWidth(3, int(col_width * 2))
-        self.table.setColumnWidth(4, int(col_width * 1))
-        self.table.setColumnWidth(5, int(col_width * 2))
+
 
 
 
@@ -93,7 +319,7 @@ class TabAllDiviceList(QWidget):
 
 
         # 设备表查询
-        columns_to_get = ['link_cowsheep_id', 'gps', 'time', 'upDateDevice', 'picurl']
+        columns_to_get = ['link_cowsheep_id', 'gps', 'time', 'upDateDevice', 'picurl', 'rename', 'device_key']
         inclusive_start_primary_key = [('deviceId', INF_MAX)]
         exclusive_end_primary_key = [('deviceId', INF_MIN)]
         table_name = settings.DEVICETTABLE_NAME
@@ -110,14 +336,20 @@ class TabAllDiviceList(QWidget):
                 limit=100  # 限制返回的行数，获取最新100条记录
             )
 
-            # 处理查询结果并显示在表格中
+            # 处理查询结果并显示在卡片中
             print(f"成功读取 {len(row_list)} 条记录。")
 
-            # 设置表格行数
-            self.table.setRowCount(len(row_list))
+            # 清除旧的卡片
+            while self.cards_layout.count():
+                item = self.cards_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            
+            # 添加stretch确保卡片从顶部开始
+            self.cards_layout.addStretch()
 
-            # 遍历每条记录
-            for row_idx, row in enumerate(row_list):
+            # 遍历每条记录，创建卡片
+            for row in row_list:
                 # 解析主键
                 primary_key_dict = {key[0]: key[1] for key in row.primary_key}
                 pk_value = primary_key_dict.get(pk_name, '')
@@ -129,65 +361,29 @@ class TabAllDiviceList(QWidget):
                 time = attr_dict.get('time', '')
                 upDateDevice = attr_dict.get('upDateDevice', '')
                 picurl = attr_dict.get('picurl', '')
-
-                # 创建表格项并设置值
-                item_pk = QTableWidgetItem(str(pk_value))
-                item_gps = QTableWidgetItem(str(gps))
-                item_link_cowsheep_id = QTableWidgetItem(str(link_cowsheep_id))
-                item_time = QTableWidgetItem(str(time))
-                item_upDateDevice = QTableWidgetItem(str(upDateDevice))
-
-                # 设置表格项居中对齐
-                for item in [item_pk, item_gps, item_link_cowsheep_id, item_time, item_upDateDevice]:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-                # 将表格项添加到表格中
-                self.table.setItem(row_idx, 0, item_pk)
-                self.table.setItem(row_idx, 1, item_link_cowsheep_id)
-                self.table.setItem(row_idx, 2, item_gps)
-                self.table.setItem(row_idx, 3, item_time)
-                self.table.setItem(row_idx, 4, item_upDateDevice)
+                rename = attr_dict.get('rename', '')
+                device_key = attr_dict.get('device_key', '')
                 
-                # 显示图片
-                pic_label = QLabel()
-                pic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                pic_label.setStyleSheet("""
-                    QLabel {
-                        border: 1px solid #e0e0e0;
-                        background-color: #f9f9f9;
-                    }
-                """)
+                # 调试输出
+                print(f"设备 {pk_value}: device_key={device_key}, rename={rename}")
                 
-                if picurl and str(picurl).strip():
-                    # 如果有图片URL，尝试加载图片
-                    pixmap = QPixmap()
-                    pic_url_str = str(picurl).strip()
-                    
-                    # 判断是网络URL还是本地路径
-                    if pic_url_str.startswith(('http://', 'https://')):
-                        # 网络图片 - 使用异步加载
-                        self.loadImageAsync(pic_url_str, pic_label)
-                    else:
-                        # 本地图片路径
-                        if not os.path.isabs(pic_url_str):
-                            # 如果是相对路径，转换为绝对路径
-                            pic_url_str = os.path.join(os.getcwd(), pic_url_str)
-                        
-                        if os.path.exists(pic_url_str):
-                            pixmap.load(pic_url_str)
-                            if not pixmap.isNull():
-                                # 缩放图片以适应单元格
-                                scaled_pixmap = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                                pic_label.setPixmap(scaled_pixmap)
-                            else:
-                                pic_label.setText("加载失败")
-                        else:
-                            pic_label.setText("图片不存在")
-                else:
-                    pic_label.setText("无图片")
+                # 构建设备数据字典
+                device_data = {
+                    'deviceId': pk_value,
+                    'gps': gps,
+                    'link_cowsheep_id': link_cowsheep_id,
+                    'time': time,
+                    'upDateDevice': upDateDevice,
+                    'picurl': picurl,
+                    'rename': rename,
+                    'device_key': device_key
+                }
                 
-                # 将QLabel设置为表格单元格部件
-                self.table.setCellWidget(row_idx, 5, pic_label)
+                # 创建设备卡片
+                card = DeviceCard(device_data, self)
+                
+                # 将卡片插入到stretch之前
+                self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
 
         except Exception as e:
             print(f"查询失败: {e}")
@@ -219,9 +415,26 @@ class TabAllDiviceList(QWidget):
                 data = reply.readAll()
                 pixmap = QPixmap()
                 if pixmap.loadFromData(data):
-                    # 缩放图片以适应单元格
-                    scaled_pixmap = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                    label.setPixmap(scaled_pixmap)
+                    # 按比例缩放并居中裁剪以填满80x80区域
+                    scaled_pixmap = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                    # 计算居中裁剪的位置
+                    x = (scaled_pixmap.width() - 80) // 2
+                    y = (scaled_pixmap.height() - 80) // 2
+                    cropped_pixmap = scaled_pixmap.copy(x, y, 80, 80)
+                    
+                    # 创建带8px圆角的图片
+                    rounded_pixmap = QPixmap(80, 80)
+                    rounded_pixmap.fill(Qt.GlobalColor.transparent)
+                    from PyQt6.QtGui import QPainter, QPainterPath
+                    painter = QPainter(rounded_pixmap)
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                    path = QPainterPath()
+                    path.addRoundedRect(0, 0, 80, 80, 8, 8)
+                    painter.setClipPath(path)
+                    painter.drawPixmap(0, 0, cropped_pixmap)
+                    painter.end()
+                    
+                    label.setPixmap(rounded_pixmap)
                 else:
                     label.setText("格式错误")
             else:
