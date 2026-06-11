@@ -1,14 +1,14 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
-export "FLUTTER_ROOT=/Users/pan3dme/flutterfile/sdk/flutter_3.30.0"
+export "FLUTTER_ROOT=/Users/pan3dme/flutterfile/sdk/flutter3.44.0"
 export "FLUTTER_APPLICATION_PATH=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app"
+export "FLUTTER_FRAMEWORK_SWIFT_PACKAGE_PATH=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app/ios/Flutter/ephemeral/Packages/.packages/FlutterFramework"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_TARGET=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app/lib/main.dart"
 export "FLUTTER_BUILD_DIR=build"
 export "FLUTTER_BUILD_NAME=1.0.0"
 export "FLUTTER_BUILD_NUMBER=1"
-export "CONFIGURATION_BUILD_DIR=/Users/pan3dme/Desktop/oframe/flutter/flutter/100-DaysOf-Futter-main/fitness_app/build/ios/iphoneos"
-export "DART_DEFINES=Zmx1dHRlci5pbnNwZWN0b3Iuc3RydWN0dXJlZEVycm9ycz10cnVl"
+export "DART_DEFINES=RkxVVFRFUl9WRVJTSU9OPTMuNDQuMA==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049NTU5ZmZhM2Y3NQ==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049NGM1MjVkYWM1ZQ==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMi4w"
 export "DART_OBFUSCATION=false"
 export "TRACK_WIDGET_CREATION=true"
 export "TREE_SHAKE_ICONS=false"
