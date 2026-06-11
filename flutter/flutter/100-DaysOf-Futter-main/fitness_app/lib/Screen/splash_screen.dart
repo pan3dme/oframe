@@ -13,7 +13,7 @@ class MySplashScreen extends StatelessWidget {
         children: [
           const SizedBox(height: 40),
           Container(
-            height: size.height * 0.63,
+            height: size.height * 0.45,
             width: size.width,
             decoration: BoxDecoration(
               gradient: LinearGradient(
