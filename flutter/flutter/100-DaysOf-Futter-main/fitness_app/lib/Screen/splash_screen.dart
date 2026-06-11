@@ -1,4 +1,5 @@
 import 'package:fitness_app/Screen/fitness_home_screen.dart';
+import 'package:fitness_app/Screen/function_list_screen.dart';
 import 'package:fitness_app/Utils/colors.dart';
 import 'package:flutter/material.dart';
 
@@ -82,7 +83,12 @@ class MySplashScreen extends StatelessWidget {
                       "功能列表",
                       Colors.orange,
                       () {
-                        print('点击功能列表');
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const FunctionListScreen(),
+                          ),
+                        );
                       },
                     ),
                     _buildFloatingButton(

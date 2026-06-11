@@ -66,5 +66,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- 蓝牙权限描述 -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>需要使用蓝牙功能来连接和管理附近的设备</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>需要访问蓝牙外设来连接和管理设备</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>需要位置权限来扫描附近的蓝牙设备</string>
 </dict>
 </plist>
