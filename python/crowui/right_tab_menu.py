@@ -15,9 +15,10 @@ class RightTabMenu(QWidget):
     # 定义信号，用于通知刷新数据
     refresh_data_signal = pyqtSignal()
 
-    # 全局变量，用于存储设备表和牛羊表数据
+    # 全局变量，用于存储设备表、牛羊表和设备最新状态表数据
     device_table_data = None
     cowsheep_table_data = None
+    device_lot_refresh_data = None
 
     def __init__(self, parent=None, ots_client=None):
         # 如果传入的是 OTSClient，则不将其作为 parent
@@ -117,7 +118,7 @@ class RightTabMenu(QWidget):
         panel = TabAllDiviceList(client=self.ots_client)
         tab_layout.addWidget(panel)
 
-        self.tab_widget.addTab(tab_widget, "设备动态")
+        self.tab_widget.addTab(tab_widget, "设备管理")
         
     def create_cowsheep_status_tab(self):
         """创建牛羊列表选项卡"""
@@ -129,7 +130,7 @@ class RightTabMenu(QWidget):
         panel = TobAllcorwList(client=self.ots_client)
         tab_layout.addWidget(panel)
 
-        self.tab_widget.addTab(tab_widget, "牛羊列表")
+        self.tab_widget.addTab(tab_widget, "牛羊管理")
 
     def create_cruise_view_tab(self):
         """创建巡航画面选项卡"""
@@ -149,7 +150,7 @@ class RightTabMenu(QWidget):
         self.tab_widget.addTab(tab_widget, "巡航画面")
 
     def load_table_data(self):
-        """加载设备表和牛羊表数据到全局变量中"""
+        """加载设备表、牛羊表和设备最新状态表数据到全局变量中"""
         try:
             # 加载设备表数据
             print(f"加载设备表数据: {settings.DEVICETTABLE_NAME}")
@@ -188,6 +189,22 @@ class RightTabMenu(QWidget):
                 limit=100
             )
             print(f"牛羊表数据加载完成，共 {len(self.cowsheep_table_data)} 条记录")
+
+            # 加载设备最新状态表数据
+            print(f"加载设备最新状态表数据: device_lot_refrsh")
+            columns_to_get = ['lorastr', 'time', 'gps', 'upDateDevice']
+            inclusive_start_primary_key = [('deviceId', INF_MAX)]
+            exclusive_end_primary_key = [('deviceId', INF_MIN)]
+
+            consumed, next_start_primary_key, self.device_lot_refresh_data, next_token = self.ots_client.get_range(
+                table_name='device_lot_refrsh',
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=100
+            )
+            print(f"设备最新状态表数据加载完成，共 {len(self.device_lot_refresh_data)} 条记录")
 
         except Exception as e:
             print(f"加载数据表失败: {str(e)}")
