@@ -12,11 +12,23 @@ class MySplashScreen extends StatelessWidget {
       body: Column(
         children: [
           const SizedBox(height: 40),
-          Image.asset(
-            "assets/image.png",
+          Container(
             height: size.height * 0.63,
-            fit: BoxFit.fill,
             width: size.width,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF4285F4), Color(0xFF34A853)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Center(
+              child: Icon(
+                Icons.fitness_center,
+                size: 150,
+                color: Colors.white,
+              ),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),

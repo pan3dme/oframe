@@ -32,9 +32,14 @@ class _FitnessHomeScreenState extends State<FitnessHomeScreen> {
                     size: 20,
                   ),
                 ),
-                const CircleAvatar(
-                  backgroundImage: AssetImage("assets/avatar.png"),
+                CircleAvatar(
+                  backgroundColor: Color(0xFF4285F4),
                   radius: 20,
+                  child: Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
               ],
             ),
@@ -192,9 +197,10 @@ class _FitnessHomeScreenState extends State<FitnessHomeScreen> {
                 Positioned(
                   bottom: 10,
                   left: 140,
-                  child: Image.asset(
-                    "assets/running.png",
-                    height: 100,
+                  child: Icon(
+                    Icons.directions_run,
+                    size: 100,
+                    color: primaryColor.withOpacity(0.7),
                   ),
                 ),
               ],
