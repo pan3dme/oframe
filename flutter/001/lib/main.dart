@@ -4,6 +4,10 @@ import 'pages/livestock_manage_page.dart';
 import 'pages/function_list_page.dart';
 import 'pages/map_center_page.dart';
 
+// 阿里云 FC 函数地址（HTTPS 公网接口）
+const deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
+const cowSheepFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
+
 void main() {
   runApp(const MyApp());
 }
@@ -34,17 +38,18 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _currentIndex = 0;
 
-  final List<Widget> _tabPages = const [
-    DeviceManagePage(),
-    LivestockManagePage(),
-    FunctionListPage(),
-    MapCenterPage(),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _tabPages[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: const [
+          DeviceManagePage(),
+          LivestockManagePage(),
+          FunctionListPage(),
+          MapCenterPage(),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
