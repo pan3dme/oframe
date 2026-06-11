@@ -16,6 +16,10 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   List<Map<String, dynamic>> _data = [];
   String _loadStatus = '';
   bool _isLoading = true;
+  
+  // 编辑表单控制器
+  final TextEditingController _deviceKeyController = TextEditingController();
+  final TextEditingController _renameController = TextEditingController();
 
   @override
   void initState() {
@@ -179,10 +183,14 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                   }
                                   
                                   final deviceId = _str(item, 'deviceId');
+                                  final rename = _str(item, 'rename');
                                   final deviceKey = _str(item, 'device_key');
                                   final linkCowSheepId = _str(item, 'link_cowsheep_id');
                                   final picurl = _str(item, 'picurl');
                                   final hasImage = picurl != '—' && picurl.isNotEmpty;
+                                  
+                                  // 构建显示名称：deviceId 或 deviceId (rename)
+                                  final displayName = rename != '—' ? '$deviceId ($rename)' : deviceId;
 
                             return Card(
                               margin: const EdgeInsets.only(bottom: 10),
@@ -219,9 +227,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          // 第一行：deviceId
+                                          // 第一行：deviceId (rename)
                                           Text(
-                                            deviceId,
+                                            displayName,
                                             style: const TextStyle(
                                               fontSize: 15,
                                               fontWeight: FontWeight.bold,
@@ -279,7 +287,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(),
                                           onPressed: () {
-                                            // 编辑功能
+                                            _showEditDialog(item);
                                           },
                                         ),
                                         const SizedBox(height: 8),
@@ -340,5 +348,150 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
       ),
       child: Icon(Icons.image_not_supported, size: 32, color: Colors.grey[400]),
     );
+  }
+
+  /// 显示编辑对话框
+  void _showEditDialog(Map<String, dynamic> item) {
+    final deviceId = _str(item, 'deviceId');
+    final picurl = _str(item, 'picurl');
+    final hasImage = picurl != '—' && picurl.isNotEmpty;
+    
+    // 初始化表单数据
+    _deviceKeyController.text = _str(item, 'device_key');
+    _renameController.text = _str(item, 'rename');
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑设备'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 图片显示
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: hasImage
+                      ? Image.network(
+                          picurl,
+                          width: 150,
+                          height: 150,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildImagePlaceholderLarge();
+                          },
+                        )
+                      : _buildImagePlaceholderLarge(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // deviceId（不可编辑）
+              TextField(
+                controller: TextEditingController(text: deviceId),
+                enabled: false,
+                decoration: const InputDecoration(
+                  labelText: '设备ID',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.devices),
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // device_key（可编辑）
+              TextField(
+                controller: _deviceKeyController,
+                decoration: const InputDecoration(
+                  labelText: '设备编号 (device_key)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.key),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              
+              // rename（可编辑）
+              TextField(
+                controller: _renameController,
+                decoration: const InputDecoration(
+                  labelText: '别名 (rename)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.edit_note),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _saveDevice(item);
+              Navigator.pop(context);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 保存图片占位符
+  Widget _buildImagePlaceholderLarge() {
+    return Container(
+      width: 150,
+      height: 150,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(Icons.image_not_supported, size: 64, color: Colors.grey[400]),
+    );
+  }
+
+  /// 保存设备信息
+  Future<void> _saveDevice(Map<String, dynamic> item) async {
+    final deviceId = item['deviceId'];
+    final picurl = item['picurl'];
+    final newDeviceKey = _deviceKeyController.text;
+    final newRename = _renameController.text;
+    
+    debugPrint('保存设备: deviceId=$deviceId, deviceKey=$newDeviceKey, rename=$newRename, picurl=$picurl');
+    
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'updateDevice',
+          'info': {
+            'deviceId': deviceId,
+            'device_key': newDeviceKey,
+            'rename': newRename,
+            'picurl': picurl,
+          },
+        }),
+      );
+      
+      debugPrint('保存响应: ${resp.statusCode} - ${resp.body}');
+      
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          debugPrint('保存成功');
+          // 保存成功后刷新列表
+          _loadData();
+        } else {
+          debugPrint('保存失败: ${json['msg']}');
+        }
+      }
+    } catch (e) {
+      debugPrint('保存设备失败: $e');
+    }
   }
 }
