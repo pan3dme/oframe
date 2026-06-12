@@ -18,6 +18,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
+  int _refreshCounter = 0; // 刷新计数器，用于强制重新渲染图片
   
   // 编辑表单控制器
   final TextEditingController _deviceKeyController = TextEditingController();
@@ -45,8 +46,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         setState(() {
           _data = cachedData;
           _isLoading = false;
-          _isFromCache = true;
-          _loadStatus = '使用缓存数据（离线模式）';
+          // 不设置 _isFromCache 和 _loadStatus，等网络请求结果再决定
         });
         debugPrint('从缓存加载设备数据: ${cachedData.length} 条');
       }
@@ -82,6 +82,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
             _isLoading = false;
             _isFromCache = false;
             _loadStatus = ''; // 清除所有提示
+            _refreshCounter++; // 增加刷新计数，强制重新渲染图片
           });
           
           debugPrint('从网络加载设备数据: ${parsedData.length} 条，已缓存');
@@ -202,22 +203,11 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                         )
                       : Column(
                           children: [
-                            // 数据统计栏
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.devices, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text('共 ${_data.length} 台设备',
-                                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                            ),
                             // 设备列表
                             Expanded(
-                              child: ListView.builder(
+                              child: RefreshIndicator(
+                                onRefresh: _handleRefresh,
+                                child: ListView.builder(
                                 padding: const EdgeInsets.all(12),
                                 itemCount: _data.length,
                                 itemBuilder: (context, index) {
@@ -256,6 +246,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                       child: hasImage
                                           ? Image.network(
                                               picurl,
+                                              key: ValueKey('device_${deviceId}_$_refreshCounter'),
                                               width: 80,
                                               height: 80,
                                               fit: BoxFit.cover,
@@ -359,12 +350,18 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                           },
                         ),
                       ),
+                    ),
                     ],
                   ),
           ),
         ],
       ),
     );
+  }
+
+  /// 处理下拉刷新
+  Future<void> _handleRefresh() async {
+    await _loadData();
   }
 
   /// 信息行组件

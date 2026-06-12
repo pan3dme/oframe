@@ -18,6 +18,7 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
+  int _refreshCounter = 0; // 刷新计数器，用于强制重新渲染图片
 
   @override
   void initState() {
@@ -45,8 +46,7 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
         setState(() {
           _data = cachedData;
           _isLoading = false;
-          _isFromCache = true;
-          _loadStatus = '使用缓存数据（离线模式）';
+          // 不设置 _isFromCache 和 _loadStatus，等网络请求结果再决定
         });
         debugPrint('[牛羊缓存] ✓ 已加载缓存数据，显示列表');
       } else {
@@ -102,6 +102,7 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
             _isLoading = false;
             _isFromCache = false; // 网络请求成功，不是缓存
             _loadStatus = ''; // 清除所有提示
+            _refreshCounter++; // 增加刷新计数，强制重新渲染图片
           });
           
           debugPrint('[牛羊] ✓ 从网络加载牛羊数据: ${parsedData.length} 条，已缓存');
@@ -187,6 +188,11 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
     );
   }
 
+  /// 处理下拉刷新
+  Future<void> _handleRefresh() async {
+    await _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -243,22 +249,11 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
                         )
                       : Column(
                           children: [
-                            // 数据统计栏
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.pets, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text('共 ${_data.length} 头牛羊',
-                                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                            ),
                             // 牛羊列表
                             Expanded(
-                              child: ListView.builder(
+                              child: RefreshIndicator(
+                                onRefresh: _handleRefresh,
+                                child: ListView.builder(
                                 padding: const EdgeInsets.all(12),
                                 itemCount: _data.length,
                                 itemBuilder: (context, index) {
@@ -294,6 +289,7 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
                                             child: hasImage
                                                 ? Image.network(
                                                     avatar,
+                                                    key: ValueKey('livestock_${cowsheepId}_$_refreshCounter'),
                                                     width: 80,
                                                     height: 80,
                                                     fit: BoxFit.cover,
@@ -362,6 +358,7 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
                                 },
                               ),
                             ),
+                          ),
                           ],
                         ),
                 ),

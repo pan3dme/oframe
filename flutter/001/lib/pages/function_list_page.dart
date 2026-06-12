@@ -159,17 +159,23 @@ class _FunctionListPageState extends State<FunctionListPage> {
   /// 从缓存加载日志
   Future<void> _loadLogsFromCache() async {
     try {
+      debugPrint('[日志缓存] 开始读取缓存数据');
       final cachedLogs = await DBHelper().getLogs();
+      debugPrint('[日志缓存] 读取到 ${cachedLogs.length} 条数据');
       if (cachedLogs.isNotEmpty) {
+        debugPrint('[日志缓存] 第一条数据: ${cachedLogs[0]}');
         setState(() {
           _logs = cachedLogs;
           _isLoadingLogs = false;
-          _logErrorMessage = '使用缓存数据（离线模式）';
+          // 不设置 _logErrorMessage，等网络请求结果再决定
         });
-        debugPrint('从缓存加载日志数据: ${cachedLogs.length} 条');
+        debugPrint('[日志缓存] ✓ 已加载缓存数据，显示列表');
+      } else {
+        debugPrint('[日志缓存] ✗ 缓存为空，将等待网络请求');
       }
-    } catch (e) {
-      debugPrint('加载日志缓存失败: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[日志缓存] ✗ 加载缓存失败: $e');
+      debugPrint('[日志缓存] 堆栈: $stackTrace');
     }
   }
 
@@ -231,7 +237,13 @@ class _FunctionListPageState extends State<FunctionListPage> {
             }).toList();
             
             // 保存到缓存
-            await DBHelper().saveLogs(parsedLogs);
+            debugPrint('[日志缓存] 开始保存 ${parsedLogs.length} 条数据到缓存');
+            try {
+              await DBHelper().saveLogs(parsedLogs);
+              debugPrint('[日志缓存] ✓ 已保存到缓存');
+            } catch (e) {
+              debugPrint('[日志缓存] ✗ 保存缓存失败（不影响显示）: $e');
+            }
             
             setState(() {
               _logs = parsedLogs;
