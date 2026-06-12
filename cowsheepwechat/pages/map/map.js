@@ -1,7 +1,7 @@
 // map.js
 const dataCache = require('../../config/data-cache.js')
 
-const ROAD_API_URL = 'https://route-pe-updata-ynprgfalkj.cn-shanghai.fcapp.run'
+const ROAD_API_URL = 'https://gpsmoveinfo.cn/fc/route_place'
 
 Page({
   data: {
