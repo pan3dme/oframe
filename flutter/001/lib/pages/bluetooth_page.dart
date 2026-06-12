@@ -50,51 +50,73 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
     try {
       _scanResultSubscription = FlutterBluePlus.scanResults.listen((results) {
+        print('[蓝牙] 扫描结果: ${results.length} 个设备');
         setState(() {
           _scanResults.clear();
           for (final r in results) {
             final name = r.device.platformName;
+            print('[蓝牙] 发现设备: "$name" (rssi: ${r.rssi})');
             // 只显示名称包含「牛羊」的设备
             if (name.contains('牛羊') &&
                 !_scanResults.any((d) => d.remoteId == r.device.remoteId)) {
+              print('[蓝牙] ✓ 添加到列表: $name');
               _scanResults.add(r.device);
+            } else if (!name.contains('牛羊')) {
+              print('[蓝牙] ✗ 过滤掉: $name');
             }
           }
         });
       });
 
+      print('[蓝牙] 开始扫描，超时10秒，仅查找「牛羊」设备');
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
     } catch (e) {
+      print('[蓝牙] 扫描失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('扫描失败: $e')),
+          SnackBar(
+            content: Text('扫描失败: $e'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     } finally {
       setState(() {
         _isScanning = false;
       });
+      print('[蓝牙] 扫描结束，共发现 ${_scanResults.length} 个设备');
     }
   }
 
   // ---- 连接 ----
   Future<void> _connectToDevice(BluetoothDevice device) async {
+    final deviceName = _getDeviceName(device);
+    print('[蓝牙] 尝试连接设备: $deviceName, ID: ${device.remoteId.str}');
+    
     try {
       await FlutterBluePlus.stopScan();
       setState(() {
         _isScanning = false;
       });
 
-      await device.connect(timeout: const Duration(seconds: 15));
+      print('[蓝牙] 开始连接...');
+      await device.connect(
+        timeout: const Duration(seconds: 30),
+        autoConnect: false,
+      );
+      print('[蓝牙] 连接成功，监听状态变化');
 
       _connectionStateSubscription = device.connectionState.listen((state) {
+        print('[蓝牙] 连接状态变化: $state');
         setState(() {
           _connectionState = state;
         });
         if (state == BluetoothConnectionState.connected) {
           _connectedDevice = device;
+          print('[蓝牙] 已连接，开始发现服务');
           _discoverServices(device);
         } else if (state == BluetoothConnectionState.disconnected) {
+          print('[蓝牙] 已断开');
           _connectedDevice = null;
           _writeCharacteristic = null;
           _notifyCharacteristic = null;
@@ -108,13 +130,18 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已连接: ${_getDeviceName(device)}')),
+          SnackBar(content: Text('已连接: $deviceName')),
         );
       }
     } catch (e) {
+      print('[蓝牙] 连接失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('连接失败: $e')),
+          SnackBar(
+            content: Text('连接失败: $deviceName\n错误: $e'),
+            duration: const Duration(seconds: 5),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -122,17 +149,26 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
   // ---- 发现服务和特征值 ----
   Future<void> _discoverServices(BluetoothDevice device) async {
+    print('[蓝牙] 开始发现服务...');
     try {
       final services = await device.discoverServices();
+      print('[蓝牙] 发现 ${services.length} 个服务');
+      
       BluetoothCharacteristic? writeChar;
       BluetoothCharacteristic? notifyChar;
       for (final service in services) {
+        print('[蓝牙] 服务: ${service.uuid.str}');
         for (final characteristic in service.characteristics) {
+          print('[蓝牙]   特征值: ${characteristic.characteristicUuid.str}, '
+              'write=${characteristic.properties.write}, '
+              'notify=${characteristic.properties.notify}');
           if (characteristic.properties.write && writeChar == null) {
             writeChar = characteristic;
+            print('[蓝牙]   ✓ 找到可写特征值');
           }
           if (characteristic.properties.notify && notifyChar == null) {
             notifyChar = characteristic;
+            print('[蓝牙]   ✓ 找到可通知特征值');
           }
         }
       }
@@ -141,14 +177,22 @@ class _BluetoothPageState extends State<BluetoothPage> {
         _notifyCharacteristic = notifyChar;
       });
       if (writeChar == null && mounted) {
+        print('[蓝牙] 警告: 没有找到可写特征值');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该设备没有可写的特征值，无法同步')),
+          const SnackBar(
+            content: Text('该设备没有可写的特征值，无法同步'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     } catch (e) {
+      print('[蓝牙] 发现服务失败: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('发现服务失败: $e')),
+          SnackBar(
+            content: Text('发现服务失败: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

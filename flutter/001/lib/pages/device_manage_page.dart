@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../utils/db_helper.dart';
 
 /// FC 地址常量
 const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -16,6 +17,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   List<Map<String, dynamic>> _data = [];
   String _loadStatus = '';
   bool _isLoading = true;
+  bool _isFromCache = false; // 标记是否使用缓存数据
   
   // 编辑表单控制器
   final TextEditingController _deviceKeyController = TextEditingController();
@@ -28,11 +30,33 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _loadStatus = '';
-    });
+    // 先尝试加载缓存数据
+    await _loadFromCache();
+    
+    // 然后尝试从网络获取最新数据
+    await _loadFromNetwork();
+  }
 
+  /// 从缓存加载数据
+  Future<void> _loadFromCache() async {
+    try {
+      final cachedData = await DBHelper().getDevices();
+      if (cachedData.isNotEmpty) {
+        setState(() {
+          _data = cachedData;
+          _isLoading = false;
+          _isFromCache = true;
+          _loadStatus = '使用缓存数据（离线模式）';
+        });
+        debugPrint('从缓存加载设备数据: ${cachedData.length} 条');
+      }
+    } catch (e) {
+      debugPrint('加载缓存失败: $e');
+    }
+  }
+
+  /// 从网络加载数据
+  Future<void> _loadFromNetwork() async {
     try {
       final resp = await http.post(
         Uri.parse(_deviceFcUrl),
@@ -40,35 +64,33 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         body: jsonEncode({'action': 'getDeviceTaleAll'}),
       );
 
-      // 调试：打印完整响应
       debugPrint('FC 响应状态: ${resp.statusCode}');
       debugPrint('FC 响应体: ${resp.body}');
 
       if (resp.statusCode == 200) {
         final json = jsonDecode(resp.body) as Map<String, dynamic>;
-        print(json);
+        
         if (json['status'] == 'success') {
           final rawRows = json['data'] as List<dynamic>;
+          final parsedData = rawRows.map(_parseOtsRow).toList();
           
-          // 调试：打印第一条原始数据
-          if (rawRows.isNotEmpty) {
-            debugPrint('第一条原始数据: ${rawRows[0]}');
-          }
+          // 保存到缓存
+          await DBHelper().saveDevices(parsedData);
           
           setState(() {
-            _data = rawRows.map(_parseOtsRow).toList();
+            _data = parsedData;
             _isLoading = false;
+            _isFromCache = false;
+            _loadStatus = ''; // 清除所有提示
           });
-          debugPrint('设备表加载完成，共 ${_data.length} 条');
           
-          // 调试：打印解析后的第一条数据
-          if (_data.isNotEmpty) {
-            debugPrint('解析后第一条: ${_data[0]}');
-          }
+          debugPrint('从网络加载设备数据: ${parsedData.length} 条，已缓存');
         } else {
+          // 网络请求返回错误
           setState(() {
             _loadStatus = '请求错误: ${json['msg']} ${json['error'] ?? ''}';
             _isLoading = false;
+            // 保持_isFromCache状态不变
           });
         }
       } else {
@@ -78,11 +100,21 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         });
       }
     } catch (e) {
-      setState(() {
-        _loadStatus = '连接失败: $e';
-        _isLoading = false;
-      });
       debugPrint('设备表请求失败: $e');
+      // 网络请求失败，如果有缓存数据则不显示错误
+      if (_data.isEmpty) {
+        setState(() {
+          _loadStatus = '连接失败: $e';
+          _isLoading = false;
+        });
+      } else {
+        // 有缓存数据，网络失败，显示缓存模式
+        setState(() {
+          _isFromCache = true;
+          _loadStatus = '使用缓存数据（离线模式）';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -128,14 +160,29 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                 if (_loadStatus.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    color: Colors.red.shade100,
+                    color: _isFromCache ? Colors.blue.shade100 : Colors.red.shade100,
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                        Icon(
+                          _isFromCache ? Icons.cloud_off : Icons.error_outline,
+                          color: _isFromCache ? Colors.blue : Colors.red,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(_loadStatus, style: const TextStyle(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            _loadStatus,
+                            style: const TextStyle(fontSize: 13),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                        if (_isFromCache)
+                          IconButton(
+                            icon: const Icon(Icons.refresh, size: 20),
+                            onPressed: _loadData,
+                            tooltip: '刷新',
+                          ),
                       ],
                     ),
                   ),

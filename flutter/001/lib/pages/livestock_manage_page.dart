@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../utils/db_helper.dart';
 
 /// FC 地址常量
 const String _cowSheepFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
@@ -16,6 +17,7 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
   List<Map<String, dynamic>> _data = [];
   String _loadStatus = '';
   bool _isLoading = true;
+  bool _isFromCache = false; // 标记是否使用缓存数据
 
   @override
   void initState() {
@@ -24,61 +26,123 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _loadStatus = '';
-    });
+    // 先尝试加载缓存数据
+    await _loadFromCache();
+    
+    // 然后尝试从网络获取最新数据
+    await _loadFromNetwork();
+  }
 
+  /// 从缓存加载数据
+  Future<void> _loadFromCache() async {
     try {
+      debugPrint('[牛羊缓存] 开始读取缓存数据');
+      final cachedData = await DBHelper().getLivestock();
+      debugPrint('[牛羊缓存] 读取到 ${cachedData.length} 条数据');
+      
+      if (cachedData.isNotEmpty) {
+        debugPrint('[牛羊缓存] 第一条数据: ${cachedData[0]}');
+        setState(() {
+          _data = cachedData;
+          _isLoading = false;
+          _isFromCache = true;
+          _loadStatus = '使用缓存数据（离线模式）';
+        });
+        debugPrint('[牛羊缓存] ✓ 已加载缓存数据，显示列表');
+      } else {
+        debugPrint('[牛羊缓存] ✗ 缓存为空，将等待网络请求');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('[牛羊缓存] ✗ 加载缓存失败: $e');
+      debugPrint('[牛羊缓存] 堆栈: $stackTrace');
+    }
+  }
+
+  /// 从网络加载数据
+  Future<void> _loadFromNetwork() async {
+    try {
+      debugPrint('[牛羊] 开始请求网络: $_cowSheepFcUrl');
+      debugPrint('[牛羊] 请求参数: action=getLivestockList');
+      
       final resp = await http.post(
         Uri.parse(_cowSheepFcUrl),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'action': 'getLivestockList'}),
       );
 
-      // 调试：打印完整响应
-      debugPrint('FC 响应状态: ${resp.statusCode}');
-      debugPrint('FC 响应体: ${resp.body}');
+      debugPrint('[牛羊] FC 响应状态: ${resp.statusCode}');
+      debugPrint('[牛羊] FC 响应体: ${resp.body}');
 
       if (resp.statusCode == 200) {
         final json = jsonDecode(resp.body) as Map<String, dynamic>;
-        print(json);
+        debugPrint('[牛羊] 解析JSON成功, status=${json['status']}');
+        
         if (json['status'] == 'success') {
           final rawRows = json['data'] as List<dynamic>;
+          debugPrint('[牛羊] 原始数据行数: ${rawRows.length}');
           
-          // 调试：打印第一条原始数据
-          if (rawRows.isNotEmpty) {
-            debugPrint('第一条原始数据: ${rawRows[0]}');
+          final parsedData = rawRows.map(_parseOtsRow).toList();
+          debugPrint('[牛羊] 解析后数据: ${parsedData.length} 条');
+          
+          if (parsedData.isNotEmpty) {
+            debugPrint('[牛羊] 第一条数据: ${parsedData[0]}');
+          }
+          
+          // 保存到缓存
+          debugPrint('[牛羊] 开始保存 ${parsedData.length} 条数据到缓存');
+          try {
+            await DBHelper().saveLivestock(parsedData);
+            debugPrint('[牛羊] ✓ 已保存到缓存');
+          } catch (e) {
+            debugPrint('[牛羊] ✗ 保存缓存失败（不影响显示）: $e');
           }
           
           setState(() {
-            _data = rawRows.map(_parseOtsRow).toList();
+            _data = parsedData;
             _isLoading = false;
+            _isFromCache = false; // 网络请求成功，不是缓存
+            _loadStatus = ''; // 清除所有提示
           });
-          debugPrint('牛羊表加载完成，共 ${_data.length} 条');
           
-          // 调试：打印解析后的第一条数据
-          if (_data.isNotEmpty) {
-            debugPrint('解析后第一条: ${_data[0]}');
-          }
+          debugPrint('[牛羊] ✓ 从网络加载牛羊数据: ${parsedData.length} 条，已缓存');
         } else {
+          debugPrint('[牛羊] 请求返回错误: ${json['msg']} ${json['error'] ?? ''}');
+          // 网络请求返回错误
           setState(() {
             _loadStatus = '请求错误: ${json['msg']} ${json['error'] ?? ''}';
             _isLoading = false;
+            // 保持_isFromCache状态不变
           });
         }
       } else {
+        debugPrint('[牛羊] HTTP 错误: ${resp.statusCode}');
         setState(() {
           _loadStatus = 'HTTP ${resp.statusCode}';
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _loadStatus = '连接失败: $e';
-        _isLoading = false;
-      });
-      debugPrint('牛羊表请求失败: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[牛羊] 请求异常: $e');
+      debugPrint('[牛羊] 堆栈: $stackTrace');
+      debugPrint('[牛羊] 当前数据状态: _data.isEmpty=${_data.isEmpty}, _data.length=${_data.length}');
+      debugPrint('[牛羊] _isFromCache=$_isFromCache, _isLoading=$_isLoading');
+      
+      // 网络请求失败，如果有缓存数据则不显示错误
+      if (_data.isEmpty) {
+        debugPrint('[牛羊] ✗ 无缓存数据，显示错误提示');
+        setState(() {
+          _loadStatus = '连接失败: $e';
+          _isLoading = false;
+        });
+      } else {
+        // 有缓存数据，网络失败，显示缓存模式
+        debugPrint('[牛羊] ✓ 使用缓存数据，显示离线模式');
+        setState(() {
+          _isFromCache = true;
+          _loadStatus = '使用缓存数据（离线模式）';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -137,14 +201,29 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
                 if (_loadStatus.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    color: Colors.red.shade100,
+                    color: _isFromCache ? Colors.blue.shade100 : Colors.red.shade100,
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                        Icon(
+                          _isFromCache ? Icons.cloud_off : Icons.error_outline,
+                          color: _isFromCache ? Colors.blue : Colors.red,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(_loadStatus, style: const TextStyle(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            _loadStatus,
+                            style: const TextStyle(fontSize: 13),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                        if (_isFromCache)
+                          IconButton(
+                            icon: const Icon(Icons.refresh, size: 20),
+                            onPressed: _loadData,
+                            tooltip: '刷新',
+                          ),
                       ],
                     ),
                   ),

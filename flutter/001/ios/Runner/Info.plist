@@ -45,6 +45,10 @@
 	<string>需要蓝牙权限来连接蓝牙设备</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>需要蓝牙权限来连接蓝牙设备</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>需要位置权限来获取您的当前位置</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>需要位置权限来获取您的当前位置</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
