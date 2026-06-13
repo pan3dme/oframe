@@ -31,6 +31,10 @@ class _MapCenterPageState extends State<MapCenterPage> {
   String _levelStatus = ''; // level状态提示
   int _maxAvailableLevel = 1; // 数据中实际存在的最大level值
   
+  // 设备位置数据
+  List<Map<String, dynamic>> _devicePositions = []; // 设备位置列表
+  bool _showDevices = false; // 是否显示设备位置
+  
   // 地图缓存相关
   bool _isCacheEnabled = true; // 是否启用缓存（预留）
 
@@ -39,7 +43,262 @@ class _MapCenterPageState extends State<MapCenterPage> {
     super.initState();
     // 页面加载后自动定位
     _getCurrentLocation();
-    // 不预加载，点击按钮时才加载
+    // 自动加载设备位置（先缓存后网络）
+    _loadDevicePositionsAuto();
+  }
+
+  /// 自动加载设备位置（先缓存后网络）
+  Future<void> _loadDevicePositionsAuto() async {
+    debugPrint('[设备位置] 开始自动加载...');
+    
+    // 先从缓存加载
+    await _loadDevicePositionsFromCache();
+    
+    // 再从网络更新
+    await _loadDevicePositionsFromNetwork();
+  }
+
+  /// 从缓存加载设备位置
+  Future<void> _loadDevicePositionsFromCache() async {
+    try {
+      debugPrint('[设备位置] 尝试从缓存加载...');
+      
+      final devices = await DBHelper().getDevices();
+      final deviceLotList = await DBHelper().getDeviceLot();
+      
+      if (devices.isEmpty || deviceLotList.isEmpty) {
+        debugPrint('[设备位置] 缓存中没有数据');
+        return;
+      }
+      
+      // 构建设备LOT映射
+      final lotMap = <String, Map<String, dynamic>>{};
+      for (final lot in deviceLotList) {
+        final deviceId = lot['deviceId'] as String;
+        lotMap[deviceId] = lot;
+      }
+      
+      // 合并设备和位置信息
+      final positions = <Map<String, dynamic>>[];
+      for (final device in devices) {
+        final deviceId = device['deviceId'] as String;
+        final rename = device['rename'];
+        
+        // 构造显示名称：deviceId + (rename)
+        String displayName;
+        if (rename != null && rename.toString().isNotEmpty) {
+          displayName = '$deviceId ($rename)';
+        } else {
+          displayName = deviceId;
+        }
+        
+        final lot = lotMap[deviceId];
+        if (lot != null) {
+          final gpsStr = lot['gps'] as String?;
+          if (gpsStr != null && gpsStr.isNotEmpty && gpsStr.contains(',')) {
+            try {
+              final parts = gpsStr.split(',');
+              if (parts.length >= 2) {
+                final lat = double.tryParse(parts[0].trim());
+                final lng = double.tryParse(parts[1].trim());
+                
+                if (lat != null && lng != null && lat != 0 && lng != 0) {
+                  final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
+                  
+                  positions.add({
+                    'deviceId': deviceId,
+                    'name': displayName,
+                    'lat': gcj02Coord[0],
+                    'lng': gcj02Coord[1],
+                  });
+                }
+              }
+            } catch (e) {
+              debugPrint('[设备位置] 解析GPS失败: $e');
+            }
+          }
+        }
+      }
+      
+      if (positions.isNotEmpty) {
+        setState(() {
+          _devicePositions = positions;
+          _showDevices = true; // 自动显示设备
+        });
+        debugPrint('[设备位置] 从缓存加载成功: ${positions.length}个设备');
+      }
+    } catch (e) {
+      debugPrint('[设备位置] 从缓存加载失败: $e');
+    }
+  }
+
+  /// 从网络更新设备位置
+  Future<void> _loadDevicePositionsFromNetwork() async {
+    try {
+      debugPrint('[设备位置] 从网络更新...');
+      
+      // 这里可以添加从网络刷新设备数据的逻辑
+      // 目前先使用缓存数据，如果需要实时刷新可以调用设备管理页面的接口
+      
+      // 重新加载以确保数据最新
+      await _loadDevicePositions();
+      
+      if (_devicePositions.isNotEmpty) {
+        setState(() {
+          _showDevices = true; // 确保显示设备
+        });
+      }
+    } catch (e) {
+      debugPrint('[设备位置] 从网络更新失败: $e');
+      // 网络失败不影响已显示的缓存数据
+    }
+  }
+
+  /// 加载设备位置数据（用于手动刷新）
+  Future<void> _loadDevicePositions() async {
+    try {
+      debugPrint('[设备位置] 开始加载...');
+      
+      // 从缓存加载设备数据
+      final devices = await DBHelper().getDevices();
+      debugPrint('[设备位置] 设备数量: ${devices.length}');
+      
+      final deviceLotList = await DBHelper().getDeviceLot();
+      debugPrint('[设备位置] LOT数据数量: ${deviceLotList.length}');
+      
+      if (devices.isEmpty) {
+        debugPrint('[设备位置] 没有设备数据，请先在设备管理页面加载数据');
+        return;
+      }
+      
+      // 打印第一个设备的详细信息
+      if (devices.isNotEmpty) {
+        debugPrint('[设备位置] 第一个设备: ${devices[0]}');
+      }
+      
+      // 打印第一个LOT的详细信息
+      if (deviceLotList.isNotEmpty) {
+        debugPrint('[设备位置] 第一个LOT: ${deviceLotList[0]}');
+      }
+      
+      // 构建设备LOT映射
+      final lotMap = <String, Map<String, dynamic>>{};
+      for (final lot in deviceLotList) {
+        final deviceId = lot['deviceId'] as String;
+        lotMap[deviceId] = lot;
+      }
+      
+      debugPrint('[设备位置] LOT映射构建完成，共${lotMap.length}个设备');
+      
+      // 合并设备和位置信息
+      final positions = <Map<String, dynamic>>[];
+      int noGpsCount = 0; // 没有GPS的设备数
+      int invalidGpsCount = 0; // GPS无效的设备数
+      
+      for (final device in devices) {
+        final deviceId = device['deviceId'] as String;
+        final rename = device['rename'];
+        
+        // 构造显示名称：deviceId + (rename)
+        String displayName;
+        if (rename != null && rename.toString().isNotEmpty) {
+          displayName = '$deviceId ($rename)';
+        } else {
+          displayName = deviceId;
+        }
+        
+        // 查找对应的LOT数据
+        final lot = lotMap[deviceId];
+        if (lot != null) {
+          final gpsStr = lot['gps'] as String?;
+          debugPrint('[设备位置] 设备[$displayName] GPS原始数据: "$gpsStr"');
+          
+          if (gpsStr == null || gpsStr.isEmpty) {
+            noGpsCount++;
+            debugPrint('[设备位置] 设备[$displayName] 没有GPS数据');
+            continue;
+          }
+          
+          if (!gpsStr.contains(',')) {
+            invalidGpsCount++;
+            debugPrint('[设备位置] 设备[$displayName] GPS格式错误: $gpsStr');
+            continue;
+          }
+          
+          try {
+            // 解析GPS坐标："纬度,经度"
+            final parts = gpsStr.split(',');
+            if (parts.length >= 2) {
+              final lat = double.tryParse(parts[0].trim());
+              final lng = double.tryParse(parts[1].trim());
+              
+              debugPrint('[设备位置] 设备[$displayName] 解析后: lat=$lat, lng=$lng');
+              
+              if (lat != null && lng != null && lat != 0 && lng != 0) {
+                // WGS-84转GCJ-02
+                final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
+                
+                positions.add({
+                  'deviceId': deviceId,
+                  'name': displayName,
+                  'lat': gcj02Coord[0],
+                  'lng': gcj02Coord[1],
+                });
+                
+                debugPrint('[设备位置] ✓ $displayName: ($lat, $lng) -> (${gcj02Coord[0]}, ${gcj02Coord[1]})');
+              } else {
+                invalidGpsCount++;
+                debugPrint('[设备位置] 设备[$displayName] GPS坐标为0');
+              }
+            }
+          } catch (e) {
+            invalidGpsCount++;
+            debugPrint('[设备位置] 设备[$displayName] 解析GPS失败: $e');
+          }
+        } else {
+          noGpsCount++;
+          debugPrint('[设备位置] 设备[$displayName] 没有找到LOT数据');
+        }
+      }
+      
+      setState(() {
+        _devicePositions = positions;
+        _showDevices = true; // 自动显示
+      });
+      
+      debugPrint('[设备位置] ========== 加载结果 ==========');
+      debugPrint('[设备位置] 总设备数: ${devices.length}');
+      debugPrint('[设备位置] 有LOT数据: ${devices.length - noGpsCount}');
+      debugPrint('[设备位置] 无GPS数据: $noGpsCount');
+      debugPrint('[设备位置] GPS无效: $invalidGpsCount');
+      debugPrint('[设备位置] 成功加载: ${positions.length}个设备位置');
+      debugPrint('[设备位置] ====================================');
+    } catch (e) {
+      debugPrint('[设备位置] 加载失败: $e');
+    }
+  }
+
+  /// 切换设备位置显示
+  void _toggleDeviceDisplay() async {
+    setState(() {
+      _showDevices = !_showDevices;
+    });
+    
+    debugPrint('[设备位置] 显示状态: $_showDevices, 数量: ${_devicePositions.length}');
+  }
+
+  /// 刷新设备位置数据
+  Future<void> _refreshDevicePositions() async {
+    await _loadDevicePositions();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已刷新设备位置: ${_devicePositions.length}个设备'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   /// 加载道路和地名数据（先从缓存，再从网络）
@@ -731,6 +990,53 @@ class _MapCenterPageState extends State<MapCenterPage> {
                     );
                   }).whereType<Marker>().toList(),
                 ),
+              // 显示设备位置（小红点）
+              if (_showDevices && _devicePositions.isNotEmpty)
+                MarkerLayer(
+                  markers: _devicePositions.map((device) {
+                    return Marker(
+                      point: LatLng(device['lat'], device['lng']),
+                      width: 80,
+                      height: 50,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 小红点
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          // 设备名称
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade700.withOpacity(0.8),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              device['name'].toString().length > 8 
+                                ? device['name'].toString().substring(0, 8) 
+                                : device['name'].toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
             ],
           ),
           // 地图状态提示
@@ -775,6 +1081,23 @@ class _MapCenterPageState extends State<MapCenterPage> {
                       color: _showRouteAndPlace ? Colors.white : Colors.black54,
                     ),
               tooltip: _showRouteAndPlace ? '隐藏道路和地名' : '显示道路和地名',
+            ),
+          ),
+          // 右下角设备位置切换按钮
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: GestureDetector(
+              onLongPress: _refreshDevicePositions,
+              child: FloatingActionButton.small(
+                onPressed: _toggleDeviceDisplay,
+                backgroundColor: _showDevices ? Colors.red : Colors.white,
+                child: Icon(
+                  _showDevices ? Icons.devices_other : Icons.devices_other_outlined,
+                  color: _showDevices ? Colors.white : Colors.black54,
+                ),
+                tooltip: _showDevices ? '隐藏设备位置（长按刷新）' : '显示设备位置（长按刷新）',
+              ),
             ),
           ),
         ],
