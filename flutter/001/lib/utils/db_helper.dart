@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -23,7 +25,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 3, // 升级到版本3，添加蓝牙数据表
+      version: 4, // 升级到版本4，添加地图道路和地名表
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: _onUpgrade, // 也处理降级情况
@@ -93,6 +95,26 @@ class DBHelper {
         cached_at TEXT
       )
     ''');
+
+    // 道路数据表
+    await db.execute('''
+      CREATE TABLE map_routes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        route_data TEXT,
+        level INTEGER DEFAULT 1,
+        cached_at TEXT
+      )
+    ''');
+
+    // 地名数据表
+    await db.execute('''
+      CREATE TABLE map_places (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        place_data TEXT,
+        level INTEGER DEFAULT 1,
+        cached_at TEXT
+      )
+    ''');
   }
 
   /// 数据库升级
@@ -134,6 +156,33 @@ class DBHelper {
         print('数据库升级: 已创建 bluetooth_data 表');
       } catch (e) {
         print('数据库升级: 创建 bluetooth_data 表时出错: $e');
+      }
+    }
+    
+    if (oldVersion < 4) {
+      // 版本4：添加地图道路和地名表
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS map_routes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            route_data TEXT,
+            level INTEGER DEFAULT 1,
+            cached_at TEXT
+          )
+        ''');
+        print('数据库升级: 已创建 map_routes 表');
+        
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS map_places (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            place_data TEXT,
+            level INTEGER DEFAULT 1,
+            cached_at TEXT
+          )
+        ''');
+        print('数据库升级: 已创建 map_places 表');
+      } catch (e) {
+        print('数据库升级: 创建地图表时出错: $e');
       }
     }
   }
@@ -379,6 +428,124 @@ class DBHelper {
       return result.first['cached_at'] as String?;
     }
     return null;
+  }
+
+  /// 保存道路数据（覆盖式）
+  Future<void> saveRoutes(List<Map<String, dynamic>> routes) async {
+    final db = await database;
+    final batch = db.batch();
+
+    // 清空旧数据
+    batch.delete('map_routes');
+
+    // 插入新数据
+    for (final route in routes) {
+      // 提取level字段，如果为空则默认为1
+      int level = 1;
+      try {
+        final attributes = route['attributes'] as List<dynamic>?;
+        if (attributes != null) {
+          for (final attr in attributes) {
+            final attrMap = attr as Map<String, dynamic>;
+            final columnName = attrMap['columnName']?.toString() ?? '';
+            if (columnName == 'level') {
+              final levelValue = attrMap['columnValue'];
+              if (levelValue != null && levelValue.toString().isNotEmpty) {
+                level = int.tryParse(levelValue.toString()) ?? 1;
+              }
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[DB] 解析道路level失败: $e');
+      }
+
+      batch.insert('map_routes', {
+        'route_data': jsonEncode(route),
+        'level': level,
+        'cached_at': DateTime.now().toIso8601String(),
+      });
+    }
+
+    await batch.commit();
+    print('保存道路数据: ${routes.length} 条');
+  }
+
+  /// 读取道路数据（根据level过滤）
+  Future<List<Map<String, dynamic>>> getRoutes({int maxLevel = 1}) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'map_routes',
+      where: 'level <= ?',
+      whereArgs: [maxLevel],
+      orderBy: 'cached_at DESC',
+    );
+    
+    // 解析JSON数据
+    return maps.map((map) {
+      final routeData = map['route_data'] as String;
+      return jsonDecode(routeData) as Map<String, dynamic>;
+    }).toList();
+  }
+
+  /// 保存地名数据（覆盖式）
+  Future<void> savePlaces(List<Map<String, dynamic>> places) async {
+    final db = await database;
+    final batch = db.batch();
+
+    // 清空旧数据
+    batch.delete('map_places');
+
+    // 插入新数据
+    for (final place in places) {
+      // 提取level字段，如果为空则默认为1
+      int level = 1;
+      try {
+        final attributes = place['attributes'] as List<dynamic>?;
+        if (attributes != null) {
+          for (final attr in attributes) {
+            final attrMap = attr as Map<String, dynamic>;
+            final columnName = attrMap['columnName']?.toString() ?? '';
+            if (columnName == 'level') {
+              final levelValue = attrMap['columnValue'];
+              if (levelValue != null && levelValue.toString().isNotEmpty) {
+                level = int.tryParse(levelValue.toString()) ?? 1;
+              }
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[DB] 解析地名level失败: $e');
+      }
+
+      batch.insert('map_places', {
+        'place_data': jsonEncode(place),
+        'level': level,
+        'cached_at': DateTime.now().toIso8601String(),
+      });
+    }
+
+    await batch.commit();
+    print('保存地名数据: ${places.length} 条');
+  }
+
+  /// 读取地名数据（根据level过滤）
+  Future<List<Map<String, dynamic>>> getPlaces({int maxLevel = 1}) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'map_places',
+      where: 'level <= ?',
+      whereArgs: [maxLevel],
+      orderBy: 'cached_at DESC',
+    );
+    
+    // 解析JSON数据
+    return maps.map((map) {
+      final placeData = map['place_data'] as String;
+      return jsonDecode(placeData) as Map<String, dynamic>;
+    }).toList();
   }
 
   /// 关闭数据库
