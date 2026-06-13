@@ -7,25 +7,35 @@
 
 #include "LoRaWan_APP.h"  // LoRa底层驱动库
 #include "Arduino.h"      // Arduino核心库
+#include "HT_TinyGPS++.h"
+TinyGPSPlus gps;
 
 // 外部声明：LED闪烁函数（在其他文件实现）
 extern void openLedByNum(int count, int delayMs);
-#define RF_FREQUENCY 433000000  // 频率：433MHz（国内通用）
 
-#define TX_OUTPUT_POWER 20  // 发射功率：10dBm（近距离不用大）
+constexpr uint32_t RF_FREQUENCY = 433000000;  // 频率：433MHz（国内通用）
+constexpr int16_t TX_OUTPUT_POWER = 20;       // 发射功率：20dBm
 
-#define LORA_BANDWIDTH 0          // 带宽：0=125kHz（最稳定）
-#define LORA_SPREADING_FACTOR 10  // SF7：近距离最快最稳（关键！）
-#define LORA_CODINGRATE 1         // 纠错率：4/6（平衡稳定）
+constexpr uint8_t LORA_BANDWIDTH = 0;          // 带宽：0=125kHz（最稳定）
+constexpr uint8_t LORA_SPREADING_FACTOR = 10;  // SF10：更远距离更稳
+constexpr uint8_t LORA_CODINGRATE = 1;         // 纠错率：4/6（平衡稳定）
 
-#define LORA_PREAMBLE_LENGTH 8  // 前导码：8（近距离足够，短而快）
-#define LORA_SYMBOL_TIMEOUT 5   // 符号超时：5（防止接收卡死）
+constexpr uint8_t LORA_PREAMBLE_LENGTH = 8;  // 前导码长度
+constexpr uint8_t LORA_SYMBOL_TIMEOUT = 5;   // 符号超时
 
-#define LORA_FIX_LENGTH_PAYLOAD_ON false  // 可变长度数据包
-#define LORA_IQ_INVERSION_ON false        // 关闭IQ反转
+constexpr bool LORA_FIX_LENGTH_PAYLOAD_ON = false;  // 可变长度数据包
+constexpr bool LORA_IQ_INVERSION_ON = false;        // 关闭IQ反转
 
-#define RX_TIMEOUT_VALUE 1000  // 接收超时1000ms
-#define BUFFER_SIZE 30         // 缓冲区30字节
+constexpr uint16_t RX_TIMEOUT_VALUE = 1000;  // 接收超时1000ms
+constexpr size_t BUFFER_SIZE = 36;           // 缓冲区30字节
+
+
+#define GPS_RX_PIN 18
+#define GPS_TX_PIN 17
+const byte disableAuto[] = {0xB5,0x62,0x06,0x3C,0x02,0x00,0x00,0x00,0x3E,0x31};
+const byte sleepCmd[]    = {0xB5,0x62,0x06,0x3C,0x02,0x00,0x01,0x01,0x40,0x33};
+const byte wakeCmd[]     = {0xB5,0x62,0x06,0x3C,0x02,0x00,0x00,0x01,0x3F,0x32};
+
 
 /* ==================== 全局变量 ==================== */
 char txpacket[BUFFER_SIZE];  // 发送数据缓冲区
@@ -50,92 +60,115 @@ bool sleepMode = false;  // 休眠模式标志
 int16_t Rssi;            // 接收信号强度
 int16_t rxSize;          // 接收到的数据长度
 
-uint64_t allowedDevices[] = {
-  0x248B9C697090,  // 第0个设备  v4
-  0x6809A21B5BF8,  // 第1个设备  v4
-  0x8442AAAC85D8,  // 第1个设备  v3
-  0x301BA21B5BF8,  // 第1个设备  v4
-  0x0C46AAAC85D8,  // 第1个设备  v3
-  0x9875555        // 第2个设备
+const uint64_t allowedDevices[] = {
+  0x248B9C697090ULL,
+  0x6809A21B5BF8ULL,
+  0x8442AAAC85D8ULL,
+  0x301BA21B5BF8ULL,
+  0x0C46AAAC85D8ULL,
+  0x9875555ULL
 };
 
 String deviceName = "v3-x";
 
 void makeDivceName() {
-  uint64_t currentId = ESP.getEfuseMac();
+  const uint64_t currentId = ESP.getEfuseMac();
   Serial.printf("当前设备编号: %012llX\n", currentId);
 
-  // 3. 遍历数组，查找当前编号在数组中的索引位置
-  int index = -1;  // 默认值为 -1，表示未找到
-  for (int i = 0; i < sizeof(allowedDevices); i++) {
+  int index = -1;
+  for (size_t i = 0; i < sizeof(allowedDevices) / sizeof(allowedDevices[0]); ++i) {
     if (currentId == allowedDevices[i]) {
-      index = i;
-      break;  // 找到了就跳出循环
+      index = static_cast<int>(i);
+      break;
     }
   }
-  // 4. 根据索引位置给设备取名
-  if (index != -1) {
-    deviceName = "v3-" + String(index);  // 拼接成 "id0", "id1" 等
+
+  if (index >= 0) {
+    deviceName = "v3-" + String(index);
     Serial.println("设备认证成功，设备名为: " + deviceName);
-    // 5. (可选) 将这个名字设置为 WiFi 的主机名，方便在路由器后台查看
   } else {
     Serial.println("错误：该设备编号不在白名单中！");
-    // 你可以在这里添加处理逻辑，比如让设备进入报错状态或停止运行
   }
 }
 
 void initRola() {
+  RadioEvents.TxDone = OnTxDone;
+  RadioEvents.TxTimeout = OnTxTimeout;
+  RadioEvents.RxDone = OnRxDone;
 
+  Radio.Init(&RadioEvents);
+  Radio.SetChannel(RF_FREQUENCY);
 
-  // 绑定LoRa模块的事件回调函数
-  RadioEvents.TxDone = OnTxDone;        // 发送完成
-  RadioEvents.TxTimeout = OnTxTimeout;  // 发送超时
-  RadioEvents.RxDone = OnRxDone;        // 接收完成
+  Radio.SetTxConfig(MODEM_LORA,
+                    TX_OUTPUT_POWER,
+                    0,
+                    LORA_BANDWIDTH,
+                    LORA_SPREADING_FACTOR,
+                    LORA_CODINGRATE,
+                    LORA_PREAMBLE_LENGTH,
+                    LORA_FIX_LENGTH_PAYLOAD_ON,
+                    true,
+                    0,
+                    0,
+                    LORA_IQ_INVERSION_ON,
+                    3000);
 
-  Radio.Init(&RadioEvents);        // 初始化LoRa模块
-  Radio.SetChannel(RF_FREQUENCY);  // 设置LoRa工作频率
+  Radio.SetRxConfig(MODEM_LORA,
+                    LORA_BANDWIDTH,
+                    LORA_SPREADING_FACTOR,
+                    LORA_CODINGRATE,
+                    0,
+                    LORA_PREAMBLE_LENGTH,
+                    LORA_SYMBOL_TIMEOUT,
+                    LORA_FIX_LENGTH_PAYLOAD_ON,
+                    0,
+                    true,
+                    0,
+                    0,
+                    LORA_IQ_INVERSION_ON,
+                    true);
 
-  // 配置LoRa发送参数
-  Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
-                    LORA_SPREADING_FACTOR, LORA_CODINGRATE,
-                    LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, 3000);
-
-  // 配置LoRa接收参数
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
-                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
-                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON,
-                    0, true, 0, 0, LORA_IQ_INVERSION_ON, true);
-
-  state = STATE_TX;  // 初始状态：准备发送
+  state = STATE_TX;
 }
 
 /* ==================== 初始化函数（只执行一次） ==================== */
 void setup() {
-  Serial.begin(115200);                    // 初始化串口波特率115200
-  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);  // 初始化开发板硬件
+  Serial.begin(115200);
+  Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  delay(1000);
+  Serial2.write(disableAuto, sizeof(disableAuto));
+  delay(150);
+  Serial.println("===== GPS 初始化完成 =====");
 
-
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   makeDivceName();
   initRola();
 }
 
 /* ==================== 定时打印变量 ==================== */
-unsigned long lastPrintTime = 0;  // 记录上一次打印的时间
-const long printInterval = 10000;  // 打印间隔：10秒（10000ms）
+unsigned long lastPrintTime = 0;
+constexpr unsigned long PRINT_INTERVAL_MS = 10000;
 int skipNum = 0;
 
 /* ==================== 主循环（反复执行） ==================== */
 void loop() {
   openLedByNum(1, 500);  // LED闪烁1次，每次500ms（运行提示）
 
+  while (Serial2.available()) {
+    gps.encode(Serial2.read());
+  }
+  Serial.print("  卫星：");
+  Serial.print(gps.satellites.value());
+  Serial.println(" ");
+
   // ============== 每10秒执行一次：打印系统状态 ==============
-  if (millis() - lastPrintTime >= printInterval) {
-    lastPrintTime = millis();  // 更新最后打印时间
+  unsigned long currentTime = millis();
+  if (currentTime - lastPrintTime >= PRINT_INTERVAL_MS) {
+    lastPrintTime = currentTime;
 
     // 如果当前处于休眠状态，强制切换到发送状态
     if (state == LOWPOWER) {
-      Radio.Sleep();  // LoRa模块休眠
+      Radio.Sleep();
       state = STATE_TX;
       Serial.println("【每20秒定时记录】系统运行中...");
     }
@@ -146,21 +179,29 @@ void loop() {
 
     // -------------------- 状态1：发送数据 --------------------
     case STATE_TX:
-      delay(1000);  // 延时1秒再发送
-      skipNum++;
+      {
+        delay(1000);
+        skipNum++;
 
-      // 格式化发送内容：hello + 包号 + 收到的信号强度
+        char latBuf[16] = "0.000000";
+        char lngBuf[16] = "0.000000";
+        if (gps.location.isValid()) {
+          dtostrf(gps.location.lat(), 9, 6, latBuf);
+          dtostrf(gps.location.lng(), 10, 6, lngBuf);
+        }
 
-      sprintf(txpacket, "1|%s|0.000000,0.000000|%d", deviceName,skipNum);
+        int packetLen = snprintf(txpacket, BUFFER_SIZE, "1|%s|%s,%s|%d", deviceName.c_str(), latBuf, lngBuf, skipNum);
+        if (packetLen < 0) {
+          packetLen = 0;
+        }
 
-      // 串口打印发送信息
-      Serial.printf("\r\nsending packet \"%s\" , length %d\r\n", txpacket, strlen(txpacket));
+        Serial.printf("\r\nsending packet \"%s\" , length %d\r\n", txpacket, packetLen);
+        Radio.Send(reinterpret_cast<uint8_t *>(txpacket), packetLen);
+        openLedByNum(10, 50);
 
-      Radio.Send((uint8_t *)txpacket, strlen(txpacket));  // 执行发送
-      openLedByNum(10, 50);                               // 发送时快速闪烁LED10次
-
-      state = LOWPOWER;  // 发送完成 → 进入休眠等待中断
-      break;
+        state = LOWPOWER;
+        break;
+      }
 
 
 

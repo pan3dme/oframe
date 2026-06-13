@@ -68,7 +68,7 @@ uint64_t allowedDevices[] = {
 #define LORA_CODINGRATE 1         // 纠错率
 #define LORA_PREAMBLE_LENGTH 8
 #define LORA_SYMBOL_TIMEOUT 5
-#define BUFFER_SIZE 30
+#define BUFFER_SIZE 36
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机
@@ -130,6 +130,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 // ================================== 核心逻辑函数 ==================================
 // 添加GPS数据到队列
 void addGpsData(String data) {
+ 
   if (gpsDataCount < GPS_MAX_COUNT) {
     gpsDataArray[gpsDataCount++] = data;
   }
