@@ -405,16 +405,19 @@ class _FunctionListPageState extends State<FunctionListPage> {
                         color: Colors.grey.shade600,
                       ),
                     ),
-                    const Text(' (', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                    Text(
-                      relativeTime,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange,
+                    // 如果时间不超过1年，才显示相对时间
+                    if (_shouldShowRelativeTime(time)) ...[
+                      const Text(' (', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      Text(
+                        relativeTime,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
                       ),
-                    ),
-                    const Text(')', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      const Text(')', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    ],
                   ],
                 ),
               ],
@@ -482,6 +485,38 @@ class _FunctionListPageState extends State<FunctionListPage> {
         ),
       ),
     );
+  }
+
+  /// 判断是否应该显示相对时间（不超过1年）
+  bool _shouldShowRelativeTime(String timeStr) {
+    try {
+      final parts = timeStr.split(' ');
+      if (parts.length != 2) return false;
+      
+      final dateParts = parts[0].split('/');
+      if (dateParts.length != 3) return false;
+      
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      
+      final timeParts = parts[1].split(':');
+      if (timeParts.length != 3) return false;
+      
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final second = int.parse(timeParts[2]);
+      
+      final messageTime = DateTime(year, month, day, hour, minute, second);
+      final now = DateTime.now();
+      final difference = now.difference(messageTime);
+      
+      // 如果超过365天（1年），不显示相对时间
+      return difference.inDays < 365;
+    } catch (e) {
+      debugPrint('解析时间失败: $e');
+      return false;
+    }
   }
 
   /// 计算相对时间
