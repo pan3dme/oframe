@@ -489,6 +489,21 @@ class DBHelper {
     }).toList();
   }
 
+  /// 读取所有道路数据（不过滤level）
+  Future<List<Map<String, dynamic>>> getAllRoutes() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'map_routes',
+      orderBy: 'cached_at DESC',
+    );
+    
+    // 解析JSON数据
+    return maps.map((map) {
+      final routeData = map['route_data'] as String;
+      return jsonDecode(routeData) as Map<String, dynamic>;
+    }).toList();
+  }
+
   /// 保存地名数据（覆盖式）
   Future<void> savePlaces(List<Map<String, dynamic>> places) async {
     final db = await database;
@@ -538,6 +553,21 @@ class DBHelper {
       'map_places',
       where: 'level <= ?',
       whereArgs: [maxLevel],
+      orderBy: 'cached_at DESC',
+    );
+    
+    // 解析JSON数据
+    return maps.map((map) {
+      final placeData = map['place_data'] as String;
+      return jsonDecode(placeData) as Map<String, dynamic>;
+    }).toList();
+  }
+
+  /// 读取所有地名数据（不过滤level）
+  Future<List<Map<String, dynamic>>> getAllPlaces() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'map_places',
       orderBy: 'cached_at DESC',
     );
     

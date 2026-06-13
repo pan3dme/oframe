@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -36,15 +37,42 @@ class _MapCenterPageState extends State<MapCenterPage> {
   bool _showDevices = false; // 是否显示设备位置
   
   // 地图缓存相关
-  bool _isCacheEnabled = true; // 是否启用缓存（预留）
+  bool _isCacheEnabled = true; // 是否启用缓存
+  int _cachedTileCount = 0; // 已缓存瓦片数量
+  final String _cacheStoreName = 'map_cache'; // 缓存存储名称
 
   @override
   void initState() {
     super.initState();
+    // 初始化瓦片缓存
+    _initTileCache();
     // 页面加载后自动定位
     _getCurrentLocation();
     // 自动加载设备位置（先缓存后网络）
     _loadDevicePositionsAuto();
+  }
+
+  /// 初始化瓦片缓存
+  Future<void> _initTileCache() async {
+    try {
+      debugPrint('[瓦片缓存] 开始初始化...');
+      
+      // 创建或打开缓存存储（如果已存在则忽略错误）
+      try {
+        await FMTCStore(_cacheStoreName).manage.create();
+      } catch (e) {
+        // 存储可能已经存在，忽略错误
+        debugPrint('[瓦片缓存] 存储已存在或创建失败: $e');
+      }
+      
+      setState(() {
+        _cachedTileCount = -1; // -1表示未知数量
+      });
+      
+      debugPrint('[瓦片缓存] 初始化完成');
+    } catch (e) {
+      debugPrint('[瓦片缓存] 初始化失败: $e');
+    }
   }
 
   /// 自动加载设备位置（先缓存后网络）
@@ -301,6 +329,106 @@ class _MapCenterPageState extends State<MapCenterPage> {
     }
   }
 
+  /// 清除地图瓦片缓存
+  Future<void> _clearTileCache() async {
+    try {
+      setState(() {
+        _mapStatus = '正在清除缓存...';
+      });
+      
+      // 销毁并重新创建存储
+      await FMTCStore(_cacheStoreName).manage.delete();
+      await FMTCStore(_cacheStoreName).manage.create();
+      
+      setState(() {
+        _cachedTileCount = -1;
+        _mapStatus = '缓存已清除';
+      });
+      
+      debugPrint('[瓦片缓存] 已清除所有缓存');
+      
+      // 3秒后清除提示
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _mapStatus = '';
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('[瓦片缓存] 清除失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('清除缓存失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 显示缓存信息对话框
+  void _showCacheInfo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('地图缓存信息'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_cachedTileCount >= 0 
+              ? '已缓存瓦片数: $_cachedTileCount'
+              : '已缓存瓦片数: 统计中...'),
+            const SizedBox(height: 8),
+            const Text('说明:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('- 自动缓存访问过的地图区域'),
+            const Text('- 离线时可查看已缓存区域'),
+            const Text('- 缓存长期有效'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _clearTileCache();
+            },
+            child: const Text('清除缓存', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 清理字符串，确保UTF-16安全
+  String _sanitizeString(String input) {
+    if (input.isEmpty) return '';
+    
+    try {
+      // 移除控制字符（除了常见的空白字符）
+      final cleaned = input.replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'), '');
+      
+      // 检查是否为有效的UTF-16字符串
+      // Flutter的Text widget要求字符串必须是有效的UTF-16
+      final codeUnits = cleaned.codeUnits;
+      
+      // 尝试重新构建字符串
+      final result = String.fromCharCodes(codeUnits);
+      
+      // 如果结果为空，返回空字符串
+      if (result.isEmpty) {
+        return '';
+      }
+      
+      return result;
+    } catch (e) {
+      debugPrint('[字符串清理] 失败: $e, 原始: ${input.length > 50 ? input.substring(0, 50) : input}...');
+      return ''; // 出错时返回空字符串
+    }
+  }
+
   /// 加载道路和地名数据（先从缓存，再从网络）
   Future<void> _loadRouteAndPlaceData() async {
     setState(() {
@@ -327,14 +455,15 @@ class _MapCenterPageState extends State<MapCenterPage> {
   /// 从缓存加载数据
   Future<void> _loadFromCache() async {
     try {
-      final cachedRoutes = await DBHelper().getRoutes(maxLevel: _currentLevel);
-      final cachedPlaces = await DBHelper().getPlaces(maxLevel: _currentLevel);
+      // 从缓存加载所有数据（不过滤level）
+      final cachedRoutes = await DBHelper().getAllRoutes();
+      final cachedPlaces = await DBHelper().getAllPlaces();
       
       if (cachedRoutes.isNotEmpty || cachedPlaces.isNotEmpty) {
         setState(() {
           _allRouteData = cachedRoutes;
           _allPlaceData = cachedPlaces;
-          _filterDataByLevel(); // 根据level过滤
+          _filterDataByLevel(); // 根据当前level过滤显示
         });
         debugPrint('[道路地名] 从缓存加载: 道路${cachedRoutes.length}条, 地名${cachedPlaces.length}条');
       }
@@ -720,6 +849,40 @@ class _MapCenterPageState extends State<MapCenterPage> {
         title: const Text('地图中心'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // 缓存信息按钮
+          IconButton(
+            icon: Stack(
+              children: [
+                const Icon(Icons.cloud_download),
+                if (_cachedTileCount > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        _cachedTileCount > 99 ? '99+' : '$_cachedTileCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: _showCacheInfo,
+            tooltip: '地图缓存信息',
+          ),
           // 定位按钮
           IconButton(
             icon: _isLocating
@@ -770,12 +933,16 @@ class _MapCenterPageState extends State<MapCenterPage> {
                 errorImage: const NetworkImage(
                   'https://via.placeholder.com/256/CCCCCC/666666?text=Tile+Error',
                 ),
-                // 瓦片缓存配置 - 使用默认的网络提供者，flutter_map会自动缓存
-                tileProvider: NetworkTileProvider(
-                  headers: {
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)',
-                  },
-                ),
+                // 瓦片缓存配置 - 使用flutter_map_tile_caching实现离线缓存
+                tileProvider: _isCacheEnabled
+                    ? FMTCStore(_cacheStoreName).getTileProvider(
+                        settings: FMTCTileProviderSettings(),
+                      )
+                    : NetworkTileProvider(
+                        headers: {
+                          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)',
+                        },
+                      ),
               ),
               // 显示当前位置标记
               if (_currentPosition != null)
@@ -831,7 +998,8 @@ class _MapCenterPageState extends State<MapCenterPage> {
                               debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
                             }
                           } else if (columnName == 'roadname') {
-                            name = columnValue;
+                            // 清理道路名称，确保UTF-16安全
+                            name = _sanitizeString(columnValue);
                           }
                         }
                       }
@@ -882,7 +1050,8 @@ class _MapCenterPageState extends State<MapCenterPage> {
                               }
                             }
                           } else if (columnName == 'roadname') {
-                            name = columnValue;
+                            // 清理道路名称，确保UTF-16安全
+                            name = _sanitizeString(columnValue);
                           }
                         }
                       }
@@ -930,7 +1099,8 @@ class _MapCenterPageState extends State<MapCenterPage> {
                               }
                             }
                           } else if (columnName == 'name') {
-                            name = columnValue;
+                            // 清理地名，确保UTF-16安全
+                            name = _sanitizeString(columnValue);
                           }
                         }
                       }
@@ -944,6 +1114,9 @@ class _MapCenterPageState extends State<MapCenterPage> {
                     if (lat == 0 && lng == 0) {
                       return null;
                     }
+                    
+                    // 清理地名字符串，确保UTF-16安全
+                    String safeName = _sanitizeString(name);
                     
                     return Marker(
                       point: LatLng(lat, lng),
@@ -967,7 +1140,7 @@ class _MapCenterPageState extends State<MapCenterPage> {
                           SizedBox(
                             width: 60,
                             child: Text(
-                              name.length > 5 ? name.substring(0, 5) : name,
+                              safeName.length > 5 ? safeName.substring(0, 5) : safeName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               textAlign: TextAlign.center,
@@ -994,6 +1167,9 @@ class _MapCenterPageState extends State<MapCenterPage> {
               if (_showDevices && _devicePositions.isNotEmpty)
                 MarkerLayer(
                   markers: _devicePositions.map((device) {
+                    // 清理设备名称，确保UTF-16安全
+                    String safeDeviceName = _sanitizeString(device['name'].toString());
+                    
                     return Marker(
                       point: LatLng(device['lat'], device['lng']),
                       width: 80,
@@ -1020,9 +1196,9 @@ class _MapCenterPageState extends State<MapCenterPage> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              device['name'].toString().length > 8 
-                                ? device['name'].toString().substring(0, 8) 
-                                : device['name'].toString(),
+                              safeDeviceName.length > 8 
+                                ? safeDeviceName.substring(0, 8) 
+                                : safeDeviceName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(

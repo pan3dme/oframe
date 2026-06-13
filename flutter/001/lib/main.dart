@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'pages/device_manage_page.dart';
 import 'pages/livestock_manage_page.dart';
 import 'pages/function_list_page.dart';
@@ -8,7 +9,17 @@ import 'pages/map_center_page.dart';
 const deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 const cowSheepFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化地图瓦片缓存后端
+  try {
+    await FMTCObjectBoxBackend().initialise();
+    debugPrint('[FMTC] 初始化成功');
+  } catch (err) {
+    debugPrint('[FMTC] 初始化失败: $err');
+  }
+  
   runApp(const MyApp());
 }
 
