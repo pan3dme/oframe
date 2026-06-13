@@ -753,24 +753,7 @@ class _MapCenterPageState extends State<MapCenterPage> {
               ),
             ),
           // Level状态提示
-          if (_levelStatus.isNotEmpty && _showRouteAndPlace)
-            Positioned(
-              top: _mapStatus.isNotEmpty ? 160 : 100,
-              left: 20,
-              right: 20,
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade700.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _levelStatus,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
+         
           // 左下角道路地名切换按钮
           Positioned(
             left: 16,
