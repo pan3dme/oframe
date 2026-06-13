@@ -28,11 +28,10 @@ bool showTime = false;
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 // ================================== 硬件引脚定义 ==================================
-// GPS模块引脚
-#define VGNSS_CTRL 34  // GPS电源控制 (低电平开启)
-#define GPS_RX_PIN 39  // GPS TX -> ESP32 RX
-#define GPS_TX_PIN 38  // GPS RX -> ESP32 TX
-#define GPS_ANT_EN 42  // GPS天线电源使能
+constexpr uint8_t VGNSS_CTRL = 34;  // GPS电源控制
+constexpr uint8_t GPS_RX_PIN = 39;  // GPS TX -> ESP32 RX
+constexpr uint8_t GPS_TX_PIN = 38;  // GPS RX -> ESP32 TX
+constexpr uint8_t GPS_ANT_EN = 42;  // GPS天线电源使能
 
 // 外部函数声明 (由板载硬件驱动)
 extern void openLedByNum(int count, int delayMs);
@@ -45,7 +44,7 @@ struct tm timeinfo;                         // 系统时间结构体
 String displayBuf[4] = { "", "", "", "" };  // 屏幕显示缓冲区
 
 // GPS数据队列 (环形缓冲区模拟)
-#define GPS_MAX_COUNT 1000
+constexpr size_t GPS_MAX_COUNT = 1000;
 String gpsDataArray[GPS_MAX_COUNT];
 int gpsDataCount = 0;
 int receiveCount = 0;  // 接收计数器
@@ -62,13 +61,13 @@ uint64_t allowedDevices[] = {
 };
 
 // ================================== LoRa 参数 ==================================
-#define RF_FREQUENCY 433000000    // 频率 (美标915MHz段)
-#define LORA_BANDWIDTH 0          // 带宽 125kHz
-#define LORA_SPREADING_FACTOR 10  // 扩频因子 (平衡距离和速度)
-#define LORA_CODINGRATE 1         // 纠错率
-#define LORA_PREAMBLE_LENGTH 8
-#define LORA_SYMBOL_TIMEOUT 5
-#define BUFFER_SIZE 36
+constexpr uint32_t RF_FREQUENCY = 433000000;   // 频率 (433MHz)
+constexpr uint8_t LORA_BANDWIDTH = 0;          // 带宽 125kHz
+constexpr uint8_t LORA_SPREADING_FACTOR = 10;  // 扩频因子
+constexpr uint8_t LORA_CODINGRATE = 1;         // 纠错率
+constexpr uint8_t LORA_PREAMBLE_LENGTH = 8;    // 前导码
+constexpr uint8_t LORA_SYMBOL_TIMEOUT = 5;     // 符号超时
+constexpr size_t BUFFER_SIZE = 36;             // 缓冲区大小
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机
@@ -85,9 +84,6 @@ void addGpsData(String data);
 String getAndRemoveFirstGpsData();
 void initWifi();
 String getCurrentTime();
-
-String getCurrentGpsTime();
-
 void initBLE();
 
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
@@ -130,7 +126,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 // ================================== 核心逻辑函数 ==================================
 // 添加GPS数据到队列
 void addGpsData(String data) {
- 
+
   if (gpsDataCount < GPS_MAX_COUNT) {
     gpsDataArray[gpsDataCount++] = data;
   }
@@ -146,35 +142,50 @@ String getAndRemoveFirstGpsData() {
   gpsDataArray[--gpsDataCount] = "";
   return first;
 }
-
-// 初始化WiFi并同步网络时间
+#define ssid "yangchang"
+#define password "13787501167"
 // 初始化WiFi并同步网络时间 (获取后自动断开以省电)
 void initWifi() {
-  // 如果已经执行过一次对时并断开，则直接返回，不再连接
   if (wifiSyncDone) return;
 
-  const char *ssid = "yangchang";
-  const char *password = "13787501167";
 
-  Serial.print("正在连接 WiFi");
+
+
+  Serial.println("\n========== WiFi 连接开始 ==========");
+  Serial.printf("SSID: %s\n", ssid);
+
+
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.eraseAP();
+ 
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  Serial.print("Connecting ");
+  Serial.println(ssid);
+  delay(100);
+
   WiFi.begin(ssid, password);
   unsigned long startAttemptTime = millis();
   int skipNum = 0;
 
-  // 等待连接或超时(10秒)
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-    openLedByNum(1, 500);
-    Serial.print(".");
+  // 增加超时时间到 30 秒，并更频繁地打印状态
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 30000) {
+    delay(500);
+    Serial.printf("连接中... [%d%%] 状态码: %d\n", skipNum * 2, WiFi.status());
     skipNum++;
-    showDisplayBy4Area("wifi connect" + String(skipNum), "", "", "");
+    showDisplayBy4Area("wifi connect " + String(skipNum), "SSID: " + String(ssid), "", "");
   }
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n✅ WiFi 连接成功！");
+    Serial.printf("IP 地址: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("信号强度: %d dBm\n", WiFi.RSSI());
 
-    // 配置时区和NTP服务器
     configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");
     Serial.println("正在同步网络时间...");
+
+    delay(2000);
 
     int retry = 0;
     while (!getLocalTime(&timeinfo) && retry < 50) {
@@ -184,39 +195,46 @@ void initWifi() {
 
     if (retry < 50) {
       Serial.println("✅ 网络时间获取成功！");
-      // --- 关键修改：获取成功后，断开WiFi ---
-      WiFi.disconnect(true);  // true 表示从闪存中删除配置（可选），false 则保留配置
-      WiFi.mode(WIFI_OFF);    // 强制关闭 WiFi 模块射频
+      char timeStr[30];
+      snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
+               timeinfo.tm_year + 1900,
+               timeinfo.tm_mon + 1,
+               timeinfo.tm_mday,
+               timeinfo.tm_hour,
+               timeinfo.tm_min,
+               timeinfo.tm_sec);
+      Serial.println("当前时间: " + String(timeStr));
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
       Serial.println("📶 WiFi 已关闭以省电");
     } else {
       Serial.println("❌ 获取网络时间失败！");
     }
   } else {
-    Serial.println("\n⏰ WiFi 连接超时（10秒），跳过网络对时...");
+    Serial.printf("\n❌ WiFi 连接失败！最终状态码: %d\n", WiFi.status());
+    Serial.println("可能原因：");
+    Serial.println("  1. WiFi 密码错误");
+    Serial.println("  2. WiFi 信号太弱");
+    Serial.println("  3. SSID 不存在");
+    Serial.println("  4. WiFi 模块初始化失败");
   }
 
-  // 无论成功与否，都将标志位置为 true，防止 loop 中反复尝试
-  // 如果希望在某些特定条件下（如时间久未更新）再次尝试，可修改此逻辑
   wifiSyncDone = true;
 }
 
 // 获取可用的时间字符串 (优先网络，其次GPS，最后默认)
 String getCurrentTime() {
-  // --- 1. 优先尝试获取网络时间 (NTP) ---
-  // getLocalTime 如果成功，会更新全局的 timeinfo
   if (getLocalTime(&timeinfo)) {
     char timeStr[30];
-    // 直接用 %d 来格式化月份和日期，就不会有前导 0 了
     snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-             timeinfo.tm_year + 1900,  // 年份需要加 1900
-             timeinfo.tm_mon + 1,      // 月份是从 0 开始的，需要加 1
-             timeinfo.tm_mday,         // 日期
-             timeinfo.tm_hour,         // 小时
-             timeinfo.tm_min,          // 分钟
-             timeinfo.tm_sec);         // 秒
+             timeinfo.tm_year + 1900,
+             timeinfo.tm_mon + 1,
+             timeinfo.tm_mday,
+             timeinfo.tm_hour,
+             timeinfo.tm_min,
+             timeinfo.tm_sec);
     return String(timeStr);
   }
-
   return "0000/00/00 00:00:00";
 }
 
@@ -240,7 +258,7 @@ void initBLE() {
   Serial.println("✅ 初始化蓝牙完成");
 }
 
- 
+
 // LoRa 接收回调函数
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (size < BUFFER_SIZE) {
@@ -280,9 +298,9 @@ void makeDivceName() {
   Serial.printf("当前设备编号: %012llX\n", currentId);
 
   int index = -1;
-  for (int i = 0; i < sizeof(allowedDevices) / 8; i++) {  // 修正：计算数组长度
+  for (size_t i = 0; i < sizeof(allowedDevices) / sizeof(allowedDevices[0]); ++i) {
     if (currentId == allowedDevices[i]) {
-      index = i;
+      index = static_cast<int>(i);
       break;
     }
   }
@@ -309,6 +327,15 @@ void setup() {
 }
 
 void loop() {
+  static unsigned long lastTimePrint = 0;
+  unsigned long now = millis();
+
+  // --- 每秒打印当前时间 ---
+  if (now - lastTimePrint >= 1000) {
+    lastTimePrint = now;
+    Serial.print("[TIME] ");
+    Serial.println(getCurrentTime());
+  }
 
   // --- LoRa 状态机处理 ---
   switch (state) {
