@@ -15,6 +15,7 @@ class DeviceManagePage extends StatefulWidget {
 
 class _DeviceManagePageState extends State<DeviceManagePage> {
   List<Map<String, dynamic>> _data = [];
+  Map<String, Map<String, dynamic>> _deviceLotMap = {}; // 设备LOT数据映射
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
@@ -36,6 +37,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
     
     // 然后尝试从网络获取最新数据
     await _loadFromNetwork();
+    
+    // 加载设备LOT数据
+    await _loadDeviceLotData();
   }
 
   /// 从缓存加载数据
@@ -52,6 +56,75 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
       }
     } catch (e) {
       debugPrint('加载缓存失败: $e');
+    }
+  }
+
+  /// 加载设备LOT数据
+  Future<void> _loadDeviceLotData() async {
+    try {
+      // 从缓存加载LOT数据
+      final cachedLotData = await DBHelper().getDeviceLot();
+      if (cachedLotData.isNotEmpty) {
+        final lotMap = <String, Map<String, dynamic>>{};
+        for (final lot in cachedLotData) {
+          final deviceId = lot['deviceId'] as String;
+          lotMap[deviceId] = lot;
+        }
+        setState(() {
+          _deviceLotMap = lotMap;
+        });
+        debugPrint('从缓存加载设备LOT数据: ${cachedLotData.length} 条');
+      }
+      
+      // 从网络加载LOT数据
+      await _loadDeviceLotFromNetwork();
+    } catch (e) {
+      debugPrint('加载设备LOT数据失败: $e');
+    }
+  }
+
+  /// 从网络加载设备LOT数据
+  Future<void> _loadDeviceLotFromNetwork() async {
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'getDeviceLotRefreshAll'}),
+      );
+
+      debugPrint('设备LOT FC 响应状态: ${resp.statusCode}');
+      debugPrint('设备LOT FC 响应体: ${resp.body}');
+
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        
+        if (json['status'] == 'success') {
+          final rawRows = json['data'] as List<dynamic>;
+          final parsedData = rawRows.map(_parseOtsRow).toList();
+          
+          // 保存到缓存
+          await DBHelper().saveDeviceLot(parsedData);
+          
+          // 构建LOT数据映射
+          final lotMap = <String, Map<String, dynamic>>{};
+          for (final lot in parsedData) {
+            final deviceId = lot['deviceId'] as String;
+            lotMap[deviceId] = lot;
+          }
+          
+          setState(() {
+            _deviceLotMap = lotMap;
+          });
+          
+          debugPrint('从网络加载设备LOT数据: ${parsedData.length} 条，已缓存');
+        } else {
+          debugPrint('设备LOT请求错误: ${json['msg']} ${json['error'] ?? ''}');
+        }
+      } else {
+        debugPrint('设备LOT HTTP ${resp.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('设备LOT表请求失败: $e');
     }
   }
 
@@ -226,6 +299,59 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                   final picurl = _str(item, 'picurl');
                                   final hasImage = picurl != '—' && picurl.isNotEmpty;
                                   
+                                  // 获取设备LOT数据
+                                  final deviceLot = _deviceLotMap[deviceId];
+                                  final timeRaw = deviceLot != null ? _str(deviceLot, 'time') : '—';
+                                  
+                                  // 计算相对时间显示
+                                  String timeDisplay = timeRaw;
+                                  String timeAgo = '';
+                                  
+                                  if (timeRaw != '—' && timeRaw.isNotEmpty) {
+                                    // 计算时间差，显示相对时间
+                                    try {
+                                      // 支持格式: "2026/6/12 12:30:45" 或 "2026-06-12 12:30:45"
+                                      if (timeRaw.contains(' ')) {
+                                        final parts = timeRaw.split(' ');
+                                        if (parts.length >= 2) {
+                                          final datePart = parts[0]; // "2026/6/12" 或 "2026-06-12"
+                                          final timePart = parts[1]; // "12:30:45"
+                                          
+                                          // 手动解析日期时间，避免DateTime.parse的格式限制
+                                          final dateParts = datePart.replaceAll('/', '-').split('-');
+                                          final timeParts = timePart.split(':');
+                                          
+                                          if (dateParts.length >= 3 && timeParts.length >= 2) {
+                                            final year = int.parse(dateParts[0]);
+                                            final month = int.parse(dateParts[1]);
+                                            final day = int.parse(dateParts[2]);
+                                            final hour = int.parse(timeParts[0]);
+                                            final minute = int.parse(timeParts[1]);
+                                            final second = timeParts.length >= 3 ? int.parse(timeParts[2]) : 0;
+                                            
+                                            final deviceTime = DateTime(year, month, day, hour, minute, second);
+                                            final now = DateTime.now();
+                                            final difference = now.difference(deviceTime);
+                                            
+                                            if (difference.inSeconds < 10) {
+                                              timeAgo = '（刚刚）';
+                                            } else if (difference.inSeconds < 60) {
+                                              timeAgo = '（${difference.inSeconds}秒前）';
+                                            } else if (difference.inMinutes < 60) {
+                                              timeAgo = '（${difference.inMinutes}分钟前）';
+                                            } else if (difference.inHours < 24) {
+                                              timeAgo = '（${difference.inHours}小时前）';
+                                            } else {
+                                              timeAgo = '（${difference.inDays}天前）';
+                                            }
+                                          }
+                                        }
+                                      }
+                                    } catch (e) {
+                                      debugPrint('解析时间失败: $e, 原始时间: $timeRaw');
+                                    }
+                                  }
+                                  
                                   // 构建显示名称：deviceId 或 deviceId (rename)
                                   final displayName = rename != '—' ? '$deviceId ($rename)' : deviceId;
 
@@ -276,13 +402,12 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           const SizedBox(height: 6),
-                                          // 第二行：device_key
+                                          // 第二行：time (从设备LOT表获取，显示完整时间)
                                           Text(
-                                            'KEY: $deviceKey',
+                                            '$timeDisplay$timeAgo',
                                             style: TextStyle(
-                                              fontSize: 13,
+                                              fontSize: 11,
                                               color: Colors.grey[700],
-                                              fontFamily: 'monospace',
                                             ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
@@ -314,7 +439,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                       ),
                                     ),
                                     
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: 1),
                                     
                                     // 第三列：两个图标（编辑 + 连接）
                                     Column(

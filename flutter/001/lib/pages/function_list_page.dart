@@ -9,6 +9,11 @@ import '../utils/db_helper.dart';
 /// FC 地址常量
 const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 
+/// 格式化时间为：2026/6/12 12:21:10
+String formatTime(DateTime dateTime) {
+  return '${dateTime.year}/${dateTime.month}/${dateTime.day} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
+}
+
 class FunctionListPage extends StatefulWidget {
   const FunctionListPage({super.key});
 
@@ -149,40 +154,19 @@ class _FunctionListPageState extends State<FunctionListPage> {
 
   /// 加载所有设备的最近10条日志记录
   Future<void> _loadLogs() async {
-    // 先尝试加载缓存数据
-    await _loadLogsFromCache();
-    
-    // 然后尝试从网络获取最新数据
+    // 直接从网络获取最新数据，不使用缓存
     await _loadLogsFromNetwork();
-  }
-
-  /// 从缓存加载日志
-  Future<void> _loadLogsFromCache() async {
-    try {
-      debugPrint('[日志缓存] 开始读取缓存数据');
-      final cachedLogs = await DBHelper().getLogs();
-      debugPrint('[日志缓存] 读取到 ${cachedLogs.length} 条数据');
-      if (cachedLogs.isNotEmpty) {
-        debugPrint('[日志缓存] 第一条数据: ${cachedLogs[0]}');
-        setState(() {
-          _logs = cachedLogs;
-          _isLoadingLogs = false;
-          // 不设置 _logErrorMessage，等网络请求结果再决定
-        });
-        debugPrint('[日志缓存] ✓ 已加载缓存数据，显示列表');
-      } else {
-        debugPrint('[日志缓存] ✗ 缓存为空，将等待网络请求');
-      }
-    } catch (e, stackTrace) {
-      debugPrint('[日志缓存] ✗ 加载缓存失败: $e');
-      debugPrint('[日志缓存] 堆栈: $stackTrace');
-    }
   }
 
   /// 从网络加载日志
   Future<void> _loadLogsFromNetwork() async {
     try {
       debugPrint('请求最近10条日志记录');
+
+      setState(() {
+        _isLoadingLogs = true;
+        _logErrorMessage = '';
+      });
 
       final resp = await http.post(
         Uri.parse(_deviceFcUrl),
@@ -236,21 +220,12 @@ class _FunctionListPageState extends State<FunctionListPage> {
               return <String, dynamic>{};
             }).toList();
             
-            // 保存到缓存
-            debugPrint('[日志缓存] 开始保存 ${parsedLogs.length} 条数据到缓存');
-            try {
-              await DBHelper().saveLogs(parsedLogs);
-              debugPrint('[日志缓存] ✓ 已保存到缓存');
-            } catch (e) {
-              debugPrint('[日志缓存] ✗ 保存缓存失败（不影响显示）: $e');
-            }
-            
             setState(() {
               _logs = parsedLogs;
               _isLoadingLogs = false;
-              _logErrorMessage = ''; // 清除所有提示
+              _logErrorMessage = '';
             });
-            debugPrint('从网络加载日志数据: ${parsedLogs.length} 条，已缓存');
+            debugPrint('从网络加载日志数据: ${parsedLogs.length} 条');
           } else {
             setState(() {
               _logErrorMessage = '数据格式错误';
@@ -271,18 +246,10 @@ class _FunctionListPageState extends State<FunctionListPage> {
       }
     } catch (e) {
       debugPrint('加载日志失败: $e');
-      if (_logs.isEmpty) {
-        setState(() {
-          _logErrorMessage = '加载失败: $e';
-          _isLoadingLogs = false;
-        });
-      } else {
-        // 有缓存数据，网络失败，显示缓存模式
-        setState(() {
-          _logErrorMessage = '使用缓存数据（离线模式）';
-          _isLoadingLogs = false;
-        });
-      }
+      setState(() {
+        _logErrorMessage = '加载失败: $e';
+        _isLoadingLogs = false;
+      });
     }
   }
 
@@ -304,21 +271,20 @@ class _FunctionListPageState extends State<FunctionListPage> {
 
     // 错误状态
     if (_logErrorMessage.isNotEmpty) {
-      final isCacheMessage = _logErrorMessage.contains('缓存');
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              isCacheMessage ? Icons.cloud_off : Icons.error_outline,
+            const Icon(
+              Icons.error_outline,
               size: 48,
-              color: isCacheMessage ? Colors.blue : Colors.red,
+              color: Colors.red,
             ),
             const SizedBox(height: 16),
             Text(
               _logErrorMessage,
-              style: TextStyle(
-                color: isCacheMessage ? Colors.blue : Colors.red,
+              style: const TextStyle(
+                color: Colors.red,
               ),
               textAlign: TextAlign.center,
             ),
@@ -625,6 +591,9 @@ class _FunctionListPageState extends State<FunctionListPage> {
     debugPrint('上报LORA: deviceId=$deviceId, loraData=$loraData');
 
     try {
+      // 生成时间格式：2026/6/12 12:15:17
+      final timeStr = formatTime(DateTime.now());
+      
       final resp = await http.post(
         Uri.parse(_deviceFcUrl),
         headers: {'Content-Type': 'application/json'},
@@ -634,7 +603,7 @@ class _FunctionListPageState extends State<FunctionListPage> {
             'deviceId': deviceId,
             'lorastr': loraData,
             'upDateDevice': 'FLUTTER',
-            'time': DateTime.now().toIso8601String(),
+            'time': timeStr,
           },
         }),
       );

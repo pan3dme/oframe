@@ -23,8 +23,10 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 3, // 升级到版本3，添加蓝牙数据表
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+      onDowngrade: _onUpgrade, // 也处理降级情况
     );
   }
 
@@ -67,6 +69,73 @@ class DBHelper {
         cached_at TEXT
       )
     ''');
+
+    // 设备LOT表
+    await db.execute('''
+      CREATE TABLE device_lot (
+        deviceId TEXT PRIMARY KEY,
+        lorastr TEXT,
+        time TEXT,
+        gps TEXT,
+        upDateDevice TEXT,
+        cached_at TEXT
+      )
+    ''');
+
+    // 蓝牙数据表
+    await db.execute('''
+      CREATE TABLE bluetooth_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_name TEXT,
+        device_id TEXT,
+        data TEXT,
+        time TEXT,
+        cached_at TEXT
+      )
+    ''');
+  }
+
+  /// 数据库升级
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    print('数据库升级: 从版本 $oldVersion 到 $newVersion');
+    
+    if (oldVersion < 2) {
+      // 版本2：添加设备LOT表
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS device_lot (
+            deviceId TEXT PRIMARY KEY,
+            lorastr TEXT,
+            time TEXT,
+            gps TEXT,
+            upDateDevice TEXT,
+            cached_at TEXT
+          )
+        ''');
+        print('数据库升级: 已创建 device_lot 表');
+      } catch (e) {
+        print('数据库升级: 创建 device_lot 表时出错: $e');
+      }
+    }
+    
+    if (oldVersion < 3) {
+      // 版本3：添加蓝牙数据表
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS bluetooth_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_name TEXT,
+            device_id TEXT,
+            data TEXT,
+            time TEXT,
+            cached_at TEXT
+          )
+        ''');
+        print('数据库升级: 已创建 bluetooth_data 表');
+      } catch (e) {
+        print('数据库升级: 创建 bluetooth_data 表时出错: $e');
+      }
+    }
   }
 
   /// 保存设备数据（覆盖式）
@@ -208,6 +277,92 @@ class DBHelper {
       orderBy: 'cached_at DESC',
     );
     return maps;
+  }
+
+  /// 保存设备LOT数据（覆盖式）
+  Future<void> saveDeviceLot(List<Map<String, dynamic>> deviceLotList) async {
+    final db = await database;
+    final batch = db.batch();
+
+    // 清空旧数据
+    batch.delete('device_lot');
+
+    // 插入新数据
+    for (final item in deviceLotList) {
+      batch.insert('device_lot', {
+        'deviceId': item['deviceId'],
+        'lorastr': item['lorastr'],
+        'time': item['time'],
+        'gps': item['gps'],
+        'upDateDevice': item['upDateDevice'],
+        'cached_at': DateTime.now().toIso8601String(),
+      });
+    }
+
+    await batch.commit();
+    print('保存设备LOT数据: ${deviceLotList.length} 条');
+  }
+
+  /// 读取设备LOT数据
+  Future<List<Map<String, dynamic>>> getDeviceLot() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('device_lot');
+    return maps;
+  }
+
+  /// 根据deviceId读取设备LOT数据
+  Future<Map<String, dynamic>?> getDeviceLotByDeviceId(String deviceId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'device_lot',
+      where: 'deviceId = ?',
+      whereArgs: [deviceId],
+    );
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+
+  /// 保存蓝牙数据
+  Future<void> saveBluetoothData(String deviceName, String deviceId, String data, String time) async {
+    final db = await database;
+    await db.insert('bluetooth_data', {
+      'device_name': deviceName,
+      'device_id': deviceId,
+      'data': data,
+      'time': time,
+      'cached_at': DateTime.now().toIso8601String(),
+    });
+    print('保存蓝牙数据: device=$deviceName, data=$data');
+  }
+
+  /// 读取所有蓝牙数据
+  Future<List<Map<String, dynamic>>> getBluetoothData() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'bluetooth_data',
+      orderBy: 'cached_at DESC',
+    );
+    return maps;
+  }
+
+  /// 清空蓝牙数据
+  Future<void> clearBluetoothData() async {
+    final db = await database;
+    await db.delete('bluetooth_data');
+    print('已清空蓝牙数据');
+  }
+
+  /// 删除单条蓝牙数据（根据id）
+  Future<void> deleteBluetoothDataById(int id) async {
+    final db = await database;
+    await db.delete(
+      'bluetooth_data',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    print('已删除蓝牙数据: id=$id');
   }
 
   /// 获取缓存时间
