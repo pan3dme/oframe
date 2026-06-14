@@ -1279,6 +1279,7 @@ class _MapCenterPageState extends State<MapCenterPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'map_location_fab', // 设置唯一tag避免Hero动画冲突
         onPressed: _getCurrentLocation,
         child: _isLocating
             ? const SizedBox(
