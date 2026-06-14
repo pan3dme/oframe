@@ -30,24 +30,27 @@ extern void showDisplayBy4Area(String a, String b, String c, String d);
 #define FEM_PA 46
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 433000000  // 433MHz 国内通用863
+#define LORA_FREQ 863000000  // 433MHz 国内通用863 863
 #define TX_POWER 27          // 发射功率
 #define LORA_BW 0            // 125kHz 带宽
 #define LORA_SF 10           // 扩频因子
 #define LORA_CR 1            // 纠错率
 #define PREAMBLE_LENGTH 8    // 前导码
-#define BUFFER_SIZE 30       // 数据缓冲区
+#define BUFFER_SIZE 36       // 数据缓冲区
 
 
 //0000248B9C697090
+// 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
-  0x248B9C697090,  // 第0个设备  v4
-  0x6809A21B5BF8,  // 第1个设备  v4
-  0x8442AAAC85D8,  // 第1个设备  v3
-  0x301BA21B5BF8,  // 第1个设备  v4
-  0x0C46AAAC85D8,  // 第1个设备  v3
-  0x9875555        // 第2个设备
+  0x248B9C697090,  // v4    1
+  0x6809A21B5BF8,  // v4    2
+  0x8442AAAC85D8,  // v3    3
+  0x301BA21B5BF8,  // v4    4
+  0x0C46AAAC85D8,  // v3    5
+  0xB4E00404A7AC,  // v3    6
+  0x9875555        // 等待添加
 };
+
 
 
 String deviceName = "v4-x";

@@ -45,7 +45,7 @@ struct tm timeinfo;                         // 系统时间结构体
 String displayBuf[4] = { "", "", "", "" };  // 屏幕显示缓冲区
 
 // GPS数据队列 (环形缓冲区模拟)
-#define GPS_MAX_COUNT 1000
+#define GPS_MAX_COUNT 99
 String gpsDataArray[GPS_MAX_COUNT];
 int gpsDataCount = 0;
 int receiveCount = 0;  // 接收计数器
@@ -53,26 +53,28 @@ String deviceName = "v4-x";
 
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
-  0x248B9C697090,  // v4
-  0x6809A21B5BF8,  // v4
-  0x8442AAAC85D8,  // v3
-  0x301BA21B5BF8,  // v4
-  0x0C46AAAC85D8,  // v3
-  0x9875555        // 第2个设备
+  0x248B9C697090,  // v4    1
+  0x6809A21B5BF8,  // v4    2
+  0x8442AAAC85D8,  // v3    3
+  0x301BA21B5BF8,  // v4    4
+  0x0C46AAAC85D8,  // v3    5
+  0xB4E00404A7AC,  // v3    6
+  0x9875555        // 等待添加
 };
+
 
 
 #define FEM_EN    2    //FEM总电源
 #define FEM_PA    46   //收发切换脚
 
 // ================================== LoRa 参数 ==================================
-#define RF_FREQUENCY 433000000    // 频率 (美标915MHz段)
+#define RF_FREQUENCY 863000000    //  433MHz 国内通用863 863
 #define LORA_BANDWIDTH 0          // 带宽 125kHz
 #define LORA_SPREADING_FACTOR 10  // 扩频因子 (平衡距离和速度)
 #define LORA_CODINGRATE 1         // 纠错率
 #define LORA_PREAMBLE_LENGTH 8
 #define LORA_SYMBOL_TIMEOUT 0
-#define BUFFER_SIZE 30
+#define BUFFER_SIZE 36
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机

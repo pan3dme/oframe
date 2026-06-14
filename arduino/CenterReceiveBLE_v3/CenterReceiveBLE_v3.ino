@@ -13,6 +13,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <ArduinoJson.h>
+#include <pan3dme.h>
 
 
 
@@ -33,9 +34,7 @@ constexpr uint8_t GPS_RX_PIN = 39;  // GPS TX -> ESP32 RX
 constexpr uint8_t GPS_TX_PIN = 38;  // GPS RX -> ESP32 TX
 constexpr uint8_t GPS_ANT_EN = 42;  // GPS天线电源使能
 
-// 外部函数声明 (由板载硬件驱动)
-extern void openLedByNum(int count, int delayMs);
-extern void showDisplayBy4Area(String a, String b, String c, String d);
+
 
 // ================================== 全局变量 ==================================
 
@@ -44,24 +43,15 @@ struct tm timeinfo;                         // 系统时间结构体
 String displayBuf[4] = { "", "", "", "" };  // 屏幕显示缓冲区
 
 // GPS数据队列 (环形缓冲区模拟)
-constexpr size_t GPS_MAX_COUNT = 1000;
+constexpr size_t GPS_MAX_COUNT = 99;
 String gpsDataArray[GPS_MAX_COUNT];
 int gpsDataCount = 0;
 int receiveCount = 0;  // 接收计数器
 String deviceName = "v3-x";
 
-// 设备白名单 (ESP32芯片ID)
-uint64_t allowedDevices[] = {
-  0x248B9C697090,  // v4
-  0x6809A21B5BF8,  // v4
-  0x8442AAAC85D8,  // v3
-  0x301BA21B5BF8,  // v4
-  0x0C46AAAC85D8,  // v3
-  0x9875555        // 第2个设备
-};
 
 // ================================== LoRa 参数 ==================================
-constexpr uint32_t RF_FREQUENCY = 433000000;   // 频率 (433MHz)
+constexpr uint32_t RF_FREQUENCY = 863000000;   // 频率 (433MHz) 863 928
 constexpr uint8_t LORA_BANDWIDTH = 0;          // 带宽 125kHz
 constexpr uint8_t LORA_SPREADING_FACTOR = 10;  // 扩频因子
 constexpr uint8_t LORA_CODINGRATE = 1;         // 纠错率
@@ -88,7 +78,7 @@ void initBLE();
 
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
 void initRadio();
-void makeDivceName();
+ 
 
 // ================================== BLE 回调函数 ==================================
 // 连接/断开回调
@@ -158,7 +148,7 @@ void initWifi() {
   WiFi.disconnect(true);
   delay(100);
   WiFi.eraseAP();
- 
+
   delay(100);
   WiFi.mode(WIFI_STA);
   Serial.print("Connecting ");
@@ -292,49 +282,31 @@ void initRadio() {
   Serial.println("✅ LoRa 初始化完成");
 }
 
-// 设备ID认证 (根据MAC地址生成设备名)
-void makeDivceName() {
-  uint64_t currentId = ESP.getEfuseMac();
-  Serial.printf("当前设备编号: %012llX\n", currentId);
 
-  int index = -1;
-  for (size_t i = 0; i < sizeof(allowedDevices) / sizeof(allowedDevices[0]); ++i) {
-    if (currentId == allowedDevices[i]) {
-      index = static_cast<int>(i);
-      break;
-    }
-  }
-  if (index != -1) {
-    deviceName = "v3-" + String(index);
-    Serial.println("设备认证成功，设备名为: " + deviceName);
-  } else {
-    Serial.println("错误：该设备编号不在白名单中！");
-  }
-}
 
 // ================================== 主程序 ==================================
 void setup() {
   Serial.begin(115200);
-
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  makeDivceName();
+  deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
 
-  initWifi();   // 先尝试连WiFi对时
+  // initWifi();   // 先尝试连WiFi对时
   initRadio();  // 初始化LoRa
   initBLE();    // 初始化蓝牙
   Serial.println("✅ 系统启动完成 | 同步默认关闭");
 }
 
 void loop() {
+  ledBlink(1, 500);
   static unsigned long lastTimePrint = 0;
   unsigned long now = millis();
 
   // --- 每秒打印当前时间 ---
   if (now - lastTimePrint >= 1000) {
     lastTimePrint = now;
-    Serial.print("[TIME] ");
-    Serial.println(getCurrentTime());
+    // Serial.print("[TIME] ");
+    // Serial.println(getCurrentTime());
   }
 
   // --- LoRa 状态机处理 ---
@@ -374,15 +346,16 @@ void loop() {
     String data = getAndRemoveFirstGpsData();
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
-
-    Serial.print("✅ 同步发送：");
-    Serial.println(data);
     Serial.print("📊 剩余：");
     Serial.println(gpsDataCount);
+    Serial.print("✅ 同步发送：");
+    Serial.println(data);
+
     delay(100);  // 防止发送过快
   } else {
     delay(100);
   }
+
 
 
 

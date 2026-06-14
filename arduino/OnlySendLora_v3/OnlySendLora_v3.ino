@@ -4,7 +4,7 @@
  * 说明：仅使用LoRa底层硬件通信，不使用LoRaWAN协议
  *       两块设备烧录相同程序，即可自动收发测试
  */
-
+#include <WiFi.h>
 #include "LoRaWan_APP.h"  // LoRa底层驱动库
 #include "Arduino.h"      // Arduino核心库
 #include "HT_TinyGPS++.h"
@@ -131,6 +131,36 @@ void initRola() {
   state = STATE_TX;
 }
 
+#define ssid "yangchang"
+#define password "13787501167"
+// 初始化WiFi并同步网络时间 (获取后自动断开以省电)
+void initWifi() {
+   Serial.println("------------------------");
+
+  // 3. 开始连接
+  Serial.print("正在连接: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  int cnt = 0;
+  while (WiFi.status() != WL_CONNECTED && cnt < 30) {
+    delay(500);
+    Serial.print(".");
+    cnt++;
+  }
+
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("✅ 连接成功！");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.print("❌ 失败，status = ");
+    Serial.println(WiFi.status());
+  }
+  
+}
+
 /* ==================== 初始化函数（只执行一次） ==================== */
 void setup() {
   Serial.begin(115200);
@@ -142,6 +172,9 @@ void setup() {
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   makeDivceName();
+   WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  // initWifi();
   initRola();
 }
 
