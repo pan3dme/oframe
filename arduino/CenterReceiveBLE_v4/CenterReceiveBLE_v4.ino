@@ -13,6 +13,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <ArduinoJson.h>
+#include <pan3dme.h>
 
 
 
@@ -34,9 +35,6 @@ bool showTime = false;
 #define GPS_TX_PIN 38  // GPS RX -> ESP32 TX
 #define GPS_ANT_EN 42  // GPS天线电源使能
 
-// 外部函数声明 (由板载硬件驱动)
-extern void openLedByNum(int count, int delayMs);
-extern void showDisplayBy4Area(String a, String b, String c, String d);
 
 // ================================== 全局变量 ==================================
 
@@ -51,30 +49,18 @@ int gpsDataCount = 0;
 int receiveCount = 0;  // 接收计数器
 String deviceName = "v4-x";
 
-// 设备白名单 (ESP32芯片ID)
-uint64_t allowedDevices[] = {
-  0x248B9C697090,  // v4    1
-  0x6809A21B5BF8,  // v4    2
-  0x8442AAAC85D8,  // v3    3
-  0x301BA21B5BF8,  // v4    4
-  0x0C46AAAC85D8,  // v3    5
-  0xB4E00404A7AC,  // v3    6
-  0x9875555        // 等待添加
-};
 
 
 
-#define FEM_EN    2    //FEM总电源
-#define FEM_PA    46   //收发切换脚
+#define FEM_EN 2   //FEM总电源
+#define FEM_PA 46  //收发切换脚
 
 // ================================== LoRa 参数 ==================================
-#define RF_FREQUENCY 863000000    //  433MHz 国内通用863 863
 #define LORA_BANDWIDTH 0          // 带宽 125kHz
-#define LORA_SPREADING_FACTOR 10  // 扩频因子 (平衡距离和速度)
 #define LORA_CODINGRATE 1         // 纠错率
 #define LORA_PREAMBLE_LENGTH 8
 #define LORA_SYMBOL_TIMEOUT 0
-#define BUFFER_SIZE 36
+ 
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机
@@ -91,14 +77,13 @@ void addGpsData(String data);
 String getAndRemoveFirstGpsData();
 void initWifi();
 String getCurrentTime();
-
 String getCurrentGpsTime();
 void initGPS();
 void initBLE();
 
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
 void initRadio();
-void makeDivceName();
+
 
 // ================================== BLE 回调函数 ==================================
 // 连接/断开回调
@@ -336,9 +321,9 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 void initRadio() {
   RadioEvents.RxDone = OnRxDone;
   Radio.Init(&RadioEvents);
-  Radio.SetChannel(RF_FREQUENCY);
+  Radio.SetChannel(LORA_FREQ);
 
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SF,
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
 
@@ -347,32 +332,13 @@ void initRadio() {
   Serial.println("✅ LoRa 初始化完成");
 }
 
-// 设备ID认证 (根据MAC地址生成设备名)
-void makeDivceName() {
-  uint64_t currentId = ESP.getEfuseMac();
-  Serial.printf("当前设备编号: %012llX\n", currentId);
-
-  int index = -1;
-  for (int i = 0; i < sizeof(allowedDevices) / 8; i++) {  // 修正：计算数组长度
-    if (currentId == allowedDevices[i]) {
-      index = i;
-      break;
-    }
-  }
-  if (index != -1) {
-    deviceName = "v4-" + String(index);
-    Serial.println("设备认证成功，设备名为: " + deviceName);
-  } else {
-    Serial.println("错误：该设备编号不在白名单中！");
-  }
-}
 
 // ================================== 主程序 ==================================
 void setup() {
   Serial.begin(115200);
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  makeDivceName();
+  deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
 
   initWifi();  // 先尝试连WiFi对时

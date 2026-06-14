@@ -6,10 +6,8 @@
 
 #include "LoRaWan_APP.h"
 #include "Arduino.h"
+#include <pan3dme.h>
 
-// 外部硬件驱动函数
-extern void openLedByNum(int count, int delayMs);
-extern void showDisplayBy4Area(String a, String b, String c, String d);
 
 #include "HT_TinyGPS++.h"
 
@@ -29,27 +27,8 @@ extern void showDisplayBy4Area(String a, String b, String c, String d);
 #define FEM_EN 2
 #define FEM_PA 46
 
-// ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 863000000  // 433MHz 国内通用863 863
-#define TX_POWER 27          // 发射功率
-#define LORA_BW 0            // 125kHz 带宽
-#define LORA_SF 10           // 扩频因子
-#define LORA_CR 1            // 纠错率
-#define PREAMBLE_LENGTH 8    // 前导码
-#define BUFFER_SIZE 36       // 数据缓冲区
 
 
-//0000248B9C697090
-// 设备白名单 (ESP32芯片ID)
-uint64_t allowedDevices[] = {
-  0x248B9C697090,  // v4    1
-  0x6809A21B5BF8,  // v4    2
-  0x8442AAAC85D8,  // v3    3
-  0x301BA21B5BF8,  // v4    4
-  0x0C46AAAC85D8,  // v3    5
-  0xB4E00404A7AC,  // v3    6
-  0x9875555        // 等待添加
-};
 
 
 
@@ -112,46 +91,16 @@ void readGpsInfo() {
   }
   displayBuf[2] = gpsInfo;
 }
-void makeDivceName() {
-  uint64_t currentId = ESP.getEfuseMac();
-  Serial.printf("当前设备编号: %012llX\n", currentId);
-
-  // 3. 遍历数组，查找当前编号在数组中的索引位置
-  int index = -1;  // 默认值为 -1，表示未找到
-  for (int i = 0; i < sizeof(allowedDevices); i++) {
-    if (currentId == allowedDevices[i]) {
-      index = i;
-      break;  // 找到了就跳出循环
-    }
-  }
-  // 4. 根据索引位置给设备取名
-  if (index != -1) {
-    deviceName = "v4-" + String(index);  // 拼接成 "id0", "id1" 等
-    Serial.println("设备认证成功，设备名为: " + deviceName);
-    // 5. (可选) 将这个名字设置为 WiFi 的主机名，方便在路由器后台查看
-  } else {
-    Serial.println("错误：该设备编号不在白名单中！");
-    // 你可以在这里添加处理逻辑，比如让设备进入报错状态或停止运行
-  }
-}
 void initLora() {
-
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
-
   // LoRa 初始化
   Radio.Init(&radioEvents);
   Radio.SetChannel(LORA_FREQ);
-
   // 发送参数配置
   Radio.SetTxConfig(MODEM_LORA, TX_POWER, 0, LORA_BW,
                     LORA_SF, LORA_CR, PREAMBLE_LENGTH, false,
                     true, 0, 0, false, 3000);
-
- 
-
-
-
 
   currentState = DEVICE_SLEEP;  // 初始状态：休眠
 }
@@ -159,17 +108,19 @@ void initLora() {
 void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  makeDivceName();
+  deviceName = makeDivceName();
   displayBuf[0] = "name " + deviceName;
 
-  initGPS();
-  initLora();
 
-  // pinMode(FEM_EN, OUTPUT);
-  // digitalWrite(FEM_EN, HIGH);
+#if defined(WIFI_LORA_32_V4)
+  initGPS();
+#endif
+
+  initLora();
+  pinMode(FEM_EN, OUTPUT);
+  digitalWrite(FEM_EN, HIGH);
   // pinMode(FEM_PA, OUTPUT);
   // digitalWrite(FEM_PA, HIGH);
-
   // 绑定发送事件
 }
 void sendInfoByType(char* data, int type) {

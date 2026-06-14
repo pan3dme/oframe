@@ -29,11 +29,11 @@ bool showTime = false;
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 // ================================== 硬件引脚定义 ==================================
-constexpr uint8_t VGNSS_CTRL = 34;  // GPS电源控制
-constexpr uint8_t GPS_RX_PIN = 39;  // GPS TX -> ESP32 RX
-constexpr uint8_t GPS_TX_PIN = 38;  // GPS RX -> ESP32 TX
-constexpr uint8_t GPS_ANT_EN = 42;  // GPS天线电源使能
-
+// GPS模块引脚
+#define VGNSS_CTRL 34  // GPS电源控制 (低电平开启)
+#define GPS_RX_PIN 39  // GPS TX -> ESP32 RX
+#define GPS_TX_PIN 38  // GPS RX -> ESP32 TX
+#define GPS_ANT_EN 42  // GPS天线电源使能
 
 
 // ================================== 全局变量 ==================================
@@ -43,21 +43,26 @@ struct tm timeinfo;                         // 系统时间结构体
 String displayBuf[4] = { "", "", "", "" };  // 屏幕显示缓冲区
 
 // GPS数据队列 (环形缓冲区模拟)
-constexpr size_t GPS_MAX_COUNT = 99;
+#define GPS_MAX_COUNT 99
 String gpsDataArray[GPS_MAX_COUNT];
 int gpsDataCount = 0;
 int receiveCount = 0;  // 接收计数器
-String deviceName = "v3-x";
+String deviceName = "v4-x";
 
+
+
+
+#define FEM_EN    2    //FEM总电源
+#define FEM_PA    46   //收发切换脚
 
 // ================================== LoRa 参数 ==================================
-constexpr uint32_t RF_FREQUENCY = 863000000;   // 频率 (433MHz) 863 928
-constexpr uint8_t LORA_BANDWIDTH = 0;          // 带宽 125kHz
-constexpr uint8_t LORA_SPREADING_FACTOR = 10;  // 扩频因子
-constexpr uint8_t LORA_CODINGRATE = 1;         // 纠错率
-constexpr uint8_t LORA_PREAMBLE_LENGTH = 8;    // 前导码
-constexpr uint8_t LORA_SYMBOL_TIMEOUT = 5;     // 符号超时
-constexpr size_t BUFFER_SIZE = 36;             // 缓冲区大小
+#define RF_FREQUENCY 863000000    //  433MHz 国内通用863 863
+#define LORA_BANDWIDTH 0          // 带宽 125kHz
+#define LORA_SPREADING_FACTOR 10  // 扩频因子 (平衡距离和速度)
+#define LORA_CODINGRATE 1         // 纠错率
+#define LORA_PREAMBLE_LENGTH 8
+#define LORA_SYMBOL_TIMEOUT 0
+#define BUFFER_SIZE 36
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机
@@ -74,6 +79,9 @@ void addGpsData(String data);
 String getAndRemoveFirstGpsData();
 void initWifi();
 String getCurrentTime();
+
+String getCurrentGpsTime();
+void initGPS();
 void initBLE();
 
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
@@ -116,7 +124,6 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 // ================================== 核心逻辑函数 ==================================
 // 添加GPS数据到队列
 void addGpsData(String data) {
-
   if (gpsDataCount < GPS_MAX_COUNT) {
     gpsDataArray[gpsDataCount++] = data;
   }
@@ -132,50 +139,35 @@ String getAndRemoveFirstGpsData() {
   gpsDataArray[--gpsDataCount] = "";
   return first;
 }
-#define ssid "yangchang"
-#define password "13787501167"
+
+// 初始化WiFi并同步网络时间
 // 初始化WiFi并同步网络时间 (获取后自动断开以省电)
 void initWifi() {
+  // 如果已经执行过一次对时并断开，则直接返回，不再连接
   if (wifiSyncDone) return;
 
+  const char *ssid = "yangchang";
+  const char *password = "13787501167";
 
-
-
-  Serial.println("\n========== WiFi 连接开始 ==========");
-  Serial.printf("SSID: %s\n", ssid);
-
-
-  WiFi.disconnect(true);
-  delay(100);
-  WiFi.eraseAP();
-
-  delay(100);
-  WiFi.mode(WIFI_STA);
-  Serial.print("Connecting ");
-  Serial.println(ssid);
-  delay(100);
-
+  Serial.print("正在连接 WiFi");
   WiFi.begin(ssid, password);
   unsigned long startAttemptTime = millis();
   int skipNum = 0;
 
-  // 增加超时时间到 30 秒，并更频繁地打印状态
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 30000) {
-    delay(500);
-    Serial.printf("连接中... [%d%%] 状态码: %d\n", skipNum * 2, WiFi.status());
+  // 等待连接或超时(10秒)
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+    openLedByNum(1, 500);
+    Serial.print(".");
     skipNum++;
-    showDisplayBy4Area("wifi connect " + String(skipNum), "SSID: " + String(ssid), "", "");
+    showDisplayBy4Area("wifi connect" + String(skipNum), "", "", "");
   }
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n✅ WiFi 连接成功！");
-    Serial.printf("IP 地址: %s\n", WiFi.localIP().toString().c_str());
-    Serial.printf("信号强度: %d dBm\n", WiFi.RSSI());
 
+    // 配置时区和NTP服务器
     configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");
     Serial.println("正在同步网络时间...");
-
-    delay(2000);
 
     int retry = 0;
     while (!getLocalTime(&timeinfo) && retry < 50) {
@@ -185,51 +177,90 @@ void initWifi() {
 
     if (retry < 50) {
       Serial.println("✅ 网络时间获取成功！");
-      char timeStr[30];
-      snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-               timeinfo.tm_year + 1900,
-               timeinfo.tm_mon + 1,
-               timeinfo.tm_mday,
-               timeinfo.tm_hour,
-               timeinfo.tm_min,
-               timeinfo.tm_sec);
-      Serial.println("当前时间: " + String(timeStr));
-      WiFi.disconnect(true);
-      WiFi.mode(WIFI_OFF);
+      // --- 关键修改：获取成功后，断开WiFi ---
+      WiFi.disconnect(true);  // true 表示从闪存中删除配置（可选），false 则保留配置
+      WiFi.mode(WIFI_OFF);    // 强制关闭 WiFi 模块射频
       Serial.println("📶 WiFi 已关闭以省电");
     } else {
       Serial.println("❌ 获取网络时间失败！");
     }
   } else {
-    Serial.printf("\n❌ WiFi 连接失败！最终状态码: %d\n", WiFi.status());
-    Serial.println("可能原因：");
-    Serial.println("  1. WiFi 密码错误");
-    Serial.println("  2. WiFi 信号太弱");
-    Serial.println("  3. SSID 不存在");
-    Serial.println("  4. WiFi 模块初始化失败");
+    Serial.println("\n⏰ WiFi 连接超时（10秒），跳过网络对时...");
   }
 
+  // 无论成功与否，都将标志位置为 true，防止 loop 中反复尝试
+  // 如果希望在某些特定条件下（如时间久未更新）再次尝试，可修改此逻辑
   wifiSyncDone = true;
 }
 
 // 获取可用的时间字符串 (优先网络，其次GPS，最后默认)
 String getCurrentTime() {
+  // --- 1. 优先尝试获取网络时间 (NTP) ---
+  // getLocalTime 如果成功，会更新全局的 timeinfo
   if (getLocalTime(&timeinfo)) {
     char timeStr[30];
+    // 直接用 %d 来格式化月份和日期，就不会有前导 0 了
     snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-             timeinfo.tm_year + 1900,
-             timeinfo.tm_mon + 1,
-             timeinfo.tm_mday,
-             timeinfo.tm_hour,
-             timeinfo.tm_min,
-             timeinfo.tm_sec);
+             timeinfo.tm_year + 1900,  // 年份需要加 1900
+             timeinfo.tm_mon + 1,      // 月份是从 0 开始的，需要加 1
+             timeinfo.tm_mday,         // 日期
+             timeinfo.tm_hour,         // 小时
+             timeinfo.tm_min,          // 分钟
+             timeinfo.tm_sec);         // 秒
     return String(timeStr);
+  }
+  // --- 2. 如果网络时间无效，尝试获取GPS时间 ---
+  if (gps.time.isValid() && gps.date.isValid()) {
+    return getCurrentGpsTime();
   }
   return "0000/00/00 00:00:00";
 }
 
 
+// 获取GPS时间 (带自动同步逻辑)
+// 获取GPS时间并转换为北京时间 (UTC+8)
+String getCurrentGpsTime() {
+  if (!gps.time.isValid()) return "no gps time";
 
+  // 1. 获取GPS原始时间（UTC）
+  int hour = gps.time.hour();
+  int minute = gps.time.minute();
+  int second = gps.time.second();
+  int day = gps.date.day();
+  int month = gps.date.month();
+  int year = gps.date.year();
+
+  // 2. 转换为北京时间 (UTC+8)
+  // 简单的加法
+  hour += 8;
+
+  // 3. 处理进位（跨天）
+  // 如果小时数大于等于24，需要进位到天
+  if (hour >= 24) {
+    hour -= 24;
+    day += 1;
+
+    // 注意：这里仅做了简单的+1处理，未处理跨月/跨年（对于调试显示足够）
+    // 如果需要严谨的日期计算，建议使用 time_t 和 mktime，但考虑到内存限制，此处简化
+  }
+
+  // 4. 格式化输出
+  char timeStr[30];
+  snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
+           year, month, day, hour, minute, second);
+
+  return String(timeStr);  // 返回 月/日 时:分:秒
+}
+
+// 初始化GPS串口
+void initGPS() {
+  pinMode(VGNSS_CTRL, OUTPUT);
+  digitalWrite(VGNSS_CTRL, LOW);  // 开启GPS电源
+  pinMode(GPS_ANT_EN, OUTPUT);
+  digitalWrite(GPS_ANT_EN, HIGH);  // 开启天线供电
+  Serial1.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial.println("GPS 已启动");
+}
 
 // 初始化BLE服务
 void initBLE() {
@@ -248,6 +279,25 @@ void initBLE() {
   Serial.println("✅ 初始化蓝牙完成");
 }
 
+
+void showGpsToOled() {
+  char gpsStr[128];
+  uint16_t randomId = random(10000, 99999);
+  int hour = gps.time.hour();
+  int minute = gps.time.minute();
+  int second = gps.time.second();
+
+  if (gps.location.isValid() && gps.time.isValid() && gps.satellites.value() > 0) {
+    sprintf(gpsStr, "ID:%d | TIME:%02d:%02d:%02d | SAT:%d | LAT:%.6f | LON:%.6f",
+            randomId, hour, minute, second, gps.satellites.value(),
+            gps.location.lat(), gps.location.lng());
+    displayBuf[1] = "sat:" + String(gps.satellites.value());
+  } else {
+    sprintf(gpsStr, "ID:%d | TIME:%02d:%02d:%02d | SAT:0 | LAT:0.000000 | LON:0.000000",
+            randomId, hour, minute, second);
+    displayBuf[1] = "sat:0 no gps";
+  }
+}
 
 // LoRa 接收回调函数
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
@@ -275,39 +325,38 @@ void initRadio() {
   RadioEvents.RxDone = OnRxDone;
   Radio.Init(&RadioEvents);
   Radio.SetChannel(RF_FREQUENCY);
+
   Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
-                    LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, true);
+                    LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
+
+
   state = STATE_RX;
   Serial.println("✅ LoRa 初始化完成");
 }
-
-
+ 
 
 // ================================== 主程序 ==================================
 void setup() {
   Serial.begin(115200);
+
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  deviceName = makeDivceName();
+  deviceName=makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
 
-  // initWifi();   // 先尝试连WiFi对时
+  initWifi();  // 先尝试连WiFi对时
+  initGPS();   // 初始化GPS
+  pinMode(FEM_EN, OUTPUT);
+  digitalWrite(FEM_EN, HIGH);
+  // pinMode(FEM_PA, OUTPUT);
+  // digitalWrite(FEM_PA, HIGH);
+
   initRadio();  // 初始化LoRa
   initBLE();    // 初始化蓝牙
   Serial.println("✅ 系统启动完成 | 同步默认关闭");
 }
 
 void loop() {
-  ledBlink(1, 500);
-  static unsigned long lastTimePrint = 0;
-  unsigned long now = millis();
-
-  // --- 每秒打印当前时间 ---
-  if (now - lastTimePrint >= 1000) {
-    lastTimePrint = now;
-    // Serial.print("[TIME] ");
-    // Serial.println(getCurrentTime());
-  }
 
   // --- LoRa 状态机处理 ---
   switch (state) {
@@ -315,9 +364,7 @@ void loop() {
       Radio.Rx(0);
       state = LOWPOWER;
       break;
-    case LOWPOWER:
-      Radio.IrqProcess();
-      break;
+    case LOWPOWER: Radio.IrqProcess(); break;
     default: break;
   }
 
@@ -330,6 +377,13 @@ void loop() {
     displayBuf[3].concat(loraStr, 15);
   }
 
+  // --- GPS 数据解析 ---
+  if (Serial1.available() > 0) {
+    while (Serial1.available()) {
+      gps.encode(Serial1.read());
+    }
+    showGpsToOled();
+  }
 
 
   // --- LED 提示 ---
@@ -346,18 +400,25 @@ void loop() {
     String data = getAndRemoveFirstGpsData();
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
-    Serial.print("📊 剩余：");
-    Serial.println(gpsDataCount);
+
     Serial.print("✅ 同步发送：");
     Serial.println(data);
-
+    Serial.print("📊 剩余：");
+    Serial.println(gpsDataCount);
     delay(100);  // 防止发送过快
   } else {
     delay(100);
   }
 
+  // --- 时间显示调试 ---
+  // Serial.println(getCurrentTime() + " " + getCurrentGpsTime());
 
+  if (showTime) {
+    showDisplayBy4Area(getCurrentTime().substring(5), getCurrentGpsTime().substring(5), displayBuf[2], displayBuf[3]);
+  } else {
 
+    showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
+  }
 
   // --- OLED 屏幕刷新 ---
 }
