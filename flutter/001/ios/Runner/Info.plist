@@ -49,6 +49,12 @@
 	<string>需要位置权限来获取您的当前位置</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>需要位置权限来获取您的当前位置</string>
+	<key>NSCameraUsageDescription</key>
+	<string>需要相机权限来拍摄牛羊照片</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>需要相册权限来选择牛羊照片</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>需要相册权限来保存牛羊照片</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
