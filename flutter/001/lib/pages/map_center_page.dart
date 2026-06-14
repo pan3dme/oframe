@@ -15,7 +15,7 @@ class MapCenterPage extends StatefulWidget {
   State<MapCenterPage> createState() => _MapCenterPageState();
 }
 
-class _MapCenterPageState extends State<MapCenterPage> {
+class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   LatLng? _currentPosition;
   bool _isLocating = false;
@@ -37,6 +37,10 @@ class _MapCenterPageState extends State<MapCenterPage> {
   bool _showDevices = false; // 是否显示设备位置
   Map<String, Map<String, dynamic>> _bluetoothGpsCache = {}; // 蓝牙缓存GPS映射: deviceId -> {lat, lng}
   
+  // 黄点闪烁动画
+  AnimationController? _blinkAnimationController;
+  double _blinkOpacity = 1.0;
+  
   // 地图缓存相关
   bool _isCacheEnabled = true; // 是否启用缓存
   int _cachedTileCount = 0; // 已缓存瓦片数量
@@ -51,6 +55,37 @@ class _MapCenterPageState extends State<MapCenterPage> {
     _getCurrentLocation();
     // 自动加载设备位置（先缓存后网络）
     _loadDevicePositionsAuto();
+    // 初始化闪烁动画
+    _initBlinkAnimation();
+  }
+
+  /// 初始化黄点闪烁动画
+  void _initBlinkAnimation() {
+    _blinkAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000), // 总周期1秒
+    );
+    
+    _blinkAnimationController!.repeat();
+    
+    _blinkAnimationController!.addListener(() {
+      setState(() {
+        final value = _blinkAnimationController!.value;
+        // 0-0.5秒：黄色
+        // 0.5-1秒：红色
+        if (value < 0.5) {
+          _blinkOpacity = 1.0; // 黄色阶段
+        } else {
+          _blinkOpacity = 0.0; // 红色阶段
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _blinkAnimationController?.dispose();
+    super.dispose();
   }
 
   /// 初始化瓦片缓存
@@ -1295,45 +1330,95 @@ class _MapCenterPageState extends State<MapCenterPage> {
                       point: LatLng(device['lat'], device['lng']),
                       width: 80,
                       height: 50,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 圆点（黄点或红点）
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: markerColor,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          // 设备名称（透明背景）
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Text(
-                              safeDeviceName.length > 8 
-                                ? safeDeviceName.substring(0, 8) 
-                                : safeDeviceName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                shadows: [
-                                  Shadow(
-                                    offset: Offset(1, 1),
-                                    blurRadius: 2,
-                                    color: markerBgColor.withOpacity(0.8),
+                      child: fromBluetooth
+                          ? AnimatedBuilder(
+                              animation: _blinkAnimationController!,
+                              builder: (context, child) {
+                                final value = _blinkAnimationController!.value;
+                                final isRed = value >= 0.5; // 后0.5秒变红色
+                                final currentColor = isRed ? Colors.red : Colors.yellow;
+                                final currentBgColor = isRed ? Colors.red.shade700 : Colors.yellow.shade700;
+                                
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // 圆点（黄红交替）
+                                    Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: currentColor,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 2),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    // 设备名称（透明背景，阴影跟随颜色）
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                      child: Text(
+                                        safeDeviceName.length > 8 
+                                          ? safeDeviceName.substring(0, 8) 
+                                          : safeDeviceName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          shadows: [
+                                            Shadow(
+                                              offset: Offset(1, 1),
+                                              blurRadius: 2,
+                                              color: currentBgColor.withOpacity(0.8),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            )
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // 圆点（红点不闪烁）
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: markerColor,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
                                   ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 2),
+                                // 设备名称（透明背景）
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  child: Text(
+                                    safeDeviceName.length > 8 
+                                      ? safeDeviceName.substring(0, 8) 
+                                      : safeDeviceName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      shadows: [
+                                        Shadow(
+                                          offset: Offset(1, 1),
+                                          blurRadius: 2,
+                                          color: markerBgColor.withOpacity(0.8),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
                     );
                   }).toList(),
                 ),
