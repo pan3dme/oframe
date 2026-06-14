@@ -35,6 +35,7 @@ class _MapCenterPageState extends State<MapCenterPage> {
   // 设备位置数据
   List<Map<String, dynamic>> _devicePositions = []; // 设备位置列表
   bool _showDevices = false; // 是否显示设备位置
+  Map<String, Map<String, dynamic>> _bluetoothGpsCache = {}; // 蓝牙缓存GPS映射: deviceId -> {lat, lng}
   
   // 地图缓存相关
   bool _isCacheEnabled = true; // 是否启用缓存
@@ -99,6 +100,9 @@ class _MapCenterPageState extends State<MapCenterPage> {
         return;
       }
       
+      // 先加载蓝牙缓存GPS数据
+      await _loadBluetoothGpsCache();
+      
       // 构建设备LOT映射
       final lotMap = <String, Map<String, dynamic>>{};
       for (final lot in deviceLotList) {
@@ -120,31 +124,54 @@ class _MapCenterPageState extends State<MapCenterPage> {
           displayName = deviceId;
         }
         
-        final lot = lotMap[deviceId];
-        if (lot != null) {
-          final gpsStr = lot['gps'] as String?;
-          if (gpsStr != null && gpsStr.isNotEmpty && gpsStr.contains(',')) {
-            try {
-              final parts = gpsStr.split(',');
-              if (parts.length >= 2) {
-                final lat = double.tryParse(parts[0].trim());
-                final lng = double.tryParse(parts[1].trim());
-                
-                if (lat != null && lng != null && lat != 0 && lng != 0) {
-                  final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
+        // 优先使用蓝牙缓存中的GPS坐标
+        final bluetoothGps = _bluetoothGpsCache[deviceId];
+        double? lat;
+        double? lng;
+        bool fromBluetooth = false;
+        
+        if (bluetoothGps != null) {
+          // 使用蓝牙缓存的GPS
+          lat = bluetoothGps['lat'] as double;
+          lng = bluetoothGps['lng'] as double;
+          fromBluetooth = true;
+          debugPrint('[设备位置] 设备[$displayName] 使用蓝牙缓存GPS: ($lat, $lng)');
+        } else {
+          // 使用LOT数据中的GPS
+          final lot = lotMap[deviceId];
+          if (lot != null) {
+            final gpsStr = lot['gps'] as String?;
+            if (gpsStr != null && gpsStr.isNotEmpty && gpsStr.contains(',')) {
+              try {
+                final parts = gpsStr.split(',');
+                if (parts.length >= 2) {
+                  final parsedLat = double.tryParse(parts[0].trim());
+                  final parsedLng = double.tryParse(parts[1].trim());
                   
-                  positions.add({
-                    'deviceId': deviceId,
-                    'name': displayName,
-                    'lat': gcj02Coord[0],
-                    'lng': gcj02Coord[1],
-                  });
+                  if (parsedLat != null && parsedLng != null && parsedLat != 0 && parsedLng != 0) {
+                    lat = parsedLat;
+                    lng = parsedLng;
+                    debugPrint('[设备位置] 设备[$displayName] 使用LOT GPS: ($lat, $lng)');
+                  }
                 }
+              } catch (e) {
+                debugPrint('[设备位置] 解析GPS失败: $e');
               }
-            } catch (e) {
-              debugPrint('[设备位置] 解析GPS失败: $e');
             }
           }
+        }
+        
+        // 如果有GPS坐标，转换并添加到列表
+        if (lat != null && lng != null && lat != 0 && lng != 0) {
+          final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
+          
+          positions.add({
+            'deviceId': deviceId,
+            'name': displayName,
+            'lat': gcj02Coord[0],
+            'lng': gcj02Coord[1],
+            'fromBluetooth': fromBluetooth, // 标记数据来源
+          });
         }
       }
       
@@ -182,6 +209,62 @@ class _MapCenterPageState extends State<MapCenterPage> {
     }
   }
 
+  /// 加载蓝牙缓存GPS数据
+  Future<void> _loadBluetoothGpsCache() async {
+    try {
+      debugPrint('[蓝牙GPS缓存] 开始加载...');
+      
+      final bluetoothData = await DBHelper().getBluetoothData();
+      debugPrint('[蓝牙GPS缓存] 共${bluetoothData.length}条数据');
+      
+      final gpsMap = <String, Map<String, dynamic>>{};
+      
+      for (final item in bluetoothData) {
+        try {
+          final dataStr = item['data'] as String?;
+          if (dataStr == null || dataStr.isEmpty) continue;
+          
+          // 解析JSON: {"info":"1|v4-3|26.52956,109.39073|368","upDateDevice":"v4-1","time":"2026/6/12 13:12:44"}
+          final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+          final lorastr = jsonData['info'] as String?;
+          
+          if (lorastr == null || !lorastr.contains('|')) continue;
+          
+          // 解析LORA字符串: "1|v4-3|26.52956,109.39073|368"
+          final parts = lorastr.split('|');
+          if (parts.length >= 4) {
+            final deviceId = parts[1]; // v4-3
+            final gpsPart = parts[2]; // 26.52956,109.39073
+            
+            if (gpsPart.contains(',')) {
+              final gpsCoords = gpsPart.split(',');
+              if (gpsCoords.length >= 2) {
+                final lat = double.tryParse(gpsCoords[0].trim());
+                final lng = double.tryParse(gpsCoords[1].trim());
+                
+                if (lat != null && lng != null && lat != 0 && lng != 0) {
+                  // 只保留最新的GPS数据（后面的会覆盖前面的）
+                  gpsMap[deviceId] = {'lat': lat, 'lng': lng};
+                  debugPrint('[蓝牙GPS缓存] 设备[$deviceId]: ($lat, $lng)');
+                }
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('[蓝牙GPS缓存] 解析单条数据失败: $e');
+        }
+      }
+      
+      setState(() {
+        _bluetoothGpsCache = gpsMap;
+      });
+      
+      debugPrint('[蓝牙GPS缓存] 加载完成: ${gpsMap.length}个设备的GPS');
+    } catch (e) {
+      debugPrint('[蓝牙GPS缓存] 加载失败: $e');
+    }
+  }
+
   /// 加载设备位置数据（用于手动刷新）
   Future<void> _loadDevicePositions() async {
     try {
@@ -209,6 +292,9 @@ class _MapCenterPageState extends State<MapCenterPage> {
         debugPrint('[设备位置] 第一个LOT: ${deviceLotList[0]}');
       }
       
+      // 先加载蓝牙缓存GPS数据
+      await _loadBluetoothGpsCache();
+      
       // 构建设备LOT映射
       final lotMap = <String, Map<String, dynamic>>{};
       for (final lot in deviceLotList) {
@@ -222,6 +308,7 @@ class _MapCenterPageState extends State<MapCenterPage> {
       final positions = <Map<String, dynamic>>[];
       int noGpsCount = 0; // 没有GPS的设备数
       int invalidGpsCount = 0; // GPS无效的设备数
+      int bluetoothGpsCount = 0; // 使用蓝牙GPS的设备数
       
       for (final device in devices) {
         final deviceId = device['deviceId'] as String;
@@ -235,57 +322,83 @@ class _MapCenterPageState extends State<MapCenterPage> {
           displayName = deviceId;
         }
         
-        // 查找对应的LOT数据
-        final lot = lotMap[deviceId];
-        if (lot != null) {
-          final gpsStr = lot['gps'] as String?;
-          debugPrint('[设备位置] 设备[$displayName] GPS原始数据: "$gpsStr"');
-          
-          if (gpsStr == null || gpsStr.isEmpty) {
-            noGpsCount++;
-            debugPrint('[设备位置] 设备[$displayName] 没有GPS数据');
-            continue;
-          }
-          
-          if (!gpsStr.contains(',')) {
-            invalidGpsCount++;
-            debugPrint('[设备位置] 设备[$displayName] GPS格式错误: $gpsStr');
-            continue;
-          }
-          
-          try {
-            // 解析GPS坐标："纬度,经度"
-            final parts = gpsStr.split(',');
-            if (parts.length >= 2) {
-              final lat = double.tryParse(parts[0].trim());
-              final lng = double.tryParse(parts[1].trim());
-              
-              debugPrint('[设备位置] 设备[$displayName] 解析后: lat=$lat, lng=$lng');
-              
-              if (lat != null && lng != null && lat != 0 && lng != 0) {
-                // WGS-84转GCJ-02
-                final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
-                
-                positions.add({
-                  'deviceId': deviceId,
-                  'name': displayName,
-                  'lat': gcj02Coord[0],
-                  'lng': gcj02Coord[1],
-                });
-                
-                debugPrint('[设备位置] ✓ $displayName: ($lat, $lng) -> (${gcj02Coord[0]}, ${gcj02Coord[1]})');
-              } else {
-                invalidGpsCount++;
-                debugPrint('[设备位置] 设备[$displayName] GPS坐标为0');
-              }
-            }
-          } catch (e) {
-            invalidGpsCount++;
-            debugPrint('[设备位置] 设备[$displayName] 解析GPS失败: $e');
-          }
+        // 优先使用蓝牙缓存中的GPS坐标
+        final bluetoothGps = _bluetoothGpsCache[deviceId];
+        double? lat;
+        double? lng;
+        bool fromBluetooth = false;
+        
+        if (bluetoothGps != null) {
+          // 使用蓝牙缓存的GPS
+          lat = bluetoothGps['lat'] as double;
+          lng = bluetoothGps['lng'] as double;
+          fromBluetooth = true;
+          bluetoothGpsCount++;
+          debugPrint('[设备位置] ✓ 设备[$displayName] 使用蓝牙缓存GPS: ($lat, $lng)');
         } else {
-          noGpsCount++;
-          debugPrint('[设备位置] 设备[$displayName] 没有找到LOT数据');
+          // 查找对应的LOT数据
+          final lot = lotMap[deviceId];
+          if (lot != null) {
+            final gpsStr = lot['gps'] as String?;
+            debugPrint('[设备位置] 设备[$displayName] GPS原始数据: "$gpsStr"');
+            
+            if (gpsStr == null || gpsStr.isEmpty) {
+              noGpsCount++;
+              debugPrint('[设备位置] 设备[$displayName] 没有GPS数据');
+              continue;
+            }
+            
+            if (!gpsStr.contains(',')) {
+              invalidGpsCount++;
+              debugPrint('[设备位置] 设备[$displayName] GPS格式错误: $gpsStr');
+              continue;
+            }
+            
+            try {
+              // 解析GPS坐标："纬度,经度"
+              final parts = gpsStr.split(',');
+              if (parts.length >= 2) {
+                final parsedLat = double.tryParse(parts[0].trim());
+                final parsedLng = double.tryParse(parts[1].trim());
+                
+                debugPrint('[设备位置] 设备[$displayName] 解析后: lat=$parsedLat, lng=$parsedLng');
+                
+                if (parsedLat != null && parsedLng != null && parsedLat != 0 && parsedLng != 0) {
+                  lat = parsedLat;
+                  lng = parsedLng;
+                  debugPrint('[设备位置] 设备[$displayName] 使用LOT GPS: ($lat, $lng)');
+                } else {
+                  invalidGpsCount++;
+                  debugPrint('[设备位置] 设备[$displayName] GPS坐标为0');
+                  continue;
+                }
+              }
+            } catch (e) {
+              invalidGpsCount++;
+              debugPrint('[设备位置] 设备[$displayName] 解析GPS失败: $e');
+              continue;
+            }
+          } else {
+            noGpsCount++;
+            debugPrint('[设备位置] 设备[$displayName] 没有找到LOT数据');
+            continue;
+          }
+        }
+        
+        // 如果有GPS坐标，转换并添加到列表
+        if (lat != null && lng != null && lat != 0 && lng != 0) {
+          // WGS-84转GCJ-02
+          final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
+          
+          positions.add({
+            'deviceId': deviceId,
+            'name': displayName,
+            'lat': gcj02Coord[0],
+            'lng': gcj02Coord[1],
+            'fromBluetooth': fromBluetooth, // 标记数据来源
+          });
+          
+          debugPrint('[设备位置] ✓ $displayName: ($lat, $lng) -> (${gcj02Coord[0]}, ${gcj02Coord[1]})');
         }
       }
       
@@ -299,6 +412,7 @@ class _MapCenterPageState extends State<MapCenterPage> {
       debugPrint('[设备位置] 有LOT数据: ${devices.length - noGpsCount}');
       debugPrint('[设备位置] 无GPS数据: $noGpsCount');
       debugPrint('[设备位置] GPS无效: $invalidGpsCount');
+      debugPrint('[设备位置] 使用蓝牙GPS: $bluetoothGpsCount');
       debugPrint('[设备位置] 成功加载: ${positions.length}个设备位置');
       debugPrint('[设备位置] ====================================');
     } catch (e) {
@@ -944,22 +1058,24 @@ class _MapCenterPageState extends State<MapCenterPage> {
                         },
                       ),
               ),
-              // 显示当前位置标记
+              // 显示当前位置标记（绿色定位图标）
               if (_currentPosition != null)
                 MarkerLayer(
                   markers: [
                     Marker(
                       point: _currentPosition!,
+                      width: 20,
+                      height: 20,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.blue,
+                          color: Colors.green,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(color: Colors.white, width: 1),
                         ),
                         child: const Icon(
                           Icons.location_on,
                           color: Colors.white,
-                          size: 30,
+                          size: 10,
                         ),
                       ),
                     ),
@@ -1163,12 +1279,17 @@ class _MapCenterPageState extends State<MapCenterPage> {
                     );
                   }).whereType<Marker>().toList(),
                 ),
-              // 显示设备位置（小红点）
+              // 显示设备位置（黄点或红点）
               if (_showDevices && _devicePositions.isNotEmpty)
                 MarkerLayer(
                   markers: _devicePositions.map((device) {
                     // 清理设备名称，确保UTF-16安全
                     String safeDeviceName = _sanitizeString(device['name'].toString());
+                    
+                    // 判断数据来源：蓝牙缓存用黄点，LOT数据用红点
+                    final fromBluetooth = device['fromBluetooth'] as bool? ?? false;
+                    final markerColor = fromBluetooth ? Colors.yellow : Colors.red;
+                    final markerBgColor = fromBluetooth ? Colors.yellow.shade700 : Colors.red.shade700;
                     
                     return Marker(
                       point: LatLng(device['lat'], device['lng']),
@@ -1177,34 +1298,37 @@ class _MapCenterPageState extends State<MapCenterPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // 小红点
+                          // 圆点（黄点或红点）
                           Container(
                             width: 12,
                             height: 12,
                             decoration: BoxDecoration(
-                              color: Colors.red,
+                              color: markerColor,
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                             ),
                           ),
                           const SizedBox(height: 2),
-                          // 设备名称
+                          // 设备名称（透明背景）
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade700.withOpacity(0.8),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
                             child: Text(
                               safeDeviceName.length > 8 
                                 ? safeDeviceName.substring(0, 8) 
                                 : safeDeviceName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
+                                shadows: [
+                                  Shadow(
+                                    offset: Offset(1, 1),
+                                    blurRadius: 2,
+                                    color: markerBgColor.withOpacity(0.8),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
