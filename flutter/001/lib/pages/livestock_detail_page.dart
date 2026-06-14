@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:photo_view/photo_view.dart';
@@ -10,6 +11,8 @@ import 'package:dio/dio.dart';
 
 /// FC 地址常量
 const String _cowSheepVideoFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
+/// OSS 签名服务 FC 地址
+const String _ossSignatureFcUrl = 'https://gpsmoveinfo.cn/fc/signature';
 
 /// 牛羊详情页面
 class LivestockDetailPage extends StatefulWidget {
@@ -794,11 +797,7 @@ class _LivestockDetailPageState extends State<LivestockDetailPage> {
       debugPrint('[OSS上传] 文件名: $fileName');
       debugPrint('[OSS上传] 文件大小: ${file.lengthSync()} bytes');
 
-      // TODO: 这里需要调用后端接口获取 OSS 上传凭证
-      // 因为直接在前端使用 AccessKey 不安全
-      // 建议后端提供一个接口返回 STS 临时凭证或签名 URL
-      
-      // 方案1: 通过后端获取签名 URL（推荐）
+      // 从后端获取签名 URL
       final signedUrl = await _getOssSignedUrl(fileName);
       
       if (signedUrl.isEmpty) {
@@ -831,8 +830,9 @@ class _LivestockDetailPageState extends State<LivestockDetailPage> {
       debugPrint('[OSS上传] 成功: $ossUrl');
       return ossUrl;
       
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('[OSS上传] 错误: $e');
+      debugPrint('[OSS上传] 堆栈: $stackTrace');
       rethrow;
     }
   }
@@ -840,46 +840,51 @@ class _LivestockDetailPageState extends State<LivestockDetailPage> {
   /// 从后端获取 OSS 签名 URL
   Future<String> _getOssSignedUrl(String fileName) async {
     try {
-      debugPrint('[获取签名] 开始请求，文件名: $fileName');
+      debugPrint('[获取签名] 开始请求 FC 服务，文件名: $fileName');
+      debugPrint('[获取签名] FC 地址: $_ossSignatureFcUrl');
       
       final dio = Dio();
+
+
       final response = await dio.post(
-        'https://gpsmoveinfo.cn/fc/signature',
+        _ossSignatureFcUrl,  // 使用 OSS 签名专用 FC 地址
         data: jsonEncode({
           'action': 'getOssSignature',
           'fileName': fileName,
         }),
         options: Options(
           headers: {'Content-Type': 'application/json'},
+          validateStatus: (status) => status != null && status < 600,
         ),
       );
-      
+
+
       debugPrint('[获取签名] 响应状态码: ${response.statusCode}');
       debugPrint('[获取签名] 响应数据: ${response.data}');
       
-      if (response.statusCode == 200) {
-        final data = response.data as Map<String, dynamic>;
-        debugPrint('[获取签名] 解析后的数据: $data');
-        
-        if (data['status'] == 'success') {
-          // 根据实际后端返回格式调整
-          final signedUrl = data['data']?['signedUrl'] ?? data['signedUrl'] ?? '';
-          debugPrint('[获取签名] 提取的签名URL: $signedUrl');
-          return signedUrl;
-        } else {
-          debugPrint('[获取签名] 状态不是success: ${data['msg']}');
-        }
-      } else {
-        debugPrint('[获取签名] HTTP状态码异常: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        throw Exception('HTTP ${response.statusCode}: ${response.data}');
       }
       
-      return '';
+      final responseData = response.data as Map<String, dynamic>;
+      
+      if (responseData['status'] != 'success') {
+        throw Exception(responseData['msg'] ?? '获取签名失败');
+      }
+      
+      final signedUrl = responseData['data']['signedUrl'] as String;
+      debugPrint('[获取签名] 签名URL获取成功');
+      
+      return signedUrl;
+      
     } catch (e, stackTrace) {
       debugPrint('[获取签名] 异常: $e');
       debugPrint('[获取签名] 堆栈: $stackTrace');
-      return '';
+      rethrow;
     }
   }
+  
+
 
   /// 提交到服务器
   Future<void> _submitToServer(String ossUrl) async {
