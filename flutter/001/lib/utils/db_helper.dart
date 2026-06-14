@@ -25,7 +25,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 4, // 升级到版本4，添加地图道路和地名表
+      version: 5, // 升级到版本5，添加设置表
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: _onUpgrade, // 也处理降级情况
@@ -115,6 +115,15 @@ class DBHelper {
         cached_at TEXT
       )
     ''');
+
+    // 设置表
+    await db.execute('''
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT
+      )
+    ''');
   }
 
   /// 数据库升级
@@ -183,6 +192,22 @@ class DBHelper {
         print('数据库升级: 已创建 map_places 表');
       } catch (e) {
         print('数据库升级: 创建地图表时出错: $e');
+      }
+    }
+    
+    if (oldVersion < 5) {
+      // 版本5：添加设置表
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT
+          )
+        ''');
+        print('数据库升级: 已创建 settings 表');
+      } catch (e) {
+        print('数据库升级: 创建 settings 表时出错: $e');
       }
     }
   }
@@ -576,6 +601,43 @@ class DBHelper {
       final placeData = map['place_data'] as String;
       return jsonDecode(placeData) as Map<String, dynamic>;
     }).toList();
+  }
+
+  /// 保存设置值
+  Future<void> saveSetting(String key, String value) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {
+        'key': key,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    debugPrint('[Settings] 保存设置: $key = $value');
+  }
+
+  /// 读取设置值
+  Future<String?> getSetting(String key) async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    
+    if (result.isNotEmpty) {
+      return result.first['value'] as String?;
+    }
+    return null;
+  }
+
+  /// 读取布尔设置值
+  Future<bool> getBoolSetting(String key, {bool defaultValue = false}) async {
+    final value = await getSetting(key);
+    if (value == null) return defaultValue;
+    return value.toLowerCase() == 'true';
   }
 
   /// 关闭数据库

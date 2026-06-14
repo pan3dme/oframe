@@ -5,6 +5,9 @@ import 'pages/livestock_manage_page.dart';
 import 'pages/function_list_page.dart';
 import 'pages/map_center_page.dart';
 
+// 全局路由观察者，用于监听页面可见性
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+
 // 阿里云 FC 函数地址（HTTPS 公网接口）
 const deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 const cowSheepFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
@@ -34,6 +37,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
+      navigatorObservers: [routeObserver], // 添加路由观察者
       home: const HomePage(),
     );
   }

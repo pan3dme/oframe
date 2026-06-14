@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 导入全局 routeObserver
+import 'device_detail_page.dart'; // 导入设备详情页面
 
 /// FC 地址常量
 const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -13,7 +15,7 @@ class DeviceManagePage extends StatefulWidget {
   State<DeviceManagePage> createState() => _DeviceManagePageState();
 }
 
-class _DeviceManagePageState extends State<DeviceManagePage> {
+class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
   List<Map<String, dynamic>> _data = [];
   Map<String, Map<String, dynamic>> _deviceLotMap = {}; // 设备LOT数据映射
   String _loadStatus = '';
@@ -24,11 +26,55 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   // 编辑表单控制器
   final TextEditingController _deviceKeyController = TextEditingController();
   final TextEditingController _renameController = TextEditingController();
+  
+  // 单行显示设置
+  bool _singleLineDisplay = false;
 
   @override
   void initState() {
     super.initState();
+    _loadSettings();
     _loadData();
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 订阅路由事件，监听页面可见性
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+  
+  @override
+  void dispose() {
+    // 取消订阅
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+  
+  /// 当页面从后台返回前台时调用
+  @override
+  void didPopNext() {
+    debugPrint('[设备管理] 页面从后台返回，重新加载设置');
+    _loadSettings();
+  }
+  
+  /// 加载设置
+  Future<void> _loadSettings() async {
+    try {
+      final singleLine = await DBHelper().getBoolSetting(
+        'single_line_display',
+        defaultValue: false,
+      );
+      
+      setState(() {
+        _singleLineDisplay = singleLine;
+      });
+    } catch (e) {
+      debugPrint('[设备管理] 加载设置失败: $e');
+    }
   }
 
   Future<void> _loadData() async {
@@ -355,123 +401,204 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                   // 构建显示名称：deviceId 或 deviceId (rename)
                                   final displayName = rename != '—' ? '$deviceId ($rename)' : deviceId;
 
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    // 第一列：图片（圆角）
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: hasImage
-                                          ? Image.network(
-                                              picurl,
-                                              key: ValueKey('device_${deviceId}_$_refreshCounter'),
-                                              width: 80,
-                                              height: 80,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) {
-                                                return _buildImagePlaceholderSmall();
-                                              },
-                                            )
-                                          : _buildImagePlaceholderSmall(),
+                            // 根据单行显示设置选择不同的显示方式
+                            if (_singleLineDisplay) {
+                              // 单行显示模式：只显示设备ID + (RENAME)，无图片、无按钮
+                              return GestureDetector(
+                                onTap: () {
+                                  // 点击跳转到详情页
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => DeviceDetailPage(
+                                        device: item,
+                                        deviceLot: deviceLot,
+                                      ),
                                     ),
-                                    
-                                    const SizedBox(width: 12),
-                                    
-                                    // 第二列：三行信息
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          // 第一行：deviceId (rename)
-                                          Text(
-                                            displayName,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 6),
-                                          // 第二行：time (从设备LOT表获取，显示完整时间)
-                                          Text(
-                                            '$timeDisplay$timeAgo',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey[700],
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 6),
-                                          // 第三行：link_cowsheep_id
-                                          Row(
+                                  );
+                                },
+                                child: Card(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  elevation: 1,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.devices,
+                                          size: 18,
+                                          color: Colors.blue[700],
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              Icon(
-                                                Icons.pets,
-                                                size: 14,
-                                                color: linkCowSheepId != '—' ? Colors.green : Colors.grey,
+                                              Text(
+                                                displayName,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              const SizedBox(width: 4),
-                                              Expanded(
-                                                child: Text(
-                                                  linkCowSheepId != '—' ? linkCowSheepId : '未绑定',
+                                              if (timeDisplay.isNotEmpty || timeAgo.isNotEmpty)
+                                                Text(
+                                                  '$timeDisplay$timeAgo',
                                                   style: TextStyle(
-                                                    fontSize: 13,
-                                                    color: linkCowSheepId != '—' ? Colors.green[700] : Colors.grey,
+                                                    fontSize: 11,
+                                                    color: Colors.grey[600],
                                                   ),
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
-                                              ),
                                             ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                    
-                                    const SizedBox(width: 1),
-                                    
-                                    // 第三列：两个图标（编辑 + 连接）
-                                    Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.blue, size: 24),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                          onPressed: () {
-                                            _showEditDialog(item);
-                                          },
-                                        ),
-                                        const SizedBox(height: 8),
-                                        IconButton(
-                                          icon: Icon(
-                                            Icons.link,
-                                            color: linkCowSheepId != '—' ? Colors.green : Colors.orange,
-                                            size: 24,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                          onPressed: () {
-                                            // 连接功能
-                                          },
                                         ),
                                       ],
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            } else {
+                              // 正常显示模式：图片 + 三行信息 + 按钮
+                              return GestureDetector(
+                                onTap: () {
+                                  // 点击跳转到详情页
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => DeviceDetailPage(
+                                        device: item,
+                                        deviceLot: deviceLot,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Card(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        // 第一列：图片（圆角）
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: hasImage
+                                              ? Image.network(
+                                                  picurl,
+                                                  key: ValueKey('device_${deviceId}_$_refreshCounter'),
+                                                  width: 80,
+                                                  height: 80,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error, stackTrace) {
+                                                    return _buildImagePlaceholderSmall();
+                                                  },
+                                                )
+                                              : _buildImagePlaceholderSmall(),
+                                        ),
+                                        
+                                        const SizedBox(width: 12),
+                                        
+                                        // 第二列：三行信息
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              // 第一行：deviceId (rename)
+                                              Text(
+                                                displayName,
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 6),
+                                              // 第二行：time (从设备LOT表获取，显示完整时间)
+                                              Text(
+                                                '$timeDisplay$timeAgo',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.grey[700],
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 6),
+                                              // 第三行：link_cowsheep_id
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.pets,
+                                                    size: 14,
+                                                    color: linkCowSheepId != '—' ? Colors.green : Colors.grey,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Expanded(
+                                                    child: Text(
+                                                      linkCowSheepId != '—' ? linkCowSheepId : '未绑定',
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        color: linkCowSheepId != '—' ? Colors.green[700] : Colors.grey,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        
+                                        const SizedBox(width: 1),
+                                        
+                                        // 第三列：两个图标（编辑 + 连接）
+                                        Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.edit, color: Colors.blue, size: 24),
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                              onPressed: () {
+                                                _showEditDialog(item);
+                                              },
+                                            ),
+                                            const SizedBox(height: 8),
+                                            IconButton(
+                                              icon: Icon(
+                                                Icons.link,
+                                                color: linkCowSheepId != '—' ? Colors.green : Colors.orange,
+                                                size: 24,
+                                              ),
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                              onPressed: () {
+                                                // 连接功能
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
                           },
                         ),
                       ),

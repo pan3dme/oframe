@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'bluetooth_page.dart';
 import 'device_manage_page.dart';
 import 'livestock_manage_page.dart';
+import 'settings_page.dart';
 import '../utils/db_helper.dart';
 
 /// FC 地址常量
@@ -86,7 +87,7 @@ class _FunctionListPageState extends State<FunctionListPage> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                // 第二行：牛羊管理、查看设备轨迹、连接蓝牙
+                // 第二行：牛羊管理、设置、连接蓝牙
                 Row(
                   children: [
                     _buildFunctionButton(
@@ -106,12 +107,15 @@ class _FunctionListPageState extends State<FunctionListPage> {
                     const SizedBox(width: 12),
                     _buildFunctionButton(
                       context,
-                      icon: Icons.route,
-                      label: '查看设备轨迹',
-                      color: Colors.red,
+                      icon: Icons.settings,
+                      label: '设置',
+                      color: Colors.orange,
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('功能开发中...')),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsPage(),
+                          ),
                         );
                       },
                     ),
@@ -706,7 +710,7 @@ class _FunctionListPageState extends State<FunctionListPage> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
           decoration: BoxDecoration(
             color: color.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
@@ -716,8 +720,8 @@ class _FunctionListPageState extends State<FunctionListPage> {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 32, color: color),
-              const SizedBox(height: 6),
+              Icon(icon, size: 26, color: color),
+              const SizedBox(height: 4),
               Text(
                 label,
                 textAlign: TextAlign.center,

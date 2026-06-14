@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 导入全局 routeObserver
+import 'livestock_detail_page.dart'; // 导入牛羊详情页面
 
 /// FC 地址常量
 const String _cowSheepFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
@@ -13,17 +15,61 @@ class LivestockManagePage extends StatefulWidget {
   State<LivestockManagePage> createState() => _LivestockManagePageState();
 }
 
-class _LivestockManagePageState extends State<LivestockManagePage> {
+class _LivestockManagePageState extends State<LivestockManagePage> with RouteAware {
   List<Map<String, dynamic>> _data = [];
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
   int _refreshCounter = 0; // 刷新计数器，用于强制重新渲染图片
+  
+  // 单行显示设置
+  bool _singleLineDisplay = false;
 
   @override
   void initState() {
     super.initState();
+    _loadSettings();
     _loadData();
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 订阅路由事件，监听页面可见性
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+  
+  @override
+  void dispose() {
+    // 取消订阅
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+  
+  /// 当页面从后台返回前台时调用
+  @override
+  void didPopNext() {
+    debugPrint('[牛羊管理] 页面从后台返回，重新加载设置');
+    _loadSettings();
+  }
+  
+  /// 加载设置
+  Future<void> _loadSettings() async {
+    try {
+      final singleLine = await DBHelper().getBoolSetting(
+        'single_line_display',
+        defaultValue: false,
+      );
+      
+      setState(() {
+        _singleLineDisplay = singleLine;
+      });
+    } catch (e) {
+      debugPrint('[牛羊管理] 加载设置失败: $e');
+    }
   }
 
   Future<void> _loadData() async {
@@ -271,90 +317,151 @@ class _LivestockManagePageState extends State<LivestockManagePage> {
                                   final avatar = _str(item, 'avatar');
                                   final rename = _str(item, 'rename');
                                   final hasImage = avatar != '—' && avatar.isNotEmpty;
-
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 10),
-                                    elevation: 2,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.center,
-                                        children: [
-                                          // 第一列：图片（圆角）
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(10),
-                                            child: hasImage
-                                                ? Image.network(
-                                                    avatar,
-                                                    key: ValueKey('livestock_${cowsheepId}_$_refreshCounter'),
-                                                    width: 80,
-                                                    height: 80,
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder: (context, error, stackTrace) {
-                                                      return _buildImagePlaceholderSmall();
-                                                    },
-                                                  )
-                                                : _buildImagePlaceholderSmall(),
-                                          ),
-                                          
-                                          const SizedBox(width: 12),
-                                          
-                                          // 第二列：三行信息
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                // 第一行：牛羊名称或ID
-                                                Text(
-                                                  rename != '—' ? rename : cowsheepId,
-                                                  style: const TextStyle(
-                                                    fontSize: 15,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 6),
-                                                // 第二行：生日
-                                                Text(
-                                                  '生日: $birthday',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    color: Colors.grey[700],
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 6),
-                                                // 第三行：性别
-                                                Row(
-                                                  children: [
-                                                    Icon(
-                                                      gender == '公' ? Icons.male : (gender == '母' ? Icons.female : Icons.help_outline),
-                                                      size: 14,
-                                                      color: gender == '公' ? Colors.blue : (gender == '母' ? Colors.pink : Colors.grey),
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      gender != '—' ? '性别: $gender' : '性别未知',
-                                                      style: TextStyle(
-                                                        fontSize: 13,
-                                                        color: gender != '—' ? Colors.green[700] : Colors.grey,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
+                                  
+                                  // 根据单行显示设置选择不同的显示方式
+                                  if (_singleLineDisplay) {
+                                    // 单行显示模式：只显示牛羊ID + (RENAME)，无图片、无按钮
+                                    final displayName = rename != '—' ? '$cowsheepId ($rename)' : cowsheepId;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        // 点击跳转到详情页
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => LivestockDetailPage(
+                                              livestock: item,
                                             ),
                                           ),
-                                        ],
+                                        );
+                                      },
+                                      child: Card(
+                                      margin: const EdgeInsets.only(bottom: 6),
+                                      elevation: 1,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.pets,
+                                              size: 18,
+                                              color: Colors.green[700],
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                displayName,
+                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   );
+                                  } else {
+                                    // 正常显示模式：图片 + 三行信息
+                                    return GestureDetector(
+                                      onTap: () {
+                                        // 点击跳转到详情页
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => LivestockDetailPage(
+                                              livestock: item,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Card(
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      elevation: 2,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                          children: [
+                                            // 第一列：图片（圆角）
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(10),
+                                              child: hasImage
+                                                  ? Image.network(
+                                                      avatar,
+                                                      key: ValueKey('livestock_${cowsheepId}_$_refreshCounter'),
+                                                      width: 80,
+                                                      height: 80,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder: (context, error, stackTrace) {
+                                                        return _buildImagePlaceholderSmall();
+                                                      },
+                                                    )
+                                                  : _buildImagePlaceholderSmall(),
+                                            ),
+                                            
+                                            const SizedBox(width: 12),
+                                            
+                                            // 第二列：三行信息
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  // 第一行：牛羊名称或ID
+                                                  Text(
+                                                    rename != '—' ? rename : cowsheepId,
+                                                    style: const TextStyle(
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  // 第二行：生日
+                                                  Text(
+                                                    '生日: $birthday',
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      color: Colors.grey[700],
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  // 第三行：性别
+                                                  Row(
+                                                    children: [
+                                                      Icon(
+                                                        gender == '公' ? Icons.male : (gender == '母' ? Icons.female : Icons.help_outline),
+                                                        size: 14,
+                                                        color: gender == '公' ? Colors.blue : (gender == '母' ? Colors.pink : Colors.grey),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        gender != '—' ? '性别: $gender' : '性别未知',
+                                                        style: TextStyle(
+                                                          fontSize: 13,
+                                                          color: gender != '—' ? Colors.green[700] : Colors.grey,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                  }
                                 },
                               ),
                             ),
