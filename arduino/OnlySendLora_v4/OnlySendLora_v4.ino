@@ -8,58 +8,40 @@
 #include "Arduino.h"
 #include <pan3dme.h>
 
-
 #include "HT_TinyGPS++.h"
 
 // ==================== 引脚枚举定义 ====================
-
-
 // GC1109 控制引脚
 #define FEM_EN 2
 #define FEM_PA 46
-
-
-
-
 
 
 String deviceName = "v4-x";
 String gpsInfo = "0.00000,0.00000";
 String sendStr = "";
 
-
 // ==================== 全局变量 ====================
 char sendData[BUFFER_SIZE];  // 发送数据缓存
 RadioEvents_t radioEvents;   // LoRa 事件
 String displayBuf[4] = { "", "", "", "" };
-
 // GPS 全局对象
 TinyGPSPlus gps;
-
 // 发送状态枚举
-typedef enum {
-  DEVICE_SLEEP,  // 休眠
-  DEVICE_SEND    // 发送
-} DeviceState;
 
-int packetCount = 0;       // 数据包编号
-DeviceState currentState;  // 当前状态
+int packetCount = 0;  // 数据包编号
+
 
 // 发送计时变量
 unsigned long lastSendTime = 0;
-const long sendInterval = 10000;  // 发送间隔：
+const long sendInterval = 1000;  // 发送间隔：
 
 // 仅保留发送相关回调
-void onSendDone(void);
-void onSendTimeout(void);
 
 // GPS初始化
 void initGPS() {
   initPanGPS();
 }
 void readGpsInfo() {
-
-
   int hour = gps.time.hour();
   int minute = gps.time.minute();
   int second = gps.time.second();
@@ -88,16 +70,14 @@ void initLora() {
   // 发送参数配置
   Radio.SetTxConfig(MODEM_LORA, TX_POWER, 0, LORA_BW,
                     LORA_SF, LORA_CR, PREAMBLE_LENGTH, false,
-                    true, 0, 0, false, 3000);
-
-  currentState = DEVICE_SLEEP;  // 初始状态：休眠
+                    true, 0, 0, false, 1500);
 }
 // ==================== 初始化 ====================
 void setup() {
+  delay(1000);
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
-
   displayBuf[0] = "name " + deviceName;
 
 #if defined(WIFI_LORA_32_V4)
@@ -106,67 +86,65 @@ void setup() {
   digitalWrite(FEM_EN, HIGH);
   openLedByNum(10, 50);
 #endif
-
   initLora();
-  openLedByNum(10, 50);
-  // 绑定发送事件
 }
 void sendInfoByType(char* data, int type) {
   sendStr = String(type) + "|" + deviceName;
-  // 状态机
   switch (type) {
-    //坐标信息
     case 1:
       sendStr = sendStr + "|" + gpsInfo + "|" + String(packetCount);
       break;
     case 2:
-
       break;
   }
-  strcpy(data, sendStr.c_str());
+  int len = snprintf(data, BUFFER_SIZE, "%s", sendStr.c_str());
+  if (len < 0 || len >= BUFFER_SIZE) {
+    Serial.println("⚠️ sendData too long, truncated");
+    data[BUFFER_SIZE - 1] = '\0';
+  }
   Serial.print("发送：");
   Serial.println(data);
   Serial.println(strlen(data));
 }
 // ==================== 主循环 ====================
 void loop() {
-  openLedByNum(1, 500);
+  delay(1);
+
   // 读取GPS
   while (Serial1.available()) {
     gps.encode(Serial1.read());
   }
 
-
-
-  // ============== 核心：每5秒触发一次发送 ==============
+  // ============== 核心：每10秒触发一次发送 ==============
   if (millis() - lastSendTime >= sendInterval) {
     lastSendTime = millis();
-    currentState = DEVICE_SEND;
+
+    packetCount++;
+    readGpsInfo();  // 把字符串装进 gpsInfo
+    sendInfoByType(sendData, 1);
+    Radio.Send((uint8_t*)sendData, strlen(sendData));
+    openLedByNum(10, 50);
+    displayBuf[3] = "send lora";
+
+    // if (packetCount % 3 == 1) {
+    //   Radio.IrqProcess();
+    //   lastSendTime = sendInterval - sendInterval;
+    //   Serial.println("连发一次，");
+    //   delay(4000);
+    // }
+
+
+  } else {
+    displayBuf[3] = "lora sleep";
+    Radio.IrqProcess();
   }
 
-  // 状态机
-  switch (currentState) {
-    // 发送数据
-    case DEVICE_SEND:
-      packetCount++;
-      readGpsInfo();  // 把字符串装进 gpsData
-      sendInfoByType(sendData, 1);
-      Radio.Send((uint8_t*)sendData, strlen(sendData));
-      openLedByNum(10, 50);
-      currentState = DEVICE_SLEEP;  // 发完立即休眠
-      displayBuf[3] = "send lora";
-      break;
-    // 休眠等待
-    case DEVICE_SLEEP:
-      displayBuf[3] = "lora sleep";
-      Radio.IrqProcess();
-      break;
-  }
   showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
 }
 
 // ==================== 发送完成回调 ====================
 void onSendDone(void) {
+  Radio.Sleep();
   Serial.println("发送完成 ✅");
 }
 

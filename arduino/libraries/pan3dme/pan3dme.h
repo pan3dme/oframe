@@ -4,7 +4,7 @@
 #include "Arduino.h"
 #include <WiFi.h>
 #include "HT_SSD1306Wire.h"
-
+#include "HT_TinyGPS++.h"
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -33,16 +33,20 @@
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 
+
+
+
 struct BLECallbacks {
   BLEServer *pServer ;
   BLECharacteristic *pCharacteristic ;
 }; 
  
 BLECallbacks initBLEFun(String deviceName,BLEServerCallbacks *serverCallbacks,BLECharacteristicCallbacks *charCallbacks);
-void initLibWifi(struct tm timeinfo) ;
+bool initLibWifi(struct tm timeinfo) ;
 void openLedByNum(int count, int delayMs)  ;
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS() ;
+String getCurrentGpsTm(TinyGPSPlus gps);
 String makeDivceName() ;
 
 #endif
