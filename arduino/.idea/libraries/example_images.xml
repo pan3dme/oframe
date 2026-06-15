@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="example_images">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/libraries/heltec-eink-modules/docs/SD/example_images.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

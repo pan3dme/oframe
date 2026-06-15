@@ -1,20 +1,18 @@
 
 #include "pan3dme.h"
 
-
-
 #if defined(WIFI_LORA_32_V4)
 SSD1306Wire factory_display_my(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED); // addr , freq , i2c group , resolution , rst
 #endif
 
 bool initFinish = false;
 
- 
-TinyGPSPlus gps;                            // GPS对象
-struct tm timeinfo;                         // 系统时间结构体
-bool wifiTimeSynced = false;                // 是否已成功同步网络时间
-time_t syncedEpoch = 0;                     // 成功同步的时间戳
-unsigned long syncedMillis = 0;             // 同步时的本地毫秒计数
+TinyGPSPlus gps;                // GPS对象
+struct tm timeinfo;             // 系统时间结构体
+bool wifiTimeSynced = false;    // 是否已成功同步网络时间
+time_t syncedEpoch = 0;         // 成功同步的时间戳
+unsigned long syncedMillis = 0; // 同步时的本地毫秒计数
+
 
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
@@ -60,7 +58,7 @@ void initOLED()
 
     factory_display_my.init();
     factory_display_my.setFont(ArialMT_Plain_16); // 你要的 10号 16
-    // factory_display_my.flipScreenVertically();
+                                                  // factory_display_my.flipScreenVertically();
 #endif
   }
 }
@@ -74,13 +72,26 @@ void initPanGPS()
   Serial1.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   Serial.println("GPS 已启动");
 }
+
 void gpsEncode()
 {
-  if (Serial1.available() > 0) {
-    while (Serial1.available()) {
+  if (Serial1.available() > 0)
+  {
+    while (Serial1.available())
+    {
       gps.encode(Serial1.read());
     }
   }
+}
+String getGpsInfoStr(){
+  // int hour = gps.time.hour();
+  // int minute = gps.time.minute();
+  // int second = gps.time.second();
+   if (gps.location.isValid() && gps.time.isValid() && gps.satellites.value() > 0) {
+     return  String(gps.location.lat(), 5) + "," + String(gps.location.lng(), 5);
+   } else {
+     return "0.00000,0.00000";
+   }
 }
 
 // 获取GPS时间 (带自动同步逻辑)
@@ -197,14 +208,16 @@ void showDisplayBy4Area(String a, String b, String c, String d)
 // 初始化WiFi并同步网络时间
 // 初始化WiFi并同步网络时间 (获取后自动断开以省电)
 
-
 // 获取可用的时间字符串 (优先网络，其次GPS，最后默认)
-String getCurrentTime() {
-  if (wifiTimeSynced) {
+String getCurrentTime()
+{
+  if (wifiTimeSynced)
+  {
     unsigned long elapsedMs = millis() - syncedMillis;
     time_t currentEpoch = syncedEpoch + elapsedMs / 1000;
     struct tm *tmNow = localtime(&currentEpoch);
-    if (tmNow != NULL) {
+    if (tmNow != NULL)
+    {
       char timeStr[30];
       snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
                tmNow->tm_year + 1900,
@@ -214,33 +227,37 @@ String getCurrentTime() {
                tmNow->tm_min,
                tmNow->tm_sec);
       return String(timeStr);
-    }else{
-      return"2000/0/0 0:0:0";
+    }
+    else
+    {
+      return "2000/0/0 0:0:0";
     }
   }
 
   // 如果没有网络时间，则尝试使用 GPS 时间
   // if (gps.time.isValid() && gps.date.isValid()) {
-   
+
   // }
 
   return "0000/00/00 00:00:00";
 }
-bool initLibWifi(  )
+bool initLibWifi()
 {
-    const char *ssid = "yangchang";
+  const char *ssid = "yangchang";
   const char *password = "13787501167";
 
   Serial.print("正在连接 WiFi");
   WiFi.begin(ssid, password);
   unsigned long startAttemptTime = millis();
 
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
+  {
     delay(200);
     Serial.print(".");
   }
 
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED)
+  {
     Serial.println("\n⚠️ WiFi 连接失败，跳过网络时间同步");
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
@@ -251,12 +268,14 @@ bool initLibWifi(  )
   configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");
 
   int retry = 0;
-  while (!getLocalTime(&timeinfo) && retry < 50) {
+  while (!getLocalTime(&timeinfo) && retry < 50)
+  {
     delay(100);
     retry++;
   }
 
-  if (retry >= 50) {
+  if (retry >= 50)
+  {
     Serial.println("❌ 网络时间获取失败");
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
@@ -285,4 +304,29 @@ bool initLibWifi(  )
   WiFi.mode(WIFI_OFF);
   Serial.println("📶 WiFi 已关闭，后续时间使用本地时钟增量");
   return true;
+}
+
+void initPanRadio(RadioEvents_t* radioEvents) {
+
+  Radio.Init(radioEvents);
+  Radio.SetChannel(LORA_FREQ);
+  Serial.print("✅ 当前lora频段");
+  Serial.println(LORA_FREQ);
+  Radio.SetRxConfig(MODEM_LORA, LORA_BW, LORA_SF,
+                    LORA_CR, 0, PREAMBLE_LENGTH,
+                    LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
+
+  // 发送参数配置
+  Radio.SetTxConfig(MODEM_LORA, TX_POWER, 0, LORA_BW,
+                    LORA_SF, LORA_CR, PREAMBLE_LENGTH, false,
+                    true, 0, 0, false, 1500);
+
+  Serial.println("✅ LoRa 初始化完成");
+
+#if defined(WIFI_LORA_32_V4)
+  pinMode(FEM_EN, OUTPUT);
+  digitalWrite(FEM_EN, HIGH);
+#endif
+
+
 }

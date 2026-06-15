@@ -1,6 +1,6 @@
 #ifndef pan3dme_h
 #define pan3dme_h
- 
+
 #include "Arduino.h"
 #include <time.h>
 #include <WiFi.h>
@@ -10,6 +10,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include "LoRaWan_APP.h"
 
 // 前向声明：在头文件中避免包含过多实现细节
 class TinyGPSPlus;
@@ -23,45 +24,46 @@ extern bool wifiTimeSynced;
 extern time_t syncedEpoch;
 extern unsigned long syncedMillis;
 
-
 // ================================== 硬件引脚定义 ==================================
 // GPS模块引脚
-#define VGNSS_CTRL 34  // GPS电源控制 (低电平开启)
-#define GPS_RX_PIN 39  // GPS TX -> ESP32 RX
-#define GPS_TX_PIN 38  // GPS RX -> ESP32 TX
-#define GPS_ANT_EN 42  // GPS天线电源使能
-
+#define VGNSS_CTRL 34 // GPS电源控制 (低电平开启)
+#define GPS_RX_PIN 39 // GPS TX -> ESP32 RX
+#define GPS_TX_PIN 38 // GPS RX -> ESP32 TX
+#define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 863000000  // 433MHz 国内通用863 863
-#define TX_POWER 20          // 发射功率
-#define LORA_BW 0            // 125kHz 带宽
-#define LORA_SF 10           // 扩频因子
-#define LORA_CR 1            // 纠错率
-#define PREAMBLE_LENGTH 8    // 前导码
-#define BUFFER_SIZE 36       // 数据缓冲区
+#define LORA_FREQ 433000000 // 433MHz 国内通用863 863
+#define TX_POWER 20         // 发射功率
+#define LORA_BW 0           // 125kHz 带宽
+#define LORA_SF 10          // 扩频因子
+#define LORA_CR 1           // 纠错率
+#define PREAMBLE_LENGTH 8   // 前导码
+#define BUFFER_SIZE 36      // 数据缓冲区
+#define LORA_SYMBOL_TIMEOUT 0
 
-// ======================== BLE 配置 ======================= 
+// ======================== BLE 配置 =======================
 #define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
+//========================FEM总电源 LORA  强化========================
+#define FEM_EN 2
 
+struct BLECallbacks
+{
+  BLEServer *pServer;
+  BLECharacteristic *pCharacteristic;
+};
 
-
-
-struct BLECallbacks {
-  BLEServer *pServer ;
-  BLECharacteristic *pCharacteristic ;
-}; 
- 
-BLECallbacks initBLEFun(String deviceName,BLEServerCallbacks *serverCallbacks,BLECharacteristicCallbacks *charCallbacks);
-bool initLibWifi() ;
-void openLedByNum(int count, int delayMs)  ;
+BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, BLECharacteristicCallbacks *charCallbacks);
+bool initLibWifi();
+void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
-void initPanGPS() ;
-void gpsEncode();                            // GPS对象
+void initPanGPS();
+void gpsEncode(); // GPS对象
+void initPanRadio(RadioEvents_t* radioEvents);
 String getCurrentGpsTm(TinyGPSPlus gps);
+String getGpsInfoStr();
 String getCurrentTime();
-String makeDivceName() ;
+String makeDivceName();
 
 #endif

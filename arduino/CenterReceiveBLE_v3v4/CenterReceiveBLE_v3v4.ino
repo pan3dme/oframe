@@ -28,7 +28,7 @@ bool needSync = false;         // 同步开关：只有收到"true"才发送数�
 
 
 
-
+static RadioEvents_t RadioEvents;
 
 // ================================== 全局变量 ==================================
 
@@ -46,25 +46,26 @@ String deviceName = "v4-x";
 
 
 
-#define FEM_EN 2  //FEM总电源 LORA  强化
+
 
 
 // ================================== LoRa 参数 ==================================
 
 
 
-#define LORA_SYMBOL_TIMEOUT 0
+
 
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机
-static RadioEvents_t RadioEvents;
+
 bool needPlaLed = false;
 bool loraReceivedFlag = false;
 bool wifiSyncDone = false;
-typedef enum { LOWPOWER,
-               STATE_RX } States_t;
-States_t state;
+// 最后一次接收的元数据，由回调写入，loop() 中再处理
+volatile int16_t lastRssi = 0;
+volatile int8_t lastSnr = 0;
+volatile uint16_t lastPayloadSize = 0;
 
 
 // ================================== BLE 回调函数 ==================================
@@ -102,7 +103,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 
 // ================================== 核心逻辑函数 ==================================
 // 添加GPS数据到队列，队列满时覆盖最旧数据
-void addGpsData(String data) {
+void addLoraInfoToArr(String data) {
   if (gpsDataCount < GPS_MAX_COUNT) {
     gpsDataArray[gpsDataCount++] = data;
   } else {
@@ -115,7 +116,7 @@ void addGpsData(String data) {
 }
 
 // 取出并删除队列头部数据 (先进先出)
-String getAndRemoveFirstGpsData() {
+String getAndRemoveFirstLoraDataForArr() {
   if (gpsDataCount == 0) return "";
   String first = gpsDataArray[0];
   for (int i = 0; i < gpsDataCount - 1; i++) {
@@ -151,30 +152,20 @@ void initBLE() {
 
 // LoRa 接收回调函数
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+  // 只做最小量的数据拷贝与元数据保存，避免在回调中执行耗时操作
   if (size < BUFFER_SIZE) {
-    for (int i = 0; i < size; i++) {
-      loraStr[i] = (char)payload[i];
-    };
+    for (int i = 0; i < size; i++) loraStr[i] = (char)payload[i];
     loraStr[size] = '\0';
-    loraReceivedFlag = true;
+    lastRssi = rssi;
+    lastSnr = snr;
+    lastPayloadSize = size;
+    loraReceivedFlag = true;  // 主循环会处理 JSON、时间和队列写入
     needPlaLed = true;
-    StaticJsonDocument<200> doc;
-    doc["rssi"] = rssi;
-    doc["snr"] = snr;
-    doc["info"] = loraStr;
-    doc["upDateDevice"] = deviceName;
-    doc["time"] = getCurrentTime();  // 修正：使用动态时间
-    String data;
-    serializeJson(doc, data);
-    addGpsData(String(data));  // 接收到的数据也存入队列
     receiveCount++;
-
-    displayBuf[2] = "rssi:" + String(rssi) + " snr:" + String(snr);
-    Serial.println("rssi:" + String(rssi) + " snr:" + String(snr));
   } else {
-    Serial.print("⚠️ LoRa payload too large: ");
-    Serial.println(size);
+    // payload 超长，丢弃
     loraStr[0] = '\0';
+    lastPayloadSize = 0;
   }
 
   Radio.Rx(0);  // 重新开启接收
@@ -183,23 +174,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 // 初始化LoRa模块
 void initRadio() {
   RadioEvents.RxDone = OnRxDone;
-  Radio.Init(&RadioEvents);
-  Radio.SetChannel(LORA_FREQ);
-  Serial.print("✅ 当前lora频段");
-  Serial.println(LORA_FREQ);
-  Radio.SetRxConfig(MODEM_LORA, LORA_BW, LORA_SF,
-                    LORA_CR, 0, PREAMBLE_LENGTH,
-                    LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
-
-  Serial.println("✅ LoRa 初始化完成");
-
-#if defined(WIFI_LORA_32_V4)
-  pinMode(FEM_EN, OUTPUT);
-  digitalWrite(FEM_EN, HIGH);
-#endif
-
-
-
+  initPanRadio(&RadioEvents);
   Radio.Rx(0);
 }
 
@@ -224,11 +199,26 @@ void loop() {
   Radio.IrqProcess();
   // --- LoRa 数据处理 ---
   if (loraReceivedFlag) {
+    // 把标志清除并在主循环中完成较重的处理（JSON序列化、时间获取、入队）
     loraReceivedFlag = false;
     Serial.print("Received LoRa: ");
     Serial.println(loraStr);
     displayBuf[3] = "";
     displayBuf[3].concat(loraStr, 15);
+
+    // 构建 JSON 并推入队列（将耗时操作移到此处）
+    if (lastPayloadSize > 0) {
+      StaticJsonDocument<200> doc;
+      doc["rssi"] = (int)lastRssi;
+      doc["snr"] = (int)lastSnr;
+      doc["info"] = loraStr;
+      doc["upDateDevice"] = deviceName;
+      doc["time"] = getCurrentTime();
+      String data;
+      serializeJson(doc, data);
+      addLoraInfoToArr(String(data));
+      lastPayloadSize = 0;
+    }
   }
 
   // --- GPS 数据解析 ---
@@ -238,9 +228,9 @@ void loop() {
   // --- LED 提示 ---
   if (needPlaLed) {
     needPlaLed = false;
-    openLedByNum(2, 50);
-    Serial.print("✅ 监听一次用时");
-    Serial.println(millis() - startm);
+    openLedByNum(5, 50);
+    // Serial.print("✅ 监听一次用时");
+    // Serial.println(millis() - startm);
   }
 
   // --- 屏幕显示更新 ---
@@ -248,7 +238,7 @@ void loop() {
 
   // --- BLE 数据发送逻辑 ---
   if (deviceConnected && needSync && gpsDataCount > 0) {
-    String data = getAndRemoveFirstGpsData();
+    String data = getAndRemoveFirstLoraDataForArr();
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
 

@@ -24,53 +24,26 @@ String sendStr = "";
 char sendData[BUFFER_SIZE];  // 发送数据缓存
 RadioEvents_t radioEvents;   // LoRa 事件
 String displayBuf[4] = { "", "", "", "" };
-// GPS 全局对象
-TinyGPSPlus gps;
+
 // 发送状态枚举
-
 int packetCount = 0;  // 数据包编号
-
 
 // 发送计时变量
 unsigned long lastSendTime = 0;
 const long sendInterval = 1000;  // 发送间隔：
 
-// 仅保留发送相关回调
 
-// GPS初始化
 void initGPS() {
   initPanGPS();
 }
 void readGpsInfo() {
-  int hour = gps.time.hour();
-  int minute = gps.time.minute();
-  int second = gps.time.second();
-
-  if (gps.location.isValid() && gps.time.isValid() && gps.satellites.value() > 0) {
-    gpsInfo = String(gps.location.lat(), 5) + "," + String(gps.location.lng(), 5);
-  } else {
-    gpsInfo = "0.00000,0.00000";
-  }
-
-  if (gps.location.isValid() && gps.time.isValid() && gps.satellites.value() > 0) {
-    displayBuf[1] = "sat:" + String(gps.satellites.value());
-  } else {
-    displayBuf[1] = "sat:0";
-  }
+  gpsInfo = getGpsInfoStr();
   displayBuf[2] = gpsInfo;
 }
 void initLora() {
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
-  // LoRa 初始化
-  Radio.Init(&radioEvents);
-  Radio.SetChannel(LORA_FREQ);
-  Serial.print("✅ 当前lora频段");
-  Serial.println(LORA_FREQ);
-  // 发送参数配置
-  Radio.SetTxConfig(MODEM_LORA, TX_POWER, 0, LORA_BW,
-                    LORA_SF, LORA_CR, PREAMBLE_LENGTH, false,
-                    true, 0, 0, false, 1500);
+  initPanRadio(&radioEvents);
 }
 // ==================== 初始化 ====================
 void setup() {
@@ -79,14 +52,10 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
   displayBuf[0] = "name " + deviceName;
-
+  initLora();
 #if defined(WIFI_LORA_32_V4)
   initGPS();
-  pinMode(FEM_EN, OUTPUT);
-  digitalWrite(FEM_EN, HIGH);
-  openLedByNum(10, 50);
 #endif
-  initLora();
 }
 void sendInfoByType(char* data, int type) {
   sendStr = String(type) + "|" + deviceName;
@@ -110,9 +79,9 @@ void sendInfoByType(char* data, int type) {
 void loop() {
   delay(1);
 
-  // 读取GPS
-  while (Serial1.available()) {
-    gps.encode(Serial1.read());
+  // --- GPS 数据解析 ---
+  if (Serial1.available() > 0) {
+    gpsEncode();
   }
 
   // ============== 核心：每10秒触发一次发送 ==============
