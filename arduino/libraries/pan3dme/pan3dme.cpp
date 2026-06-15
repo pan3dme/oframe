@@ -252,7 +252,8 @@ bool initLibWifi()
 
   while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
   {
-    delay(200);
+    delay(100);
+    openLedByNum(1, 50);
     Serial.print(".");
   }
 

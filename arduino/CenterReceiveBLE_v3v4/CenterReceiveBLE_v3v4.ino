@@ -15,61 +15,36 @@
 #include <ArduinoJson.h>
 #include <pan3dme.h>
 
-
-
-// ================================== BLE 配置 ==================================
+// BLE全局对象
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
-
-
-
-bool deviceConnected = false;  // 蓝牙连接状态
-bool needSync = false;         // 同步开关：只有收到"true"才发送数据
-
-
+bool deviceConnected = false;
+bool needSync = false;
 
 static RadioEvents_t RadioEvents;
 
-// ================================== 全局变量 ==================================
+// 显示缓冲区
+String displayBuf[4] = { "", "", "", "" };
 
-
-
-String displayBuf[4] = { "", "", "", "" };  // 屏幕显示缓冲区
-
-// GPS数据队列 (环形缓冲区模拟)
-#define GPS_MAX_COUNT 20
-String gpsDataArray[GPS_MAX_COUNT];
-int gpsDataCount = 0;
-int receiveCount = 0;  // 接收计数器
+// 数据队列配置
+#define DATA_MAX_COUNT 99
+String dataArray[DATA_MAX_COUNT];
+int dataCount = 0;
+int receiveCount = 0;
 String deviceName = "v4-x";
 
-
-
-
-
-
-
-// ================================== LoRa 参数 ==================================
-
-
-
-
-
+// LoRa接收缓冲区
 char loraStr[BUFFER_SIZE];
 
-// LoRa状态机
-
+// LoRa状态标志
 bool needPlaLed = false;
 bool loraReceivedFlag = false;
-bool wifiSyncDone = false;
-// 最后一次接收的元数据，由回调写入，loop() 中再处理
 volatile int16_t lastRssi = 0;
 volatile int8_t lastSnr = 0;
 volatile uint16_t lastPayloadSize = 0;
 
 
-// ================================== BLE 回调函数 ==================================
-// 连接/断开回调
+// BLE服务器回调
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
     deviceConnected = true;
@@ -77,72 +52,57 @@ class MyServerCallbacks : public BLEServerCallbacks {
   }
   void onDisconnect(BLEServer *pServer) {
     deviceConnected = false;
-    needSync = false;  // 断开连接自动关闭同步
+    needSync = false;
     Serial.println("❌ 断开连接 | 同步已关闭");
     pServer->startAdvertising();
   }
 };
 
-// 接收数据回调 (解析JSON指令)
+// BLE特征值回调 (解析JSON指令)
 class MyCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     String rxValue = pCharacteristic->getValue();
     Serial.print("📥 收到蓝牙指令：");
     Serial.println(rxValue);
 
-    // 解析 syncing 字段
-    if (rxValue.indexOf("\"syncing\":true") != -1 || rxValue.indexOf("syncing:true") != -1) {
-      needSync = true;
-      Serial.println("✅ 同步已开启：准备发送GPS数据");
-    } else if (rxValue.indexOf("\"syncing\":false") != -1 || rxValue.indexOf("syncing:false") != -1) {
-      needSync = false;
-      Serial.println("⏹️ 同步已关闭");
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, rxValue);
+
+    if (!error && doc.containsKey("syncing")) {
+      needSync = doc["syncing"].as<bool>();
+      Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
     }
   }
 };
 
-// ================================== 核心逻辑函数 ==================================
-// 添加GPS数据到队列，队列满时覆盖最旧数据
-void addLoraInfoToArr(String data) {
-  if (gpsDataCount < GPS_MAX_COUNT) {
-    gpsDataArray[gpsDataCount++] = data;
+// 添加数据到队列 (满时覆盖最旧数据)
+void addDataToQueue(String data) {
+  if (dataCount < DATA_MAX_COUNT) {
+    dataArray[dataCount++] = data;
   } else {
-    // 队列已满，丢弃最旧一条，队尾追加最新数据
-    for (int i = 0; i < GPS_MAX_COUNT - 1; i++) {
-      gpsDataArray[i] = gpsDataArray[i + 1];
+    for (int i = 0; i < DATA_MAX_COUNT - 1; i++) {
+      dataArray[i] = dataArray[i + 1];
     }
-    gpsDataArray[GPS_MAX_COUNT - 1] = data;
+    dataArray[DATA_MAX_COUNT - 1] = data;
   }
 }
 
-// 取出并删除队列头部数据 (先进先出)
-String getAndRemoveFirstLoraDataForArr() {
-  if (gpsDataCount == 0) return "";
-  String first = gpsDataArray[0];
-  for (int i = 0; i < gpsDataCount - 1; i++) {
-    gpsDataArray[i] = gpsDataArray[i + 1];
+// 取出并删除队列头部数据 (FIFO)
+String getAndRemoveFirstData() {
+  if (dataCount == 0) return "";
+  String first = dataArray[0];
+  for (int i = 0; i < dataCount - 1; i++) {
+    dataArray[i] = dataArray[i + 1];
   }
-  gpsDataArray[--gpsDataCount] = "";
+  dataArray[--dataCount] = "";
   return first;
-}
-
-
-bool initWifi() {
-
-  return initLibWifi();
-}
-
-
-
-
-// 初始化GPS串口
-void initGPS() {
-  initPanGPS();
 }
 
 // 初始化BLE服务
 void initBLE() {
-  BLECallbacks bleCallbacks = initBLEFun(deviceName, new MyServerCallbacks(), new MyCallbacks());
+  static MyServerCallbacks serverCallbacks;
+  static MyCallbacks charCallbacks;
+  BLECallbacks bleCallbacks = initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
   pServer = bleCallbacks.pServer;
   pCharacteristic = bleCallbacks.pCharacteristic;
 }
@@ -150,107 +110,112 @@ void initBLE() {
 
 
 
-// LoRa 接收回调函数
+// LoRa接收回调 (仅做数据拷贝，耗时操作在主循环处理)
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
-  // 只做最小量的数据拷贝与元数据保存，避免在回调中执行耗时操作
   if (size < BUFFER_SIZE) {
-    for (int i = 0; i < size; i++) loraStr[i] = (char)payload[i];
+    memcpy(loraStr, payload, size);
     loraStr[size] = '\0';
     lastRssi = rssi;
     lastSnr = snr;
     lastPayloadSize = size;
-    loraReceivedFlag = true;  // 主循环会处理 JSON、时间和队列写入
+    loraReceivedFlag = true;
     needPlaLed = true;
     receiveCount++;
   } else {
-    // payload 超长，丢弃
     loraStr[0] = '\0';
     lastPayloadSize = 0;
   }
-
-  Radio.Rx(0);  // 重新开启接收
+  Radio.Rx(0);
 }
 
 // 初始化LoRa模块
 void initRadio() {
   RadioEvents.RxDone = OnRxDone;
   initPanRadio(&RadioEvents);
-  Radio.Rx(0);
+  Radio.Rx(0);  // 重新开启接收
 }
 
 
-// ================================== 主程序 ==================================
+// 系统初始化
 void setup() {
-
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   delay(1000);
+
   deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
-  initWifi();  // 先尝试连WiFi对时
-  // initGPS();   // 初始化GPS
-  initRadio();  // 初始化LoRa
-  initBLE();    // 初始化蓝牙
+
+  initLibWifi();
+  initRadio();
+  initBLE();
+
   Serial.println("✅ 系统启动完成");
 }
-unsigned long startm = 0;
+// 主循环
+unsigned long lastDisplayUpdate = 0;
+
 void loop() {
-  startm = millis();
   Radio.IrqProcess();
-  // --- LoRa 数据处理 ---
+
+  // 处理LoRa接收数据
   if (loraReceivedFlag) {
-    // 把标志清除并在主循环中完成较重的处理（JSON序列化、时间获取、入队）
     loraReceivedFlag = false;
     Serial.print("Received LoRa: ");
-    Serial.println(loraStr);
-    displayBuf[3] = "";
-    displayBuf[3].concat(loraStr, 15);
+    Serial.print(loraStr);
+    displayBuf[3] = String(loraStr).substring(0, 15);
 
-    // 构建 JSON 并推入队列（将耗时操作移到此处）
     if (lastPayloadSize > 0) {
+      Serial.print("  --> ");
+      Serial.print("Rssi");
+      Serial.print(lastRssi);
+      Serial.print("  Snr");
+      Serial.println(lastSnr);
       StaticJsonDocument<200> doc;
       doc["rssi"] = (int)lastRssi;
       doc["snr"] = (int)lastSnr;
       doc["info"] = loraStr;
       doc["upDateDevice"] = deviceName;
       doc["time"] = getCurrentTime();
-      String data;
-      serializeJson(doc, data);
-      addLoraInfoToArr(String(data));
+
+      String jsonData;
+      serializeJson(doc, jsonData);
+      addDataToQueue(jsonData);
       lastPayloadSize = 0;
     }
   }
 
-  // --- GPS 数据解析 ---
+  // GPS数据解析
   if (Serial1.available() > 0) {
     gpsEncode();
   }
-  // --- LED 提示 ---
+
+  // LED提示
   if (needPlaLed) {
     needPlaLed = false;
     openLedByNum(5, 50);
-    // Serial.print("✅ 监听一次用时");
-    // Serial.println(millis() - startm);
   }
 
-  // --- 屏幕显示更新 ---
+  // 更新显示计数
   displayBuf[0] = "id:" + deviceName + " rec" + String(receiveCount);
 
-  // --- BLE 数据发送逻辑 ---
-  if (deviceConnected && needSync && gpsDataCount > 0) {
-    String data = getAndRemoveFirstLoraDataForArr();
+  // BLE数据发送
+  if (deviceConnected && needSync && dataCount > 0) {
+    String data = getAndRemoveFirstData();
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
 
     Serial.print("✅ 同步发送：");
     Serial.println(data);
     Serial.print("📊 剩余：");
-    Serial.println(gpsDataCount);
+    Serial.println(dataCount);
   }
 
-
-  showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
+  // 降低OLED刷新频率 (每500ms更新一次)
+  unsigned long now = millis();
+  if (now - lastDisplayUpdate >= 500) {
+    showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
+    lastDisplayUpdate = now;
+  }
 
   delay(100);
-  // --- OLED 屏幕刷新 ---
 }

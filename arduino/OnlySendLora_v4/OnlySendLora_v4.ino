@@ -1,124 +1,128 @@
 /*
  * Heltec ESP32 LoRa 纯发送程序
  * 功能：每隔10秒自动发送一次LoRa数据
- * 不接收、不处理回执、无接收回调
  */
 
 #include "LoRaWan_APP.h"
 #include "Arduino.h"
 #include <pan3dme.h>
-
 #include "HT_TinyGPS++.h"
 
-// ==================== 引脚枚举定义 ====================
-// GC1109 控制引脚
-#define FEM_EN 2
-#define FEM_PA 46
-
-
-String deviceName = "v4-x";
-String gpsInfo = "0.00000,0.00000";
-String sendStr = "";
+// ==================== 常量定义 ====================
+const char* DEVICE_NAME_PREFIX = "v4-x";
+const unsigned long SEND_INTERVAL_MS = 10000;  // 发送间隔10秒
+const int PACKET_TYPE_GPS = 1;                 // GPS数据包类型
 
 // ==================== 全局变量 ====================
-char sendData[BUFFER_SIZE];  // 发送数据缓存
-RadioEvents_t radioEvents;   // LoRa 事件
-String displayBuf[4] = { "", "", "", "" };
-
-// 发送状态枚举
-int packetCount = 0;  // 数据包编号
-
-// 发送计时变量
-unsigned long lastSendTime = 0;
-const long sendInterval = 1000;  // 发送间隔：
+String deviceName;                             // 设备名称
+String gpsCoordinates;                         // GPS坐标信息
+char sendData[BUFFER_SIZE];                    // 发送数据缓存
+RadioEvents_t radioEvents;                     // LoRa事件回调
+int packetCount = 0;                           // 数据包计数器
+unsigned long lastSendTime = 0;                // 上次发送时间戳
+String displayLines[4];                        // OLED显示内容
 
 
+// ==================== GPS模块初始化 ====================
 void initGPS() {
   initPanGPS();
 }
-void readGpsInfo() {
-  gpsInfo = getGpsInfoStr();
-  displayBuf[2] = gpsInfo;
+
+// ==================== 读取GPS信息 ====================
+void updateGpsInfo() {
+  gpsCoordinates = getGpsInfoStr();
+  displayLines[2] = gpsCoordinates;
 }
+// ==================== LoRa模块初始化 ====================
 void initLora() {
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
   initPanRadio(&radioEvents);
 }
-// ==================== 初始化 ====================
+// ==================== 系统初始化 ====================
 void setup() {
   delay(1000);
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  
+  // 生成设备名称并初始化显示
   deviceName = makeDivceName();
-  displayBuf[0] = "name " + deviceName;
+  displayLines[0] = "Device: " + deviceName;
+  displayLines[1] = "";
+  displayLines[2] = "Waiting GPS...";
+  displayLines[3] = "LoRa Ready";
+  
+  // 初始化LoRa模块
   initLora();
+  
+  // V4版本初始化GPS
 #if defined(WIFI_LORA_32_V4)
   initGPS();
 #endif
 }
-void sendInfoByType(char* data, int type) {
-  sendStr = String(type) + "|" + deviceName;
-  switch (type) {
-    case 1:
-      sendStr = sendStr + "|" + gpsInfo + "|" + String(packetCount);
-      break;
-    case 2:
-      break;
+// ==================== 构建并发送数据包 ====================
+void buildAndSendPacket(int packetType) {
+  String dataStr = String(packetType) + "|" + deviceName;
+  
+  if (packetType == PACKET_TYPE_GPS) {
+    dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
   }
-  int len = snprintf(data, BUFFER_SIZE, "%s", sendStr.c_str());
+  
+  // 安全拷贝到发送缓冲区
+  int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
-    Serial.println("⚠️ sendData too long, truncated");
-    data[BUFFER_SIZE - 1] = '\0';
+    Serial.println("⚠️ 数据过长，已截断");
+    sendData[BUFFER_SIZE - 1] = '\0';
   }
+  
+  // 打印发送信息
   Serial.print("发送：");
-  Serial.println(data);
-  Serial.println(strlen(data));
+  Serial.println(sendData);
+  Serial.println(strlen(sendData));
+  
+  // 执行LoRa发送
+  Radio.Send((uint8_t*)sendData, strlen(sendData));
 }
 // ==================== 主循环 ====================
 void loop() {
   delay(1);
-
-  // --- GPS 数据解析 ---
+  
+  // 解析GPS数据
   if (Serial1.available() > 0) {
     gpsEncode();
   }
-
-  // ============== 核心：每10秒触发一次发送 ==============
-  if (millis() - lastSendTime >= sendInterval) {
+  
+  // 定时发送LoRa数据
+  if (millis() - lastSendTime >= SEND_INTERVAL_MS) {
     lastSendTime = millis();
-
     packetCount++;
-    readGpsInfo();  // 把字符串装进 gpsInfo
-    sendInfoByType(sendData, 1);
-    Radio.Send((uint8_t*)sendData, strlen(sendData));
+    
+    // 更新GPS信息并发送
+    updateGpsInfo();
+    buildAndSendPacket(PACKET_TYPE_GPS);
+    
+    // LED指示和状态显示
     openLedByNum(10, 50);
-    displayBuf[3] = "send lora";
-
-    // if (packetCount % 3 == 1) {
-    //   Radio.IrqProcess();
-    //   lastSendTime = sendInterval - sendInterval;
-    //   Serial.println("连发一次，");
-    //   delay(4000);
-    // }
-
-
+    displayLines[3] = "Sending...";
   } else {
-    displayBuf[3] = "lora sleep";
-    Radio.IrqProcess();
+    displayLines[3] = "LoRa Sleep";
   }
-
-  showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
+  
+  // 处理LoRa中断
+  Radio.IrqProcess();
+  
+  // 更新OLED显示
+  showDisplayBy4Area(displayLines[0], displayLines[1], displayLines[2], displayLines[3]);
 }
 
-// ==================== 发送完成回调 ====================
+// ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
   Radio.Sleep();
-  Serial.println("发送完成 ✅");
+  Serial.println("✅ 发送完成");
 }
 
-// ==================== 发送超时回调 ====================
+// ==================== LoRa发送超时回调 ====================
 void onSendTimeout(void) {
   Radio.Sleep();
-  Serial.println("发送超时 ❌");
+  Serial.println("❌ 发送超时");
 }
