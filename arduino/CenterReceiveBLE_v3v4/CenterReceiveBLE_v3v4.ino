@@ -52,15 +52,15 @@ String deviceName = "v4-x";
 
 
 
-#define FEM_EN 2   //FEM总电源
-#define FEM_PA 46  //收发切换脚
+#define FEM_EN 2  //FEM总电源 LORA  强化
+
 
 // ================================== LoRa 参数 ==================================
-#define LORA_BANDWIDTH 0          // 带宽 125kHz
-#define LORA_CODINGRATE 1         // 纠错率
+#define LORA_BANDWIDTH 0   // 带宽 125kHz
+#define LORA_CODINGRATE 1  // 纠错率
 #define LORA_PREAMBLE_LENGTH 8
 #define LORA_SYMBOL_TIMEOUT 0
- 
+
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机
@@ -71,18 +71,6 @@ bool wifiSyncDone = false;
 typedef enum { LOWPOWER,
                STATE_RX } States_t;
 States_t state;
-
-// ================================== 函数声明 ==================================
-void addGpsData(String data);
-String getAndRemoveFirstGpsData();
-void initWifi();
-String getCurrentTime();
-String getCurrentGpsTime();
-void initGPS();
-void initBLE();
-
-void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
-void initRadio();
 
 
 // ================================== BLE 回调函数 ==================================
@@ -270,38 +258,28 @@ void initRadio() {
   RadioEvents.RxDone = OnRxDone;
   Radio.Init(&RadioEvents);
   Radio.SetChannel(LORA_FREQ);
-
   Serial.print("✅ 当前lora频段");
   Serial.println(LORA_FREQ);
-
-  
-
   Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SF,
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
 
+  Serial.println("✅ LoRa 初始化完成");
+  pinMode(FEM_EN, OUTPUT);
+  digitalWrite(FEM_EN, HIGH);
 
   state = STATE_RX;
-  Serial.println("✅ LoRa 初始化完成");
- 
 }
 
 
 // ================================== 主程序 ==================================
 void setup() {
   Serial.begin(115200);
-
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
-
   // initWifi();  // 先尝试连WiFi对时
-  initGPS();   // 初始化GPS
-  pinMode(FEM_EN, OUTPUT);
-  digitalWrite(FEM_EN, HIGH);
-  // pinMode(FEM_PA, OUTPUT);
-  // digitalWrite(FEM_PA, HIGH);
-
+  // initGPS();   // 初始化GPS
   initRadio();  // 初始化LoRa
   initBLE();    // 初始化蓝牙
   Serial.println("✅ 系统启动完成 | 同步默认关闭");
