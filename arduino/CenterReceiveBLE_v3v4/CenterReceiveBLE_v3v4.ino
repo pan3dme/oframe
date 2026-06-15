@@ -52,17 +52,15 @@ String deviceName = "v4-x";
 
 
 
-#define FEM_EN    2    //FEM总电源
-#define FEM_PA    46   //收发切换脚
+#define FEM_EN 2   //FEM总电源
+#define FEM_PA 46  //收发切换脚
 
 // ================================== LoRa 参数 ==================================
-#define RF_FREQUENCY 863000000    //  433MHz 国内通用863 863
 #define LORA_BANDWIDTH 0          // 带宽 125kHz
-#define LORA_SPREADING_FACTOR 10  // 扩频因子 (平衡距离和速度)
 #define LORA_CODINGRATE 1         // 纠错率
 #define LORA_PREAMBLE_LENGTH 8
 #define LORA_SYMBOL_TIMEOUT 0
-#define BUFFER_SIZE 36
+ 
 char loraStr[BUFFER_SIZE];
 
 // LoRa状态机
@@ -79,14 +77,13 @@ void addGpsData(String data);
 String getAndRemoveFirstGpsData();
 void initWifi();
 String getCurrentTime();
-
 String getCurrentGpsTime();
 void initGPS();
 void initBLE();
 
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
 void initRadio();
- 
+
 
 // ================================== BLE 回调函数 ==================================
 // 连接/断开回调
@@ -140,58 +137,6 @@ String getAndRemoveFirstGpsData() {
   return first;
 }
 
-// 初始化WiFi并同步网络时间
-// 初始化WiFi并同步网络时间 (获取后自动断开以省电)
-void initWifi() {
-  // 如果已经执行过一次对时并断开，则直接返回，不再连接
-  if (wifiSyncDone) return;
-
-  const char *ssid = "yangchang";
-  const char *password = "13787501167";
-
-  Serial.print("正在连接 WiFi");
-  WiFi.begin(ssid, password);
-  unsigned long startAttemptTime = millis();
-  int skipNum = 0;
-
-  // 等待连接或超时(10秒)
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-    openLedByNum(1, 500);
-    Serial.print(".");
-    skipNum++;
-    showDisplayBy4Area("wifi connect" + String(skipNum), "", "", "");
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ WiFi 连接成功！");
-
-    // 配置时区和NTP服务器
-    configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");
-    Serial.println("正在同步网络时间...");
-
-    int retry = 0;
-    while (!getLocalTime(&timeinfo) && retry < 50) {
-      delay(100);
-      retry++;
-    }
-
-    if (retry < 50) {
-      Serial.println("✅ 网络时间获取成功！");
-      // --- 关键修改：获取成功后，断开WiFi ---
-      WiFi.disconnect(true);  // true 表示从闪存中删除配置（可选），false 则保留配置
-      WiFi.mode(WIFI_OFF);    // 强制关闭 WiFi 模块射频
-      Serial.println("📶 WiFi 已关闭以省电");
-    } else {
-      Serial.println("❌ 获取网络时间失败！");
-    }
-  } else {
-    Serial.println("\n⏰ WiFi 连接超时（10秒），跳过网络对时...");
-  }
-
-  // 无论成功与否，都将标志位置为 true，防止 loop 中反复尝试
-  // 如果希望在某些特定条件下（如时间久未更新）再次尝试，可修改此逻辑
-  wifiSyncDone = true;
-}
 
 // 获取可用的时间字符串 (优先网络，其次GPS，最后默认)
 String getCurrentTime() {
@@ -324,27 +269,33 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 void initRadio() {
   RadioEvents.RxDone = OnRxDone;
   Radio.Init(&RadioEvents);
-  Radio.SetChannel(RF_FREQUENCY);
+  Radio.SetChannel(LORA_FREQ);
 
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+  Serial.print("✅ 当前lora频段");
+  Serial.println(LORA_FREQ);
+
+  
+
+  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SF,
                     LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
 
 
   state = STATE_RX;
   Serial.println("✅ LoRa 初始化完成");
-}
  
+}
+
 
 // ================================== 主程序 ==================================
 void setup() {
   Serial.begin(115200);
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  deviceName=makeDivceName();
+  deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
 
-  initWifi();  // 先尝试连WiFi对时
+  // initWifi();  // 先尝试连WiFi对时
   initGPS();   // 初始化GPS
   pinMode(FEM_EN, OUTPUT);
   digitalWrite(FEM_EN, HIGH);
