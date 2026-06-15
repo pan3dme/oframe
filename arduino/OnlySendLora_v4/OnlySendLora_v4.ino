@@ -111,18 +111,17 @@ void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
+  
   displayBuf[0] = "name " + deviceName;
-
 
 #if defined(WIFI_LORA_32_V4)
   initGPS();
+  pinMode(FEM_EN, OUTPUT);
+  digitalWrite(FEM_EN, HIGH);
 #endif
 
   initLora();
-  pinMode(FEM_EN, OUTPUT);
-  digitalWrite(FEM_EN, HIGH);
-  // pinMode(FEM_PA, OUTPUT);
-  // digitalWrite(FEM_PA, HIGH);
+
   // 绑定发送事件
 }
 void sendInfoByType(char* data, int type) {

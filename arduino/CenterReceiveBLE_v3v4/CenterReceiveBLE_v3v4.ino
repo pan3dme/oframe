@@ -20,13 +20,14 @@
 // ================================== BLE 配置 ==================================
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
+
+
+
 bool deviceConnected = false;  // 蓝牙连接状态
 bool needSync = false;         // 同步开关：只有收到"true"才发送数据
 bool showTime = false;
 
 
-#define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
-#define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 // ================================== 硬件引脚定义 ==================================
 // GPS模块引脚
@@ -197,19 +198,9 @@ void initGPS() {
 
 // 初始化BLE服务
 void initBLE() {
-  BLEDevice::init("牛羊GPS" + deviceName);
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-  pCharacteristic = pService->createCharacteristic(
-    CHARACTERISTIC_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
-  pCharacteristic->addDescriptor(new BLE2902());
-  pCharacteristic->setCallbacks(new MyCallbacks());
-  pService->start();
-  BLEDevice::startAdvertising();
-  Serial.println("✅ 初始化蓝牙完成");
+  BLECallbacks bleCallbacks = initBLEFun(deviceName, new MyServerCallbacks(), new MyCallbacks());
+  pServer = bleCallbacks.pServer;
+  pCharacteristic = bleCallbacks.pCharacteristic;
 }
 
 
@@ -240,6 +231,8 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     loraReceivedFlag = true;
     needPlaLed = true;
     StaticJsonDocument<200> doc;
+    doc["rssi"] = rssi;
+    doc["snr"] = snr;
     doc["info"] = loraStr;
     doc["upDateDevice"] = deviceName;
     doc["time"] = getCurrentTime();  // 修正：使用动态时间
