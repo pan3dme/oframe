@@ -32,11 +32,8 @@ bool needSync = false;         // 同步开关：只有收到"true"才发送数�
 
 // ================================== 全局变量 ==================================
 
-TinyGPSPlus gps;                            // GPS对象
-struct tm timeinfo;                         // 系统时间结构体
-bool wifiTimeSynced = false;                // 是否已成功同步网络时间
-time_t syncedEpoch = 0;                     // 成功同步的时间戳
-unsigned long syncedMillis = 0;             // 同步时的本地毫秒计数
+
+
 String displayBuf[4] = { "", "", "", "" };  // 屏幕显示缓冲区
 
 // GPS数据队列 (环形缓冲区模拟)
@@ -130,99 +127,12 @@ String getAndRemoveFirstGpsData() {
 
 
 bool initWifi() {
-  const char *ssid = "yangchang";
-  const char *password = "13787501167";
 
-  Serial.print("正在连接 WiFi");
-  WiFi.begin(ssid, password);
-  unsigned long startAttemptTime = millis();
-
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-    delay(200);
-    Serial.print(".");
-  }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n⚠️ WiFi 连接失败，跳过网络时间同步");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return false;
-  }
-
-  Serial.println("\n✅ WiFi 连接成功，开始同步网络时间");
-  configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");
-
-  int retry = 0;
-  while (!getLocalTime(&timeinfo) && retry < 50) {
-    delay(100);
-    retry++;
-  }
-
-  if (retry >= 50) {
-    Serial.println("❌ 网络时间获取失败");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return false;
-  }
-
-  // 成功获取到网络当前时间
-  syncedEpoch = mktime(&timeinfo);
-  syncedMillis = millis();
-  wifiTimeSynced = true;
-  Serial.println("✅ 网络时间同步成功");
-  Serial.print("同步时间：");
-  Serial.print(timeinfo.tm_year + 1900);
-  Serial.print("/");
-  Serial.print(timeinfo.tm_mon + 1);
-  Serial.print("/");
-  Serial.print(timeinfo.tm_mday);
-  Serial.print(" ");
-  Serial.print(timeinfo.tm_hour);
-  Serial.print(":");
-  Serial.print(timeinfo.tm_min);
-  Serial.print(":");
-  Serial.println(timeinfo.tm_sec);
-
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  Serial.println("📶 WiFi 已关闭，后续时间使用本地时钟增量");
-  return true;
+  return initLibWifi();
 }
 
 
-// 获取可用的时间字符串 (优先网络，其次GPS，最后默认)
-String getCurrentTime() {
-  if (wifiTimeSynced) {
-    unsigned long elapsedMs = millis() - syncedMillis;
-    time_t currentEpoch = syncedEpoch + elapsedMs / 1000;
-    struct tm *tmNow = localtime(&currentEpoch);
-    if (tmNow != NULL) {
-      char timeStr[30];
-      snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-               tmNow->tm_year + 1900,
-               tmNow->tm_mon + 1,
-               tmNow->tm_mday,
-               tmNow->tm_hour,
-               tmNow->tm_min,
-               tmNow->tm_sec);
-      return String(timeStr);
-    }
-  }
 
-  // 如果没有网络时间，则尝试使用 GPS 时间
-  if (gps.time.isValid() && gps.date.isValid()) {
-    return getCurrentGpsTime();
-  }
-
-  return "0000/00/00 00:00:00";
-}
-
-
-// 获取GPS时间 (带自动同步逻辑)
-// 获取GPS时间并转换为北京时间 (UTC+8)
-String getCurrentGpsTime() {
-  return getCurrentGpsTm(gps);  // 返回 月/日 时:分:秒
-}
 
 // 初始化GPS串口
 void initGPS() {
@@ -237,24 +147,7 @@ void initBLE() {
 }
 
 
-void showGpsToOled() {
-  char gpsStr[128];
-  uint16_t randomId = random(10000, 99999);
-  int hour = gps.time.hour();
-  int minute = gps.time.minute();
-  int second = gps.time.second();
 
-  if (gps.location.isValid() && gps.time.isValid() && gps.satellites.value() > 0) {
-    sprintf(gpsStr, "ID:%d | TIME:%02d:%02d:%02d | SAT:%d | LAT:%.6f | LON:%.6f",
-            randomId, hour, minute, second, gps.satellites.value(),
-            gps.location.lat(), gps.location.lng());
-    displayBuf[1] = "sat:" + String(gps.satellites.value());
-  } else {
-    sprintf(gpsStr, "ID:%d | TIME:%02d:%02d:%02d | SAT:0 | LAT:0.000000 | LON:0.000000",
-            randomId, hour, minute, second);
-    displayBuf[1] = "sat:0 no gps";
-  }
-}
 
 // LoRa 接收回调函数
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
@@ -340,13 +233,8 @@ void loop() {
 
   // --- GPS 数据解析 ---
   if (Serial1.available() > 0) {
-    while (Serial1.available()) {
-      gps.encode(Serial1.read());
-    }
-    showGpsToOled();
+    gpsEncode();
   }
-
-
   // --- LED 提示 ---
   if (needPlaLed) {
     needPlaLed = false;

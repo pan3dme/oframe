@@ -2,6 +2,7 @@
 #define pan3dme_h
  
 #include "Arduino.h"
+#include <time.h>
 #include <WiFi.h>
 #include "HT_SSD1306Wire.h"
 #include "HT_TinyGPS++.h"
@@ -9,6 +10,18 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+
+// 前向声明：在头文件中避免包含过多实现细节
+class TinyGPSPlus;
+class BLEServer;
+class BLECharacteristic;
+class SSD1306Wire;
+
+// 全局共享变量（在 pan3dme.cpp 中定义）
+extern TinyGPSPlus gps;
+extern bool wifiTimeSynced;
+extern time_t syncedEpoch;
+extern unsigned long syncedMillis;
 
 
 // ================================== 硬件引脚定义 ==================================
@@ -42,11 +55,13 @@ struct BLECallbacks {
 }; 
  
 BLECallbacks initBLEFun(String deviceName,BLEServerCallbacks *serverCallbacks,BLECharacteristicCallbacks *charCallbacks);
-bool initLibWifi(struct tm timeinfo) ;
+bool initLibWifi() ;
 void openLedByNum(int count, int delayMs)  ;
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS() ;
+void gpsEncode();                            // GPS对象
 String getCurrentGpsTm(TinyGPSPlus gps);
+String getCurrentTime();
 String makeDivceName() ;
 
 #endif
