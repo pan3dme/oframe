@@ -29,12 +29,6 @@ bool showTime = false;
 
 
 
-// ================================== 硬件引脚定义 ==================================
-// GPS模块引脚
-#define VGNSS_CTRL 34  // GPS电源控制 (低电平开启)
-#define GPS_RX_PIN 39  // GPS TX -> ESP32 RX
-#define GPS_TX_PIN 38  // GPS RX -> ESP32 TX
-#define GPS_ANT_EN 42  // GPS天线电源使能
 
 
 // ================================== 全局变量 ==================================
@@ -44,7 +38,7 @@ struct tm timeinfo;                         // 系统时间结构体
 String displayBuf[4] = { "", "", "", "" };  // 屏幕显示缓冲区
 
 // GPS数据队列 (环形缓冲区模拟)
-#define GPS_MAX_COUNT 99
+#define GPS_MAX_COUNT 20
 String gpsDataArray[GPS_MAX_COUNT];
 int gpsDataCount = 0;
 int receiveCount = 0;  // 接收计数器
@@ -57,9 +51,9 @@ String deviceName = "v4-x";
 
 
 // ================================== LoRa 参数 ==================================
-#define LORA_BANDWIDTH 0   // 带宽 125kHz
-#define LORA_CODINGRATE 1  // 纠错率
-#define LORA_PREAMBLE_LENGTH 8
+ 
+ 
+ 
 #define LORA_SYMBOL_TIMEOUT 0
 
 char loraStr[BUFFER_SIZE];
@@ -188,12 +182,7 @@ String getCurrentGpsTime() {
 
 // 初始化GPS串口
 void initGPS() {
-  pinMode(VGNSS_CTRL, OUTPUT);
-  digitalWrite(VGNSS_CTRL, LOW);  // 开启GPS电源
-  pinMode(GPS_ANT_EN, OUTPUT);
-  digitalWrite(GPS_ANT_EN, HIGH);  // 开启天线供电
-  Serial1.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-  Serial.println("GPS 已启动");
+  initPanGPS();
 }
 
 // 初始化BLE服务
@@ -253,8 +242,8 @@ void initRadio() {
   Radio.SetChannel(LORA_FREQ);
   Serial.print("✅ 当前lora频段");
   Serial.println(LORA_FREQ);
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SF,
-                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+  Radio.SetRxConfig(MODEM_LORA, LORA_BW, LORA_SF,
+                    LORA_CR, 0, PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
 
   Serial.println("✅ LoRa 初始化完成");
@@ -273,8 +262,11 @@ void setup() {
   displayBuf[0] = "id:" + deviceName + " rec";
   // initWifi();  // 先尝试连WiFi对时
   // initGPS();   // 初始化GPS
+  openLedByNum(10, 50);
   initRadio();  // 初始化LoRa
-  initBLE();    // 初始化蓝牙
+  openLedByNum(10, 50);
+  initBLE();  // 初始化蓝牙
+  openLedByNum(10, 50);
   Serial.println("✅ 系统启动完成 | 同步默认关闭");
 }
 

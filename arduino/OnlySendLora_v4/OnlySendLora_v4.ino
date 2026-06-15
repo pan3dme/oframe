@@ -12,15 +12,6 @@
 #include "HT_TinyGPS++.h"
 
 // ==================== 引脚枚举定义 ====================
-// GPS模块电源控制引脚
-#define VGNSS_CTRL 34  // GPS电源控制引脚（高电平关，低电平开）
-
-// GPS串口引脚
-#define GPS_RX_PIN 39  // GPS模块TX -> 开发板RX
-#define GPS_TX_PIN 38  // GPS模块RX -> 开发板TX
-
-// 其他外设电源控制
-#define GPS_ANT_EN 42  // GPS天线电源使能引脚
 
 
 // GC1109 控制引脚
@@ -56,7 +47,7 @@ DeviceState currentState;  // 当前状态
 
 // 发送计时变量
 unsigned long lastSendTime = 0;
-const long sendInterval = 60000;  // 发送间隔：5秒
+const long sendInterval = 10000;  // 发送间隔：
 
 // 仅保留发送相关回调
 void onSendDone(void);
@@ -64,12 +55,7 @@ void onSendTimeout(void);
 
 // GPS初始化
 void initGPS() {
-  pinMode(VGNSS_CTRL, OUTPUT);
-  digitalWrite(VGNSS_CTRL, LOW);
-  pinMode(GPS_ANT_EN, OUTPUT);
-  digitalWrite(GPS_ANT_EN, HIGH);
-  Serial1.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-  Serial.println("GPS 已启动");
+  initPanGPS();
 }
 void readGpsInfo() {
 
@@ -111,17 +97,18 @@ void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
-  
+
   displayBuf[0] = "name " + deviceName;
 
 #if defined(WIFI_LORA_32_V4)
   initGPS();
   pinMode(FEM_EN, OUTPUT);
   digitalWrite(FEM_EN, HIGH);
+  openLedByNum(10, 50);
 #endif
 
   initLora();
-
+  openLedByNum(10, 50);
   // 绑定发送事件
 }
 void sendInfoByType(char* data, int type) {

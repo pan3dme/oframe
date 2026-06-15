@@ -59,7 +59,14 @@ void initOLED() {
   }
 }
 
-
+void initPanGPS() {
+  pinMode(VGNSS_CTRL, OUTPUT);
+  digitalWrite(VGNSS_CTRL, LOW);  // 开启GPS电源
+  pinMode(GPS_ANT_EN, OUTPUT);
+  digitalWrite(GPS_ANT_EN, HIGH);  // 开启天线供电
+  Serial1.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial.println("GPS 已启动");
+}
 
 
 // 设备ID认证 (根据MAC地址生成设备名)
