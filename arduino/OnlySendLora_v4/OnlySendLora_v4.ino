@@ -56,7 +56,7 @@ DeviceState currentState;  // 当前状态
 
 // 发送计时变量
 unsigned long lastSendTime = 0;
-const long sendInterval = 5000;  // 发送间隔：5秒
+const long sendInterval = 60000;  // 发送间隔：5秒
 
 // 仅保留发送相关回调
 void onSendDone(void);
@@ -97,6 +97,8 @@ void initLora() {
   // LoRa 初始化
   Radio.Init(&radioEvents);
   Radio.SetChannel(LORA_FREQ);
+  Serial.print("✅ 当前lora频段");
+  Serial.println(LORA_FREQ);
   // 发送参数配置
   Radio.SetTxConfig(MODEM_LORA, TX_POWER, 0, LORA_BW,
                     LORA_SF, LORA_CR, PREAMBLE_LENGTH, false,
