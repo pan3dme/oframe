@@ -160,16 +160,18 @@ void loop() {
   // 处理LoRa接收数据
   if (loraReceivedFlag) {
     loraReceivedFlag = false;
+    Serial.print("  --> ");
+    Serial.print("Rssi");
+    Serial.print(lastRssi);
+    Serial.print("  Snr");
+    Serial.println(lastSnr);
+
     Serial.print("Received LoRa: ");
-    Serial.print(loraStr);
+    Serial.println(loraStr);
     displayBuf[3] = String(loraStr).substring(0, 15);
 
     if (lastPayloadSize > 0) {
-      Serial.print("  --> ");
-      Serial.print("Rssi");
-      Serial.print(lastRssi);
-      Serial.print("  Snr");
-      Serial.println(lastSnr);
+
       StaticJsonDocument<200> doc;
       doc["rssi"] = (int)lastRssi;
       doc["snr"] = (int)lastSnr;
