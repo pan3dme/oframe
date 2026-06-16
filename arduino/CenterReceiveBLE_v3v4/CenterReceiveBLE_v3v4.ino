@@ -110,6 +110,20 @@ void initBLE() {
 
 
 
+// LoRa接收超时回调
+void OnRxTimeout(void) {
+  Serial.println("⚠️ Radio接收超时!");
+  // 超时后重新开启接收
+  Radio.Rx(0);
+}
+
+// LoRa接收错误回调
+void OnRxError(void) {
+  Serial.println("❌ Radio接收错误!");
+  // 错误后重新开启接收
+  Radio.Rx(0);
+}
+
 // LoRa接收回调 (仅做数据拷贝，耗时操作在主循环处理)
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (size < BUFFER_SIZE) {
@@ -128,9 +142,35 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   Radio.Rx(0);
 }
 
+
+// 强制重置Radio(最强力恢复)
+void forceResetRadio() {
+  Serial.println("🔄 开始强制重置Radio...");
+
+  // 步骤1: 进入睡眠模式
+  Radio.Sleep();
+  delay(20);
+  Serial.println("  ✅ 已进入睡眠模式");
+
+  initRadio();
+  Serial.println("  ✅ Radio已重新初始化");
+  delay(10);
+
+  // 步骤4: 验证状态
+  RadioState_t state = Radio.GetStatus();
+  if (state == RF_RX_RUNNING) {
+    Serial.println("✅ Radio强制重置成功,已进入接收状态");
+  } else {
+    Serial.print("❌ Radio重置失败,当前状态: ");
+    Serial.println(state);
+  }
+}
+
 // 初始化LoRa模块
 void initRadio() {
   RadioEvents.RxDone = OnRxDone;
+  RadioEvents.RxTimeout = OnRxTimeout;
+  RadioEvents.RxError = OnRxError;
   initPanRadio(&RadioEvents);
   Radio.Rx(0);  // 重新开启接收
 }
@@ -153,8 +193,10 @@ void setup() {
 }
 // 主循环
 unsigned long lastDisplayUpdate = 0;
+unsigned long lastrecdLoraTm = 0;
 
 void loop() {
+  unsigned long startm = millis();
   Radio.IrqProcess();
 
   // 处理LoRa接收数据
@@ -195,7 +237,29 @@ void loop() {
   if (needPlaLed) {
     needPlaLed = false;
     openLedByNum(5, 50);
+    // Serial.print("测试收到一条消息用时");
+    // Serial.println(millis() - startm);
+    lastrecdLoraTm = startm;
   }
+
+  // 超时检测与Radio状态恢复
+  unsigned long timeSinceLastRecv = startm - lastrecdLoraTm;
+  if (timeSinceLastRecv > 60000) {
+    Serial.print("⚠️ 超过60秒未收到数据: ");
+    Serial.println(timeSinceLastRecv);
+
+    // 检查Radio当前状态
+    RadioState_t radioState = Radio.GetStatus();
+    Serial.print("📻 Radio当前状态: ");
+    Serial.println(radioState);
+
+    // 无论状态如何,都执行强制重置(因为可能在接收状态但实际已死锁)
+    Serial.println("🔧 检测到Radio可能死锁,执行强制重置...");
+    forceResetRadio();
+
+    lastrecdLoraTm = startm;
+  }
+
 
   // 更新显示计数
   displayBuf[0] = "id:" + deviceName + " rec" + String(receiveCount);
@@ -220,4 +284,5 @@ void loop() {
   }
 
   delay(100);
+  // Radio.Rx(0);  // 重新开启接收
 }
