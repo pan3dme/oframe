@@ -1,11 +1,11 @@
-#define GPS_RX_PIN 18
-#define GPS_TX_PIN 17
+// #define GPS_RX_PIN 18
+// #define GPS_TX_PIN 17
+
+#define GPS_RX_PIN 45
+#define GPS_TX_PIN 46
 
 bool isSleeping = false;
 bool gpsLowPower = false;
-const unsigned long WORK_INTERVAL_MS = 30000;
-const unsigned long SLEEP_INTERVAL_MS = 30000;
-unsigned long stateStartMillis = 0;
 
 #include "HT_TinyGPS++.h"
 TinyGPSPlus gps;
@@ -79,7 +79,6 @@ void setup()
   delay(150);
 
   Serial.println("===== GPS 初始化完成 =====");
-  stateStartMillis = millis();
   isSleeping = false;
   gpsLowPower = false;
 }
@@ -89,60 +88,25 @@ void loop()
   static unsigned long lastPrint = 0;
   unsigned long now = millis();
 
-  // 工作态解析NMEA；休眠态清空
-  if (!isSleeping)
+  // 持续解析NMEA数据
+  while (Serial2.available())
   {
-    while (Serial2.available())
-    {
-      gps.encode(Serial2.read());
-    }
-  }
-  else
-  {
-    while (Serial2.available())
-    {
-      Serial2.read();
-    }
+    gps.encode(Serial2.read());
   }
 
-  // 每秒打印：工作/休眠 + 射频状态 + 卫星数 + 倒计时
+  // 每秒打印卫星数量
   if (now - lastPrint >= 1000)
   {
     lastPrint = now;
-    unsigned long elapsed = now - stateStartMillis;
-    unsigned long remaining = isSleeping ?
-      ((elapsed >= SLEEP_INTERVAL_MS) ? 0 : (SLEEP_INTERVAL_MS - elapsed)) :
-      ((elapsed >= WORK_INTERVAL_MS) ? 0 : (WORK_INTERVAL_MS - elapsed));
-
-    bool rfOn = isGpsRfOn();
-
-    if (isSleeping)
-    {
-      Serial.print("[SLEEP] 射频：");
-      Serial.print(rfOn ? "❌ 未关闭（异常）" : "✅ 已关闭（正常）");
-      Serial.print(" | 倒计时：");
-      Serial.print(remaining / 1000);
-      Serial.println("s 后唤醒");
-    }
-    else
-    {
-      Serial.print("[WORK] 射频：✅ 开启 | 卫星：");
-      Serial.print(gps.satellites.value());
-      Serial.print(" | 倒计时：");
-      Serial.print(remaining / 1000);
-      Serial.println("s 后休眠");
-    }
-  }
-
-  // 定时切换
-  if (!isSleeping && (now - stateStartMillis >= WORK_INTERVAL_MS))
-  {
-    gpsSleep();
-    stateStartMillis = now;
-  }
-  if (isSleeping && (now - stateStartMillis >= SLEEP_INTERVAL_MS))
-  {
-    gpsWake();
-    stateStartMillis = now;
+    
+    Serial.print("[GPS] 卫星数量：");
+    Serial.print(gps.satellites.value());
+    Serial.print(" | 经度：");
+    Serial.print(gps.location.lng(), 6);
+    Serial.print(" | 纬度：");
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(" | 海拔：");
+    Serial.print(gps.altitude.meters(), 1);
+    Serial.println("m");
   }
 }

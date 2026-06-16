@@ -208,8 +208,12 @@ void loop() {
     Serial.print("  Snr");
     Serial.println(lastSnr);
 
+
+    displayBuf[2] = "Rssi" + String(lastRssi) + " Snr" + String(lastSnr);
     Serial.print("Received LoRa: ");
     Serial.println(loraStr);
+
+
     displayBuf[3] = String(loraStr).substring(0, 15);
 
     if (lastPayloadSize > 0) {
@@ -237,8 +241,8 @@ void loop() {
   if (needPlaLed) {
     needPlaLed = false;
     openLedByNum(5, 50);
-    // Serial.print("测试收到一条消息用时");
-    // Serial.println(millis() - startm);
+    Serial.print("测试收到一条消息用时");
+    Serial.println(millis() - startm);
     lastrecdLoraTm = startm;
   }
 

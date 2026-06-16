@@ -69,17 +69,17 @@ void initPanGPS()
   digitalWrite(VGNSS_CTRL, LOW); // 开启GPS电源
   pinMode(GPS_ANT_EN, OUTPUT);
   digitalWrite(GPS_ANT_EN, HIGH); // 开启天线供电
-  Serial1.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   Serial.println("GPS 已启动");
 }
 
 void gpsEncode()
 {
-  if (Serial1.available() > 0)
+  if (Serial2.available() > 0)
   {
-    while (Serial1.available())
+    while (Serial2.available())
     {
-      gps.encode(Serial1.read());
+      gps.encode(Serial2.read());
     }
   }
 }
