@@ -5,6 +5,7 @@ import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/coord_transform.dart';
 import '../utils/db_helper.dart';
 
@@ -45,6 +46,12 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
   bool _isCacheEnabled = true; // 是否启用缓存
   int _cachedTileCount = 0; // 已缓存瓦片数量
   final String _cacheStoreName = 'map_cache'; // 缓存存储名称
+  
+  // 蓝牙数据监听
+  int _lastBluetoothDataCount = 0; // 上次检查的蓝牙数据数量
+  
+  // 道路地名缓存时间管理
+  String? _lastRoutePlaceFetchDate; // 上次请求道路地名数据的日期 (格式: yyyy-MM-dd)
 
   @override
   void initState() {
@@ -57,6 +64,10 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
     _loadDevicePositionsAuto();
     // 初始化闪烁动画
     _initBlinkAnimation();
+    // 启动蓝牙数据监听
+    _startBluetoothDataListener();
+    // 恢复道路地名上次请求日期
+    _restoreLastRoutePlaceFetchDate();
   }
 
   /// 初始化黄点闪烁动画
@@ -88,6 +99,79 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
     super.dispose();
   }
 
+  /// 启动蓝牙数据监听（定期检查数量变化）
+  void _startBluetoothDataListener() {
+    // 每5秒检查一次蓝牙数据数量变化
+    Future.delayed(const Duration(seconds: 5), () async {
+      if (!mounted) return;
+      
+      try {
+        final bluetoothData = await DBHelper().getBluetoothData();
+        final currentCount = bluetoothData.length;
+        
+        // 如果数量发生变化，刷新设备位置
+        if (currentCount != _lastBluetoothDataCount) {
+          debugPrint('[蓝牙监听] 检测到数据变化: $_lastBluetoothDataCount -> $currentCount');
+          debugPrint('[蓝牙监听] 自动刷新设备位置...');
+          
+          // 记录当前数量
+          setState(() {
+            _lastBluetoothDataCount = currentCount;
+          });
+          
+          // 重新加载设备位置
+          await _loadDevicePositions();
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('检测到新数据，已刷新设备位置'),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+        
+        // 继续监听
+        _startBluetoothDataListener();
+      } catch (e) {
+        debugPrint('[蓝牙监听] 检查失败: $e');
+        // 出错后继续监听
+        _startBluetoothDataListener();
+      }
+    });
+  }
+
+  /// 恢复道路地名上次请求日期
+  Future<void> _restoreLastRoutePlaceFetchDate() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedDate = prefs.getString('last_route_place_fetch_date');
+      
+      if (savedDate != null) {
+        setState(() {
+          _lastRoutePlaceFetchDate = savedDate;
+        });
+        debugPrint('[道路地名] 恢夏上次请求日期: $_lastRoutePlaceFetchDate');
+      } else {
+        debugPrint('[道路地名] 没有保存的请求日期');
+      }
+    } catch (e) {
+      debugPrint('[道路地名] 恢夏日期失败: $e');
+    }
+  }
+
+  /// 保存道路地名请求日期
+  Future<void> _saveLastRoutePlaceFetchDate(String date) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_route_place_fetch_date', date);
+      debugPrint('[道路地名] 已保存请求日期: $date');
+    } catch (e) {
+      debugPrint('[道路地名] 保存日期失败: $e');
+    }
+  }
+
   /// 初始化瓦片缓存
   Future<void> _initTileCache() async {
     try {
@@ -114,6 +198,17 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
   /// 自动加载设备位置（先缓存后网络）
   Future<void> _loadDevicePositionsAuto() async {
     debugPrint('[设备位置] 开始自动加载...');
+    
+    // 初始化蓝牙数据数量
+    try {
+      final bluetoothData = await DBHelper().getBluetoothData();
+      setState(() {
+        _lastBluetoothDataCount = bluetoothData.length;
+      });
+      debugPrint('[设备位置] 初始蓝牙数据数量: $_lastBluetoothDataCount');
+    } catch (e) {
+      debugPrint('[设备位置] 获取初始蓝牙数据失败: $e');
+    }
     
     // 先从缓存加载
     await _loadDevicePositionsFromCache();
@@ -183,7 +278,8 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                   final parsedLat = double.tryParse(parts[0].trim());
                   final parsedLng = double.tryParse(parts[1].trim());
                   
-                  if (parsedLat != null && parsedLng != null && parsedLat != 0 && parsedLng != 0) {
+                  if (parsedLat != null && parsedLng != null && 
+                      parsedLat.abs() > 0.0001 && parsedLng.abs() > 0.0001) {
                     lat = parsedLat;
                     lng = parsedLng;
                     debugPrint('[设备位置] 设备[$displayName] 使用LOT GPS: ($lat, $lng)');
@@ -197,7 +293,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
         }
         
         // 如果有GPS坐标，转换并添加到列表
-        if (lat != null && lng != null && lat != 0 && lng != 0) {
+        if (lat != null && lng != null && lat.abs() > 0.0001 && lng.abs() > 0.0001) {
           final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
           
           positions.add({
@@ -253,6 +349,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       debugPrint('[蓝牙GPS缓存] 共${bluetoothData.length}条数据');
       
       final gpsMap = <String, Map<String, dynamic>>{};
+      int invalidCount = 0; // 无效GPS计数
       
       for (final item in bluetoothData) {
         try {
@@ -277,10 +374,15 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                 final lat = double.tryParse(gpsCoords[0].trim());
                 final lng = double.tryParse(gpsCoords[1].trim());
                 
-                if (lat != null && lng != null && lat != 0 && lng != 0) {
+                // 严格验证GPS有效性：排除0.00000或接近0的值
+                if (lat != null && lng != null && 
+                    lat.abs() > 0.0001 && lng.abs() > 0.0001) {
                   // 只保留最新的GPS数据（后面的会覆盖前面的）
                   gpsMap[deviceId] = {'lat': lat, 'lng': lng};
-                  debugPrint('[蓝牙GPS缓存] 设备[$deviceId]: ($lat, $lng)');
+                  debugPrint('[蓝牙GPS缓存] ✓ 设备[$deviceId]: ($lat, $lng)');
+                } else {
+                  invalidCount++;
+                  debugPrint('[蓝牙GPS缓存] ✗ 设备[$deviceId] GPS无效: ($lat, $lng)');
                 }
               }
             }
@@ -294,7 +396,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
         _bluetoothGpsCache = gpsMap;
       });
       
-      debugPrint('[蓝牙GPS缓存] 加载完成: ${gpsMap.length}个设备的GPS');
+      debugPrint('[蓝牙GPS缓存] 加载完成: ${gpsMap.length}个设备的GPS, $invalidCount个无效GPS已过滤');
     } catch (e) {
       debugPrint('[蓝牙GPS缓存] 加载失败: $e');
     }
@@ -578,7 +680,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
     }
   }
 
-  /// 加载道路和地名数据（先从缓存，再从网络）
+  /// 加载道路和地名数据（先从缓存，再根据日期决定是否请求网络）
   Future<void> _loadRouteAndPlaceData() async {
     setState(() {
       _isLoadingRoutePlace = true;
@@ -588,8 +690,26 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       // 先尝试从缓存加载
       await _loadFromCache();
       
-      // 然后尝试从网络获取最新数据
-      await _loadFromNetwork();
+      // 检查是否需要从网络更新（每天只请求一次）
+      final shouldFetchFromNetwork = await _shouldFetchRoutePlaceFromNetwork();
+      
+      if (shouldFetchFromNetwork) {
+        debugPrint('[道路地名] 今天尚未请求网络数据，开始更新...');
+        await _loadFromNetwork();
+        
+        // 记录今天的日期
+        final now = DateTime.now();
+        final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        setState(() {
+          _lastRoutePlaceFetchDate = today;
+        });
+        
+        // 保存到本地存储
+        await _saveLastRoutePlaceFetchDate(today);
+        debugPrint('[道路地名] 已记录今日请求日期: $_lastRoutePlaceFetchDate');
+      } else {
+        debugPrint('[道路地名] 今天已请求过网络数据，使用缓存');
+      }
       
       debugPrint('[道路地名] 数据加载完成');
     } catch (e) {
@@ -598,6 +718,35 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       setState(() {
         _isLoadingRoutePlace = false;
       });
+    }
+  }
+
+  /// 判断是否应该从网络请求道路地名数据
+  Future<bool> _shouldFetchRoutePlaceFromNetwork() async {
+    try {
+      // 如果缓存中没有数据，必须请求网络
+      if (_allRouteData.isEmpty && _allPlaceData.isEmpty) {
+        debugPrint('[道路地名] 缓存为空，需要请求网络');
+        return true;
+      }
+      
+      // 获取今天的日期
+      final now = DateTime.now();
+      final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      
+      // 如果今天已经请求过，不再请求
+      if (_lastRoutePlaceFetchDate == today) {
+        debugPrint('[道路地名] 今天已请求过 ($_lastRoutePlaceFetchDate)，不需要再次请求');
+        return false;
+      }
+      
+      // 今天还没请求过，需要请求
+      debugPrint('[道路地名] 上次请求日期: $_lastRoutePlaceFetchDate, 今天: $today, 需要请求');
+      return true;
+    } catch (e) {
+      debugPrint('[道路地名] 判断是否请求网络失败: $e');
+      // 出错时默认请求网络
+      return true;
     }
   }
 
