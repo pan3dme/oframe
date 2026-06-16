@@ -325,8 +325,14 @@ void initPanRadio(RadioEvents_t* radioEvents) {
   Serial.println("✅ LoRa 初始化完成");
 
 #if defined(WIFI_LORA_32_V4)
-  pinMode(FEM_EN, OUTPUT);
-  digitalWrite(FEM_EN, HIGH);
+  // 上电初始化功放 - 开启高功率模式
+  pinMode(LORA_PA_POWER, OUTPUT);
+  digitalWrite(LORA_PA_POWER, HIGH);
+  pinMode(LORA_PA_EN, OUTPUT);
+  digitalWrite(LORA_PA_EN, HIGH);
+  pinMode(LORA_PA_TX_EN, OUTPUT);
+  digitalWrite(LORA_PA_TX_EN, HIGH);
+  Serial.println("✅ 已开启高功率模式");
 #endif
 
 
