@@ -621,6 +621,142 @@ class _BluetoothPageState extends State<BluetoothPage> {
     return name;
   }
 
+  /// 格式化显示接收的JSON数据
+  Widget _formatReceivedData(String jsonData) {
+    try {
+      final data = jsonDecode(jsonData) as Map<String, dynamic>;
+      
+      // 提取各个字段
+      final rssi = data['rssi'] ?? '';
+      final snr = data['snr'] ?? '';
+      final info = data['info'] ?? '';
+      final upDateDevice = data['upDateDevice'] ?? '';
+      final time = data['time'] ?? '';
+      
+      // 从info中提取设备ID（第二部分）
+      String deviceId = '';
+      if (info.contains('|')) {
+        final parts = info.split('|');
+        if (parts.length >= 2) {
+          deviceId = parts[1];
+        }
+      }
+      
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 第一行：rssi和snr，数值部分绿色显示
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return RichText(
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 19, color: Colors.black, fontWeight: FontWeight.bold),
+                  children: [
+                    const TextSpan(text: '"rssi":'),
+                    TextSpan(
+                      text: '$rssi',
+                      style: const TextStyle(color: Colors.green),
+                    ),
+                    const TextSpan(text: ',"snr":'),
+                    TextSpan(
+                      text: '$snr',
+                      style: const TextStyle(color: Colors.green),
+                    ),
+                  ],
+                ),
+                softWrap: true,
+                overflow: TextOverflow.visible,
+              );
+            },
+          ),
+          const SizedBox(height: 4),
+          // 第二行：完整info，其中deviceId部分红色显示
+          if (info.isNotEmpty)
+            _buildInfoWithHighlightedDeviceId(info, deviceId),
+          const SizedBox(height: 4),
+          // 第三行：时间和上传设备
+          if (time.isNotEmpty || upDateDevice.isNotEmpty)
+            Text(
+              '${time.isNotEmpty ? time : ''}${upDateDevice.isNotEmpty ? ' ($upDateDevice)' : ''}',
+              style: const TextStyle(fontSize: 15),
+            ),
+        ],
+      );
+    } catch (e) {
+      // 如果解析失败，直接显示原始文本
+      return Text(
+        jsonData,
+        style: const TextStyle(fontSize: 17),
+      );
+    }
+  }
+
+  /// 构建info文本，其中deviceId部分用红色显示，最后部分数字加粗
+  Widget _buildInfoWithHighlightedDeviceId(String info, String deviceId) {
+    if (deviceId.isEmpty || !info.contains(deviceId)) {
+      return Text(
+        info,
+        style: const TextStyle(fontSize: 17),
+      );
+    }
+    
+    // 将info按deviceId分割，构建带高亮的文本
+    final parts = info.split(deviceId);
+    final List<TextSpan> spans = [];
+    
+    for (int i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        // 添加红色的deviceId
+        spans.add(TextSpan(
+          text: deviceId,
+          style: const TextStyle(
+            fontSize: 17,
+            color: Colors.red,
+            fontWeight: FontWeight.bold,
+          ),
+        ));
+      }
+      // 添加普通文本，但需要检查是否是最后一部分且有数字
+      if (i == parts.length - 1 && parts[i].contains('|')) {
+        // 最后一部分，检查是否有最后的数字
+        final lastParts = parts[i].split('|');
+        for (int j = 0; j < lastParts.length; j++) {
+          if (j > 0) {
+            spans.add(const TextSpan(text: '|'));
+          }
+          if (j == lastParts.length - 1) {
+            // 最后一部分数字，加粗加黑
+            spans.add(TextSpan(
+              text: lastParts[j],
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ));
+          } else {
+            spans.add(TextSpan(text: lastParts[j]));
+          }
+        }
+      } else {
+        // 添加普通文本
+        spans.add(TextSpan(text: parts[i]));
+      }
+    }
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return RichText(
+          text: TextSpan(
+            children: spans,
+            style: DefaultTextStyle.of(context).style.copyWith(fontSize: 17),
+          ),
+          softWrap: true,
+          overflow: TextOverflow.visible,
+        );
+      },
+    );
+  }
+
   // ---- 构建数据列表 ----
   Widget _buildDataList() {
     // 如果已连接设备，显示接收到的数据（无论是否正在同步）
@@ -638,10 +774,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Text(
-                  _receivedData[dataIndex],
-                  style: const TextStyle(fontSize: 13),
-                ),
+                child: _formatReceivedData(_receivedData[dataIndex]),
               ),
             );
           },
@@ -673,10 +806,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
             margin: const EdgeInsets.symmetric(vertical: 2),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Text(
-                dataStr,
-                style: const TextStyle(fontSize: 13),
-              ),
+              child: _formatReceivedData(dataStr),
             ),
           );
         },
