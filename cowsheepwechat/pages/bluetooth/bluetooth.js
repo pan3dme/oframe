@@ -6,17 +6,27 @@ Page({
     isSyncing: false,
     connectedDeviceName: '',
     devices: [],
-    receivedMsg: '',
+    // 接收到的数据列表
+    receivedList: [],
+    // 数据缓存（先存后上传）
+    cacheQueue: [],
+    cacheCount: 0,
     // GPS 数据上传队列
     gpsQueue: [],
     uploading: false,
     uploadedCount: 0,
+    isCenterUploading: false, // 数据中心上传状态
     // 写入特征值信息（连接成功后缓存）
     writeDeviceInfo: null
   },
 
+  _lastCacheTapTime: 0,  // 双击清空缓存用
+  _storageKey: 'bt_cache_queue',  // 本地存储 key
+
   // ========== 蓝牙连接 ==========
   onLoad() {
+    // 恢复本地缓存的蓝牙数据
+    this._loadCacheFromStorage()
     // 开发工具不支持蓝牙，跳过自动连接避免 timeout
     const sysInfo = wx.getSystemInfoSync()
     if (sysInfo.platform === 'devtools') {
@@ -25,6 +35,27 @@ Page({
     }
     // 打开小程序自动连接蓝牙
     this.connectBluetooth()
+  },
+
+  // 从本地存储加载缓存
+  _loadCacheFromStorage() {
+    try {
+      const saved = wx.getStorageSync(this._storageKey)
+      if (saved && Array.isArray(saved)) {
+        this.setData({ cacheQueue: saved, cacheCount: saved.length })
+      }
+    } catch (e) {
+      console.error('读取缓存失败:', e)
+    }
+  },
+
+  // 保存缓存到本地存储
+  _saveCacheToStorage() {
+    try {
+      wx.setStorageSync(this._storageKey, this.data.cacheQueue)
+    } catch (e) {
+      console.error('保存缓存失败:', e)
+    }
   },
 
   connectBluetooth() {
@@ -174,14 +205,83 @@ Page({
         // 监听数据变化
         wx.onBLECharacteristicValueChange(function (res) {
           const msg = that.abToText(res.value)
-          that.setData({ receivedMsg: msg })
           console.log('收到蓝牙数据:', msg)
-          that.data.gpsQueue.push(msg)
-          that.processGPSQueue()
+          const now = getApp().formatTime()
+          const displayResult = that._parseDisplay(msg)
+          const newItem = {
+            text: msg,
+            time: now.substring(11, 19),
+            displayParts: displayResult
+          }
+          const newCache = that.data.cacheQueue.concat([msg])
+          // 最新数据插到最前面，方便直接看到
+          const newList = [newItem].concat(that.data.receivedList)
+          const trimmedList = newList.length > 200 ? newList.slice(0, 200) : newList
+          that.setData({
+            cacheQueue: newCache,
+            cacheCount: newCache.length,
+            receivedList: trimmedList
+          })
+          that._saveCacheToStorage()
         })
       },
       fail(err) { console.error('获取特征值失败:', err) }
     })
+  },
+
+  // 解析显示格式：优先 JSON，回退 | 分隔
+  _parseDisplay(msg) {
+    // 尝试 JSON 解析
+    try {
+      const obj = JSON.parse(msg)
+      if (obj && typeof obj === 'object') {
+        return this._parseJsonDisplay(obj)
+      }
+    } catch (e) { /* 非 JSON，继续尝试 | 格式 */ }
+
+    // 回退：| 分隔格式
+    const idx = msg.indexOf('|')
+    if (idx !== -1) {
+      return [
+        { text: msg.substring(0, idx), color: '#e74c3c' },
+        { text: msg.substring(idx), color: '#07c160' }
+      ]
+    }
+    // 纯文本
+    return [{ text: msg, color: '#333' }]
+  },
+
+  // 解析 JSON 显示
+  _parseJsonDisplay(obj) {
+    const parts = []
+    const info = obj.info || ''
+    const infoParts = info.split('|')
+    const dev = obj.upDateDevice || ''
+    const timeFull = obj.time || ''
+    const rssi = obj.rssi !== undefined ? obj.rssi : ''
+    const snr = obj.snr !== undefined ? obj.snr : ''
+
+    // 元数据行
+    parts.push({ text: 'rssi:' + rssi, color: '#333' })
+    parts.push({ text: '  snr:' + snr, color: '#333' })
+    parts.push({ text: '\n', color: '#333' })
+
+    // info 各段：只有 v3-4（第2段）和末尾数字标红
+    for (let i = 0; i < infoParts.length; i++) {
+      const isRed = (i === 1) || (i === infoParts.length - 1)
+      parts.push({ text: infoParts[i], color: isRed ? '#e74c3c' : '#333' })
+      if (i < infoParts.length - 1) parts.push({ text: '|', color: '#333' })
+    }
+
+    // 设备和时间
+    if (dev) {
+      parts.push({ text: '  ↑' + dev, color: '#333' })
+    }
+    if (timeFull) {
+      parts.push({ text: '\n' + timeFull, color: '#333' })
+    }
+
+    return parts
   },
 
   // ArrayBuffer 转可读文本
@@ -228,13 +328,108 @@ Page({
         this.setData({
           bluetoothConnected: false,
           connectedDeviceName: '',
-          receivedMsg: '',
+          receivedList: [],
           writeDeviceInfo: null,
           isSyncing: false,
+          // cacheQueue/cacheCount 保留，不随断开清空
           gpsQueue: [],
           uploading: false,
-          uploadedCount: 0
+          uploadedCount: 0,
+          isCenterUploading: false
         })
+      }
+    })
+  },
+
+  // 双击缓存文本 → 清空缓存
+  onTapCacheText() {
+    const now = Date.now()
+    if (now - this._lastCacheTapTime < 350) {
+      // 双击触发清空
+      this._lastCacheTapTime = 0
+      if (this.data.cacheCount === 0) {
+        wx.showToast({ title: '缓存已为空', icon: 'none' })
+        return
+      }
+      wx.showModal({
+        title: '清空缓存',
+        content: '确定清空 ' + this.data.cacheCount + ' 条缓存数据？',
+        success: (res) => {
+          if (res.confirm) {
+            this.setData({ cacheQueue: [], cacheCount: 0 })
+            wx.setStorageSync(this._storageKey, [])
+            wx.showToast({ title: '缓存已清空', icon: 'success' })
+          }
+        }
+      })
+    } else {
+      this._lastCacheTapTime = now
+    }
+  },
+
+  // ========== 上传数据中心（切换） ==========
+  uploadToCenter() {
+    if (this.data.isCenterUploading) {
+      // 正在上传 → 取消
+      this.cancelCenterUpload()
+      return
+    }
+    const cacheLen = this.data.cacheQueue.length
+    if (cacheLen === 0) {
+      wx.showToast({ title: '暂无缓存数据', icon: 'none' })
+      return
+    }
+    if (!this.data.bluetoothConnected) {
+      wx.showToast({ title: '请先连接蓝牙设备', icon: 'none' })
+      return
+    }
+    // 将缓存数据全部移入上传队列
+    const allData = [...this.data.cacheQueue]
+    this.setData({
+      cacheQueue: [],
+      cacheCount: 0,
+      gpsQueue: this.data.gpsQueue.concat(allData),
+      isCenterUploading: true
+    })
+    wx.setStorageSync(this._storageKey, [])
+    // 如果未在上传中，开始处理
+    if (!this.data.uploading) {
+      this.processGPSQueue()
+    }
+  },
+
+  // 取消数据中心上传
+  cancelCenterUpload() {
+    wx.showModal({
+      title: '取消上传',
+      content: '确定取消上传？队列中剩余 ' + this.data.gpsQueue.length + ' 条数据将丢失。',
+      success: (res) => {
+        if (res.confirm) {
+          this.setData({
+            gpsQueue: [],
+            uploading: false,
+            isCenterUploading: false
+          })
+          wx.showToast({ title: '上传已取消', icon: 'none' })
+        }
+      }
+    })
+  },
+
+  // 清空缓存
+  clearCache() {
+    if (this.data.cacheCount === 0) {
+      wx.showToast({ title: '缓存已为空', icon: 'none' })
+      return
+    }
+    wx.showModal({
+      title: '确认清空',
+      content: '确定清空 ' + this.data.cacheCount + ' 条缓存数据？',
+      success: (res) => {
+        if (res.confirm) {
+          this.setData({ cacheQueue: [], cacheCount: 0 })
+          wx.showToast({ title: '缓存已清空', icon: 'success' })
+        }
       }
     })
   },
@@ -243,7 +438,14 @@ Page({
   processGPSQueue() {
     if (this.data.uploading) return
     const queue = this.data.gpsQueue
-    if (queue.length === 0) return
+    if (queue.length === 0) {
+      // 队列已空，结束上传状态
+      if (this.data.isCenterUploading) {
+        this.setData({ isCenterUploading: false })
+        wx.showToast({ title: '全部上传完成', icon: 'success' })
+      }
+      return
+    }
 
     this.data.uploading = true
     const gpsDataStr = queue.shift()
