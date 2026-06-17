@@ -73,6 +73,7 @@ String getCurrentGpsTm(TinyGPSPlus gps);
 String getGpsInfoStr();
 String getCurrentTime();
 void setTimeFromLora(String timeStr);
+int getDivcesIdx();
 String makeDivceName();
 
 #endif

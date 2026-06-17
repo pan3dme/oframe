@@ -185,7 +185,6 @@ void setup() {
   deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
 
-  initLibWifi();
   initRadio();
   initBLE();
 
@@ -218,7 +217,7 @@ void loop() {
     if (firstPipeIndex > 0) {
       String typeStr = String(loraStr).substring(0, firstPipeIndex);
       int messageType = typeStr.toInt();
-      
+
       Serial.print("📋 消息类型: ");
       Serial.println(messageType);
 

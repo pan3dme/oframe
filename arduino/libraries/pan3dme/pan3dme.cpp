@@ -138,11 +138,8 @@ String getCurrentGpsTm(TinyGPSPlus &gps)
 }
 
 // 设备ID认证 (根据MAC地址生成设备名)
-String makeDivceName()
-{
+int getDivcesIdx(){
   uint64_t currentId = ESP.getEfuseMac();
-  Serial.printf("当前设备编号: %012llX\n", currentId);
-
   int index = -1;
   for (size_t i = 0; i < sizeof(allowedDevices) / sizeof(allowedDevices[0]); ++i)
   {
@@ -152,6 +149,13 @@ String makeDivceName()
       break;
     }
   }
+  return index;
+}
+String makeDivceName()
+{
+  uint64_t currentId = ESP.getEfuseMac();
+  Serial.printf("当前设备编号: %012llX\n", currentId);
+  int index = getDivcesIdx();
   if (index != -1)
   {
     String syname = "vx-x";

@@ -61,6 +61,7 @@ void setup() {
   displayLines[3] = "LoRa Ready";
 
   // 初始化LoRa模块
+  initLibWifi();
   initLora();
   initPanGPS();
 }
