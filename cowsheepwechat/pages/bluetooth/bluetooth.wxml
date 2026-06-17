@@ -61,8 +61,8 @@
       <text class="recv-count">{{receivedList.length}} 条</text>
     </view>
     <scroll-view class="recv-scroll" scroll-y>
-      <view class="recv-item" wx:for="{{receivedList}}" wx:key="index">
-        <text wx:for="{{item.displayParts}}" wx:for-item="part" wx:key="text" style="color:{{part.color}}">{{part.text}}</text>
+      <view class="recv-item" wx:for="{{receivedList}}" wx:key="index" style="background-color:{{item.bgColor}}">
+        <text wx:for="{{item.displayParts}}" wx:for-item="part" wx:key="text" style="color:{{part.color}};{{part.bold ? 'font-weight:900;font-size:34rpx;' : ''}}">{{part.text}}</text>
       </view>
     </scroll-view>
   </view>

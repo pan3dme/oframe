@@ -1,4 +1,6 @@
 // bluetooth.js
+const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
+
 Page({
   data: {
     bluetoothConnected: false,
@@ -22,6 +24,66 @@ Page({
 
   _lastCacheTapTime: 0,  // 双击清空缓存用
   _storageKey: 'bt_cache_queue',  // 本地存储 key
+
+  // 生成随机浅色背景色（HSL 浅色调，饱和度低，亮度高）
+  _randomPastel() {
+    const h = Math.floor(Math.random() * 360)           // 色相随机
+    const s = 30 + Math.floor(Math.random() * 20)       // 饱和度 30-50%（低饱和=柔和）
+    const l = 88 + Math.floor(Math.random() * 8)        // 亮度 88-96%（很高=浅色）
+    return `hsl(${h}, ${s}%, ${l}%)`
+  },
+
+  // 播放蓝牙接收提示音（开关在设置页面控制）
+  // 类似系统通知音的单音"叮"声，约300ms，指数衰减更自然
+  _playBleSound() {
+    try {
+      const enabled = wx.getStorageSync(STORAGE_KEY_BLE_SOUND)
+      if (enabled === false || enabled === 'false') return
+    } catch (e) { /* 读取失败则播放（默认开启） */ }
+
+    try {
+      const sampleRate = 8000
+      const freq = 1200                     // 清脆的中高频
+      const duration = 0.28                 // 280ms
+      const numSamples = Math.floor(sampleRate * duration)
+      const dataLen = numSamples
+      const fileLen = 44 + dataLen
+      const buf = new ArrayBuffer(fileLen)
+      const v = new DataView(buf)
+
+      const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)) }
+      ws(0, 'RIFF'); v.setUint32(4, fileLen - 8, true); ws(8, 'WAVE')
+      ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true)
+      v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true)
+      v.setUint32(28, sampleRate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true)
+      ws(36, 'data'); v.setUint32(40, dataLen, true)
+
+      const attackSamples = Math.floor(sampleRate * 0.01)    // 10ms 快速起音
+      for (let i = 0; i < numSamples; i++) {
+        // 指数衰减包络，模拟自然铃声
+        let env = Math.exp(-i / (sampleRate * 0.15))
+        // 快速起音
+        if (i < attackSamples) env *= i / attackSamples
+        v.setUint8(44 + i, 128 + Math.floor(90 * env * Math.sin(2 * Math.PI * freq * i / sampleRate)))
+      }
+
+      const fs = wx.getFileSystemManager()
+      const tmpPath = wx.env.USER_DATA_PATH + '/ble_chime.wav'
+      fs.writeFile({
+        filePath: tmpPath,
+        data: buf,
+        success: () => {
+          const audio = wx.createInnerAudioContext()
+          audio.src = tmpPath
+          audio.volume = 0.7
+          audio.play()
+          audio.onEnded(() => audio.destroy())
+          audio.onError(() => audio.destroy())
+        },
+        fail: () => {}
+      })
+    } catch (e) { /* 播放失败不阻塞 */ }
+  },
 
   // ========== 蓝牙连接 ==========
   onLoad() {
@@ -204,6 +266,7 @@ Page({
         }
         // 监听数据变化
         wx.onBLECharacteristicValueChange(function (res) {
+          that._playBleSound()  // 播放接收提示音
           const msg = that.abToText(res.value)
           console.log('收到蓝牙数据:', msg)
           const now = getApp().formatTime()
@@ -211,7 +274,8 @@ Page({
           const newItem = {
             text: msg,
             time: now.substring(11, 19),
-            displayParts: displayResult
+            displayParts: displayResult,
+            bgColor: that._randomPastel()  // 随机浅色背景
           }
           const newCache = that.data.cacheQueue.concat([msg])
           // 最新数据插到最前面，方便直接看到
@@ -229,6 +293,13 @@ Page({
     })
   },
 
+  // 根据类型编号返回图标
+  _getTypeIcon(typeStr) {
+    if (typeStr === '1') return { text: '◉', color: '#1989fa' }   // 靶心图标 = GPS定位
+    if (typeStr === '2') return { text: '🕐', color: '#666' }       // 时钟 = 对时
+    return null
+  },
+
   // 解析显示格式：优先 JSON，回退 | 分隔
   _parseDisplay(msg) {
     // 尝试 JSON 解析
@@ -242,10 +313,14 @@ Page({
     // 回退：| 分隔格式
     const idx = msg.indexOf('|')
     if (idx !== -1) {
-      return [
-        { text: msg.substring(0, idx), color: '#e74c3c' },
-        { text: msg.substring(idx), color: '#07c160' }
+      const typeStr = msg.substring(0, idx)
+      const icon = this._getTypeIcon(typeStr)
+      const parts = [
+        { text: msg.substring(0, idx), color: '#e74c3c', bold: true },
+        { text: msg.substring(idx), color: '#07c160', bold: true }
       ]
+      if (icon) parts.unshift({ text: icon.text + ' ', color: icon.color })
+      return parts
     }
     // 纯文本
     return [{ text: msg, color: '#333' }]
@@ -262,23 +337,31 @@ Page({
     const snr = obj.snr !== undefined ? obj.snr : ''
 
     // 元数据行
-    parts.push({ text: 'rssi:' + rssi, color: '#333' })
-    parts.push({ text: '  snr:' + snr, color: '#333' })
+    parts.push({ text: 'rssi:', color: '#999' })
+    parts.push({ text: rssi, color: '#333', bold: true })
+    parts.push({ text: '  snr:', color: '#999' })
+    parts.push({ text: snr, color: '#333', bold: true })
     parts.push({ text: '\n', color: '#333' })
+
+    // 类型图标（infoParts[0] 为类型编号：1=GPS定位，2=对时）
+    const typeIcon = this._getTypeIcon(infoParts[0])
+    if (typeIcon) parts.push({ text: typeIcon.text + ' ', color: typeIcon.color })
 
     // info 各段：只有 v3-4（第2段）和末尾数字标红
     for (let i = 0; i < infoParts.length; i++) {
       const isRed = (i === 1) || (i === infoParts.length - 1)
-      parts.push({ text: infoParts[i], color: isRed ? '#e74c3c' : '#333' })
+      parts.push({ text: infoParts[i], color: isRed ? '#e74c3c' : '#333', bold: isRed })
       if (i < infoParts.length - 1) parts.push({ text: '|', color: '#333' })
     }
 
-    // 设备和时间
-    if (dev) {
-      parts.push({ text: '  ↑' + dev, color: '#333' })
-    }
-    if (timeFull) {
-      parts.push({ text: '\n' + timeFull, color: '#333' })
+    // 时间 + 设备名称（第三行）
+    const thirdLine = []
+    if (timeFull) thirdLine.push({ text: timeFull, color: '#333' })
+    if (timeFull && dev) thirdLine.push({ text: '  ', color: '#333' })
+    if (dev) thirdLine.push({ text: '↑ ' + dev, color: '#333' })
+    if (thirdLine.length > 0) {
+      parts.push({ text: '\n', color: '#333' })
+      parts.push(...thirdLine)
     }
 
     return parts

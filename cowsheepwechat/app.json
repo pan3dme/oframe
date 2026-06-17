@@ -8,7 +8,8 @@
     "pages/trackmap/trackmap",
     "pages/livestock/livestock",
     "pages/device/device",
-    "pages/device-detail/device-detail"
+    "pages/device-detail/device-detail",
+    "pages/settings/settings"
   ],
   "window": {
     "navigationBarTextStyle": "black",

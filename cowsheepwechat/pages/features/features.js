@@ -1,6 +1,5 @@
 // features.js
 const API_URL = getApp().globalData.api_device_Url
-const dataCache = require('../../config/data-cache.js')
  
 Page({
   data: {
@@ -10,11 +9,7 @@ Page({
     showInsertModal: false,
     insertDeviceId: '',
     insertLorastr: '',
-    showTrackModal: false,
-    trackDeviceId: '',
-    trackDeviceIdIndex: 0,
     deviceIdList: [],
-    trackDate: '',
     featureBtns: [{
         id: 1,
         label: '最近10条记录'
@@ -29,7 +24,7 @@ Page({
       },
       {
         id: 4,
-        label: '查看设备轨迹'
+        label: '设置'
       },
       {
         id: 5,
@@ -90,15 +85,6 @@ Page({
   onLoad() {
   },
 
-  // 获取当天日期字符串，格式 YYYY-MM-DD
-  getTodayStr() {
-    const d = new Date()
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return y + '-' + m + '-' + day
-  },
-
   // 功能按钮事件
   onFeatureTap(e) {
     const id = e.currentTarget.dataset.id
@@ -155,21 +141,8 @@ Page({
       // 设备最新数据 - 直接跳转设备列表页
       wx.navigateTo({ url: '/pages/device/device' })
     } else if (id === 4) {
-      // 查看设备轨迹 - 直接从缓存取设备列表（首页已预加载）
-      dataCache.getDeviceList((cachedData) => {
-        const deviceIdList = cachedData.deviceIdOptions || []
-        if (deviceIdList.length === 0) {
-          wx.showToast({ title: '暂无设备数据', icon: 'none' })
-          return
-        }
-        this.setData({
-          deviceIdList,
-          showTrackModal: true,
-          trackDeviceIdIndex: 0,
-          trackDeviceId: deviceIdList[0] || '',
-          trackDate: this.getTodayStr()
-        })
-      })
+      // 设置 → 跳转设置页面
+      wx.navigateTo({ url: '/pages/settings/settings' })
     } else if (id === 5) {
       // 管理牛羊 - 跳转管理页面
       wx.navigateTo({
@@ -181,58 +154,6 @@ Page({
         url: '/pages/bluetooth/bluetooth'
       })
     }
-  },
-
-  // ========== 查看设备轨迹弹窗 ==========
-  onTrackDeviceIdChange(e) {
-    const idx = e.detail.value
-    const deviceId = this.data.deviceIdList[idx] || ''
-    this.setData({
-      trackDeviceIdIndex: idx,
-      trackDeviceId: deviceId
-    })
-  },
-  onTrackDateChange(e) {
-    this.setData({ trackDate: e.detail.value })
-  },
-  onTrackClose() {
-    this.setData({ showTrackModal: false })
-  },
-  onTrackConfirm() {
-    const deviceId = this.data.trackDeviceId
-    if (!deviceId) {
-      wx.showToast({ title: '请选择设备ID', icon: 'none' })
-      return
-    }
-    this.setData({ showTrackModal: false })
-    wx.showLoading({ title: '查询中...' })
-    wx.request({
-      url: API_URL,
-      method: 'POST',
-      data: {
-        action: 'getDeviceLogbyId',
-        info: {
-          deviceId: deviceId,
-          curdate: this.data.trackDate
-        },
-        time: getApp().formatTime()
-      },
-      success: (res) => {
-        wx.hideLoading()
-        console.log('设备轨迹查询返回:', JSON.stringify(res.data))
-        wx.showToast({ title: '查询成功', icon: 'success', duration: 1500 })
-        const recordList = this.parseRecordList(res.data)
-        this.setData({
-          recordList,
-          showRecordTable: recordList.length > 0
-        })
-      },
-      fail: (err) => {
-        wx.hideLoading()
-        console.error('设备轨迹查询失败:', err)
-        wx.showToast({ title: '查询失败', icon: 'error', duration: 2000 })
-      }
-    })
   },
 
   // ========== 插入记录弹窗 ==========

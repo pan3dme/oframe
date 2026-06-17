@@ -40,7 +40,6 @@
   </view>
 </scroll-view>
 
-<!-- 插入记录弹窗 -->
 <view class="track-modal" wx:if="{{showInsertModal}}">
   <view class="track-mask" bindtap="onInsertClose"></view>
   <view class="track-dialog">
@@ -63,23 +62,3 @@
   </view>
 </view>
 
-<!-- 查看设备轨迹弹窗 -->
-<view class="track-modal" wx:if="{{showTrackModal}}">
-  <view class="track-mask" bindtap="onTrackClose"></view>
-  <view class="track-dialog">
-    <view class="track-close" bindtap="onTrackClose">✕</view>
-    <view class="track-title">查看设备轨迹</view>
-    <view class="track-subtitle">选择设备ID</view>
-    <picker mode="selector" range="{{deviceIdList}}" value="{{trackDeviceIdIndex}}" bindchange="onTrackDeviceIdChange">
-      <view class="track-date-picker">{{trackDeviceId || '请先获取设备最新数据'}}</view>
-    </picker>
-    <view class="track-date-label">选择日期</view>
-    <picker mode="date" value="{{trackDate}}" bindchange="onTrackDateChange">
-      <view class="track-date-picker">{{trackDate}}</view>
-    </picker>
-    <view class="track-btns">
-      <button class="track-btn track-btn-gray" bindtap="onTrackClose">取消</button>
-      <button class="track-btn track-btn-confirm" bindtap="onTrackConfirm">查看数据</button>
-    </view>
-  </view>
-</view>

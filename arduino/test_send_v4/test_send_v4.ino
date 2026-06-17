@@ -1,108 +1,72 @@
-/* Heltec Automation send communication test example
- *
- * Function:
- * 1. Send data from a esp32 device over hardware 
- *  
- * Description:
- * 
- * HelTec AutoMation, Chengdu, China
- * 成都惠利特自动化科技有限公司
- * www.heltec.org
- *
- * this project also realess in GitHub:
- * https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series
- * */
-
+/*
+ * LoRa 发送端 - Heltec 官方库（高性能）
+ */
 #include "LoRaWan_APP.h"
 #include "Arduino.h"
 
+RadioEvents_t radioEvents;
+char sendData[] = "Hello LoRa!";
+int count = 0;
 
-#define RF_FREQUENCY 915000000  // Hz
+// 发送完成回调
+void onTxDone(void) {
+  Serial.println("✅ 发送成功");
+  Radio.Sleep();
+}
 
-#define TX_OUTPUT_POWER 5  // dBm
-
-#define LORA_BANDWIDTH 0         // [0: 125 kHz, \
-                                 //  1: 250 kHz, \
-                                 //  2: 500 kHz, \
-                                 //  3: Reserved]
-#define LORA_SPREADING_FACTOR 10  // [SF7..SF12]
-#define LORA_CODINGRATE 1        // [1: 4/5, \
-                                 //  2: 4/6, \
-                                 //  3: 4/7, \
-                                 //  4: 4/8]
-#define LORA_PREAMBLE_LENGTH 8   // Same for Tx and Rx
-#define LORA_SYMBOL_TIMEOUT 0    // Symbols
-#define LORA_FIX_LENGTH_PAYLOAD_ON false
-#define LORA_IQ_INVERSION_ON false
-
-
-#define RX_TIMEOUT_VALUE 1000
-#define BUFFER_SIZE 30  // Define the payload size here
-
-char txpacket[BUFFER_SIZE];
-char rxpacket[BUFFER_SIZE];
-
-#define FEM_EN 2
-#define FEM_PA 46
-#define FEM_VCC 7
-
-double txNumber;
-
-bool lora_idle = true;
-
-static RadioEvents_t RadioEvents;
-void OnTxDone(void);
-void OnTxTimeout(void);
+// 发送超时回调
+void onTxTimeout(void) {
+  Serial.println("❌ 发送超时");
+  Radio.Sleep();
+}
 
 void setup() {
   Serial.begin(115200);
+  delay(2000);
+  
+  // ⚠️ 关键：手动开启 V4 外部功放（FEM）
+  pinMode(7, OUTPUT);   // LORA_PA_POWER
+  digitalWrite(7, HIGH);
+  pinMode(2, OUTPUT);   // LORA_PA_EN
+  digitalWrite(2, HIGH);
+  pinMode(46, OUTPUT);  // LORA_PA_TX_EN
+  digitalWrite(46, LOW);  // TX 时由 Radio 库自动控制
+  
+  Serial.println("⚡ V4 外部功放已开启");
+  
+  // 初始化 MCU
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-
-  pinMode(FEM_EN, OUTPUT);
-  digitalWrite(FEM_EN, HIGH);
-  pinMode(FEM_VCC, OUTPUT);
-  digitalWrite(FEM_VCC, LOW);
-
-
-    // pinMode(FEM_PA, LOW);
-  // digitalWrite(FEM_PA, HIGH);
-
-  txNumber = 0;
-
-  RadioEvents.TxDone = OnTxDone;
-  RadioEvents.TxTimeout = OnTxTimeout;
-
-  Radio.Init(&RadioEvents);
-  Radio.SetChannel(RF_FREQUENCY);
-  Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
-                    LORA_SPREADING_FACTOR, LORA_CODINGRATE,
-                    LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, 3000);
+  
+  // 配置事件回调
+  radioEvents.TxDone = onTxDone;
+  radioEvents.TxTimeout = onTxTimeout;
+  
+  // 初始化 Radio
+  Radio.Init(&radioEvents);
+  Radio.SetChannel(928000000);  // 928 MHz (美版/中国版)
+  
+  // 配置发送参数（远距离模式）
+  Radio.SetTxConfig(MODEM_LORA, 22, 0, LORA_BW_125, 
+                    LORA_SF10, LORA_CR_4_5, 8, 
+                    false, true, 0, 0, false, 3000);
+  
+  Serial.println("✅ 发送端就绪 (22dBm, SF10, BW125)");
 }
-
-
 
 void loop() {
-  if (lora_idle == true) {
-    delay(1000);
-    txNumber += 0.01;
-    sprintf(txpacket, "Hello world number %0.2f", txNumber);  //start a package
-
-    Serial.printf("\r\nsending packet \"%s\" , length %d\r\n", txpacket, strlen(txpacket));
-
-    Radio.Send((uint8_t *)txpacket, strlen(txpacket));  //send the package out
-    lora_idle = false;
+  // 更新数据包
+  sprintf(sendData, "Hello LoRa! #%d", count++);
+  
+  Serial.print("📤 发送: ");
+  Serial.println(sendData);
+  
+  // 执行发送
+  Radio.Send((uint8_t*)sendData, strlen(sendData));
+  
+  // 处理 Radio 事件
+  while (digitalRead(RADIO_DIO_1) == HIGH) {
+    Radio.IrqProcess();
   }
-  Radio.IrqProcess();
-}
-
-void OnTxDone(void) {
-  Serial.println("TX done......");
-  lora_idle = true;
-}
-
-void OnTxTimeout(void) {
-  Radio.Sleep();
-  Serial.println("TX Timeout......");
-  lora_idle = true;
+  
+  delay(3000);
 }

@@ -1,0 +1,34 @@
+<!--settings.wxml-->
+<navigation-bar title="设置" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+
+  <!-- 显示设置 -->
+  <view class="section">
+    <view class="section-title">显示设置</view>
+
+    <view class="setting-row">
+      <view class="setting-left">
+        <text class="setting-icon">📋</text>
+        <text class="setting-label">单行显示记录</text>
+      </view>
+      <switch checked="{{singleLineRecord}}" bindchange="onSingleLineChange" color="#07c160" />
+    </view>
+
+    <view class="setting-row">
+      <view class="setting-left">
+        <text class="setting-icon">🔔</text>
+        <text class="setting-label">蓝牙接收声音</text>
+      </view>
+      <switch checked="{{bleSound}}" bindchange="onBleSoundChange" color="#07c160" />
+    </view>
+  </view>
+
+  <!-- 说明 -->
+  <view class="section">
+    <view class="section-title">说明</view>
+    <view class="desc-text">
+      蓝牙接收声音：开启后，当接收到蓝牙设备消息时会播放提示音。该声音仅在 App 内播放，不会影响系统其他应用。
+    </view>
+  </view>
+
+</scroll-view>

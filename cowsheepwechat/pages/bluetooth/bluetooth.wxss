@@ -38,7 +38,7 @@ page {
 }
 
 .cache-text {
-  font-size: 28rpx;
+  font-size: 30rpx;
   color: #333;
   padding: 4rpx 0;
 }
@@ -51,13 +51,13 @@ page {
 
 .cache-upload-btn {
   margin-left: auto;
-  height: 56rpx;
-  line-height: 56rpx;
-  padding: 0 24rpx;
-  font-size: 26rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  padding: 0 32rpx;
+  font-size: 28rpx;
   color: #666;
   background: #f0f2f5;
-  border-radius: 28rpx;
+  border-radius: 34rpx;
   border: none;
 }
 .cache-upload-btn::after { border: none; }
@@ -85,12 +85,12 @@ page {
 
 .action-btn {
   flex: 1;
-  height: 76rpx;
-  line-height: 76rpx;
-  font-size: 30rpx;
+  height: 88rpx;
+  line-height: 88rpx;
+  font-size: 32rpx;
   font-weight: bold;
   color: #fff;
-  border-radius: 38rpx;
+  border-radius: 44rpx;
   border: none;
   padding: 0;
 }

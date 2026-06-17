@@ -1,101 +1,81 @@
-/* Heltec Automation Receive communication test example
- *
- * Function:
- * 1. Receive the same frequency band lora signal program
- *  
- * Description:
- * 
- * HelTec AutoMation, Chengdu, China
- * 成都惠利特自动化科技有限公司
- * www.heltec.org
- *
- * this project also realess in GitHub:
- * https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series
- * */
-
+/*
+ * LoRa 接收端 - Heltec 官方库（高性能）
+ */
 #include "LoRaWan_APP.h"
 #include "Arduino.h"
 
+RadioEvents_t radioEvents;
+uint8_t recvBuffer[256];
+uint8_t recvSize = 0;
 
-#define RF_FREQUENCY 915000000  // Hz
+// 接收完成回调
+void onRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+  Serial.println("-----------------------------------");
+  Serial.print("📥 收到: ");
+  Serial.println((char*)payload);
+  Serial.print("📶 RSSI: ");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+  Serial.print("📊 SNR: ");
+  Serial.print(snr);
+  Serial.println(" dB");
+  Serial.println("-----------------------------------");
+  
+  // 重新启动接收
+  Radio.Rx(0);  // 连续接收模式
+}
 
-#define TX_OUTPUT_POWER 14  // dBm
+// 接收超时回调
+void onRxTimeout(void) {
+  // 超时后重新启动接收
+  Radio.Rx(0);
+}
 
-#define LORA_BANDWIDTH 0          // [0: 125 kHz, \
-                                 //  1: 250 kHz, \
-                                 //  2: 500 kHz, \
-                                 //  3: Reserved]
-#define LORA_SPREADING_FACTOR 10  // [SF7..SF12]
-#define LORA_CODINGRATE 1         // [1: 4/5, \
-                                 //  2: 4/6, \
-                                 //  3: 4/7, \
-                                 //  4: 4/8]
-#define LORA_PREAMBLE_LENGTH 8    // Same for Tx and Rx
-#define LORA_SYMBOL_TIMEOUT 0     // Symbols
-#define LORA_FIX_LENGTH_PAYLOAD_ON false
-#define LORA_IQ_INVERSION_ON false
-
-
-#define RX_TIMEOUT_VALUE 1000
-#define BUFFER_SIZE 30  // Define the payload size here
-
-char txpacket[BUFFER_SIZE];
-char rxpacket[BUFFER_SIZE];
-
-static RadioEvents_t RadioEvents;
-
-int16_t txNumber;
-
-int16_t rssi, rxSize;
-
-bool lora_idle = true;
-
-#define FEM_EN 2
-#define FEM_PA 46
-#define FEM_VCC 7
+// CRC 错误回调
+void onRxError(void) {
+  Serial.println("❌ CRC 错误");
+  Radio.Rx(0);
+}
 
 void setup() {
   Serial.begin(115200);
+  delay(2000);
+  
+  // ⚠️ 关键：手动开启 V4 外部功放（FEM）
+  pinMode(7, OUTPUT);   // LORA_PA_POWER
+  digitalWrite(7, HIGH);
+  pinMode(2, OUTPUT);   // LORA_PA_EN
+  digitalWrite(2, HIGH);
+  pinMode(46, OUTPUT);  // LORA_PA_TX_EN
+  digitalWrite(46, LOW);  // 接收时关闭
+  
+  Serial.println("⚡ V4 外部功放已开启（接收模式）");
+  
+  // 初始化 MCU
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-
-  txNumber = 0;
-  rssi = 0;
-
-  RadioEvents.RxDone = OnRxDone;
-  Radio.Init(&RadioEvents);
-  Radio.SetChannel(RF_FREQUENCY);
-  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
-                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
-                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON,
-                    0, true, 0, 0, LORA_IQ_INVERSION_ON, true);
-
-
-  pinMode(FEM_EN, OUTPUT);
-  digitalWrite(FEM_EN, HIGH);
-  pinMode(FEM_VCC, OUTPUT);
-  digitalWrite(FEM_VCC, HIGH);
-  pinMode(FEM_PA, OUTPUT);
-  digitalWrite(FEM_PA, LOW);
-  // HIGH LOW
+  
+  // 配置事件回调
+  radioEvents.RxDone = onRxDone;
+  radioEvents.RxTimeout = onRxTimeout;
+  radioEvents.RxError = onRxError;
+  
+  // 初始化 Radio
+  Radio.Init(&radioEvents);
+  Radio.SetChannel(928000000);  // 928 MHz (美版/中国版)
+  
+  // 配置接收参数（与发送端一致）
+  Radio.SetRxConfig(MODEM_LORA, LORA_BW_125, LORA_SF10, 
+                    LORA_CR_4_5, 0, 8, 
+                    0, false, 
+                    0, true, 0, 0, false, true);
+  
+  // 启动连续接收
+  Radio.Rx(0);
+  
+  Serial.println("✅ 接收端就绪 (SF10, BW125)");
 }
-
-
 
 void loop() {
-  if (lora_idle) {
-    lora_idle = false;
-    Serial.println("into RX mode");
-    Radio.Rx(0);
-  }
+  // 处理 Radio 事件
   Radio.IrqProcess();
-}
-
-void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
-  rssi = rssi;
-  rxSize = size;
-  memcpy(rxpacket, payload, size);
-  rxpacket[size] = '\0';
-  Radio.Sleep();
-  Serial.printf("\r\nreceived packet \"%s\" with rssi %d , length %d\r\n", rxpacket, rssi, rxSize);
-  lora_idle = true;
 }
