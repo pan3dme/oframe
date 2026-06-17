@@ -14,6 +14,7 @@ class _SettingsPageState extends State<SettingsPage> {
   
   // 是否单行显示记录（全局缓存变量）
   bool _singleLineDisplay = false;
+  bool _bluetoothSoundEnabled = false; // 是否开启蓝牙接收声音
   bool _isLoading = true;
 
   @override
@@ -30,8 +31,14 @@ class _SettingsPageState extends State<SettingsPage> {
         defaultValue: false,
       );
       
+      final bluetoothSound = await _dbHelper.getBoolSetting(
+        'bluetooth_sound_enabled',
+        defaultValue: false,
+      );
+      
       setState(() {
         _singleLineDisplay = singleLine;
+        _bluetoothSoundEnabled = bluetoothSound;
         _isLoading = false;
       });
     } catch (e) {
@@ -58,6 +65,39 @@ class _SettingsPageState extends State<SettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('已${value ? '开启' : '关闭'}单行显示'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[设置] 保存设置失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('保存设置失败'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// 保存蓝牙声音设置
+  Future<void> _saveBluetoothSoundEnabled(bool value) async {
+    try {
+      await _dbHelper.saveSetting(
+        'bluetooth_sound_enabled',
+        value.toString(),
+      );
+      
+      setState(() {
+        _bluetoothSoundEnabled = value;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已${value ? '开启' : '关闭'}蓝牙接收声音'),
             duration: const Duration(seconds: 1),
           ),
         );
@@ -122,6 +162,25 @@ class _SettingsPageState extends State<SettingsPage> {
                           value: _singleLineDisplay,
                           onChanged: (value) {
                             _saveSingleLineDisplay(value);
+                          },
+                          activeColor: Colors.blue,
+                        ),
+                        
+                        const Divider(height: 24),
+                        
+                        // 蓝牙接收声音开关
+                        SwitchListTile(
+                          title: const Text(
+                            '蓝牙接收声音',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          subtitle: const Text(
+                            '开启后，接收到蓝牙数据时会播放提示音',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          value: _bluetoothSoundEnabled,
+                          onChanged: (value) {
+                            _saveBluetoothSoundEnabled(value);
                           },
                           activeColor: Colors.blue,
                         ),
