@@ -84,8 +84,140 @@ class GoogleMap2DWidget(QWidget):
         # 加载切片图片
         self._load_tiles()
 
-        # 创建右上角按钮
-        self._create_toolbar_button()
+    @staticmethod
+    def _create_route_icon():
+        """创建道路图标"""
+        pixmap = QPixmap(30, 30)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        pen = QPen(QColor(0, 120, 215))
+        pen.setWidth(3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        
+        path = QPainterPath()
+        path.moveTo(5, 15)
+        path.cubicTo(10, 5, 20, 25, 25, 15)
+        painter.drawPath(path)
+        
+        path2 = QPainterPath()
+        path2.moveTo(5, 20)
+        path2.cubicTo(10, 10, 20, 30, 25, 20)
+        painter.drawPath(path2)
+        
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _create_center_icon():
+        """创建中心点图标"""
+        pixmap = QPixmap(30, 30)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        pen = QPen(QColor(0, 120, 215))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        
+        painter.drawLine(5, 15, 25, 15)
+        painter.drawLine(15, 5, 15, 25)
+        
+        painter.setBrush(QColor(0, 120, 215))
+        painter.drawEllipse(13, 13, 4, 4)
+        
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _create_location_icon():
+        """创建位置图标"""
+        pixmap = QPixmap(30, 30)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        pen = QPen(QColor(0, 120, 215))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(QColor(0, 120, 215))
+        
+        path = QPainterPath()
+        path.moveTo(15, 5)
+        path.quadTo(25, 15, 15, 25)
+        path.quadTo(5, 15, 15, 5)
+        painter.drawPath(path)
+        
+        painter.setBrush(QColor(255, 255, 255))
+        painter.drawEllipse(13, 13, 4, 4)
+        
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _create_place_icon():
+        """创建地名图标"""
+        pixmap = QPixmap(30, 30)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 绘制一个类似图钉的形状
+        pen = QPen(QColor(0, 120, 215))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(QColor(0, 120, 215))
+
+        path = QPainterPath()
+        path.moveTo(15, 5)
+        path.quadTo(25, 15, 15, 22)
+        path.quadTo(5, 15, 15, 5)
+        painter.drawPath(path)
+
+        # 绘制圆点
+        painter.setBrush(QColor(255, 255, 255))
+        painter.drawEllipse(13, 13, 4, 4)
+
+        # 绘制文字标签
+        painter.setPen(QColor(0, 120, 215))
+        font = QFont("Arial", 8)
+        painter.setFont(font)
+        painter.drawText(8, 26, "地名")
+
+        painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _create_device_icon():
+        """创建设备位置图标"""
+        pixmap = QPixmap(30, 30)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # 绘制设备图标（类似定位图标）
+        pen = QPen(QColor(0, 120, 215))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(QColor(0, 120, 215))
+
+        # 绘制外圈
+        painter.drawEllipse(10, 10, 10, 10)
+
+        # 绘制内圈
+        painter.setBrush(QColor(255, 255, 255))
+        painter.drawEllipse(13, 13, 4, 4)
+
+        # 绘制文字标签
+        painter.setPen(QColor(0, 120, 215))
+        font = QFont("Arial", 8)
+        painter.setFont(font)
+        painter.drawText(8, 26, "设备")
+
+        painter.end()
+        return QIcon(pixmap)
 
     def _load_tiles(self):
         """加载res目录下的切片图片并拼接"""
@@ -611,80 +743,6 @@ class GoogleMap2DWidget(QWidget):
 
 
 
-    @staticmethod
-    def _create_route_icon():
-        """创建道路图标"""
-        pixmap = QPixmap(30, 30)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        pen = QPen(QColor(0, 120, 215))
-        pen.setWidth(3)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        
-        path = QPainterPath()
-        path.moveTo(5, 15)
-        path.cubicTo(10, 5, 20, 25, 25, 15)
-        painter.drawPath(path)
-        
-        path2 = QPainterPath()
-        path2.moveTo(5, 20)
-        path2.cubicTo(10, 10, 20, 30, 25, 20)
-        painter.drawPath(path2)
-        
-        painter.end()
-        return QIcon(pixmap)
-
-    @staticmethod
-    def _create_center_icon():
-        """创建中心点图标"""
-        pixmap = QPixmap(30, 30)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        pen = QPen(QColor(0, 120, 215))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        
-        painter.drawLine(5, 15, 25, 15)
-        painter.drawLine(15, 5, 15, 25)
-        
-        painter.setBrush(QColor(0, 120, 215))
-        painter.drawEllipse(13, 13, 4, 4)
-        
-        painter.end()
-        return QIcon(pixmap)
-
-    @staticmethod
-    def _create_location_icon():
-        """创建位置图标"""
-        pixmap = QPixmap(30, 30)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        pen = QPen(QColor(0, 120, 215))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        painter.setBrush(QColor(0, 120, 215))
-        
-        path = QPainterPath()
-        path.moveTo(15, 5)
-        path.quadTo(25, 15, 15, 25)
-        path.quadTo(5, 15, 15, 5)
-        painter.drawPath(path)
-        
-        painter.setBrush(QColor(255, 255, 255))
-        painter.drawEllipse(13, 13, 4, 4)
-        
-        painter.end()
-        return QIcon(pixmap)
-
-
-
 
     def _add_place_to_map(self):
 
@@ -795,67 +853,6 @@ class GoogleMap2DWidget(QWidget):
 
 
 
-
-    def _create_toolbar_button(self):
-        """创建右上角四个按钮"""
-        # 创建按钮容器
-        self.toolbar_container = QWidget(self)
-        self.toolbar_container.setFixedSize(180, 40)
-        self.toolbar_container.setStyleSheet("background-color: transparent; border-radius: 8px;")
-        self.toolbar_container.raise_()
-        
-        # 创建水平布局
-        toolbar_layout = QHBoxLayout(self.toolbar_container)
-        toolbar_layout.setContentsMargins(8, 5, 8, 5)
-        toolbar_layout.setSpacing(10)
-        
-        # 创建四个按钮
-        self.btn1 = QPushButton()
-        self.btn1.setFixedSize(30, 30)
-        self.btn1.setStyleSheet("QPushButton { border: none; background-color: rgba(255, 255, 255, 200); border-radius: 4px; } QPushButton:hover { background-color: rgba(255, 255, 255, 255); }")
-        self.btn1.setIcon(self._create_route_icon())
-        self.btn1.setIconSize(QSize(24, 24))
-        self.btn1.clicked.connect(self._add_route_to_map)
-        
-        self.btn2 = QPushButton()
-        self.btn2.setFixedSize(30, 30)
-        self.btn2.setStyleSheet("QPushButton { border: none; background-color: rgba(255, 255, 255, 200); border-radius: 4px; } QPushButton:hover { background-color: rgba(255, 255, 255, 255); }")
-        self.btn2.setIcon(self._create_place_icon())
-        self.btn2.setIconSize(QSize(24, 24))
-        self.btn2.clicked.connect(self._add_place_to_map)
-
-        self.btn3 = QPushButton()
-        self.btn3.setFixedSize(30, 30)
-        self.btn3.setStyleSheet("QPushButton { border: none; background-color: rgba(255, 255, 255, 200); border-radius: 4px; } QPushButton:hover { background-color: rgba(255, 255, 255, 255); }")
-        self.btn3.setIcon(self._create_center_icon())
-        self.btn3.setIconSize(QSize(24, 24))
-        self.btn3.clicked.connect(lambda: self.center_on_gps(settings.centenGps))
-
-        self.btn4 = QPushButton()
-        self.btn4.setFixedSize(30, 30)
-        self.btn4.setStyleSheet("QPushButton { border: none; background-color: rgba(255, 255, 255, 200); border-radius: 4px; } QPushButton:hover { background-color: rgba(255, 255, 255, 255); }")
-        self.btn4.setIcon(self._create_device_icon())
-        self.btn4.setIconSize(QSize(24, 24))
-        self.btn4.clicked.connect(self._toggle_device_location)
-
-        # 添加按钮到布局
-        toolbar_layout.addWidget(self.btn1)
-        toolbar_layout.addWidget(self.btn2)
-        toolbar_layout.addWidget(self.btn4)
-        toolbar_layout.addWidget(self.btn3)
-        
-        self.toolbar_container.show()
-        # 初始位置设置
-        self.toolbar_container.move(self.width() - 190, 10)
-
-    def resizeEvent(self, event):
-        """重写 resizeEvent 以更新按钮位置"""
-        super().resizeEvent(event)
-        # 将按钮容器放置在右上角
-        if hasattr(self, 'toolbar_container'):
-            self.toolbar_container.move(self.width() - 190, 10)
-            self.toolbar_container.raise_()
-
     def receive_device(self, device_id, gps, time_str):
         pass
     def clear_device(self ):
@@ -946,64 +943,3 @@ class GoogleMap2DWidget(QWidget):
             self._blink_timer.start()
 
         self._update_display()
-
-    def _create_place_icon(self):
-        """创建地名图标"""
-        pixmap = QPixmap(30, 30)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # 绘制一个类似图钉的形状
-        pen = QPen(QColor(0, 120, 215))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        painter.setBrush(QColor(0, 120, 215))
-
-        path = QPainterPath()
-        path.moveTo(15, 5)
-        path.quadTo(25, 15, 15, 22)
-        path.quadTo(5, 15, 15, 5)
-        painter.drawPath(path)
-
-        # 绘制圆点
-        painter.setBrush(QColor(255, 255, 255))
-        painter.drawEllipse(13, 13, 4, 4)
-
-        # 绘制文字标签
-        painter.setPen(QColor(0, 120, 215))
-        font = QFont("Arial", 8)
-        painter.setFont(font)
-        painter.drawText(8, 26, "地名")
-
-        painter.end()
-        return QIcon(pixmap)
-
-    def _create_device_icon(self):
-        """创建设备位置图标"""
-        pixmap = QPixmap(30, 30)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # 绘制设备图标（类似定位图标）
-        pen = QPen(QColor(0, 120, 215))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        painter.setBrush(QColor(0, 120, 215))
-
-        # 绘制外圈
-        painter.drawEllipse(10, 10, 10, 10)
-
-        # 绘制内圈
-        painter.setBrush(QColor(255, 255, 255))
-        painter.drawEllipse(13, 13, 4, 4)
-
-        # 绘制文字标签
-        painter.setPen(QColor(0, 120, 215))
-        font = QFont("Arial", 8)
-        painter.setFont(font)
-        painter.drawText(8, 26, "设备")
-
-        painter.end()
-        return QIcon(pixmap)

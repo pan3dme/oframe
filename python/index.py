@@ -1,7 +1,7 @@
 import sys
 import os
-from PyQt6.QtCore import Qt, QUrl, QTimer
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import Qt, QUrl, QTimer, QSize
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap, QPainterPath, QPen, QFont
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QGraphicsDropShadowEffect
@@ -56,8 +56,8 @@ class MainWindow(QMainWindow):
         self.client = None
         self.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
         self.setWindowTitle("高德地图应用")
-        self.setGeometry(100, 100, 1440, 800)
-        
+        self.setGeometry(0, 0, 1900, 1000)
+
         # 初始化OTS客户端
         if not self.initTabelClient():
             print("警告: OTS客户端初始化失败，部分功能可能不可用")
@@ -158,6 +158,9 @@ class MainWindow(QMainWindow):
         # 保存引用，稍后设置位置
         self.map2d_container = map2d_container
         self.inner_container = inner_container  # 保存内部容器引用
+        
+        # 创建地图控制按钮容器（左侧区域右下角）
+        self._create_map_control_buttons(left_widget)
         
         # 将左侧部件添加到主布局，设置拉伸因子为5
         main_layout.addWidget(left_widget, stretch=5)
@@ -291,6 +294,103 @@ class MainWindow(QMainWindow):
         
         print("✅ 窗口初始化完成，3D场景和2D地图已添加")
     
+    def _create_map_control_buttons(self, parent_container):
+        """创建地图控制按钮（右下角4个小图标）"""
+        # 创建按钮容器
+        button_container = QWidget(parent_container)
+        button_container.setFixedSize(180, 40)
+        button_container.setObjectName("mapControlButtons")
+        button_container.setStyleSheet("""
+            QWidget#mapControlButtons {
+                background-color: transparent;
+            }
+        """)
+        button_container.raise_()
+        
+        # 创建水平布局
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setContentsMargins(8, 5, 8, 5)
+        button_layout.setSpacing(10)
+        
+        # 创建四个按钮
+        btn_route = QPushButton()
+        btn_route.setFixedSize(30, 30)
+        btn_route.setStyleSheet("""
+            QPushButton { 
+                border: none; 
+                background-color: rgba(255, 255, 255, 200); 
+                border-radius: 4px; 
+            } 
+            QPushButton:hover { 
+                background-color: rgba(255, 255, 255, 255); 
+            }
+        """)
+        btn_route.setIcon(GoogleMap2DWidget._create_route_icon())
+        btn_route.setIconSize(QSize(24, 24))
+        btn_route.setToolTip("显示/隐藏道路")
+        btn_route.clicked.connect(self.googleMap2D._add_route_to_map)
+        
+        btn_place = QPushButton()
+        btn_place.setFixedSize(30, 30)
+        btn_place.setStyleSheet("""
+            QPushButton { 
+                border: none; 
+                background-color: rgba(255, 255, 255, 200); 
+                border-radius: 4px; 
+            } 
+            QPushButton:hover { 
+                background-color: rgba(255, 255, 255, 255); 
+            }
+        """)
+        btn_place.setIcon(GoogleMap2DWidget._create_place_icon())
+        btn_place.setIconSize(QSize(24, 24))
+        btn_place.setToolTip("显示/隐藏地名")
+        btn_place.clicked.connect(self.googleMap2D._add_place_to_map)
+        
+        btn_device = QPushButton()
+        btn_device.setFixedSize(30, 30)
+        btn_device.setStyleSheet("""
+            QPushButton { 
+                border: none; 
+                background-color: rgba(255, 255, 255, 200); 
+                border-radius: 4px; 
+            } 
+            QPushButton:hover { 
+                background-color: rgba(255, 255, 255, 255); 
+            }
+        """)
+        btn_device.setIcon(GoogleMap2DWidget._create_device_icon())
+        btn_device.setIconSize(QSize(24, 24))
+        btn_device.setToolTip("显示/隐藏设备位置")
+        btn_device.clicked.connect(self.googleMap2D._toggle_device_location)
+        
+        btn_center = QPushButton()
+        btn_center.setFixedSize(30, 30)
+        btn_center.setStyleSheet("""
+            QPushButton { 
+                border: none; 
+                background-color: rgba(255, 255, 255, 200); 
+                border-radius: 4px; 
+            } 
+            QPushButton:hover { 
+                background-color: rgba(255, 255, 255, 255); 
+            }
+        """)
+        btn_center.setIcon(GoogleMap2DWidget._create_center_icon())
+        btn_center.setIconSize(QSize(24, 24))
+        btn_center.setToolTip("回到原始位置")
+        btn_center.clicked.connect(lambda: self.googleMap2D.center_on_gps(settings.centenGps))
+        
+        # 添加按钮到布局
+        button_layout.addWidget(btn_route)
+        button_layout.addWidget(btn_place)
+        button_layout.addWidget(btn_device)
+        button_layout.addWidget(btn_center)
+        
+        # 保存按钮容器引用
+        self.map_control_buttons = button_container
+        button_container.show()
+    
     def initTabelClient(self):
         """初始化阿里云表格存储客户端"""
         try:
@@ -345,6 +445,9 @@ class MainWindow(QMainWindow):
                     self.map2d_container.move(x_pos, y_pos)
                     self.map2d_container.raise_()  # 确保在最上层
                     print(f"✅ 2D地图已定位: x={x_pos}, y={y_pos}")
+                    
+                    # 同时更新控制按钮位置（右下角）
+                    self._update_map_control_buttons_position(left_widget)
     
     def _position_scene3d_small(self):
         """设置小窗口3D场景位置到右上角"""
@@ -417,6 +520,9 @@ class MainWindow(QMainWindow):
             self.googleMap2D.show()
             left_layout.addWidget(self.googleMap2D)
             
+            # 更新按钮位置（保持在左侧区域右下角）
+            QTimer.singleShot(150, lambda: self._update_map_control_buttons_position(left_widget))
+            
             self.current_mode = "large_2d"
             print("✅ 切换完成：2D地图全屏，3D场景小窗")
             
@@ -479,11 +585,37 @@ class MainWindow(QMainWindow):
             self.current_mode = "small_2d"
             print("✅ 切换完成：3D场景全屏，2D地图小窗")
     
+    def _update_map_control_buttons_position(self, left_widget):
+        """更新地图控制按钮位置（左侧区域右下角）"""
+        if hasattr(self, 'map_control_buttons'):
+            # 使用left_widget的尺寸而不是map2d_container
+            container_width = left_widget.width()
+            container_height = left_widget.height()
+            button_width = self.map_control_buttons.width()
+            button_height = self.map_control_buttons.height()
+            
+            # 计算右下角位置（相对于left_widget）
+            x_pos = container_width - button_width - 10  # 右边距10px
+            y_pos = container_height - button_height - 10  # 下边距10px
+            
+            self.map_control_buttons.move(x_pos, y_pos)
+            self.map_control_buttons.raise_()
+    
+    def resizeEvent(self, event):
+        """窗口大小改变事件"""
+        super().resizeEvent(event)
+        # 延迟更新位置，确保布局已经完成
+        QTimer.singleShot(100, self._update_map2d_position)
+    
     def showEvent(self, event):
         """窗口显示事件，设置2D地图位置"""
         super().showEvent(event)
         # 延迟设置位置，确保布局已经完成
         QTimer.singleShot(200, self._update_map2d_position)
+        # 同时更新按钮位置
+        left_widget = self.centralWidget().layout().itemAt(0).widget() if self.centralWidget() and self.centralWidget().layout() else None
+        if left_widget:
+            QTimer.singleShot(250, lambda: self._update_map_control_buttons_position(left_widget))
 
 
 if __name__ == "__main__":
