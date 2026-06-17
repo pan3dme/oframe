@@ -213,9 +213,10 @@ void showDisplayBy4Area(String a, String b, String c, String d)
 // 初始化WiFi并同步网络时间
 // 初始化WiFi并同步网络时间 (获取后自动断开以省电)
 
-// 获取可用的时间字符串 (优先网络，其次LoRa对时，最后默认)
+// 获取可用的时间字符串 (优先网络，其次GPS，再次LoRa对时，最后默认)
 String getCurrentTime()
 {
+  // 1. 优先使用网络时间
   if (wifiTimeSynced)
   {
     unsigned long elapsedMs = millis() - syncedMillis;
@@ -239,7 +240,31 @@ String getCurrentTime()
     }
   }
 
-  // 如果没有网络时间，则尝试使用 LoRa 对时
+  // 2. 其次使用GPS时间（转换为北京时间）
+  if (gps.time.isValid() && gps.date.isValid())
+  {
+    int hour = gps.time.hour();
+    int minute = gps.time.minute();
+    int second = gps.time.second();
+    int day = gps.date.day();
+    int month = gps.date.month();
+    int year = gps.date.year();
+
+    // 转换为北京时间 (UTC+8)
+    hour += 8;
+    if (hour >= 24)
+    {
+      hour -= 24;
+      day += 1;
+    }
+
+    char timeStr[30];
+    snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
+             year, month, day, hour, minute, second);
+    return String(timeStr);
+  }
+
+  // 3. 再次尝试使用 LoRa 对时
   if (loraTimeSynced)
   {
     unsigned long elapsedMs = millis() - loraSyncedMillis;
@@ -259,6 +284,7 @@ String getCurrentTime()
     }
   }
 
+  // 4. 都没有则返回默认值
   return "0000/00/00 00:00:00";
 }
 bool initLibWifi()
