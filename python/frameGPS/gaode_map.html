@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>高德卫星地图</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial;
+            z-index: 9999;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    <!-- 高德地图API 1.4.15版本（不需要安全密钥） -->
+    <script type="text/javascript" src="https://webapi.amap.com/maps?v=1.4.15&key=029df176cb7994640e0b15e32c085804"></script>
+</head>
+<body>
+    <div id="status">正在加载高德地图API...</div>
+    <div id="container"></div>
+    <script type="text/javascript">
+        var statusDiv = document.getElementById('status');
+        
+        // 检查AMap是否加载成功
+        if (typeof AMap === 'undefined') {
+            statusDiv.innerHTML = '❌ 高德地图API加载失败！<br>请检查Key密钥和网络连接';
+            statusDiv.style.background = 'rgba(255,0,0,0.8)';
+            console.error('AMap未定义，API加载失败');
+        } else {
+            statusDiv.innerHTML = '✅ 高德地图API加载成功<br>正在初始化地图...';
+            statusDiv.style.background = 'rgba(0,128,0,0.8)';
+            
+            try {
+                // 初始化地图
+                var map = new AMap.Map('container', {
+                    zoom: 15,
+                    center: [109.390576, 26.529845], // 目标坐标 [经度, 纬度]
+                    viewMode: '3D', // 使用3D视图
+                    pitch: 0, // 俯仰角度
+                    rotation: 0, // 旋转角度
+                    layers: [
+                        new AMap.TileLayer.Satellite(), // 卫星图层
+                        new AMap.TileLayer.RoadNet() // 路网图层
+                    ]
+                });
+                
+                statusDiv.innerHTML = '✅ 高德卫星地图加载成功！';
+                setTimeout(function() {
+                    statusDiv.style.display = 'none';
+                }, 3000);
+                
+                console.log('高德地图初始化完成');
+            } catch(e) {
+                statusDiv.innerHTML = '❌ 地图初始化失败：<br>' + e.message;
+                statusDiv.style.background = 'rgba(255,0,0,0.8)';
+                console.error('地图初始化错误:', e);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+地<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>高德卫星地图 - 诊断版</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            z-index: 9999;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+        }
+        .error {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .success {
+            color: #51cf66;
+            font-weight: bold;
+        }
+        .info {
+            color: #74c0fc;
+        }
+    </style>
+    <!-- 高德地图API 1.4.15版本（不需要安全密钥） -->
+    <script type="text/javascript" src="https://webapi.amap.com/maps?v=1.4.15&key=029df176cb7994640e0b15e32c085804"></script>
+</head>
+<body>
+    <div id="status">
+        <div class="info">🔍 正在诊断高德地图加载...</div>
+        <div id="details"></div>
+    </div>
+    <div id="container"></div>
+    <script type="text/javascript">
+        var statusDiv = document.getElementById('status');
+        var detailsDiv = document.getElementById('details');
+        
+        // 详细诊断信息
+        var diagnostics = [];
+        diagnostics.push('<div class="info">📋 诊断信息：</div>');
+        diagnostics.push('<div>• 页面URL: ' + window.location.href + '</div>');
+        diagnostics.push('<div>• 协议: ' + window.location.protocol + '</div>');
+        diagnostics.push('<div>• 时间: ' + new Date().toLocaleString() + '</div>');
+        
+        // 检查AMap是否加载成功
+        if (typeof AMap === 'undefined') {
+            diagnostics.push('<div class="error">❌ 高德地图API加载失败！</div>');
+            diagnostics.push('<div class="info">可能原因：</div>');
+            diagnostics.push('<div>1. Key无效或未激活</div>');
+            diagnostics.push('<div>2. 网络问题无法访问高德API</div>');
+            diagnostics.push('<div>3. Key的域名白名单限制</div>');
+            
+            statusDiv.innerHTML = diagnostics.join('');
+            statusDiv.style.background = 'rgba(255,0,0,0.9)';
+            console.error('❌ AMap未定义，API加载失败');
+            
+            // 尝试测试网络连接
+            var testImg = new Image();
+            testImg.onload = function() {
+                diagnostics.push('<div class="success">✓ 网络连接正常</div>');
+                statusDiv.innerHTML = diagnostics.join('');
+            };
+            testImg.onerror = function() {
+                diagnostics.push('<div class="error">✗ 网络连接异常</div>');
+                statusDiv.innerHTML = diagnostics.join('');
+            };
+            testImg.src = 'https://webapi.amap.com/favicon.ico?' + Date.now();
+        } else {
+            diagnostics.push('<div class="success">✅ 高德地图API加载成功</div>');
+            diagnostics.push('<div class="info">🚀 正在初始化地图...</div>');
+            statusDiv.innerHTML = diagnostics.join('');
+            statusDiv.style.background = 'rgba(0,128,0,0.9)';
+            
+            try {
+                // 初始化地图
+                var map = new AMap.Map('container', {
+                    zoom: 15,
+                    center: [109.390576, 26.529845], // 目标坐标 [经度, 纬度]
+                    viewMode: '3D', // 使用3D视图
+                    pitch: 0, // 俯仰角度
+                    rotation: 0, // 旋转角度
+                    layers: [
+                        new AMap.TileLayer.Satellite(), // 卫星图层
+                        new AMap.TileLayer.RoadNet() // 路网图层
+                    ]
+                });
+                
+                // 添加控件（1.4.15版本的正确写法）
+                var scale = new AMap.Scale();
+                map.addControl(scale);
+                
+                var toolbar = new AMap.ToolBar({
+                    position: 'LB' // 左下角
+                });
+                map.addControl(toolbar);
+                
+                // 监听地图加载完成事件
+                map.on('complete', function() {
+                    diagnostics.push('<div class="success">✅ 高德卫星地图加载成功！</div>');
+                    diagnostics.push('<div class="info">提示：3秒后隐藏此面板</div>');
+                    statusDiv.innerHTML = diagnostics.join('');
+                    
+                    setTimeout(function() {
+                        statusDiv.style.display = 'none';
+                    }, 3000);
+                });
+                
+                console.log('✅ 高德地图初始化完成');
+            } catch(e) {
+                diagnostics.push('<div class="error">❌ 地图初始化失败</div>');
+                diagnostics.push('<div class="error">错误信息：' + e.message + '</div>');
+                statusDiv.innerHTML = diagnostics.join('');
+                statusDiv.style.background = 'rgba(255,0,0,0.9)';
+                console.error('❌ 地图初始化错误:', e);
+            }
+        }
+    </script>
+</body>
+</html>

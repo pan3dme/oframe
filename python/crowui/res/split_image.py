@@ -1,4 +1,4 @@
-"""将 baidumapall.png 切割成 12列 x 4行 的小图片"""
+
 import os
 from PIL import Image
 

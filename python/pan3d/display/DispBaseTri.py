@@ -38,7 +38,7 @@ class DispBaseTri(Display3D):
         glEnableVertexAttribArray(2)
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 32, ctypes.c_void_p(20));
 
-        self.wood_texture = TextureRes(self.scene3D,"abc.jpg")
+        self.wood_texture = TextureRes(self.scene3D,"ab11c.jpg")
 
 
 
