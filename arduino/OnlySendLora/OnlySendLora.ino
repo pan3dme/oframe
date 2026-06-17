@@ -30,18 +30,11 @@ String getCurrentTimeString() {
   unsigned long hours = (totalSeconds / 3600) % 24;
   unsigned long minutes = (totalSeconds / 60) % 60;
   unsigned long seconds = totalSeconds % 60;
-  
-  return String("2026/6/17 ") + 
-         String(hours < 10 ? "0" : "") + String(hours) + ":" +
-         String(minutes < 10 ? "0" : "") + String(minutes) + ":" +
-         String(seconds < 10 ? "0" : "") + String(seconds);
+
+  return String("2026/6/17 ") + String(hours < 10 ? "0" : "") + String(hours) + ":" + String(minutes < 10 ? "0" : "") + String(minutes) + ":" + String(seconds < 10 ? "0" : "") + String(seconds);
 }
 
 
-// ==================== GPS模块初始化 ====================
-void initGPS() {
-  initPanGPS();
-}
 
 // ==================== 读取GPS信息 ====================
 void updateGpsInfo() {
@@ -69,7 +62,7 @@ void setup() {
 
   // 初始化LoRa模块
   initLora();
-  initGPS();
+  initPanGPS();
 }
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
@@ -78,7 +71,8 @@ void buildAndSendPacket(int packetType) {
   if (packetType == PACKET_TYPE_GPS) {
     dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
   } else if (packetType == PACKET_TYPE_TIME) {
-    dataStr += "|" + getCurrentTimeString();
+    // dataStr += "|" + getCurrentTimeString();
+    dataStr += "|" + getCurrentTime();
   }
 
   // 安全拷贝到发送缓冲区
@@ -104,18 +98,18 @@ void loop() {
   if (millis() - lastSendTime >= SEND_INTERVAL_MS) {
     lastSendTime = millis();
     packetCount++;
-    
+
     // 随机选择发送GPS或对时信息（50%概率）
     int packetType = random(2) == 0 ? PACKET_TYPE_GPS : PACKET_TYPE_TIME;
-    
+
     // 更新GPS信息（仅当发送GPS时需要）
     if (packetType == PACKET_TYPE_GPS) {
       updateGpsInfo();
     }
-    
+
     // 构建并发送数据包
     buildAndSendPacket(packetType);
-    
+
     // LED指示和状态显示
     openLedByNum(10, 50);
     displayLines[3] = "Sending...";

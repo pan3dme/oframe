@@ -13,6 +13,11 @@ bool wifiTimeSynced = false;    // 是否已成功同步网络时间
 time_t syncedEpoch = 0;         // 成功同步的时间戳
 unsigned long syncedMillis = 0; // 同步时的本地毫秒计数
 
+// LoRa对时相关变量
+bool loraTimeSynced = false;    // 是否已通过LoRa同步时间
+time_t loraSyncedEpoch = 0;     // LoRa同步的时间戳
+unsigned long loraSyncedMillis = 0; // LoRa同步时的本地毫秒计数
+
 
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
@@ -208,7 +213,7 @@ void showDisplayBy4Area(String a, String b, String c, String d)
 // 初始化WiFi并同步网络时间
 // 初始化WiFi并同步网络时间 (获取后自动断开以省电)
 
-// 获取可用的时间字符串 (优先网络，其次GPS，最后默认)
+// 获取可用的时间字符串 (优先网络，其次LoRa对时，最后默认)
 String getCurrentTime()
 {
   if (wifiTimeSynced)
@@ -234,10 +239,25 @@ String getCurrentTime()
     }
   }
 
-  // 如果没有网络时间，则尝试使用 GPS 时间
-  // if (gps.time.isValid() && gps.date.isValid()) {
-
-  // }
+  // 如果没有网络时间，则尝试使用 LoRa 对时
+  if (loraTimeSynced)
+  {
+    unsigned long elapsedMs = millis() - loraSyncedMillis;
+    time_t currentEpoch = loraSyncedEpoch + elapsedMs / 1000;
+    struct tm *tmNow = localtime(&currentEpoch);
+    if (tmNow != NULL)
+    {
+      char timeStr[30];
+      snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
+               tmNow->tm_year + 1900,
+               tmNow->tm_mon + 1,
+               tmNow->tm_mday,
+               tmNow->tm_hour,
+               tmNow->tm_min,
+               tmNow->tm_sec);
+      return String(timeStr);
+    }
+  }
 
   return "0000/00/00 00:00:00";
 }
@@ -305,6 +325,47 @@ bool initLibWifi()
   WiFi.mode(WIFI_OFF);
   Serial.println("📶 WiFi 已关闭，后续时间使用本地时钟增量");
   return true;
+}
+
+// 从LoRa对时信息设置时间
+void setTimeFromLora(String timeStr)
+{
+  // 如果已经有网络时间或已经通过LoRa同步过，则不再重复设置
+  if (wifiTimeSynced || loraTimeSynced)
+  {
+    Serial.println("⚠️ 时间已同步，忽略LoRa对时信息");
+    return;
+  }
+
+  // 解析时间字符串格式: "2026/6/17 00:12:20"
+  struct tm tmLora;
+  memset(&tmLora, 0, sizeof(tmLora));
+
+  int year, month, day, hour, minute, second;
+  if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d",
+             &year, &month, &day, &hour, &minute, &second) == 6)
+  {
+    tmLora.tm_year = year - 1900;
+    tmLora.tm_mon = month - 1;
+    tmLora.tm_mday = day;
+    tmLora.tm_hour = hour;
+    tmLora.tm_min = minute;
+    tmLora.tm_sec = second;
+
+    // 转换为time_t
+    loraSyncedEpoch = mktime(&tmLora);
+    loraSyncedMillis = millis();
+    loraTimeSynced = true;
+
+    Serial.println("✅ LoRa对时成功");
+    Serial.print("同步时间：");
+    Serial.println(timeStr);
+  }
+  else
+  {
+    Serial.print("❌ LoRa对时解析失败: ");
+    Serial.println(timeStr);
+  }
 }
 
 void initPanRadio(RadioEvents_t* radioEvents) {

@@ -213,8 +213,38 @@ void loop() {
     Serial.print("Received LoRa: ");
     Serial.println(loraStr);
 
+    // 解析LoRa消息类型
+    int firstPipeIndex = String(loraStr).indexOf('|');
+    if (firstPipeIndex > 0) {
+      String typeStr = String(loraStr).substring(0, firstPipeIndex);
+      int messageType = typeStr.toInt();
+      
+      Serial.print("📋 消息类型: ");
+      Serial.println(messageType);
 
-    displayBuf[3] = String(loraStr).substring(0, 15);
+      // 类型2: 对时信息
+      if (messageType == 2) {
+        // 格式: 2|v4-1|2026/6/17 00:12:20
+        int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
+        if (secondPipeIndex > 0) {
+          String timeStr = String(loraStr).substring(secondPipeIndex + 1);
+          Serial.print("⏰ 收到对时信息: ");
+          Serial.println(timeStr);
+          setTimeFromLora(timeStr);
+        }
+      }
+      // 类型1: 定位信息（原有逻辑）
+      else if (messageType == 1) {
+        displayBuf[3] = String(loraStr).substring(0, 15);
+      }
+      // 其他类型，直接显示
+      else {
+        displayBuf[3] = String(loraStr).substring(0, 15);
+      }
+    } else {
+      // 没有分隔符，按原样显示
+      displayBuf[3] = String(loraStr).substring(0, 15);
+    }
 
     if (lastPayloadSize > 0) {
 

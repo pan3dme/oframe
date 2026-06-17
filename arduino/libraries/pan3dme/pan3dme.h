@@ -72,6 +72,7 @@ void initPanRadio(RadioEvents_t* radioEvents);
 String getCurrentGpsTm(TinyGPSPlus gps);
 String getGpsInfoStr();
 String getCurrentTime();
+void setTimeFromLora(String timeStr);
 String makeDivceName();
 
 #endif

@@ -338,18 +338,18 @@ Page({
 
     // 元数据行
     parts.push({ text: 'rssi:', color: '#999' })
-    parts.push({ text: rssi, color: '#333', bold: true })
+    parts.push({ text: rssi, color: '#e74c3c', bold: true })
     parts.push({ text: '  snr:', color: '#999' })
-    parts.push({ text: snr, color: '#333', bold: true })
+    parts.push({ text: snr, color: '#07c160', bold: true })
     parts.push({ text: '\n', color: '#333' })
 
     // 类型图标（infoParts[0] 为类型编号：1=GPS定位，2=对时）
     const typeIcon = this._getTypeIcon(infoParts[0])
     if (typeIcon) parts.push({ text: typeIcon.text + ' ', color: typeIcon.color })
 
-    // info 各段：只有 v3-4（第2段）和末尾数字标红
+    // info 各段：类型编号、设备ID、末尾数字标红
     for (let i = 0; i < infoParts.length; i++) {
-      const isRed = (i === 1) || (i === infoParts.length - 1)
+      const isRed = (i === 0) || (i === 1) || (i === infoParts.length - 1)
       parts.push({ text: infoParts[i], color: isRed ? '#e74c3c' : '#333', bold: isRed })
       if (i < infoParts.length - 1) parts.push({ text: '|', color: '#333' })
     }
@@ -357,8 +357,8 @@ Page({
     // 时间 + 设备名称（第三行）
     const thirdLine = []
     if (timeFull) thirdLine.push({ text: timeFull, color: '#333' })
-    if (timeFull && dev) thirdLine.push({ text: '  ', color: '#333' })
-    if (dev) thirdLine.push({ text: '↑ ' + dev, color: '#333' })
+    if (timeFull && dev) thirdLine.push({ text: ' ', color: '#333' })
+    if (dev) thirdLine.push({ text: '(' + dev + ')', color: '#333' })
     if (thirdLine.length > 0) {
       parts.push({ text: '\n', color: '#333' })
       parts.push(...thirdLine)
