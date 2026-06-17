@@ -12,6 +12,7 @@
 const char* DEVICE_NAME_PREFIX = "v4-x";
 const unsigned long SEND_INTERVAL_MS = 10000;  // 发送间隔10秒
 const int PACKET_TYPE_GPS = 1;                 // GPS数据包类型
+const int PACKET_TYPE_TIME = 2;                // 对时数据包类型
 
 // ==================== 全局变量 ====================
 String deviceName;               // 设备名称
@@ -21,6 +22,20 @@ RadioEvents_t radioEvents;       // LoRa事件回调
 int packetCount = 0;             // 数据包计数器
 unsigned long lastSendTime = 0;  // 上次发送时间戳
 String displayLines[4];          // OLED显示内容
+
+// ==================== 获取当前时间字符串 ====================
+String getCurrentTimeString() {
+  // 使用millis()转换为相对时间格式
+  unsigned long totalSeconds = millis() / 1000;
+  unsigned long hours = (totalSeconds / 3600) % 24;
+  unsigned long minutes = (totalSeconds / 60) % 60;
+  unsigned long seconds = totalSeconds % 60;
+  
+  return String("2026/6/17 ") + 
+         String(hours < 10 ? "0" : "") + String(hours) + ":" +
+         String(minutes < 10 ? "0" : "") + String(minutes) + ":" +
+         String(seconds < 10 ? "0" : "") + String(seconds);
+}
 
 
 // ==================== GPS模块初始化 ====================
@@ -62,6 +77,8 @@ void buildAndSendPacket(int packetType) {
 
   if (packetType == PACKET_TYPE_GPS) {
     dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
+  } else if (packetType == PACKET_TYPE_TIME) {
+    dataStr += "|" + getCurrentTimeString();
   }
 
   // 安全拷贝到发送缓冲区
@@ -87,9 +104,18 @@ void loop() {
   if (millis() - lastSendTime >= SEND_INTERVAL_MS) {
     lastSendTime = millis();
     packetCount++;
-    // 更新GPS信息并发送
-    updateGpsInfo();
-    buildAndSendPacket(PACKET_TYPE_GPS);
+    
+    // 随机选择发送GPS或对时信息（50%概率）
+    int packetType = random(2) == 0 ? PACKET_TYPE_GPS : PACKET_TYPE_TIME;
+    
+    // 更新GPS信息（仅当发送GPS时需要）
+    if (packetType == PACKET_TYPE_GPS) {
+      updateGpsInfo();
+    }
+    
+    // 构建并发送数据包
+    buildAndSendPacket(packetType);
+    
     // LED指示和状态显示
     openLedByNum(10, 50);
     displayLines[3] = "Sending...";
