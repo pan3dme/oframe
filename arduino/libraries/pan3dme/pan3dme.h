@@ -73,7 +73,8 @@ String getCurrentGpsTm(TinyGPSPlus gps);
 String getGpsInfoStr();
 String getCurrentTime();
 void setTimeFromLora(String timeStr);
-int getDivcesIdx();
+int getDevicesIdx();
+int getTotalDevices();  // 获取设备总数
 String makeDivceName();
 
 #endif

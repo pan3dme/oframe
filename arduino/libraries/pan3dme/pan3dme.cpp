@@ -30,6 +30,7 @@ uint64_t allowedDevices[] = {
     0xF89A3604A7AC, // v3    7
     0x9875555       // 等待添加
 };
+const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);
 
 void openLedByNum(int count, int delayMs)
 {
@@ -138,10 +139,10 @@ String getCurrentGpsTm(TinyGPSPlus &gps)
 }
 
 // 设备ID认证 (根据MAC地址生成设备名)
-int getDivcesIdx(){
+int getDevicesIdx(){
   uint64_t currentId = ESP.getEfuseMac();
   int index = -1;
-  for (size_t i = 0; i < sizeof(allowedDevices) / sizeof(allowedDevices[0]); ++i)
+  for (size_t i = 0; i < DEVICE_COUNT; ++i)
   {
     if (currentId == allowedDevices[i])
     {
@@ -151,11 +152,16 @@ int getDivcesIdx(){
   }
   return index;
 }
+
+// 获取设备总数
+int getTotalDevices() {
+  return DEVICE_COUNT;
+}
 String makeDivceName()
 {
   uint64_t currentId = ESP.getEfuseMac();
   Serial.printf("当前设备编号: %012llX\n", currentId);
-  int index = getDivcesIdx();
+  int index = getDevicesIdx();
   if (index != -1)
   {
     String syname = "vx-x";
