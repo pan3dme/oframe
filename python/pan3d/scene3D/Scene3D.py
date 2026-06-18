@@ -102,21 +102,6 @@ class Scene3D:
         skill.configFixEffect(self.mainChar, None, None);
         self.mainChar.playSkill(skill);
 
-    def doubelClikEvent(self):
-        print('双击')
-
-        def bfun():
-            # self.playParticle('res/model/levelup_lyf.txt')
-            # self.addYezhu()
-            # self.playParticle('res/model/10018_lyf.txt')
-            # self.playParticle('res/model/csm001_lyf.txt')
-            # self.playParticle('res/model/ccav_lyf.txt')
-            # self.playSkill();
-            pass
-
-        TimeUtilInter.addTimeOut(1, bfun);
-
-        pass
     def addYezhu(self):
 
 

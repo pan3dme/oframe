@@ -47,6 +47,21 @@ class GoogleMap2DWidget(QWidget):
         self.image_label.setStyleSheet("background-color: #1a1a2e;")
         self.scroll_area.setWidget(self.image_label)
 
+        # GPS坐标显示标签（浮动在地图上层）
+        self.gps_info_label = QLabel(self)
+        self.gps_info_label.setStyleSheet(
+            "QLabel {"
+            "    background-color: rgba(0, 0, 0, 180);"
+            "    color: white;"
+            "    padding: 5px 10px;"
+            "    border-radius: 5px;"
+            "    font-size: 12px;"
+            "}"
+        )
+        self.gps_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.gps_info_label.setText("纬度: 0.000000, 经度: 0.000000")
+        self.gps_info_label.hide()  # 初始隐藏，有数据后显示
+
         # 布局
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -355,6 +370,13 @@ class GoogleMap2DWidget(QWidget):
         # 设置滚动条位置
         h_bar.setValue(target_h_value)
         v_bar.setValue(target_v_value)
+        
+        # 更新GPS坐标显示标签
+        lat, lon = gps_coord
+        self._update_gps_info_label(lat, lon)
+        
+        # 立即更新红点标记位置
+        self._draw_center_marker()
 
     def _gps_to_pixel(self, gps_coord):
         """将GPS坐标转换为图片上的像素坐标
@@ -383,6 +405,7 @@ class GoogleMap2DWidget(QWidget):
         # 转换为像素坐标
         x = int(lon_ratio * self._original_pixmap.width())
         y = int(lat_ratio * self._original_pixmap.height())
+
         
         return x, y
 
@@ -443,6 +466,9 @@ class GoogleMap2DWidget(QWidget):
             lat, lon = gps_coord
             # print(f"地图中心GPS坐标: 纬度={lat:.6f}, 经度={lon:.6f}")
             self.receive_map_move_gps(lat,lon)
+            
+            # 更新GPS坐标显示标签
+            self._update_gps_info_label(lat, lon)
 
 
     def _update_display(self):
@@ -624,6 +650,9 @@ class GoogleMap2DWidget(QWidget):
             self.image_label.setFixedSize(new_w, new_h)
         
         self.image_label.setFixedSize(new_w, new_h)
+        
+        # 在地图可视区域中心绘制红点标记
+        self._draw_center_marker()
 
 
 
@@ -644,9 +673,49 @@ class GoogleMap2DWidget(QWidget):
     def resizeEvent(self, event):
         """窗口大小改变时，重新计算中心GPS坐标的位置"""
         super().resizeEvent(event)
-        # 如果有保存的中心GPS坐标，延迟重新定位（等待布局完成）
+        new_size = event.size()
+        print(f"📐 resizeEvent: Widget尺寸变为 {new_size.width()}x{new_size.height()}")
+        
+        # 如果有保存的中心GPS坐标，重新定位
         if self._center_gps_coord is not None:
-            QTimer.singleShot(0, lambda: self.center_on_gps(self._center_gps_coord))
+            self.center_on_gps(self._center_gps_coord)
+        # 更新GPS信息标签位置
+        self._update_gps_info_label_position()
+        # 立即更新中心红点标记位置
+        self._draw_center_marker()
+
+    def showEvent(self, event):
+        """窗口显示时，确保红点在正确位置"""
+        super().showEvent(event)
+        print(f"👁️ showEvent: Widget当前尺寸 {self.width()}x{self.height()}")
+        # 立即更新红点位置
+        self._draw_center_marker()
+
+    def _update_gps_info_label(self, lat, lon):
+        """更新GPS坐标显示标签的内容和位置"""
+        text = f"纬度: {lat:.6f}, 经度: {lon:.6f}"
+        self.gps_info_label.setText(text)
+        self.gps_info_label.show()
+        self._update_gps_info_label_position()
+
+    def _update_gps_info_label_position(self):
+        """更新GPS坐标标签的位置（居中底部）"""
+        if not self.gps_info_label.isVisible():
+            return
+        
+        # 获取可视区域尺寸
+        viewport_width = self.scroll_area.viewport().width()
+        viewport_height = self.scroll_area.viewport().height()
+        
+        # 计算标签大小
+        label_width = self.gps_info_label.sizeHint().width()
+        label_height = self.gps_info_label.sizeHint().height()
+        
+        # 设置标签位置（底部居中）
+        x = (viewport_width - label_width) // 2
+        y = viewport_height - label_height - 10  # 距离底部10像素
+        
+        self.gps_info_label.setGeometry(x, y, label_width, label_height)
 
     def change_map_gps(self,latitude, longitude):
         self.center_on_gps((latitude, longitude))
@@ -656,6 +725,44 @@ class GoogleMap2DWidget(QWidget):
         """更新闪烁状态"""
         self._blink_state = not self._blink_state
         self._update_display()
+
+    def _draw_center_marker(self):
+        """在地图可视区域中心绘制红点标记"""
+        # 使用widget自身的尺寸
+        widget_width = self.width()
+        widget_height = self.height()
+        
+        print(f"🎯 _draw_center_marker: Widget尺寸 {widget_width}x{widget_height}")
+        
+        if widget_width <= 0 or widget_height <= 0:
+            return
+        
+        # 计算中心位置
+        center_x = widget_width // 2
+        center_y = widget_height // 2
+        marker_radius = 8
+        
+        # 创建红点标记
+        if not hasattr(self, '_center_marker_widget'):
+            self._center_marker_widget = QLabel(self)
+            self._center_marker_widget.setObjectName("centerMarker")
+            self._center_marker_widget.setStyleSheet(
+                "QLabel#centerMarker {"
+                "    background-color: rgba(255, 0, 0, 200);"
+                "    border: 2px solid rgba(255, 255, 255, 255);"
+                "    border-radius: 10px;"
+                "}"
+            )
+            self._center_marker_widget.setFixedSize(marker_radius * 2 + 4, marker_radius * 2 + 4)
+            print(f"✅ 首次创建红点标记")
+        
+        # 设置位置（居中）
+        marker_x = center_x - (marker_radius + 2)
+        marker_y = center_y - (marker_radius + 2)
+        self._center_marker_widget.move(marker_x, marker_y)
+        self._center_marker_widget.show()
+        self._center_marker_widget.raise_()
+        print(f"📍 红点定位到: ({marker_x}, {marker_y}), 期望中心: ({center_x}, {center_y}), Widget大小: {widget_width}x{widget_height}")
 
     def add_device_marker(self, device_id, gps, time_str, is_gray=False, loop=False):
         """添加设备位置标记

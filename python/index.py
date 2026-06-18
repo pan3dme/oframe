@@ -744,6 +744,13 @@ class MainWindow(QMainWindow):
                         print("  ✅ 已将googleMap2D添加到inner_container")
                     else:
                         print("  ⚠️ googleMap2D已在inner_container中")
+                
+                # 强制设置widget的大小策略，让它适应父容器
+                from PyQt6.QtWidgets import QSizePolicy
+                self.googleMap2D.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                # 强制更新布局
+                inner_layout.update()
+                self.inner_container.updateGeometry()
             
             # 5. 显示所有组件
             self.googleMap2D.show()
@@ -752,7 +759,15 @@ class MainWindow(QMainWindow):
             self.map2d_container.raise_()  # 确保在最上层
             print("  ✅ 已显示所有组件")
             
+            # 6. 强制更新2D地图widget的尺寸（触发resizeEvent）
+            QTimer.singleShot(50, lambda: self.googleMap2D.resize(self.inner_container.size()))
+            
+            # 7. 更新2D地图容器位置
             QTimer.singleShot(150, self._update_map2d_position)
+            
+            # 8. 重新定位到中心GPS坐标（会自动触发resizeEvent更新红点）
+            if hasattr(self.googleMap2D, '_center_gps_coord') and self.googleMap2D._center_gps_coord:
+                QTimer.singleShot(200, lambda: self.googleMap2D.center_on_gps(self.googleMap2D._center_gps_coord))
             
             settings.current_mode = "small_2d"
             print("✅ 切换完成：3D场景全屏，2D地图小窗")

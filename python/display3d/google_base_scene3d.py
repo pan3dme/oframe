@@ -97,9 +97,7 @@ class GoogleBaseScene3D(QWidget):
             camera3D.locaAtPos.z if camera3D.locaAtPos else 0
         )
 
-        # 双击检测：两次按下间隔小于300ms则触发双击事件
-        if (TimeUtilInter.getTimer() - self.lastDownTm) < 300:
-            self.scene3D.doubelClikEvent()
+
 
         self.lastDownTm = TimeUtilInter.getTimer()  # 更新上次按下时间
 
