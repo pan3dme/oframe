@@ -377,6 +377,8 @@ class GoogleMap2DWidget(QWidget):
         
         # 立即更新红点标记位置
         self._draw_center_marker()
+        print("pixel_coord")
+        print(pixel_coord)
 
     def _gps_to_pixel(self, gps_coord):
         """将GPS坐标转换为图片上的像素坐标
@@ -732,7 +734,7 @@ class GoogleMap2DWidget(QWidget):
         widget_width = self.width()
         widget_height = self.height()
         
-        print(f"🎯 _draw_center_marker: Widget尺寸 {widget_width}x{widget_height}")
+        # print(f"🎯 _draw_center_marker: Widget尺寸 {widget_width}x{widget_height}")
         
         if widget_width <= 0 or widget_height <= 0:
             return
@@ -762,7 +764,7 @@ class GoogleMap2DWidget(QWidget):
         self._center_marker_widget.move(marker_x, marker_y)
         self._center_marker_widget.show()
         self._center_marker_widget.raise_()
-        print(f"📍 红点定位到: ({marker_x}, {marker_y}), 期望中心: ({center_x}, {center_y}), Widget大小: {widget_width}x{widget_height}")
+        # print(f"📍 红点定位到: ({marker_x}, {marker_y}), 期望中心: ({center_x}, {center_y}), Widget大小: {widget_width}x{widget_height}")
 
     def add_device_marker(self, device_id, gps, time_str, is_gray=False, loop=False):
         """添加设备位置标记

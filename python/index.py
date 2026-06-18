@@ -691,9 +691,8 @@ class MainWindow(QMainWindow):
             # 4. 显示2D地图作为全屏背景
             self.googleMap2D.show()
             left_layout.addWidget(self.googleMap2D)
-            
-            # 更新按钮位置（保持在左侧区域右下角）
-            QTimer.singleShot(150, lambda: self._update_map_control_buttons_position(left_widget))
+
+            self._update_map_control_buttons_position(left_widget)
 
             settings .current_mode = "large_2d"
             print("✅ 切换完成：2D地图全屏，3D场景小窗")
@@ -801,8 +800,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(200, self._update_map2d_position)
         # 同时更新按钮位置
         left_widget = self.centralWidget().layout().itemAt(0).widget() if self.centralWidget() and self.centralWidget().layout() else None
-        if left_widget:
-            QTimer.singleShot(250, lambda: self._update_map_control_buttons_position(left_widget))
+        self._update_map_control_buttons_position(left_widget)
 
 
 if __name__ == "__main__":
