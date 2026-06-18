@@ -1,0 +1,65 @@
+<!--road/record/record.wxml - 路径录制-->
+<navigation-bar title="路径录制" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<view class="record-wrap">
+  <!-- 地图 -->
+  <map
+    id="recordMap"
+    class="record-map"
+    latitude="{{mapCenter.lat}}"
+    longitude="{{mapCenter.lng}}"
+    scale="{{scale}}"
+    show-location="{{true}}"
+    enable-satellite="{{true}}"
+    polyline="{{polylines}}"
+    markers="{{markers}}"
+    bindregionchange="onRegionChange"
+  >
+  </map>
+
+  <!-- 录制状态指示器 -->
+  <view class="record-status {{recording ? 'recording' : (stopped ? 'stopped' : '')}}" wx:if="{{recording || stopped}}">
+    <view wx:if="{{recording}}" class="status-pulse"></view>
+    <text wx:if="{{recording}}">录制中 · 已记录 {{pointCount}} 个点</text>
+    <text wx:elif="{{stopped}}">已停止 · 共 {{pointCount}} 个点 · {{totalDist}}m</text>
+  </view>
+
+  <!-- 空状态引导 -->
+  <view class="record-empty-hint" wx:if="{{!recording && !stopped}}">
+    <view class="hint-icon">🏃</view>
+    <view class="hint-text">点击下方按钮开始记录行走路径</view>
+    <view class="hint-sub">每秒自动记录坐标，或移动超过1米时记录</view>
+  </view>
+
+  <!-- 底部控制栏 -->
+  <view class="record-bar">
+    <!-- 开始 -->
+    <view wx:if="{{!recording && !stopped}}" class="bar-btn bar-btn-start" bindtap="onStartRecord">
+      <view class="bar-btn-icon">▶</view>
+      <view class="bar-btn-text">开始记录</view>
+    </view>
+
+    <!-- 录制中 -->
+    <view wx:if="{{recording}}" class="bar-btn bar-btn-stop" bindtap="onStopRecord">
+      <view class="bar-btn-icon">⏹</view>
+      <view class="bar-btn-text">停止记录</view>
+    </view>
+
+    <!-- 已停止 -->
+    <view wx:if="{{stopped}}" class="bar-actions">
+      <view class="bar-btn bar-btn-restart" bindtap="onRestart">
+        <view class="bar-btn-icon">↻</view>
+        <view class="bar-btn-text">重新开始</view>
+      </view>
+      <view class="bar-btn bar-btn-confirm" bindtap="onConfirm">
+        <view class="bar-btn-text">✓ 确定</view>
+      </view>
+    </view>
+
+    <!-- 点数和距离 -->
+    <view class="bar-stats" wx:if="{{recording || stopped}}">
+      <text wx:if="{{recording}}">{{pointCount}} 个点 · {{elapsed}}s</text>
+      <text wx:elif="{{stopped}}">总长 {{totalDist}}m · {{elapsed}}s</text>
+    </view>
+  </view>
+</view>

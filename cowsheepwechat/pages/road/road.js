@@ -13,7 +13,8 @@ Page({
     editRoadId: '',       // 编辑时有值
     formRoadName: '',
     formRoadDesc: '',
-    formRoadPoints: ''
+    formRoadPoints: '',
+    pathPointCount: 0
   },
 
   onLoad() {
@@ -21,6 +22,17 @@ Page({
   },
 
   onShow() {
+    // 从路径录制页返回，填充坐标
+    const pathStr = getApp().globalData._roadRecordedPath
+    if (pathStr && this.data.showModal) {
+      const pts = pathStr.split(';').filter(p => p.includes(','))
+      this.setData({
+        formRoadPoints: pathStr,
+        pathPointCount: pts.length
+      })
+      getApp().globalData._roadRecordedPath = null
+    }
+
     // 每次显示时，如果列表为空则从缓存取
     if (this.data.roadList.length === 0) {
       this._loadRoadList(false)
@@ -53,7 +65,8 @@ Page({
       editRoadId: '',
       formRoadName: '',
       formRoadDesc: '',
-      formRoadPoints: ''
+      formRoadPoints: '',
+      pathPointCount: 0
     })
   },
 
@@ -71,6 +84,11 @@ Page({
 
   onPointsInput(e) {
     this.setData({ formRoadPoints: e.detail.value })
+  },
+
+  // ========== 打开路径录制 ==========
+  onGetPath() {
+    wx.navigateTo({ url: '/pages/road/record/record' })
   },
 
   onModalConfirm() {
@@ -124,13 +142,16 @@ Page({
     const item = this.data.roadList.find(v => v.roadId === roadId)
     if (!item) return
 
+    const pts = (item.points || '').split(';').filter(p => p.includes(','))
+
     this.setData({
       showModal: true,
       modalTitle: '编辑道路',
       editRoadId: roadId,
       formRoadName: item.name || '',
       formRoadDesc: item.desc || '',
-      formRoadPoints: item.points || ''
+      formRoadPoints: item.points || '',
+      pathPointCount: pts.length
     })
   },
 

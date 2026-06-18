@@ -79,15 +79,22 @@
   </view>
 
   <view class="modal-field">
-    <view class="modal-label">路径点坐标 (可选)</view>
-    <textarea
-      class="modal-textarea modal-textarea-small"
-      placeholder="输入GPS坐标，如 lat1,lng1;lat2,lng2"
-      value="{{formRoadPoints}}"
-      bindinput="onPointsInput"
-      maxlength="500"
-      auto-height
-    />
+    <view class="modal-label">路径点坐标</view>
+    <view class="path-row">
+      <textarea
+        class="modal-textarea modal-textarea-small path-textarea"
+        placeholder="点击右侧按钮录制行走路径"
+        value="{{formRoadPoints}}"
+        disabled="{{true}}"
+        maxlength="2000"
+        auto-height
+      />
+      <view class="path-btn" bindtap="onGetPath">
+        <view class="path-btn-icon">📍</view>
+        <view class="path-btn-label">获取路径</view>
+      </view>
+    </view>
+    <view wx:if="{{formRoadPoints}}" class="path-hint">已录制 {{pathPointCount}} 个坐标点</view>
   </view>
 
   <view class="modal-btns">

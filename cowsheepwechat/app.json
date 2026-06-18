@@ -12,6 +12,7 @@
     "pages/settings/settings",
     "pages/road/road",
     "pages/road/detail/detail",
+    "pages/road/record/record",
     "pages/places/places",
     "pages/places/detail/detail",
     "pages/places/picker/picker"

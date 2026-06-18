@@ -246,6 +246,56 @@ page {
   min-height: 80rpx;
 }
 
+/* ========== 路径点行 ========== */
+.path-row {
+  display: flex;
+  gap: 12rpx;
+  align-items: flex-start;
+}
+
+.path-textarea {
+  flex: 1;
+  min-height: 72rpx;
+  background: #f5f5f5;
+  color: #666;
+  font-size: 24rpx;
+}
+
+.path-btn {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 140rpx;
+  height: 100rpx;
+  background: linear-gradient(135deg, #1989fa, #0d6efd);
+  color: #fff;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.path-btn:active {
+  opacity: 0.8;
+}
+
+.path-btn-icon {
+  font-size: 36rpx;
+  line-height: 1;
+  margin-bottom: 2rpx;
+}
+
+.path-btn-label {
+  font-size: 22rpx;
+}
+
+.path-hint {
+  font-size: 22rpx;
+  color: #07c160;
+  margin-top: 8rpx;
+}
+
 .modal-btns {
   display: flex;
   gap: 16rpx;
