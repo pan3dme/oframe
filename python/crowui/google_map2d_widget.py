@@ -679,12 +679,16 @@ class GoogleMap2DWidget(QWidget):
         print(f"📐 resizeEvent: Widget尺寸变为 {new_size.width()}x{new_size.height()}")
         
         # 如果有保存的中心GPS坐标，重新定位
+        self.resizePostioniUi()
+
+    def resizePostioniUi(self):
         if self._center_gps_coord is not None:
             self.center_on_gps(self._center_gps_coord)
-        # 更新GPS信息标签位置
+            # 更新GPS信息标签位置
         self._update_gps_info_label_position()
         # 立即更新中心红点标记位置
         self._draw_center_marker()
+
 
     def showEvent(self, event):
         """窗口显示时，确保红点在正确位置"""

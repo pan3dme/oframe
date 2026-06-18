@@ -161,7 +161,7 @@ class GoogleBaseScene3D(QWidget):
         """初始化OpenGL设置"""
         self.initData()
         self.scene3D = Scene3D()
-        self.scene3D.camera3D.camDis = -200
+
         self.lastDownTm = TimeUtilInter.getTimer()  # 记录上次鼠标按下时间，用于双击检测
 
 

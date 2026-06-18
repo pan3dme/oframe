@@ -189,8 +189,8 @@ class MainWindow(QMainWindow):
         self.client = None
         settings.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
         self.setWindowTitle("高德地图应用")
-        # self.setGeometry(0, 0, 1900, 1000)
-        self.setGeometry(200, 50, 1700, 750)
+        self.setGeometry(0, 0, 1900, 1000)
+        # self.setGeometry(200, 50, 1700, 750)
 
         # 初始化OTS客端户
         if not self.initTabelClient():
@@ -631,7 +631,18 @@ class MainWindow(QMainWindow):
                 self.scene3d_small_container.move(x_pos, y_pos)
                 self.scene3d_small_container.raise_()
                 print(f"✅ 3D小窗已定位: x={x_pos}, y={y_pos}")
-    
+
+    def rerishUi(self):
+        # 有待优化
+
+        QTimer.singleShot(1, self.googleMap2D.resizePostioniUi)
+        QTimer.singleShot(50, self.googleMap2D.resizePostioniUi)
+        QTimer.singleShot(100, self.googleMap2D.resizePostioniUi)
+        QTimer.singleShot(200, self.googleMap2D.resizePostioniUi)
+        QTimer.singleShot(500, self.googleMap2D.resizePostioniUi)
+        QTimer.singleShot(1000, self.googleMap2D.resizePostioniUi)
+        QTimer.singleShot(1500, self.googleMap2D.resizePostioniUi)
+
     def toggle_map_positions(self):
         """切换2D地图和3D场景的位置和大小"""
         print(f"🔄 切换地图位置... (当前模式: {settings.current_mode})")
@@ -639,9 +650,14 @@ class MainWindow(QMainWindow):
         if not hasattr(self, 'map2d_container') or not hasattr(self, 'scene3d_widget'):
             print("❌ 错误：缺少必要的组件")
             return
+
+
+
         
         left_widget = self.centralWidget().layout().itemAt(0).widget()
         left_layout = left_widget.layout()
+
+
         
         if settings.current_mode == "small_2d":
             # 当前是小窗口模式，切换到大屏模式
@@ -696,7 +712,10 @@ class MainWindow(QMainWindow):
 
             settings .current_mode = "large_2d"
             print("✅ 切换完成：2D地图全屏，3D场景小窗")
-            
+            self.rerishUi()
+
+
+
         else:
             # 当前是大屏模式，切换到小窗口模式
             print("📍 切换到：3D场景大屏 + 2D地图小窗")
@@ -770,6 +789,9 @@ class MainWindow(QMainWindow):
             
             settings.current_mode = "small_2d"
             print("✅ 切换完成：3D场景全屏，2D地图小窗")
+            self.rerishUi()
+
+
     
     def _update_map_control_buttons_position(self, left_widget):
         """更新地图控制按钮位置（左侧区域右下角）"""

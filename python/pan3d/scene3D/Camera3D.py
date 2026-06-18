@@ -11,7 +11,7 @@ class Camera3D(Vector3D):
         self.rotationX = -30;
         self.rotationY = -90;
         self.downCamRoV2 = Vector2D();
-        self.camDis = -400;
+        self.camDis = -150;
         self.downPos = Vector2D(0, 0);
         self.isLastDonw = False;
         self.isMiddleDown = False;
