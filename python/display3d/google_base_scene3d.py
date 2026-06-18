@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout
 
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 from PyQt6.QtCore import Qt
-
+from jinja2.nodes import If
 
 from pan3d.event.GameMouseManager import GameMouseManagerGetInstance
 
@@ -51,7 +51,7 @@ class GoogleBaseScene3D(QWidget):
         uiBlankStage.addEventListener(InteractiveEvent.Move, self.uiStageMove, self)  # 鼠标移动
         uiBlankStage.addEventListener(InteractiveEvent.WheelEvent, self.uiStageWheel, self)  # 鼠标滚轮
     def uiStageWheel(self, evt=InteractiveEvent()):
-        if self.scene3D is None:
+        if not self.isCanUseMouseEvent():
             return
         """鼠标滚轮事件：调整摄像机距离"""
         # 判断鼠标是否在当前widget范围内
@@ -66,9 +66,8 @@ class GoogleBaseScene3D(QWidget):
 
     def uiStageDown(self, evt=InteractiveEvent()):
 
-        if settings.current_mode == "large_2d":
-            return
-        if self.scene3D is None:
+
+        if not self.isCanUseMouseEvent():
             return
         """鼠标按下事件：记录按下状态、旋转角度和位置，并检测双击"""
         # 判断鼠标是否在当前widget范围内
@@ -106,14 +105,23 @@ class GoogleBaseScene3D(QWidget):
 
     def uiStageUp(self, evt=InteractiveEvent()):
         """鼠标抬起事件：取消按下状态"""
-        if self.scene3D is None:
+        if not self.isCanUseMouseEvent():
             return
         camera3D = self.scene3D.camera3D
         camera3D.isLastDonw = False  # 取消鼠标按下状态
         camera3D.isMiddleDown = False  # 取消中键按下状态
 
-    def uiStageMove(self, evt=InteractiveEvent()):
+    def isCanUseMouseEvent(self):
+        if settings.current_mode=='large_2d':
+            return False
         if self.scene3D is None:
+            return False
+        else:
+            return  True
+
+    def uiStageMove(self, evt=InteractiveEvent()):
+
+        if not self.isCanUseMouseEvent():
             return
         """鼠标移动事件：左键拖拽平移场景，中键拖拽旋转摄像机"""
         camera3D = self.scene3D.camera3D

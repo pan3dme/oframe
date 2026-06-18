@@ -127,8 +127,10 @@ class GoogleMap2DWidget(QWidget):
 
 
     def mousePressEvent(self, event):
+        if  not self.isCanUseMouseEvent():
+            return
         """鼠标按下，开始拖拽或检查是否点击了标记点"""
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() in (Qt.MouseButton.LeftButton, Qt.MouseButton.MiddleButton):
             # 获取鼠标在scroll_area中的位置
             mouse_pos = event.position().toPoint()
             
@@ -136,28 +138,29 @@ class GoogleMap2DWidget(QWidget):
             h_bar = self.scroll_area.horizontalScrollBar()
             v_bar = self.scroll_area.verticalScrollBar()
             
-            # 检查是否点击了标记点
+            # 检查是否点击了标记点（仅左键）
             clicked_marker = False
-            for x, y, text in self._gps_markers:
-                # 计算标记点在当前缩放下的位置
-                scaled_x = int(x * self._scale)
-                scaled_y = int(y * self._scale)
-                
-                # 计算标记点在scroll_area中的位置
-                marker_x = scaled_x - h_bar.value()
-                marker_y = scaled_y - v_bar.value()
-                
-                # 计算鼠标与标记点的距离
-                distance = ((mouse_pos.x() - marker_x) ** 2 + (mouse_pos.y() - marker_y) ** 2) ** 0.5
-                
-                # 如果距离小于标记点半径，认为点击了标记点
-                if distance <= 20:  # 20像素的点击区域
-                    # 将像素坐标转换为GPS坐标
-                    gps_coord = self._pixel_to_gps((x, y))
-                    if gps_coord:
-                        print(f"标记点GPS坐标: 纬度={gps_coord[0]:.6f}, 经度={gps_coord[1]:.6f}, 文本={text}")
-                    clicked_marker = True
-                    break
+            if event.button() == Qt.MouseButton.LeftButton:
+                for x, y, text in self._gps_markers:
+                    # 计算标记点在当前缩放下的位置
+                    scaled_x = int(x * self._scale)
+                    scaled_y = int(y * self._scale)
+                    
+                    # 计算标记点在scroll_area中的位置
+                    marker_x = scaled_x - h_bar.value()
+                    marker_y = scaled_y - v_bar.value()
+                    
+                    # 计算鼠标与标记点的距离
+                    distance = ((mouse_pos.x() - marker_x) ** 2 + (mouse_pos.y() - marker_y) ** 2) ** 0.5
+                    
+                    # 如果距离小于标记点半径，认为点击了标记点
+                    if distance <= 20:  # 20像素的点击区域
+                        # 将像素坐标转换为GPS坐标
+                        gps_coord = self._pixel_to_gps((x, y))
+                        if gps_coord:
+                            print(f"标记点GPS坐标: 纬度={gps_coord[0]:.6f}, 经度={gps_coord[1]:.6f}, 文本={text}")
+                        clicked_marker = True
+                        break
             
             # 如果没有点击标记点，开始拖拽
             if not clicked_marker:
@@ -166,6 +169,8 @@ class GoogleMap2DWidget(QWidget):
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouseMoveEvent(self, event):
+        if  not self.isCanUseMouseEvent():
+            return
         """鼠标移动，拖拽滑动"""
         if self._dragging and self._last_pos:
             delta = event.position().toPoint() - self._last_pos
@@ -180,12 +185,20 @@ class GoogleMap2DWidget(QWidget):
 
     def mouseReleaseEvent(self, event):
         """鼠标释放，停止拖拽"""
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() in (Qt.MouseButton.LeftButton, Qt.MouseButton.MiddleButton):
             self._dragging = False
             self._last_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
 
+    def isCanUseMouseEvent(self):
+        if settings.current_mode=='small_2d':
+            return False
+        else:
+            return True
+
     def wheelEvent(self, event):
+        if  not self.isCanUseMouseEvent():
+            return
         """鼠标滚轮缩放，以鼠标位置为中心"""
         if self._original_pixmap is None:
             return
