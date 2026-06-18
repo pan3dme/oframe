@@ -165,10 +165,10 @@ Page({
       return
     }
 
-    // 格式: lat,lng;lat,lng;...（WGS-84）
+    // 格式: lat,lng,lat,lng,...（WGS-84）
     const pointsStr = this._recordedWgs
       .map(p => p.lat.toFixed(6) + ',' + p.lng.toFixed(6))
-      .join(';')
+      .join(',')
 
     app.globalData._roadRecordedPath = pointsStr
     wx.navigateBack()
@@ -183,7 +183,7 @@ Page({
     const now = Date.now()
 
     // 保存最新位置引用
-    const locRef = { lat: gcjLat, lng: gcjLng }
+    const locRef = { latitude: gcjLat, longitude: gcjLng }
     this._lastLocation = locRef
 
     // 更新地图中心到当前位置

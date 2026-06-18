@@ -313,7 +313,8 @@ function _parseRoadRecords(data) {
     return {
       route_id: attr.route_id || record.route_id || '-',
       roadname: attr.roadname || record.roadname || '',
-      roadinfo: attr.roadinfo || record.roadinfo || ''
+      roadinfo: attr.roadinfo || record.roadinfo || '',
+      level: attr.level || record.level || '1'
     }
   })
 }

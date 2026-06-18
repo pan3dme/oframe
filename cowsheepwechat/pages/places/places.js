@@ -208,7 +208,7 @@ Page({
     })
   },
 
-  _doDelete(placeId) {
+  _doDelete(placeid) {
     wx.showLoading({ title: '删除中...' })
 
     wx.request({
@@ -216,7 +216,7 @@ Page({
       method: 'POST',
       data: {
         action: 'deletePlace',
-        info: { placeId }
+        info: { placeid }
       },
       success: (res) => {
         wx.hideLoading()

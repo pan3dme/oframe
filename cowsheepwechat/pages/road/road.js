@@ -12,9 +12,11 @@ Page({
     modalTitle: '新增道路',
     editRoadId: '',       // 编辑时有值
     formRoadName: '',
-    formRoadDesc: '',
     formRoadPoints: '',
-    pathPointCount: 0
+    pathPointCount: 0,
+    formRoadLevel: '1',
+    levelOptions: ['1', '2', '3'],
+    levelIndex: 0
   },
 
   onLoad() {
@@ -25,10 +27,11 @@ Page({
     // 从路径录制页返回，填充坐标
     const pathStr = getApp().globalData._roadRecordedPath
     if (pathStr && this.data.showModal) {
-      const pts = pathStr.split(';').filter(p => p.includes(','))
+      const parts = pathStr.split(',')
+      const ptCount = parts.length >= 2 ? parts.length / 2 : 0
       this.setData({
         formRoadPoints: pathStr,
-        pathPointCount: pts.length
+        pathPointCount: ptCount
       })
       getApp().globalData._roadRecordedPath = null
     }
@@ -48,7 +51,7 @@ Page({
         roadId: item.route_id,
         name: item.roadname,
         points: item.roadinfo,
-        desc: ''
+        level: item.level || '1'
       }))
       this.setData({ roadList })
       if (forceRefresh) {
@@ -64,9 +67,10 @@ Page({
       modalTitle: '新增道路',
       editRoadId: '',
       formRoadName: '',
-      formRoadDesc: '',
       formRoadPoints: '',
-      pathPointCount: 0
+      pathPointCount: 0,
+      formRoadLevel: '1',
+      levelIndex: 0
     })
   },
 
@@ -78,12 +82,16 @@ Page({
     this.setData({ formRoadName: e.detail.value })
   },
 
-  onDescInput(e) {
-    this.setData({ formRoadDesc: e.detail.value })
-  },
-
   onPointsInput(e) {
     this.setData({ formRoadPoints: e.detail.value })
+  },
+
+  onLevelChange(e) {
+    const index = e.detail.value
+    this.setData({
+      levelIndex: index,
+      formRoadLevel: this.data.levelOptions[index]
+    })
   },
 
   // ========== 打开路径录制 ==========
@@ -98,15 +106,16 @@ Page({
       return
     }
 
+    const level = this.data.formRoadLevel
     const editRoadId = this.data.editRoadId
     if (editRoadId) {
-      this._doUpdate(editRoadId, name, this.data.formRoadDesc.trim(), this.data.formRoadPoints.trim())
+      this._doUpdate(editRoadId, name, this.data.formRoadPoints.trim(), level)
     } else {
-      this._doAdd(name, this.data.formRoadDesc.trim(), this.data.formRoadPoints.trim())
+      this._doAdd(name, this.data.formRoadPoints.trim(), level)
     }
   },
 
-  _doAdd(name, desc, points) {
+  _doAdd(name, points, level) {
     this.setData({ showModal: false })
     wx.showLoading({ title: '保存中...' })
 
@@ -116,9 +125,10 @@ Page({
       data: {
         action: 'addRoad',
         info: {
-          name,
-          desc,
-          points,
+          route_id: 'rd_' + Date.now(),
+          roadname: name,
+          roadinfo: points,
+          level: level,
           time: getApp().formatTime()
         }
       },
@@ -142,20 +152,25 @@ Page({
     const item = this.data.roadList.find(v => v.roadId === roadId)
     if (!item) return
 
-    const pts = (item.points || '').split(';').filter(p => p.includes(','))
+    const parts = (item.points || '').split(',')
+    const pts = parts.length >= 2 ? parts.length / 2 : 0
+    const levelStr = String(item.level || '1')
+    const levelIndex = this.data.levelOptions.indexOf(levelStr)
+    const lvlIdx = levelIndex >= 0 ? levelIndex : 0
 
     this.setData({
       showModal: true,
       modalTitle: '编辑道路',
       editRoadId: roadId,
       formRoadName: item.name || '',
-      formRoadDesc: item.desc || '',
       formRoadPoints: item.points || '',
-      pathPointCount: pts.length
+      pathPointCount: pts,
+      formRoadLevel: levelStr,
+      levelIndex: lvlIdx
     })
   },
 
-  _doUpdate(roadId, name, desc, points) {
+  _doUpdate(roadId, name, points, level) {
     this.setData({ showModal: false })
     wx.showLoading({ title: '更新中...' })
 
@@ -165,10 +180,10 @@ Page({
       data: {
         action: 'updateRoad',
         info: {
-          roadId,
-          name,
-          desc,
-          points,
+          route_id: roadId,
+          roadname: name,
+          roadinfo: points,
+          level: level,
           time: getApp().formatTime()
         }
       },
@@ -220,7 +235,7 @@ Page({
       method: 'POST',
       data: {
         action: 'deleteRoad',
-        info: { roadId }
+        info: { route_id: roadId }
       },
       success: (res) => {
         wx.hideLoading()

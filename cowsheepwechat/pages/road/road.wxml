@@ -67,15 +67,16 @@
   </view>
 
   <view class="modal-field">
-    <view class="modal-label">道路描述</view>
-    <textarea
-      class="modal-textarea"
-      placeholder="请输入道路描述"
-      value="{{formRoadDesc}}"
-      bindinput="onDescInput"
-      maxlength="200"
-      auto-height
-    />
+    <view class="modal-label">道路等级</view>
+    <picker
+      class="modal-picker"
+      mode="selector"
+      range="{{levelOptions}}"
+      value="{{levelIndex}}"
+      bindchange="onLevelChange"
+    >
+      <view class="modal-picker-val">{{formRoadLevel || '1'}}</view>
+    </picker>
   </view>
 
   <view class="modal-field">
