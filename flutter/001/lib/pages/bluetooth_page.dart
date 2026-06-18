@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -42,11 +43,27 @@ class _BluetoothPageState extends State<BluetoothPage> {
   bool _scanCompleted = false; // 扫描是否已完成
   
   // 声音控制
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  final List<AudioPlayer> _audioPlayers = []; // 音频播放器列表，支持叠加播放
   bool _soundEnabled = false; // 是否开启声音
-  DateTime? _lastSoundTime; // 上次播放声音的时间
-  int _consecutiveCount = 0; // 连续接收计数
-  static const Duration _minSoundInterval = Duration(milliseconds: 500); // 最小声音间隔
+  
+  // 为每条数据生成随机背景色（使用固定种子保证同一索引颜色不变）
+  Color _getRandomLightColor(int index) {
+    final random = Random(index);
+    // 生成浅色背景：高亮度 + 低饱和度
+    // HSL颜色空间更容易控制亮度
+    final hue = random.nextDouble() * 360; // 色相 0-360
+    final saturation = 0.15 + random.nextDouble() * 0.15; // 饱和度 0.15-0.3（较低）
+    final lightness = 0.85 + random.nextDouble() * 0.10; // 亮度 0.85-0.95（很高）
+    
+    final hslColor = HSLColor.fromAHSL(
+      1.0,
+      hue,
+      saturation,
+      lightness,
+    );
+    
+    return hslColor.toColor();
+  }
 
   @override
   void initState() {
@@ -100,60 +117,46 @@ class _BluetoothPageState extends State<BluetoothPage> {
     }
   }
   
-  /// 播放提示音(带间隔控制和强度变化)
+  /// 播放提示音(每次接收数据都播放，支持叠加)
   Future<void> _playNotificationSound() async {
     if (!_soundEnabled) {
       print('[蓝牙] 声音未开启,跳过播放');
       return; // 如果未开启声音,直接返回
     }
       
-    final now = DateTime.now();
-      
-    // 检查是否满足最小间隔
-    if (_lastSoundTime != null) {
-      final interval = now.difference(_lastSoundTime!);
-      if (interval < _minSoundInterval) {
-        // 间隔太短,跳过本次声音
-        print('[蓝牙] 声音间隔太短,跳过 (${interval.inMilliseconds}ms)');
-        return;
-      }
-    }
-      
-    // 更新连续计数
-    _consecutiveCount++;
-      
-    // 根据连续次数决定音量大小
-    double volume = 0.8; // 默认音量调大一些
-      
-    if (_consecutiveCount > 5) {
-      // 超过5次,增强提示:音量增大
-      volume = 1.0;
-      print('[蓝牙] 连续接收$_consecutiveCount次,增强提示');
-    } else if (_consecutiveCount > 3) {
-      // 3-5次,中等音量
-      volume = 0.9;
-    }
-      
     try {
       print('[蓝牙] ========== 开始播放提示音 ==========');
-      print('[蓝牙] 音量: $volume, 连续次数: $_consecutiveCount');
       
-      await _audioPlayer.setVolume(volume);
+      // 创建新的播放器实例，实现声音叠加
+      final player = AudioPlayer();
+      _audioPlayers.add(player);
+      
+      // 设置音量
+      await player.setVolume(0.8);
+      
+      // 监听播放完成事件，清理资源
+      player.onPlayerComplete.listen((_) {
+        print('[蓝牙] 音频播放完成，清理播放器');
+        player.dispose();
+        _audioPlayers.remove(player);
+      });
         
       // iOS优先尝试本地音频文件
       try {
         print('[蓝牙] 尝试播放本地音频: assets/sounds/notification.wav');
-        await _audioPlayer.play(AssetSource('sounds/notification.wav'));
-        print('[蓝牙] ✓ 播放命令已发送');
+        await player.play(AssetSource('sounds/notification.wav'));
+        print('[蓝牙] ✓ 播放命令已发送（叠加模式）');
       } catch (e) {
         print('[蓝牙] ✗ 本地音频文件播放失败: $e');
         print('[蓝牙] 请检查:');
         print('[蓝牙] 1. assets/sounds/notification.wav 是否存在');
         print('[蓝牙] 2. pubspec.yaml 中是否正确配置了 assets');
         print('[蓝牙] 3. iOS AVAudioSession 是否配置成功');
+        // 播放失败时清理播放器
+        player.dispose();
+        _audioPlayers.remove(player);
       }
       
-      _lastSoundTime = now;
       print('[蓝牙] ==========================================');
     } catch (e) {
       print('[蓝牙] ✗ 播放提示音异常: $e');
@@ -161,12 +164,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
     }
   }
   
-  /// 重置声音计数器（当停止同步或断开连接时调用）
-  void _resetSoundCounter() {
-    _consecutiveCount = 0;
-    _lastSoundTime = null;
-    print('[蓝牙] 重置声音计数器');
-  }
+
 
   /// 上传缓存数据到数据中心
   Future<void> _uploadCachedData() async {
@@ -401,8 +399,12 @@ class _BluetoothPageState extends State<BluetoothPage> {
     // 停止扫描
     FlutterBluePlus.stopScan();
     
-    // 释放音频播放器
-    _audioPlayer.dispose();
+    // 释放所有音频播放器，避免内存泄漏
+    for (final player in _audioPlayers) {
+      player.dispose();
+    }
+    _audioPlayers.clear();
+    print('[蓝牙] 已清理所有音频播放器');
     
     super.dispose();
   }
@@ -653,9 +655,6 @@ class _BluetoothPageState extends State<BluetoothPage> {
         _isSyncing = false;
       });
       
-      // 重置声音计数器
-      _resetSoundCounter();
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已停止同步')),
@@ -707,9 +706,6 @@ class _BluetoothPageState extends State<BluetoothPage> {
           _receivedData.clear();
         });
         print('[蓝牙] 状态已重置');
-        
-        // 重置声音计数器
-        _resetSoundCounter();
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -883,6 +879,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
             final dataIndex = _receivedData.length - 1 - index;
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 2),
+              color: _getRandomLightColor(dataIndex), // 随机浅色背景
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -916,6 +913,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
           
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 2),
+            color: _getRandomLightColor(dataIndex), // 随机浅色背景
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: _formatReceivedData(dataStr),
@@ -1310,4 +1308,6 @@ class _BluetoothPageState extends State<BluetoothPage> {
       ],
     );
   }
+  
+
 }

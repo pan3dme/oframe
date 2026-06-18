@@ -10,9 +10,16 @@ import AVFoundation
   ) -> Bool {
     // 配置音频会话，允许后台播放和与其他音频混合
     do {
-      try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+      // .playback: 允许后台音频播放
+      // .mixWithOthers: 允许与其他音频同时播放（不中断音乐播放器）
+      // .duckOthers: 降低其他音频音量（可选）
+      try AVAudioSession.sharedInstance().setCategory(
+        .playback,
+        mode: .default,
+        options: [.mixWithOthers, .allowBluetooth]
+      )
       try AVAudioSession.sharedInstance().setActive(true)
-      print("[iOS音频] AVAudioSession配置成功")
+      print("[iOS音频] AVAudioSession配置成功 - 支持后台蓝牙音频播放")
     } catch {
       print("[iOS音频] AVAudioSession配置失败: \(error)")
     }
