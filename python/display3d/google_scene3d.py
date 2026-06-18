@@ -166,12 +166,12 @@ class GoogleScene3D(GoogleBaseScene3D):
     def change_map_gps(self, latitude, longitude):
         pass
     def receive_gps_coordinates(self, latitude, longitude):
-        return 
+
 
         self.drawGpsPointTomap(latitude, longitude)
         topos = settings.gps_to_world_pos((latitude, longitude))
 
-        self.scene3D.camera3D.locaAtPos = Vector3D(-topos.x, 0, -topos.z)
+        self.scene3D.camera3D.locaAtPos = Vector3D(topos.x, 0, topos.z)
 
         # 启动缓动动画，将 rotationY 从当前值变为 -90
         self.animation_start_rotationY = self.scene3D.camera3D.rotationY

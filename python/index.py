@@ -190,7 +190,7 @@ class MainWindow(QMainWindow):
         settings.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
         self.setWindowTitle("高德地图应用")
         # self.setGeometry(0, 0, 1900, 1000)
-        self.setGeometry(200, 0, 1700, 750)
+        self.setGeometry(200, 50, 1700, 750)
 
         # 初始化OTS客端户
         if not self.initTabelClient():

@@ -81,6 +81,9 @@ class GoogleMap2DWidget(QWidget):
         self._blink_timer.setInterval(300)  # 300毫秒间隔
         self._blink_state = False  # 闪烁状态
 
+        # 当前中心GPS坐标（用于窗口大小变化时重新定位）
+        self._center_gps_coord = None
+
         # 加载切片图片
         self._load_tiles()
 
@@ -314,6 +317,9 @@ class GoogleMap2DWidget(QWidget):
         if self._original_pixmap is None:
             # print("警告：图片未加载")
             return
+
+        # 保存当前中心GPS坐标
+        self._center_gps_coord = gps_coord
 
         # 将GPS坐标转换为像素坐标
         pixel_coord = self._gps_to_pixel(gps_coord)
@@ -634,6 +640,13 @@ class GoogleMap2DWidget(QWidget):
         pass
     def clear_place(self):
         pass
+
+    def resizeEvent(self, event):
+        """窗口大小改变时，重新计算中心GPS坐标的位置"""
+        super().resizeEvent(event)
+        # 如果有保存的中心GPS坐标，延迟重新定位（等待布局完成）
+        if self._center_gps_coord is not None:
+            QTimer.singleShot(0, lambda: self.center_on_gps(self._center_gps_coord))
 
     def change_map_gps(self,latitude, longitude):
         self.center_on_gps((latitude, longitude))
