@@ -196,6 +196,9 @@ class MainWindow(QMainWindow):
         if not self.initTabelClient():
             print("警告: OTS客户端初始化失败，部分功能可能不可用")
         
+        # 初始化道路和地名显示层级（0=隐藏，1=level1，2=level1+2）
+        self.display_level = 0
+        
         # 创建中心部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -312,25 +315,96 @@ class MainWindow(QMainWindow):
         print("✅ 窗口初始化完成，3D场景和2D地图已添加")
     
     # ==================== 地图控制按钮事件处理方法 ====================
-    def _add_route_to_map(self):
-        """切换显示/隐藏道路"""
-        # 检查路径显示状态，如果已有路径则清除
-        if self.googleMap2D._gps_routes:
-            self.googleMap2D._gps_routes.clear()
-            self.googleMap2D._update_display()
-            self.googleMap2D.clear_load()
-            print("已清除所有路径")
-            return
-
-        # 1. 定义需要查询的数据列
-        columns_to_get = ['route_id', 'roadinfo', 'roadname']
-
-        # 2. 定义主键范围：覆盖全表
+    def _toggle_road_and_place(self):
+        """切换显示/隐藏道路和地名（按层级）"""
+        # 根据当前显示层级决定下一步操作
+        if self.display_level == 0:
+            # 当前无显示，显示 level=1 的道路和地名
+            self.display_level = 1
+            self._show_road_and_place(level=1)
+            print("已显示 level=1 的道路和地名")
+        elif self.display_level == 1:
+            # 当前显示 level=1，检查是否有 level=2 的数据
+            has_level2 = self._check_has_level2()
+            if has_level2:
+                # 有 level=2，显示 level=1 和 level=2
+                self.display_level = 2
+                self._show_road_and_place(level=2)
+                print("已显示 level=1 和 level=2 的道路和地名")
+            else:
+                # 没有 level=2，隐藏所有
+                self.display_level = 0
+                self._clear_road_and_place()
+                print("已隐藏所有道路和地名")
+        elif self.display_level == 2:
+            # 当前显示 level=1 和 level=2，隐藏所有
+            self.display_level = 0
+            self._clear_road_and_place()
+            print("已隐藏所有道路和地名")
+    
+    def _check_has_level2(self):
+        """检查是否有 level=2 的道路或地名数据"""
+        try:
+            # 检查道路表是否有 level=2 的数据
+            columns_to_get = ['route_id', 'level']
+            inclusive_start_primary_key = [('route_id', INF_MAX)]
+            exclusive_end_primary_key = [('route_id', INF_MIN)]
+            consumed, next_start_primary_key, route_list, next_token = self.client.get_range(
+                table_name=settings.ROUTETABLE_NAME,
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=100  # 增加limit以确保能查到所有数据
+            )
+            for row in route_list:
+                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
+                if attr_dict.get('level', 1) >= 2:
+                    print(f"发现 level={attr_dict.get('level', 1)} 的道路数据")
+                    return True
+            
+            # 检查地名表是否有 level=2 的数据
+            columns_to_get = ['placeid', 'level']
+            inclusive_start_primary_key = [('placeid', INF_MAX)]
+            exclusive_end_primary_key = [('placeid', INF_MIN)]
+            consumed, next_start_primary_key, place_list, next_token = self.client.get_range(
+                table_name=settings.PLACETABLE_NAME,
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=100  # 增加limit以确保能查到所有数据
+            )
+            for row in place_list:
+                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
+                if attr_dict.get('level', 1) >= 2:
+                    print(f"发现 level={attr_dict.get('level', 1)} 的地名数据")
+                    return True
+            
+            print("未发现 level>=2 的数据")
+            return False
+        except Exception as e:
+            print(f"检查 level=2 数据失败: {e}")
+            return False
+    
+    def _show_road_and_place(self, level=1):
+        """显示指定层级的道路和地名"""
+        # 先清除现有显示
+        self._clear_road_and_place()
+        
+        # 显示道路
+        self._show_roads_by_level(level)
+        
+        # 显示地名
+        self._show_places_by_level(level)
+    
+    def _show_roads_by_level(self, max_level):
+        """显示指定层级及以下的道路"""
+        columns_to_get = ['route_id', 'roadinfo', 'roadname', 'level']
         inclusive_start_primary_key = [('route_id', INF_MAX)]
         exclusive_end_primary_key = [('route_id', INF_MIN)]
-
+        
         try:
-            # 3. 执行范围查询，direction=BACKWARD 为倒序读取
             consumed, next_start_primary_key, route_list, next_token = self.client.get_range(
                 table_name=settings.ROUTETABLE_NAME,
                 direction=Direction.BACKWARD,
@@ -339,44 +413,35 @@ class MainWindow(QMainWindow):
                 columns_to_get=columns_to_get,
                 limit=20
             )
-
-            # 4. 处理查询结果并显示在表格中
-            print(f"成功读取 {len(route_list)} 条最新记录。")
+            
+            print(f"成功读取 {len(route_list)} 条道路记录，将显示 level<={max_level} 的道路。")
+            displayed_count = 0
             for row_idx, row in enumerate(route_list):
-                # 解析属性列
                 attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
-                roadinfo = attr_dict.get('roadinfo', '')
-
-                # 将 roadinfo 字符串解析为 arr 数组
-                arr = [float(x.strip()) for x in roadinfo.split(',')]
-
-                # 生成路线坐标
-                route_cords = []
-                for i in range(int(len(arr) / 2)):
-                    route_cords.append((arr[i * 2 + 0], arr[i * 2 + 1]))
-
-                # 添加路线到地图
-                self.googleMap2D.add_gps_route(route_cords)
-                self.googleMap2D.receive_load(route_cords)
-
+                road_level = attr_dict.get('level', 1)  # 默认 level=1
+                
+                # 只显示 level <= max_level 的道路
+                if road_level <= max_level:
+                    roadinfo = attr_dict.get('roadinfo', '')
+                    arr = [float(x.strip()) for x in roadinfo.split(',')]
+                    route_cords = []
+                    for i in range(int(len(arr) / 2)):
+                        route_cords.append((arr[i * 2 + 0], arr[i * 2 + 1]))
+                    
+                    self.googleMap2D.add_gps_route(route_cords)
+                    self.googleMap2D.receive_load(route_cords)
+                    displayed_count += 1
+                    print(f"  显示道路: level={road_level}, roadname={attr_dict.get('roadname', 'N/A')}")
+            print(f"共显示 {displayed_count} 条道路")
         except Exception as e:
-            print(f"查询失败: {e}")
+            print(f"查询道路失败: {e}")
     
-    def _add_place_to_map(self):
-        """切换显示/隐藏地名"""
-        # 检查地名显示状态，如果已有地名则清除
-        if self.googleMap2D._gps_markers:
-            self.googleMap2D._gps_markers.clear()
-            self.googleMap2D.clear_place()
-            self.googleMap2D._update_display()
-            print("已隐藏所有地名")
-            return
-
-        # 查询地名数据
-        columns_to_get = ['placeid', 'gps', 'name']
+    def _show_places_by_level(self, max_level):
+        """显示指定层级及以下的地名"""
+        columns_to_get = ['placeid', 'gps', 'name', 'level']
         inclusive_start_primary_key = [('placeid', INF_MAX)]
         exclusive_end_primary_key = [('placeid', INF_MIN)]
-
+        
         try:
             consumed, next_start_primary_key, place_list, next_token = self.client.get_range(
                 table_name=settings.PLACETABLE_NAME,
@@ -386,23 +451,47 @@ class MainWindow(QMainWindow):
                 columns_to_get=columns_to_get,
                 limit=20
             )
-
-            print(f"成功读取 {len(place_list)} 条最新记录。")
+            
+            print(f"成功读取 {len(place_list)} 条地名记录，将显示 level<={max_level} 的地名。")
+            displayed_count = 0
             for row_idx, row in enumerate(place_list):
                 attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
-                gps = attr_dict.get('gps', '')
-                name = attr_dict.get('name', '')
-                lat_str, lon_str = gps.split(',')
-                self.googleMap2D.add_gps_marker((float(lat_str.strip()), float(lon_str.strip())), name)
-                self.googleMap2D.receive_place((float(lat_str.strip()), float(lon_str.strip())), name)
-
+                place_level = attr_dict.get('level', 1)  # 默认 level=1
+                
+                # 只显示 level <= max_level 的地名
+                if place_level <= max_level:
+                    gps = attr_dict.get('gps', '')
+                    name = attr_dict.get('name', '')
+                    lat_str, lon_str = gps.split(',')
+                    self.googleMap2D.add_gps_marker((float(lat_str.strip()), float(lon_str.strip())), name)
+                    self.googleMap2D.receive_place((float(lat_str.strip()), float(lon_str.strip())), name)
+                    displayed_count += 1
+                    print(f"  显示地名: level={place_level}, name={name}")
+            print(f"共显示 {displayed_count} 个地名")
         except Exception as e:
-            print(f"查询失败: {e}")
+            print(f"查询地名失败: {e}")
+    
+    def _clear_road_and_place(self):
+        """清除所有道路和地名显示"""
+        # 清除道路
+        if self.googleMap2D._gps_routes:
+            self.googleMap2D._gps_routes.clear()
+            self.googleMap2D._update_display()
+            self.googleMap2D.clear_load()
+        
+        # 清除地名
+        if self.googleMap2D._gps_markers:
+            self.googleMap2D._gps_markers.clear()
+            self.googleMap2D.clear_place()
+            self.googleMap2D._update_display()
+        
+        print("已清除所有道路和地名")
     
     def _toggle_device_location(self):
         """切换显示/隐藏设备位置"""
         # 如果有设备标记，清除所有标记并停止闪烁计时器
         if self.googleMap2D._device_markers:
+            print(f"当前有 {len(self.googleMap2D._device_markers)} 个设备标记，正在清除...")
             self.googleMap2D._device_markers.clear()
             self.googleMap2D._blink_timer.stop()
             self.googleMap2D._update_display()
@@ -425,7 +514,8 @@ class MainWindow(QMainWindow):
                 limit=20
             )
 
-            print(f"成功读取 {len(device_list)} 条最新记录。")
+            print(f"成功读取 {len(device_list)} 条设备记录。")
+            displayed_count = 0
             for row_idx, row in enumerate(device_list):
                 # 解析主键
                 primary_key_dict = {key[0]: key[1] for key in row.primary_key}
@@ -442,15 +532,19 @@ class MainWindow(QMainWindow):
                     # 添加设备标记（默认不闪烁，不灰色）
                     self.googleMap2D.add_device_marker(deviceId, gps, time_str, is_gray=False, loop=False)
                     self.googleMap2D.receive_device(deviceId, gps, time_str)
+                    displayed_count += 1
+                    print(f"  显示设备: deviceId={deviceId}, gps={gps}, time={time_str}")
+            
+            print(f"共显示 {displayed_count} 个设备位置")
 
         except Exception as e:
             print(f"查询失败: {e}")
     
     def _create_map_control_buttons(self, parent_container):
-        """创建地图控制按钮（右下角4个小图标）"""
+        """创建地图控制按钮（右下角3个小图标）"""
         # 创建按钮容器
         button_container = QWidget(parent_container)
-        button_container.setFixedSize(180, 40)
+        button_container.setFixedSize(140, 40)  # 3个按钮，每个30px + 间距10*2 + 边距8*2 = 136，取140
         button_container.setObjectName("mapControlButtons")
         button_container.setStyleSheet("""
             QWidget#mapControlButtons {
@@ -464,10 +558,10 @@ class MainWindow(QMainWindow):
         button_layout.setContentsMargins(8, 5, 8, 5)
         button_layout.setSpacing(10)
         
-        # 创建四个按钮
-        btn_route = QPushButton()
-        btn_route.setFixedSize(30, 30)
-        btn_route.setStyleSheet("""
+        # 创建三个按钮（合并道路和地名为一个按钮）
+        btn_road_place = QPushButton()
+        btn_road_place.setFixedSize(30, 30)
+        btn_road_place.setStyleSheet("""
             QPushButton { 
                 border: none; 
                 background-color: rgba(255, 255, 255, 200); 
@@ -477,27 +571,10 @@ class MainWindow(QMainWindow):
                 background-color: rgba(255, 255, 255, 255); 
             }
         """)
-        btn_route.setIcon(create_route_icon())
-        btn_route.setIconSize(QSize(24, 24))
-        btn_route.setToolTip("显示/隐藏道路")
-        btn_route.clicked.connect(self._add_route_to_map)
-        
-        btn_place = QPushButton()
-        btn_place.setFixedSize(30, 30)
-        btn_place.setStyleSheet("""
-            QPushButton { 
-                border: none; 
-                background-color: rgba(255, 255, 255, 200); 
-                border-radius: 4px; 
-            } 
-            QPushButton:hover { 
-                background-color: rgba(255, 255, 255, 255); 
-            }
-        """)
-        btn_place.setIcon(create_place_icon())
-        btn_place.setIconSize(QSize(24, 24))
-        btn_place.setToolTip("显示/隐藏地名")
-        btn_place.clicked.connect(self._add_place_to_map)
+        btn_road_place.setIcon(create_route_icon())
+        btn_road_place.setIconSize(QSize(24, 24))
+        btn_road_place.setToolTip("显示/隐藏道路和地名")
+        btn_road_place.clicked.connect(self._toggle_road_and_place)
         
         btn_device = QPushButton()
         btn_device.setFixedSize(30, 30)
@@ -534,34 +611,10 @@ class MainWindow(QMainWindow):
         btn_center.clicked.connect(lambda: self.googleMap2D.center_on_gps(settings.centenGps))
 
         # 添加按钮到布局
-        button_layout.addWidget(btn_route)
-        button_layout.addWidget(btn_place)
+        button_layout.addWidget(btn_road_place)
         button_layout.addWidget(btn_device)
         button_layout.addWidget(btn_center)
 
-        btn_changeScene = QPushButton()
-        btn_changeScene.setFixedSize(30, 30)
-        btn_changeScene.setStyleSheet("""
-                   QPushButton { 
-                       border: none; 
-                       background-color: rgba(255, 255, 255, 200); 
-                       border-radius: 4px; 
-                   } 
-                   QPushButton:hover { 
-                       background-color: rgba(255, 255, 255, 255); 
-                   }
-               """)
-        btn_changeScene.setIcon(create_changescene_icon())
-        btn_changeScene.setIconSize(QSize(24, 24))
-        btn_changeScene.setToolTip("换场景")
-        btn_changeScene.clicked.connect( self.toggle_map_positions)
-
-        # 添加按钮到布局
-        button_layout.addWidget(btn_route)
-        button_layout.addWidget(btn_place)
-        button_layout.addWidget(btn_device)
-        button_layout.addWidget(btn_center)
-        button_layout.addWidget(btn_changeScene)
         
         # 保存按钮容器引用
         self.map_control_buttons = button_container

@@ -578,6 +578,9 @@ class GoogleMap2DWidget(QWidget):
                     painter.setPen(marker_color)
             
             # 绘制所有设备位置标记
+            if self._device_markers:
+                print(f"🎨 开始绘制 {len(self._device_markers)} 个设备标记")
+            
             for device_id, gps, time_str, is_gray, loop, visible in self._device_markers:
                 # 如果不可见，跳过
                 if not visible:
@@ -590,11 +593,14 @@ class GoogleMap2DWidget(QWidget):
                 # 将GPS坐标转换为像素坐标
                 pixel_coord = self._gps_to_pixel(gps)
                 if not pixel_coord:
+                    print(f"⚠️ 设备 {device_id} GPS转换失败: {gps}")
                     continue
 
                 x, y = pixel_coord
                 scaled_x = int(x * self._scale)
                 scaled_y = int(y * self._scale)
+                
+                print(f"  绘制设备 {device_id}: 像素({scaled_x}, {scaled_y}), GPS{gps}")
 
                 # 根据isGray决定颜色（黄色或灰色）
                 if is_gray:
@@ -836,6 +842,7 @@ class GoogleMap2DWidget(QWidget):
         """
         # 添加设备标记
         self._device_markers.append((device_id, gps, time_str, is_gray, loop, True))
+        print(f"✅ 添加设备标记: deviceId={device_id}, gps={gps}, visible={len(self._device_markers)}")
 
         # 如果有闪烁标记，启动计时器
         if loop and not self._blink_timer.isActive():
