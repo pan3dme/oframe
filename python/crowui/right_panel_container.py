@@ -6,6 +6,7 @@ from crowui.submenu.tab_alldivice_list import TabAllDiviceList
 from crowui.submenu.device_detail_page import DeviceDetailPage
 from crowui.submenu.tab_allcorw_list import TobAllcorwList
 from crowui.submenu.cowsheep_detail_page import CowSheepDetailPage
+from crowui.submenu.tab_refrish_info import TobRefrishInfo
 
 
 class RightPanelContainer(QWidget):
@@ -135,12 +136,15 @@ class RightPanelContainer(QWidget):
         # 创建牛羊详情页面（动态创建）
         self.cowsheep_detail_page = None
         
+        # 创建最新数据页面（初始隐藏，点击按钮时创建）
+        self.latest_data_page = None
+        
         main_layout.addWidget(self.stacked_widget, stretch=1)
         
         # 连接按钮信号
         self.btn_device_list.clicked.connect(self.show_device_list_page)
         self.btn_cow_sheep.clicked.connect(self.show_cowsheep_list_page)
-        self.btn_latest_data.clicked.connect(lambda: print("最新数据按钮被点击"))
+        self.btn_latest_data.clicked.connect(self.show_latest_data_page)
         self.btn_cruise.clicked.connect(lambda: print("巡航画面按钮被点击"))
         if self.toggle_callback:
             self.btn_toggle.clicked.connect(self.toggle_callback)
@@ -261,3 +265,17 @@ class RightPanelContainer(QWidget):
             print("  ✅ 已返回牛羊列表页面")
         else:
             print("  ❌ 牛羊列表页面不存在")
+    
+    def show_latest_data_page(self):
+        """显示最新数据页面"""
+        print("📊 切换到最新数据页面")
+        
+        # 如果最新数据页面还未创建，则创建它
+        if self.latest_data_page is None:
+            print("  创建最新数据页面...")
+            self.latest_data_page = TobRefrishInfo(client=self.ots_client)
+            self.stacked_widget.addWidget(self.latest_data_page)
+        
+        # 切换到最新数据页面
+        self.stacked_widget.setCurrentWidget(self.latest_data_page)
+        print("  ✅ 已切换到最新数据页面")
