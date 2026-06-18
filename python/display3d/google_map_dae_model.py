@@ -493,8 +493,6 @@ class GoogleMapDaeModel:
         dis.setTextureUrl(picpath)
 
 
-        self.scene3d.camera3D.locaAtPos=Vector3D(0,0,0)
-
         dis.setDaeInfo(obj[name])
 
         self.scene3d.addDisplay(dis)

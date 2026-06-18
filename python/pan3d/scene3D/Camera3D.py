@@ -35,7 +35,7 @@ class Camera3D(Vector3D):
         self.camMatrix.appendRotation(self.rotationX, Vector3D.X_AXIS)
         self.camMatrix.appendTranslation(0, 0, -self.camDis)
         if self.locaAtPos is not None:
-            self.camMatrix.prependTranslation(self.locaAtPos.x,self.locaAtPos.y,self.locaAtPos.z)
+            self.camMatrix.prependTranslation(-self.locaAtPos.x,-self.locaAtPos.y,-self.locaAtPos.z)
 
         self.viewMatrixMatrix3D.m = glm.perspectiveLH(1,self.widWidth/ self.widHeight, 10, 5000)
 

@@ -60,19 +60,26 @@ class GoogleScene3D(GoogleBaseScene3D):
 
     def initializeGL(self):
         super().initializeGL()
+        self.scene3D.camera3D=settings.camera3D
         self.fouseCentenSprite = BaseBallSprite3D(self.scene3D, (1, 1, 1))
         self.scene3D.addDisplay(self.fouseCentenSprite)
         # self.fouseCentenSprite.visible = False
 
+
         self.loadDaeGoogleMap()
     def paintGL(self):
         if self.scene3D is None:
-            return False
-        self.fouseCentenSprite.x =- self.scene3D.camera3D.locaAtPos.x
-        self.fouseCentenSprite.z =- self.scene3D.camera3D.locaAtPos.z
-        ty = self.getPosinMapHeightByVec4( self.fouseCentenSprite.x,  self.fouseCentenSprite.z)
-        if ty is not None:
-            self.fouseCentenSprite.y = ty
+            return
+        if self.scene3D.camera3D.locaAtPos is not None:
+            self.fouseCentenSprite.x = self.scene3D.camera3D.locaAtPos.x
+            self.fouseCentenSprite.z = self.scene3D.camera3D.locaAtPos.z
+            ty = self.getPosinMapHeightByVec4(self.fouseCentenSprite.x, self.fouseCentenSprite.z)
+            if ty is not None:
+                self.fouseCentenSprite.y = ty
+            else:
+                self.fouseCentenSprite.y =  self.scene3D.camera3D.locaAtPos.y
+
+
         super().paintGL()
 
 
@@ -149,7 +156,7 @@ class GoogleScene3D(GoogleBaseScene3D):
             return
         camera3D = self.scene3D.camera3D
         if camera3D.isLastDonw:
-            latitude, longitude=settings.world_pos_to_gps(Vector3D(-camera3D.locaAtPos.x,0,-camera3D.locaAtPos.z))
+            latitude, longitude=settings.world_pos_to_gps(Vector3D(camera3D.locaAtPos.x,0,camera3D.locaAtPos.z))
             self.change_map_gps( latitude, longitude)
             pass
 

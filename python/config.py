@@ -1,4 +1,5 @@
 from pan3d.core.Vector3D import Vector3D
+from pan3d.scene3D.Camera3D import Camera3D
 
 
 class _Config:
@@ -15,6 +16,7 @@ class _Config:
 
     scaleScene = 17500
     current_mode = "large_2d"
+    camera3D = Camera3D()
     gps_bounds = {
         'top_left': (26.542654, 109.358596),  # (latitude, longitude)
         'bottom_right': (26.504617, 109.440105)  # (latitude, longitude)

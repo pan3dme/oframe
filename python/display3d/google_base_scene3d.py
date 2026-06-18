@@ -155,9 +155,9 @@ class GoogleBaseScene3D(QWidget):
                 if camera3D.locaAtPos is None:
                     camera3D.locaAtPos = Vector3D(0, 0, 0)
 
-                camera3D.locaAtPos.x = camera3D.middleDownLocaAtPos.x - offset_x*100
+                camera3D.locaAtPos.x = camera3D.middleDownLocaAtPos.x + offset_x*100
                 camera3D.locaAtPos.y = 0
-                camera3D.locaAtPos.z = camera3D.middleDownLocaAtPos.z - offset_z*100
+                camera3D.locaAtPos.z = camera3D.middleDownLocaAtPos.z + offset_z*100
 
     def initializeGL(self):
         """初始化OpenGL设置"""
