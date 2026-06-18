@@ -60,10 +60,11 @@ class GoogleScene3D(GoogleBaseScene3D):
 
     def initializeGL(self):
         super().initializeGL()
+        settings.camera3D.camDis=settings.baseCamDis100
         self.scene3D.camera3D=settings.camera3D
         self.fouseCentenSprite = BaseBallSprite3D(self.scene3D, (1, 1, 1))
         self.scene3D.addDisplay(self.fouseCentenSprite)
-        # self.fouseCentenSprite.visible = False
+        self.fouseCentenSprite.visible = False
 
 
         self.loadDaeGoogleMap()
@@ -81,6 +82,20 @@ class GoogleScene3D(GoogleBaseScene3D):
 
 
         super().paintGL()
+
+    def change2d_DisNum(self,num):
+
+        self.scene3D.camera3D.camDis=settings.baseCamDis100/num
+
+        pass
+    def change_DisNum(self,num):
+
+        pass
+    def uiStageWheel(self, evt=InteractiveEvent()):
+        super().uiStageWheel(evt)
+        if not self.isCanUseMouseEvent():
+            return
+        self.change_DisNum(self.scene3D.camera3D.camDis)
 
 
     def loadDaeGoogleMap(self):

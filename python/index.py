@@ -189,8 +189,8 @@ class MainWindow(QMainWindow):
         self.client = None
         settings.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
         self.setWindowTitle("高德地图应用")
-        self.setGeometry(0, 0, 1900, 1000)
-        # self.setGeometry(200, 50, 1700, 750)
+        # self.setGeometry(0, 0, 1900, 1000)
+        self.setGeometry(200, 50, 1700, 750)
 
         # 初始化OTS客端户
         if not self.initTabelClient():
@@ -282,9 +282,13 @@ class MainWindow(QMainWindow):
         
         self.googleMap2D.receive_device = self.googleMapScene3D.receive_device_to_scene3d
         self.googleMap2D.clear_device = self.googleMapScene3D.clear_all_device
-        
+
         self.googleMap2D.receive_place = self.googleMapScene3D.receive_place_to_scene3d
         self.googleMap2D.clear_place = self.googleMapScene3D.clear_all_place
+
+        self.googleMapScene3D.change_DisNum=self.googleMap2D.change_DisNum
+        self.googleMap2D.change2d_DisNum= self.googleMapScene3D.change2d_DisNum
+
         
         inner_layout.addWidget(self.googleMap2D)
         map2d_layout.addWidget(inner_container)

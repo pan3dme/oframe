@@ -16,6 +16,7 @@ class _Config:
 
     scaleScene = 17500
     current_mode = "large_2d"
+    baseCamDis100 = -100
     camera3D = Camera3D()
     gps_bounds = {
         'top_left': (26.542654, 109.358596),  # (latitude, longitude)

@@ -6,6 +6,9 @@ from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QFont, QIcon, QPainterP
 from tablestore import INF_MIN, INF_MAX,Direction
 
 from config import settings
+from pan3d.core.Vector2D import Vector2D
+
+
 class NoWheelScrollArea(QScrollArea):
     """自定义ScrollArea，将滚轮事件转发给父widget而非自己处理滚动"""
     def wheelEvent(self, event):
@@ -228,6 +231,8 @@ class GoogleMap2DWidget(QWidget):
         else:
             new_scale = self._scale / zoom_factor
 
+
+
         # 计算最小缩放比例：图片至少填满容器
         viewport_w = self.scroll_area.viewport().width()
         viewport_h = self.scroll_area.viewport().height()
@@ -264,6 +269,8 @@ class GoogleMap2DWidget(QWidget):
         
         # 打印当前地图中心的GPS坐标
         self._print_center_gps()
+
+        self.change2d_DisNum(new_scale)
 
 
 
@@ -377,8 +384,7 @@ class GoogleMap2DWidget(QWidget):
         
         # 立即更新红点标记位置
         self._draw_center_marker()
-        print("pixel_coord")
-        print(pixel_coord)
+
 
     def _gps_to_pixel(self, gps_coord):
         """将GPS坐标转换为图片上的像素坐标
@@ -530,7 +536,7 @@ class GoogleMap2DWidget(QWidget):
                 # 根据当前缩放比例计算标记点位置
                 scaled_x = int(x * self._scale)
                 scaled_y = int(y * self._scale)
-                
+
                 # 先绘制红色描边圆点（稍大一些）
                 red_pen = QPen(QColor(255, 0, 0))
                 red_pen.setWidth(2)
@@ -545,29 +551,29 @@ class GoogleMap2DWidget(QWidget):
 
                 # 绘制红色圆点
                 painter.drawEllipse(
-                    scaled_x - marker_radius, 
-                    scaled_y - marker_radius, 
-                    marker_radius * 2, 
+                    scaled_x - marker_radius,
+                    scaled_y - marker_radius,
+                    marker_radius * 2,
                     marker_radius * 2
                 )
-                
+
                 # 如果有文本，在红点下方绘制
                 if text:
                     # 设置字体（固定大小，不随缩放变化）
                     font = QFont("Arial", 10)
                     painter.setFont(font)
-                    
+
                     # 设置文本颜色为白色
                     painter.setPen(QColor(255, 255, 255))
-                    
+
                     # 计算文本位置（红点下方，居中对齐）
                     text_rect = painter.fontMetrics().boundingRect(text)
                     text_x = scaled_x - text_rect.width() // 2
                     text_y = scaled_y + marker_radius * 2 + 12
-                    
+
                     # 绘制文本
                     painter.drawText(text_x, text_y, text)
-                    
+
                     # 恢复红色画笔
                     painter.setPen(marker_color)
             
@@ -656,9 +662,55 @@ class GoogleMap2DWidget(QWidget):
         # 在地图可视区域中心绘制红点标记
         self._draw_center_marker()
 
+    def change2d_DisNum(self,value):
+
+        pass
+    def change_DisNum(self,value):
+        if value>-10:
+            return
+
+        new_scale =settings.baseCamDis100/value
+
+        # 计算最小缩放比例：图片至少填满容器
+        viewport_w = self.scroll_area.viewport().width()
+        viewport_h = self.scroll_area.viewport().height()
+        if self._original_pixmap:
+            fit_scale_w = viewport_w / self._original_pixmap.width()
+            fit_scale_h = viewport_h / self._original_pixmap.height()
+            min_fit_scale = max(fit_scale_w, fit_scale_h)
+        else:
+            min_fit_scale = self._min_scale
+
+        # 限制缩放范围
+        new_scale = max(min_fit_scale, min(self._max_scale, new_scale))
+        if new_scale == self._scale:
+            return
+
+        # 获取鼠标在 scroll_area 中的位置
+        mouse_pos = Vector2D(self.width()/2,self.height()/2)
+        print(mouse_pos.x,mouse_pos.y)
+        h_bar = self.scroll_area.horizontalScrollBar()
+        v_bar = self.scroll_area.verticalScrollBar()
+
+        # 鼠标相对于图片内容的位置比例
+        old_x_ratio = (h_bar.value() + mouse_pos.x) / self.image_label.width()
+        old_y_ratio = (v_bar.value() + mouse_pos.y) / self.image_label.height()
+
+        # 更新缩放
+        self._scale = new_scale
+        self._update_display()
+
+        # 以鼠标位置为中心调整滚动条
+        new_w = int(self._original_pixmap.width() * self._scale)
+        new_h = int(self._original_pixmap.height() * self._scale)
+        h_bar.setValue(int(old_x_ratio * new_w - mouse_pos.x))
+        v_bar.setValue(int(old_y_ratio * new_h - mouse_pos.y))
+
+        # 打印当前地图中心的GPS坐标
+        # self._print_center_gps()
 
 
-
+        pass
     def receive_device(self, device_id, gps, time_str):
         pass
     def clear_device(self ):
@@ -701,7 +753,7 @@ class GoogleMap2DWidget(QWidget):
         """更新GPS坐标显示标签的内容和位置"""
         text = f"纬度: {lat:.6f}, 经度: {lon:.6f}"
         self.gps_info_label.setText(text)
-        self.gps_info_label.show()
+        # self.gps_info_label.show()
         self._update_gps_info_label_position()
 
     def _update_gps_info_label_position(self):
@@ -723,6 +775,7 @@ class GoogleMap2DWidget(QWidget):
         
         self.gps_info_label.setGeometry(x, y, label_width, label_height)
 
+
     def change_map_gps(self,latitude, longitude):
         self.center_on_gps((latitude, longitude))
         pass
@@ -733,6 +786,7 @@ class GoogleMap2DWidget(QWidget):
         self._update_display()
 
     def _draw_center_marker(self):
+        return
         """在地图可视区域中心绘制红点标记"""
         # 使用widget自身的尺寸
         widget_width = self.width()
