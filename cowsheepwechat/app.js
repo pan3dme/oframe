@@ -22,9 +22,15 @@ App({
   globalData: {
     api_device_Url: 'https://gpsmoveinfo.cn/fc/device',
     api_cowsheep_Url: 'https://gpsmoveinfo.cn/fc/cowsheep',
+    api_route_place_Url: 'https://gpsmoveinfo.cn/fc/route_place',
+ 
     gpsData: null,          // 定位数据
     deviceCache: null,      // 设备列表缓存
     livestockCache: null,   // 牛羊列表缓存
-    deviceLotCache: null    // 设备LOT最新数据缓存
+    deviceLotCache: null,   // 设备LOT最新数据缓存
+    roadCache: null,        // 道路列表缓存
+    roadCacheTime: null,    // 道路缓存时间戳
+    placeCache: null,       // 地名列表缓存
+    placeCacheTime: null    // 地名缓存时间戳
   }
 })

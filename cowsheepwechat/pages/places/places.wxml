@@ -1,0 +1,96 @@
+<!--places.wxml-->
+<navigation-bar title="地名管理" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<view class="toolbar">
+  <view class="toolbar-count">共 {{placeList.length}} 个地名</view>
+  <view class="toolbar-btn" bindtap="onAdd">＋ 新增地名</view>
+</view>
+
+<scroll-view
+  class="scrollarea"
+  scroll-y
+  type="list"
+  refresher-enabled="{{true}}"
+  refresher-triggered="{{false}}"
+  bindrefresherrefresh="onPullDownRefresh"
+>
+  <view wx:if="{{loading}}" class="loading-tip">
+    <view class="loading-spinner"></view>
+    <text>加载中...</text>
+  </view>
+
+  <view wx:elif="{{placeList.length === 0}}" class="empty-tip">
+    <view class="empty-icon">📍</view>
+    <text>暂无地名数据</text>
+    <text class="empty-sub">点击上方按钮新增地名</text>
+  </view>
+
+  <view wx:else class="place-list">
+    <view
+      class="place-item"
+      wx:for="{{placeList}}"
+      wx:key="placeId"
+      data-placeid="{{item.placeId}}"
+      bindtap="onItemMap"
+    >
+      <view class="place-info">
+        <view class="place-name">{{item.name || '未命名地名'}}</view>
+        <view class="place-id">ID: {{item.placeId}}</view>
+        <view wx:if="{{item.gps}}" class="place-gps">坐标: {{item.gps}}</view>
+        <view class="place-level">等级: {{item.level || '1'}}</view>
+      </view>
+      <view class="place-actions">
+        <view class="place-action-btn place-action-map" catchtap="onItemEdit" data-placeid="{{item.placeId}}">编辑</view>
+        <view class="place-action-btn place-action-delete" catchtap="onItemDelete" data-placeid="{{item.placeId}}">删除</view>
+      </view>
+    </view>
+  </view>
+</scroll-view>
+
+<view class="modal-mask" wx:if="{{showModal}}" catchtap="onModalClose"></view>
+<view class="modal" wx:if="{{showModal}}">
+  <view class="modal-title">{{modalTitle}}</view>
+
+  <view class="modal-field">
+    <view class="modal-label">地名 <text class="required">*</text></view>
+    <input
+      class="modal-input"
+      placeholder="请输入地名"
+      value="{{formPlaceName}}"
+      bindinput="onNameInput"
+      maxlength="50"
+    />
+  </view>
+
+  <view class="modal-field">
+    <view class="modal-label">GPS坐标 <text class="required">*</text></view>
+    <view class="gps-row">
+      <input
+        class="modal-input gps-input"
+        placeholder="请点击右侧选坐标"
+        value="{{formPlaceGps}}"
+        disabled="{{true}}"
+        maxlength="100"
+      />
+      <view class="gps-pick-btn" bindtap="onPickGps">🎯 选坐标</view>
+    </view>
+  </view>
+
+  <view class="modal-field">
+    <view class="modal-label">等级</view>
+    <picker
+      class="modal-picker"
+      mode="selector"
+      range="{{levelOptions}}"
+      value="{{levelIndex}}"
+      bindchange="onLevelChange"
+    >
+      <view class="modal-input">{{levelOptions[levelIndex] || '1'}}</view>
+    </picker>
+  </view>
+
+  <view class="modal-btns">
+    <view class="modal-btn modal-btn-cancel" bindtap="onModalClose">取消</view>
+    <view class="modal-btn modal-btn-confirm" bindtap="onModalConfirm">确定</view>
+  </view>
+</view>

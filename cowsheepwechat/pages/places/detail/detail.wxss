@@ -1,0 +1,31 @@
+/* places/detail/detail.wxss */
+page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.place-map {
+  flex: 1;
+  width: 100%;
+}
+
+/* 底部信息栏 */
+.bottom-bar {
+  padding: 20rpx 32rpx 28rpx;
+  background: #fff;
+  border-top: 1rpx solid #eee;
+  box-shadow: 0 -2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.bar-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 6rpx;
+}
+
+.bar-info {
+  font-size: 24rpx;
+  color: #999;
+}

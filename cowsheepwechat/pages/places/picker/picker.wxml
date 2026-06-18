@@ -1,0 +1,32 @@
+<!--places/picker/picker.wxml - 地图选坐标-->
+<navigation-bar title="选取坐标" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<view class="picker-wrap">
+  <!-- 卫星地图 -->
+  <map
+    id="pickerMap"
+    class="picker-map"
+    latitude="{{centerLat}}"
+    longitude="{{centerLng}}"
+    scale="{{scale}}"
+    show-location="{{true}}"
+    enable-satellite="{{true}}"
+    bindregionchange="onRegionChange"
+  >
+  </map>
+
+  <!-- 固定在中心的图钉覆盖层 -->
+  <view class="pin-overlay">
+    <view class="pin-icon">📍</view>
+    <view class="pin-shadow"></view>
+  </view>
+
+  <!-- 底部信息栏 + 确定按钮 -->
+  <view class="picker-bar">
+    <view class="bar-coords">
+      <view class="bar-coord-label">当前坐标 (WGS-84)</view>
+      <view class="bar-coord-val">{{gpsText}}</view>
+    </view>
+    <view class="bar-confirm" bindtap="onConfirm">✓ 确定</view>
+  </view>
+</view>

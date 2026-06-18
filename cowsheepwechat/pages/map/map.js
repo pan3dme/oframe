@@ -1,8 +1,6 @@
 // map.js
 const dataCache = require('../../config/data-cache.js')
 
-const ROAD_API_URL = 'https://gpsmoveinfo.cn/fc/route_place'
-
 Page({
   data: {
     scale: 1,
@@ -559,67 +557,28 @@ Page({
   fetchRoadData() {
     wx.showLoading({ title: '加载道路...' })
     const that = this
-    wx.request({
-      url: ROAD_API_URL,
-      method: 'POST',
-      data: {
-        time: new Date().toLocaleString(),
-        action: 'getroutetableall'
-      },
-      success: (res) => {
-        wx.hideLoading()
-        console.log('[道路] 返回原始数据:', JSON.stringify(res.data))
-        let rawList = []
-        const data = res.data
-        if (data && data.data && Array.isArray(data.data)) {
-          rawList = data.data
-        } else if (Array.isArray(data)) {
-          rawList = data
-        }
-        if (rawList.length === 0) {
-          wx.showToast({ title: '暂无道路数据', icon: 'none' })
-          that._roadFetched = true
-          return
-        }
-        // 解析每条记录
-        const roadList = rawList.map(record => {
-          const attr = {}
-          if (record.attributes) {
-            record.attributes.forEach(item => {
-              attr[item.columnName] = item.columnValue
-            })
-          }
-          if (record.primaryKey) {
-            record.primaryKey.forEach(item => {
-              attr[item.name] = item.value
-            })
-          }
-          return {
-            route_id: attr.route_id || record.route_id || '-',
-            roadname: attr.roadname || record.roadname || '',
-            roadinfo: attr.roadinfo || record.roadinfo || ''
-          }
-        })
-        console.log('[道路] 解析后:', roadList.length, '条')
-        that._buildRoadPolylines(roadList)
+    dataCache.getRoadListFromCache((cachedData) => {
+      wx.hideLoading()
+      const roadList = cachedData.roadList || []
+      if (roadList.length === 0) {
+        wx.showToast({ title: '暂无道路数据', icon: 'none' })
         that._roadFetched = true
-        // 默认显示
-        that.setData({
-          showRoadLayer: true,
-          polylines: that._roadPolylines
-        })
-        that._applyAllMarkers()
-        wx.showToast({
-          title: '已加载 ' + roadList.length + ' 条道路',
-          icon: 'none',
-          duration: 1200
-        })
-      },
-      fail: (err) => {
-        wx.hideLoading()
-        console.error('[道路] 请求失败:', err)
-        wx.showToast({ title: '道路数据加载失败', icon: 'error' })
+        return
       }
+      console.log('[道路] 已解析:', roadList.length, '条（缓存优先）')
+      that._buildRoadPolylines(roadList)
+      that._roadFetched = true
+      // 默认显示
+      that.setData({
+        showRoadLayer: true,
+        polylines: that._roadPolylines
+      })
+      that._applyAllMarkers()
+      wx.showToast({
+        title: '已加载 ' + roadList.length + ' 条道路',
+        icon: 'none',
+        duration: 1200
+      })
     })
   },
 
@@ -738,57 +697,18 @@ Page({
         })
 
     iconPromise.then((iconPath) => {
-      wx.request({
-        url: ROAD_API_URL,
-        method: 'POST',
-        data: {
-          time: new Date().toLocaleString(),
-          action: 'getplacetableall'
-        },
-        success: (res) => {
-          console.log('[地名] 返回原始数据:', JSON.stringify(res.data))
-          let rawList = []
-          const data = res.data
-          if (data && data.data && Array.isArray(data.data)) {
-            rawList = data.data
-          } else if (Array.isArray(data)) {
-            rawList = data
-          }
-          if (rawList.length === 0) {
-            console.log('[地名] 暂无数据')
-            that._placeFetched = true
-            that._markBothReady()
-            return
-          }
-          // 解析每条记录
-          const placeList = rawList.map(record => {
-            const attr = {}
-            if (record.attributes) {
-              record.attributes.forEach(item => {
-                attr[item.columnName] = item.columnValue
-              })
-            }
-            if (record.primaryKey) {
-              record.primaryKey.forEach(item => {
-                attr[item.name] = item.value
-              })
-            }
-            return {
-              placeid: attr.placeid || record.placeid || '-',
-              name: attr.name || record.name || '',
-              gps: attr.gps || record.gps || ''
-            }
-          })
-          console.log('[地名] 解析后:', placeList.length, '条')
-          that._buildPlaceMarkers(placeList, iconPath)
+      dataCache.getPlaceListFromCache((cachedData) => {
+        const placeList = cachedData.placeList || []
+        if (placeList.length === 0) {
+          console.log('[地名] 暂无数据')
           that._placeFetched = true
           that._markBothReady()
-        },
-        fail: (err) => {
-          console.error('[地名] 请求失败:', err)
-          that._placeFetched = true
-          that._markBothReady()
+          return
         }
+        console.log('[地名] 已解析:', placeList.length, '条（缓存优先）')
+        that._buildPlaceMarkers(placeList, iconPath)
+        that._placeFetched = true
+        that._markBothReady()
       })
     })
   },

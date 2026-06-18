@@ -1,0 +1,97 @@
+<!--road.wxml-->
+<navigation-bar title="道路管理" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<!-- 顶部操作栏 -->
+<view class="toolbar">
+  <view class="toolbar-count">共 {{roadList.length}} 条道路</view>
+  <view class="toolbar-btn" bindtap="onAdd">＋ 新增道路</view>
+</view>
+
+<!-- 道路列表 -->
+<scroll-view
+  class="scrollarea"
+  scroll-y
+  type="list"
+  refresher-enabled="{{true}}"
+  refresher-triggered="{{false}}"
+  bindrefresherrefresh="onPullDownRefresh"
+>
+  <view wx:if="{{loading}}" class="loading-tip">
+    <view class="loading-spinner"></view>
+    <text>加载中...</text>
+  </view>
+
+  <view wx:elif="{{roadList.length === 0}}" class="empty-tip">
+    <view class="empty-icon">🗺️</view>
+    <text>暂无道路数据</text>
+    <text class="empty-sub">点击上方按钮新增道路</text>
+  </view>
+
+  <view wx:else class="road-list">
+    <view
+      class="road-item"
+      wx:for="{{roadList}}"
+      wx:key="roadId"
+      data-roadid="{{item.roadId}}"
+      bindtap="onItemMap"
+    >
+      <view class="road-info">
+        <view class="road-name">{{item.name || '未命名道路'}}</view>
+        <view class="road-id">ID: {{item.roadId}}</view>
+        <view wx:if="{{item.desc}}" class="road-desc">{{item.desc}}</view>
+        <view wx:if="{{item.points}}" class="road-points">路径点: {{item.points}}</view>
+        <view wx:if="{{item.createTime}}" class="road-time">{{item.createTime}}</view>
+      </view>
+      <view class="road-actions">
+        <view class="road-action-btn road-action-map" catchtap="onItemEdit" data-roadid="{{item.roadId}}">编辑</view>
+        <view class="road-action-btn road-action-delete" catchtap="onItemDelete" data-roadid="{{item.roadId}}">删除</view>
+      </view>
+    </view>
+  </view>
+</scroll-view>
+
+<!-- 新增/编辑弹窗 -->
+<view class="modal-mask" wx:if="{{showModal}}" catchtap="onModalClose"></view>
+<view class="modal" wx:if="{{showModal}}">
+  <view class="modal-title">{{modalTitle}}</view>
+
+  <view class="modal-field">
+    <view class="modal-label">道路名称 <text class="required">*</text></view>
+    <input
+      class="modal-input"
+      placeholder="请输入道路名称"
+      value="{{formRoadName}}"
+      bindinput="onNameInput"
+      maxlength="50"
+    />
+  </view>
+
+  <view class="modal-field">
+    <view class="modal-label">道路描述</view>
+    <textarea
+      class="modal-textarea"
+      placeholder="请输入道路描述"
+      value="{{formRoadDesc}}"
+      bindinput="onDescInput"
+      maxlength="200"
+      auto-height
+    />
+  </view>
+
+  <view class="modal-field">
+    <view class="modal-label">路径点坐标 (可选)</view>
+    <textarea
+      class="modal-textarea modal-textarea-small"
+      placeholder="输入GPS坐标，如 lat1,lng1;lat2,lng2"
+      value="{{formRoadPoints}}"
+      bindinput="onPointsInput"
+      maxlength="500"
+      auto-height
+    />
+  </view>
+
+  <view class="modal-btns">
+    <view class="modal-btn modal-btn-cancel" bindtap="onModalClose">取消</view>
+    <view class="modal-btn modal-btn-confirm" bindtap="onModalConfirm">确定</view>
+  </view>
+</view>

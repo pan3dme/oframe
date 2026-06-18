@@ -1,0 +1,21 @@
+<!--road/detail/detail.wxml - 单条道路地图-->
+<navigation-bar title="{{roadName}}" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<map
+  id="roadMap"
+  class="road-map"
+  latitude="{{mapCenter.lat}}"
+  longitude="{{mapCenter.lng}}"
+  scale="{{scale}}"
+  polyline="{{polylines}}"
+  show-location="{{true}}"
+  enable-satellite="{{true}}"
+  bindregionchange="onRegionChange"
+>
+</map>
+
+<!-- 底部信息栏 -->
+<view class="bottom-bar">
+  <view class="bar-name">{{roadName}}</view>
+  <view class="bar-info">ID: {{roadId}}  |  {{pointCount}} 个路径点</view>
+</view>

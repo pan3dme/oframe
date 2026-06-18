@@ -1,0 +1,21 @@
+<!--places/detail/detail.wxml - 单个地名地图-->
+<navigation-bar title="{{placeName}}" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<map
+  id="placeMap"
+  class="place-map"
+  latitude="{{mapCenter.lat}}"
+  longitude="{{mapCenter.lng}}"
+  scale="{{scale}}"
+  markers="{{markers}}"
+  show-location="{{true}}"
+  enable-satellite="{{true}}"
+  bindregionchange="onRegionChange"
+>
+</map>
+
+<!-- 底部信息栏 -->
+<view class="bottom-bar">
+  <view class="bar-name">{{placeName}}</view>
+  <view class="bar-info">ID: {{placeId}}  |  坐标: {{gpsText}}</view>
+</view>

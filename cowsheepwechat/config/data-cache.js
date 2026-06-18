@@ -4,6 +4,7 @@
 const app = getApp()
 const API_DEVICE_URL = app.globalData.api_device_Url
 const API_COWSHEEP_URL = app.globalData.api_cowsheep_Url
+const API_ROUTE_PLACE_URL = app.globalData.api_route_place_Url
 
 // ==================== 设备数据缓存 ====================
 
@@ -242,6 +243,176 @@ function refreshDeviceLotRefresh(callback) {
   getDeviceLotRefresh(callback, true)
 }
 
+// ==================== 道路列表缓存（按天：一天只请求一次网络） ====================
+
+/**
+ * 判断缓存是否是今天的数据
+ */
+function _isToday(timestamp) {
+  if (!timestamp) return false
+  const cacheDate = new Date(timestamp).toDateString()
+  const today = new Date().toDateString()
+  return cacheDate === today
+}
+
+/**
+ * 获取道路列表数据
+ * 优先内存缓存，且缓存是今天的数据则不请求网络
+ * @param {function} callback - 回调 (cachedData)，cachedData 为 { roadList }
+ * @param {boolean} forceRefresh - 是否强制刷新（忽略按天缓存）
+ */
+function getRoadListFromCache(callback, forceRefresh) {
+  // 缓存有效（有数据 + 是今天）且非强制刷新
+  if (!forceRefresh && app.globalData.roadCache && _isToday(app.globalData.roadCacheTime)) {
+    callback(app.globalData.roadCache)
+    return
+  }
+
+  wx.request({
+    url: API_ROUTE_PLACE_URL,
+    method: 'POST',
+    data: { action: 'getroutetableall' },
+    success: (res) => {
+      console.log('[道路缓存] 网络请求返回:', JSON.stringify(res.data))
+      const roadList = _parseRoadRecords(res.data)
+      const cachedData = { roadList }
+      app.globalData.roadCache = cachedData
+      app.globalData.roadCacheTime = Date.now()
+      callback(cachedData)
+    },
+    fail: (err) => {
+      console.error('[道路缓存] 获取失败:', err)
+      if (app.globalData.roadCache) {
+        callback(app.globalData.roadCache)
+      } else {
+        callback({ roadList: [] })
+      }
+    }
+  })
+}
+
+function _parseRoadRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) {
+    rawList = data.data
+  } else if (Array.isArray(data)) {
+    rawList = data
+  }
+  return rawList.map(record => {
+    const attr = {}
+    if (record.attributes) {
+      record.attributes.forEach(item => {
+        attr[item.columnName] = item.columnValue
+      })
+    }
+    if (record.primaryKey) {
+      record.primaryKey.forEach(item => {
+        attr[item.name] = item.value
+      })
+    }
+    return {
+      route_id: attr.route_id || record.route_id || '-',
+      roadname: attr.roadname || record.roadname || '',
+      roadinfo: attr.roadinfo || record.roadinfo || ''
+    }
+  })
+}
+
+/**
+ * 强制刷新道路数据（CRUD 后调用）
+ */
+function refreshRoadList(callback) {
+  getRoadListFromCache(callback, true)
+}
+
+/**
+ * 清除道路缓存
+ */
+function clearRoadCache() {
+  app.globalData.roadCache = null
+  app.globalData.roadCacheTime = null
+}
+
+// ==================== 地名列表缓存（按天：一天只请求一次网络） ====================
+
+/**
+ * 获取地名列表数据
+ * 优先内存缓存，且缓存是今天的数据则不请求网络
+ * @param {function} callback - 回调 (cachedData)，cachedData 为 { placeList }
+ * @param {boolean} forceRefresh - 是否强制刷新
+ */
+function getPlaceListFromCache(callback, forceRefresh) {
+  if (!forceRefresh && app.globalData.placeCache && _isToday(app.globalData.placeCacheTime)) {
+    callback(app.globalData.placeCache)
+    return
+  }
+
+  wx.request({
+    url: API_ROUTE_PLACE_URL,
+    method: 'POST',
+    data: { action: 'getplacetableall' },
+    success: (res) => {
+      console.log('[地名缓存] 网络请求返回:', JSON.stringify(res.data))
+      const placeList = _parsePlaceRecords(res.data)
+      const cachedData = { placeList }
+      app.globalData.placeCache = cachedData
+      app.globalData.placeCacheTime = Date.now()
+      callback(cachedData)
+    },
+    fail: (err) => {
+      console.error('[地名缓存] 获取失败:', err)
+      if (app.globalData.placeCache) {
+        callback(app.globalData.placeCache)
+      } else {
+        callback({ placeList: [] })
+      }
+    }
+  })
+}
+
+function _parsePlaceRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) {
+    rawList = data.data
+  } else if (Array.isArray(data)) {
+    rawList = data
+  }
+  return rawList.map(record => {
+    const attr = {}
+    if (record.attributes) {
+      record.attributes.forEach(item => {
+        attr[item.columnName] = item.columnValue
+      })
+    }
+    if (record.primaryKey) {
+      record.primaryKey.forEach(item => {
+        attr[item.name] = item.value
+      })
+    }
+    return {
+      placeid: attr.placeid || record.placeid || '-',
+      name: attr.name || record.name || '',
+      gps: attr.gps || record.gps || '',
+      level: attr.level || record.level || '1'
+    }
+  })
+}
+
+/**
+ * 强制刷新地名数据（CRUD 后调用）
+ */
+function refreshPlaceList(callback) {
+  getPlaceListFromCache(callback, true)
+}
+
+/**
+ * 清除地名缓存
+ */
+function clearPlaceCache() {
+  app.globalData.placeCache = null
+  app.globalData.placeCacheTime = null
+}
+
 /**
  * 清除所有缓存（一般不需要手动调用）
  */
@@ -249,6 +420,10 @@ function clearCache() {
   app.globalData.deviceCache = null
   app.globalData.livestockCache = null
   app.globalData.deviceLotCache = null
+  app.globalData.roadCache = null
+  app.globalData.roadCacheTime = null
+  app.globalData.placeCache = null
+  app.globalData.placeCacheTime = null
 }
 
 module.exports = {
@@ -258,5 +433,11 @@ module.exports = {
   refreshLivestockList,
   getDeviceLotRefresh,
   refreshDeviceLotRefresh,
+  getRoadListFromCache,
+  refreshRoadList,
+  clearRoadCache,
+  getPlaceListFromCache,
+  refreshPlaceList,
+  clearPlaceCache,
   clearCache
 }

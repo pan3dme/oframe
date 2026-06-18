@@ -9,7 +9,12 @@
     "pages/livestock/livestock",
     "pages/device/device",
     "pages/device-detail/device-detail",
-    "pages/settings/settings"
+    "pages/settings/settings",
+    "pages/road/road",
+    "pages/road/detail/detail",
+    "pages/places/places",
+    "pages/places/detail/detail",
+    "pages/places/picker/picker"
   ],
   "window": {
     "navigationBarTextStyle": "black",
