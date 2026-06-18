@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
         inner_layout.setSpacing(0)
         
         # 创建GoogleMap2DWidget实例（传入client）
-        self.googleMap2D = GoogleMap2DWidget(None, self.client)
+        self.googleMap2D = GoogleMap2DWidget(None)
         
         # 绑定3D和2D地图的交互事件
         self.googleMap2D.receive_map_move_gps = self.googleMapScene3D.receive_gps_coordinates
@@ -499,46 +499,94 @@ class MainWindow(QMainWindow):
             print("已隐藏所有设备位置")
             return
 
-        # 查询设备位置数据
-        columns_to_get = ['deviceId', 'gps', 'time']
-        inclusive_start_primary_key = [('deviceId', INF_MAX)]
-        exclusive_end_primary_key = [('deviceId', INF_MIN)]
-
         try:
+            # 第一步：查询设备表获取设备基本信息
+            device_info_map = {}
+            columns_to_get = ['deviceId', 'rename', 'link_cowsheep_id', 'picurl', 'device_key']
+            inclusive_start_primary_key = [('deviceId', INF_MAX)]
+            exclusive_end_primary_key = [('deviceId', INF_MIN)]
+
             consumed, next_start_primary_key, device_list, next_token = self.client.get_range(
                 table_name=settings.DEVICETTABLE_NAME,
                 direction=Direction.BACKWARD,
                 inclusive_start_primary_key=inclusive_start_primary_key,
                 exclusive_end_primary_key=exclusive_end_primary_key,
                 columns_to_get=columns_to_get,
-                limit=20
+                limit=50
             )
 
             print(f"成功读取 {len(device_list)} 条设备记录。")
+            
+            # 构建设备信息映射
+            for row in device_list:
+                primary_key_dict = {key[0]: key[1] for key in row.primary_key}
+                deviceId = primary_key_dict.get('deviceId', '')
+                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
+                
+                device_info_map[deviceId] = {
+                    'rename': attr_dict.get('rename', ''),
+                    'link_cowsheep_id': attr_dict.get('link_cowsheep_id', ''),
+                    'picurl': attr_dict.get('picurl', ''),
+                    'device_key': attr_dict.get('device_key', '')
+                }
+            
+            print(f"共获取 {len(device_info_map)} 个设备的基本信息")
+            
+            # 第二步：查询设备位置刷新表获取最新GPS信息
+            columns_to_get = ['gps', 'time', 'lorastr', 'upDateDevice']
+            inclusive_start_primary_key = [('deviceId', INF_MAX)]
+            exclusive_end_primary_key = [('deviceId', INF_MIN)]
+
+            consumed, next_start_primary_key, loc_refresh_list, next_token = self.client.get_range(
+                table_name=settings.DEVICE_LOC_REFRESH_TABLE_NAME,
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=50
+            )
+
+            print(f"成功读取 {len(loc_refresh_list)} 条设备位置记录。")
+            
             displayed_count = 0
-            for row_idx, row in enumerate(device_list):
+            for row_idx, row in enumerate(loc_refresh_list):
                 # 解析主键
                 primary_key_dict = {key[0]: key[1] for key in row.primary_key}
                 deviceId = primary_key_dict.get('deviceId', '')
                 attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
                 gps_str = attr_dict.get('gps', '')
                 time_str = attr_dict.get('time', '')
-
+                upDateDevice = attr_dict.get('upDateDevice', '')
+                
+                # 获取设备基本信息
+                device_info = device_info_map.get(deviceId, {})
+                
                 # 解析GPS坐标
-                if gps_str:
-                    lat_str, lon_str = gps_str.split(',')
-                    gps = (float(lat_str.strip()), float(lon_str.strip()))
-
-                    # 添加设备标记（默认不闪烁，不灰色）
-                    self.googleMap2D.add_device_marker(deviceId, gps, time_str, is_gray=False, loop=False)
-                    self.googleMap2D.receive_device(deviceId, gps, time_str)
-                    displayed_count += 1
-                    print(f"  显示设备: deviceId={deviceId}, gps={gps}, time={time_str}")
+                if gps_str and ',' in gps_str:
+                    try:
+                        lat_str, lon_str = gps_str.split(',')
+                        gps = (float(lat_str.strip()), float(lon_str.strip()))
+                        
+                        # 添加设备标记（默认不闪烁，不灰色）
+                        self.googleMap2D.add_device_marker(deviceId, gps, time_str, is_gray=False, loop=False)
+                        self.googleMap2D.receive_device(deviceId, gps, time_str)
+                        displayed_count += 1
+                        
+                        # 打印详细信息
+                        rename = device_info.get('rename', '')
+                        display_name = f"{deviceId} ({rename})" if rename else deviceId
+                        print(f"  显示设备: {display_name}, gps={gps}, time={time_str}")
+                    except Exception as e:
+                        print(f"  警告: 设备 {deviceId} GPS解析失败: {e}")
+                else:
+                    print(f"  警告: 设备 {deviceId} 没有有效的GPS数据")
             
             print(f"共显示 {displayed_count} 个设备位置")
 
         except Exception as e:
             print(f"查询失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _create_map_control_buttons(self, parent_container):
         """创建地图控制按钮（右下角3个小图标）"""

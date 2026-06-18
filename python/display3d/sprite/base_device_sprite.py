@@ -17,7 +17,7 @@ class BaseDeviceSprite3D(BaseScaleBallSprite3D):
     def upData(self):
         super().upData()
         self.text_sprite.x = self.x
-        self.text_sprite.y = self.y + 10
+        self.text_sprite.y = self.y + 5
         self.text_sprite.z = self.z
         self.text_sprite.upData()
 

@@ -9,6 +9,8 @@ class _Config:
     LOG_TABLE_NAME = 'devicelog001'
     # 设备表
     DEVICETTABLE_NAME = 'devicetable001'
+    # 设备位置刷新表
+    DEVICE_LOC_REFRESH_TABLE_NAME = 'device_lot_refrsh'
     # 牛羊表
     COWSHEEP_TABLE_NAME = 'cowsheep002'
     ROUTETABLE_NAME = 'routetabel001'

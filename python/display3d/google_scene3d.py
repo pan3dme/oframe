@@ -132,7 +132,7 @@ class GoogleScene3D(GoogleBaseScene3D):
         self.gl_widget.makeCurrent()
         temp = BaseDeviceSprite3D(self.scene3D, device_id, (1, 1, 0))
         temp.x = vPos.x
-        temp.y = self.getPosinMapHeightByVec4(vPos.x, vPos.z) + 5
+        temp.y = self.getPosinMapHeightByVec4(vPos.x, vPos.z) +0.5
         temp.z = vPos.z
         self.scene3D.addDisplay(temp)
 

@@ -25,13 +25,11 @@ class GoogleMap2DWidget(QWidget):
     TILE_ROWS = 10
     TILE_COLS = 10
 
-    def __init__(self, parent=None, ots_client=None):
+    def __init__(self, parent=None):
         # 如果传入的是 OTSClient，则不将其作为 parent
-        if parent is not None and not isinstance(parent, QWidget):
-            ots_client = parent
-            parent = None
+
         super().__init__(parent)
-        self.ots_client = ots_client
+
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding
