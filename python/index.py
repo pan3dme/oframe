@@ -12,6 +12,7 @@ from tablestore import OTSClient
 
 from display3d.google_scene3d import GoogleScene3D
 from crowui.google_map2d_widget import GoogleMap2DWidget
+from crowui.right_panel_container import RightPanelContainer
 from config import settings
 
 
@@ -58,7 +59,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("高德地图应用")
         self.setGeometry(0, 0, 1900, 1000)
 
-        # 初始化OTS客户端
+        # 初始化OTS客端户
         if not self.initTabelClient():
             print("警告: OTS客户端初始化失败，部分功能可能不可用")
         
@@ -165,132 +166,11 @@ class MainWindow(QMainWindow):
         # 将左侧部件添加到主布局，设置拉伸因子为5
         main_layout.addWidget(left_widget, stretch=5)
         
-        # ==================== 右侧区域 - 按钮面板 ====================
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(20, 20, 20, 20)
-        right_layout.setSpacing(15)
-        
-        # 设置右侧背景色
-        right_widget.setAutoFillBackground(True)
-        palette = right_widget.palette()
-        palette.setColor(right_widget.backgroundRole(), QColor("#f5f5f5"))
-        right_widget.setPalette(palette)
-        
-        # 创建4个按钮
-        btn1 = QPushButton("按钮 1")
-        btn1.setFixedHeight(50)
-        btn1.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #21618c;
-            }
-        """)
-        
-        btn2 = QPushButton("按钮 2")
-        btn2.setFixedHeight(50)
-        btn2.setStyleSheet("""
-            QPushButton {
-                background-color: #2ecc71;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #27ae60;
-            }
-            QPushButton:pressed {
-                background-color: #1e8449;
-            }
-        """)
-        
-        btn3 = QPushButton("按钮 3")
-        btn3.setFixedHeight(50)
-        btn3.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:pressed {
-                background-color: #922b21;
-            }
-        """)
-        
-        btn4 = QPushButton("按钮 4")
-        btn4.setFixedHeight(50)
-        btn4.setStyleSheet("""
-            QPushButton {
-                background-color: #f39c12;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #d68910;
-            }
-            QPushButton:pressed {
-                background-color: #af601a;
-            }
-        """)
-        
-        # 创建切换位置按钮
-        btn_toggle = QPushButton("🔄 切换地图位置")
-        btn_toggle.setFixedHeight(50)
-        btn_toggle.setStyleSheet("""
-            QPushButton {
-                background-color: #9b59b6;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #8e44ad;
-            }
-            QPushButton:pressed {
-                background-color: #6c3483;
-            }
-        """)
-        
-        # 添加按钮到右侧布局
-        right_layout.addWidget(btn1)
-        right_layout.addWidget(btn2)
-        right_layout.addWidget(btn3)
-        right_layout.addWidget(btn4)
-        right_layout.addWidget(btn_toggle)
-        right_layout.addStretch()  # 添加弹性空间
+        # ==================== 右侧区域 - 按钮面板（独立组件）====================
+        right_widget = RightPanelContainer(ots_client=self.client, toggle_callback=self.toggle_map_positions)
         
         # 将右侧部件添加到主布局，设置拉伸因子为3
         main_layout.addWidget(right_widget, stretch=3)
-        
-        # 连接按钮信号（示例）
-        btn1.clicked.connect(lambda: print("按钮 1 被点击"))
-        btn2.clicked.connect(lambda: print("按钮 2 被点击"))
-        btn3.clicked.connect(lambda: print("按钮 3 被点击"))
-        btn4.clicked.connect(lambda: print("按钮 4 被点击"))
-        btn_toggle.clicked.connect(self.toggle_map_positions)
         
         print("✅ 窗口初始化完成，3D场景和2D地图已添加")
     

@@ -131,30 +131,6 @@ class GoogleMap2DWidget(QWidget):
         painter.end()
         return QIcon(pixmap)
 
-    @staticmethod
-    def _create_location_icon():
-        """创建位置图标"""
-        pixmap = QPixmap(30, 30)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        pen = QPen(QColor(0, 120, 215))
-        pen.setWidth(2)
-        painter.setPen(pen)
-        painter.setBrush(QColor(0, 120, 215))
-        
-        path = QPainterPath()
-        path.moveTo(15, 5)
-        path.quadTo(25, 15, 15, 25)
-        path.quadTo(5, 15, 15, 5)
-        painter.drawPath(path)
-        
-        painter.setBrush(QColor(255, 255, 255))
-        painter.drawEllipse(13, 13, 4, 4)
-        
-        painter.end()
-        return QIcon(pixmap)
 
     @staticmethod
     def _create_place_icon():

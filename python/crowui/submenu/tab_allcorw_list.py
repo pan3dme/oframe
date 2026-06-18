@@ -16,6 +16,7 @@ from config import settings
 class CowSheepCard(QFrame):
     """牛羊卡片组件"""
     edit_clicked = pyqtSignal(dict)
+    card_clicked = pyqtSignal(dict)  # 卡片点击信号（进入详情）
     
     def __init__(self, cowsheep_data, parent=None):
         super().__init__(parent)
@@ -34,9 +35,12 @@ class CowSheepCard(QFrame):
             }
             QFrame:hover {
                 background-color: #f5f9ff;
-                border: 1px solid #0078d7;
+                border: 2px solid #0078d7;
             }
         """)
+        
+        # 设置鼠标指针为手型，提示可点击
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         
         # 主布局 - 水平三列
         main_layout = QHBoxLayout(self)
@@ -166,6 +170,20 @@ class CowSheepCard(QFrame):
         
         main_layout.addWidget(button_widget)
     
+    def mousePressEvent(self, event):
+        """鼠标点击事件 - 整个卡片可点击"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # 检查是否点击在编辑按钮上
+            if self.edit_btn.underMouse():
+                # 如果点击的是编辑按钮，不触发卡片点击
+                super().mousePressEvent(event)
+            else:
+                # 否则触发卡片点击信号
+                self.card_clicked.emit(self.cowsheep_data)
+                event.accept()
+        else:
+            super().mousePressEvent(event)
+    
     def on_edit_clicked(self):
         """编辑按钮点击事件"""
         self.edit_clicked.emit(self.cowsheep_data)
@@ -243,6 +261,9 @@ class CowSheepCard(QFrame):
             self.pic_label.setText("无图片")
 class TobAllcorwList(QWidget):
     """按钮面板组件"""
+    # 定义信号，用于通知卡片被点击
+    card_clicked_signal = pyqtSignal(dict)
+    
     def __init__(self, parent=None, client=None):
         super().__init__(parent)
         self.client = client  # 保存client对象
@@ -398,6 +419,8 @@ class TobAllcorwList(QWidget):
                 
                 # 创建牛羊卡片
                 card = CowSheepCard(cowsheep_data, self)
+                # 连接卡片点击信号
+                card.card_clicked.connect(self.on_card_clicked)
                 
                 # 将卡片插入到stretch之前
                 self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
@@ -460,3 +483,9 @@ class TobAllcorwList(QWidget):
             label.setText("处理失败")
         finally:
             reply.deleteLater()
+    
+    def on_card_clicked(self, cowsheep_data):
+        """处理卡片点击事件"""
+        print(f"🐄 牛羊卡片被点击: {cowsheep_data.get('cowsheep_id', 'Unknown')}")
+        # 发送信号给父组件
+        self.card_clicked_signal.emit(cowsheep_data)
