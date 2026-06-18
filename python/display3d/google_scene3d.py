@@ -33,7 +33,7 @@ class GoogleScene3D(GoogleBaseScene3D):
 
 
         # 创建布局
-        self.willdelearr = []
+        self.willowware = []
         self.fouseCentenSprite: Optional[BaseColorSprite3D] = None
 
 
@@ -62,9 +62,18 @@ class GoogleScene3D(GoogleBaseScene3D):
         super().initializeGL()
         self.fouseCentenSprite = BaseBallSprite3D(self.scene3D, (1, 1, 1))
         self.scene3D.addDisplay(self.fouseCentenSprite)
-        self.fouseCentenSprite.visible = False
-        self.loadDaeGoogleMap()
+        # self.fouseCentenSprite.visible = False
 
+        self.loadDaeGoogleMap()
+    def paintGL(self):
+        if self.scene3D is None:
+            return False
+        self.fouseCentenSprite.x =- self.scene3D.camera3D.locaAtPos.x
+        self.fouseCentenSprite.z =- self.scene3D.camera3D.locaAtPos.z
+        ty = self.getPosinMapHeightByVec4( self.fouseCentenSprite.x,  self.fouseCentenSprite.z)
+        if ty is not None:
+            self.fouseCentenSprite.y = ty
+        super().paintGL()
 
 
     def loadDaeGoogleMap(self):
@@ -150,6 +159,7 @@ class GoogleScene3D(GoogleBaseScene3D):
     def change_map_gps(self, latitude, longitude):
         pass
     def receive_gps_coordinates(self, latitude, longitude):
+        return 
 
         self.drawGpsPointTomap(latitude, longitude)
         topos = settings.gps_to_world_pos((latitude, longitude))
@@ -171,6 +181,7 @@ class GoogleScene3D(GoogleBaseScene3D):
         ty = self.getPosinMapHeightByVec4(topos.x, topos.z)
         if ty is not None:
             self.fouseCentenSprite.y = ty
+
 
     def drawGpsPointTomap(self, latitude, longitude):
 
@@ -225,11 +236,11 @@ class GoogleScene3D(GoogleBaseScene3D):
         # print(self.baseCylinderSprite.x,self.baseCylinderSprite.y,self.baseCylinderSprite.z)
 
         latitude, longitude = settings.world_pos_to_gps(self.fouseCentenSprite)
-        self.willdelearr.append((latitude, longitude))
+        self.willowware.append((latitude, longitude))
         print("打印路径显示--------------------")
         lastpos = None
         outStr = ""
-        for temp in self.willdelearr:
+        for temp in self.willowware:
             if lastpos is not None:
                 if temp[0] != lastpos[0] and temp[1] != lastpos[1]:
                     if len(outStr):

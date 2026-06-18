@@ -179,6 +179,7 @@ class BaseColorSprite3D(Display3D):
         if not self.visible:
             return
         if self.wood_texture is None:
+            print('没有纹理')
             return
 
         self.scene3D.context3D.setProgram(self.shader)
