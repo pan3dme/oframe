@@ -177,7 +177,7 @@ class BaseScaleBallSprite3D(Display3D):
         self.scene3D.context3D.setVcMatrix4fv(self.shader, 'viewMatrixMatrix3D', self.scene3D.camera3D.viewMatrixMatrix3D)
 
         # 设置屏幕缩放因子，控制球体在屏幕上的恒定大小
-        screen_scale = self.scaleX * 0.005
+        screen_scale = self.scaleX * 0.002
         glUniform1f(glGetUniformLocation(self.shader.program, 'screenScale'), screen_scale)
 
         glBindVertexArray(self.vao)

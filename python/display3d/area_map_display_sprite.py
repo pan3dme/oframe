@@ -88,7 +88,7 @@ class AreaMapDisplay3DSprite(Display3D):
         super().__init__(scene)
 
         self.vertices = None
-        self.imWidth,  self.imHeight = 100, 100
+        self.imWidth,  self.imHeight = 16, 16
         self.white_image = None
         self.minPos: Optional[Vector3D] = None
         self.maxPos: Optional[Vector3D] = None
@@ -129,7 +129,7 @@ class AreaMapDisplay3DSprite(Display3D):
             return (cx, cy)
         if len(arr):
             if self.imWidth < 200 or self.imHeight < 200:
-                self.imWidth, self.imHeight = 250, 250
+                self.imWidth, self.imHeight = 512, 512
                 self.white_image = Image.new('RGBA', (self.imWidth, self.imHeight), color='white')
             draw = ImageDraw.Draw(self.white_image)
             for temp in arr:

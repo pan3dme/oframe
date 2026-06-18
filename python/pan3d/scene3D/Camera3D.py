@@ -8,7 +8,7 @@ class Camera3D(Vector3D):
     def __init__(self):
         super().__init__()
         # self.camRoV2 = Vector2D(0, 30);
-        self.rotationX = -30;
+        self.rotationX = -45;
         self.rotationY = -90;
         self.downCamRoV2 = Vector2D();
         self.camDis = -150;

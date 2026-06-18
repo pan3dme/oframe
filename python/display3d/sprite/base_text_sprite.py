@@ -226,7 +226,7 @@ class BaseTextSprite3D(Display3D):
         # 设置屏幕缩放因子，控制文本在屏幕上的恒定大小
         # screenScale * projScale 的效果等价于"每单位世界坐标对应多少NDC单位"
         # 值越大文本越大，可通过 scaleX/scaleY 或直接修改此值来调整
-        screen_scale = self.scaleX*0.02
+        screen_scale = self.scaleX*0.01
         glUniform1f(glGetUniformLocation(self.shader.program, 'screenScale'), screen_scale)
 
         # 启用混合，支持透明文字

@@ -60,7 +60,7 @@ class GoogleScene3D(GoogleBaseScene3D):
 
     def initializeGL(self):
         super().initializeGL()
-        settings.camera3D.camDis=settings.baseCamDis100
+
         self.scene3D.camera3D=settings.camera3D
         self.fouseCentenSprite = BaseBallSprite3D(self.scene3D, (1, 1, 1))
         self.scene3D.addDisplay(self.fouseCentenSprite)

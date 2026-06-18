@@ -124,13 +124,28 @@ class GoogleBaseScene3D(QWidget):
         """鼠标移动事件：左键拖拽平移场景，中键拖拽旋转摄像机"""
         camera3D = self.scene3D.camera3D
 
+        def map_smoothstep(num):
+            # 1. 归一化
+            t = (num + 90) / 90.0
+            # 限制 t 在 [0, 1] 内
+            t = max(0.0, min(1.0, t))
+            # 2. 平滑阶梯
+            smooth_t = t * t * (3 - 2 * t)
+            # 3. 映射到 [-60, -35]
+            output = -60 + (-30 - (-60)) * smooth_t  # 即 -60 + 25 * smooth_t
+            return output
+
         # 中键拖动：旋转摄像机
         if camera3D.isMiddleDown:
             tx = evt.x - camera3D.downPos.x  # 水平偏移量
             ty = evt.y - camera3D.downPos.y  # 垂直偏移量
 
-            camera3D.rotationX = max(-50, min(-35, camera3D.downCamRoV2.x - ty*0.25))
-            camera3D.rotationY = camera3D.downCamRoV2.y - tx  # 水平拖拽控制偏航角
+            num=camera3D.downCamRoV2.x - ty*0.5
+            camera3D.rotationX =map_smoothstep(num)
+            # camera3D.rotationX =num
+
+
+            camera3D.rotationY = camera3D.downCamRoV2.y - tx *0.25 # 水平拖拽控制偏航角
             return
 
         # 左键拖动：平移场景（通过射线投射到Y=0平面计算偏移）
