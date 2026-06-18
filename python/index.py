@@ -8,12 +8,144 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEngineSettings
-from tablestore import OTSClient
+from tablestore import OTSClient, INF_MAX, INF_MIN, Direction
 
 from display3d.google_scene3d import GoogleScene3D
 from crowui.google_map2d_widget import GoogleMap2DWidget
 from crowui.right_panel_container import RightPanelContainer
 from config import settings
+
+
+# ==================== 地图控制按钮图标创建函数 ====================
+def create_route_icon():
+    """创建道路图标"""
+    pixmap = QPixmap(30, 30)
+    pixmap.fill(QColor(0, 0, 0, 0))  # transparent
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    
+    pen = QPen(QColor(0, 120, 215))
+    pen.setWidth(3)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    
+    path = QPainterPath()
+    path.moveTo(5, 15)
+    path.cubicTo(10, 5, 20, 25, 25, 15)
+    painter.drawPath(path)
+    
+    path2 = QPainterPath()
+    path2.moveTo(5, 20)
+    path2.cubicTo(10, 10, 20, 30, 25, 20)
+    painter.drawPath(path2)
+    
+    painter.end()
+    return QIcon(pixmap)
+
+
+def create_place_icon():
+    """创建地名图标"""
+    pixmap = QPixmap(30, 30)
+    pixmap.fill(QColor(0, 0, 0, 0))  # transparent
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # 绘制一个类似图钉的形状
+    pen = QPen(QColor(0, 120, 215))
+    pen.setWidth(2)
+    painter.setPen(pen)
+    painter.setBrush(QColor(0, 120, 215))
+
+    path = QPainterPath()
+    path.moveTo(15, 5)
+    path.quadTo(25, 15, 15, 22)
+    path.quadTo(5, 15, 15, 5)
+    painter.drawPath(path)
+
+    # 绘制圆点
+    painter.setBrush(QColor(255, 255, 255))
+    painter.drawEllipse(13, 13, 4, 4)
+
+    # 绘制文字标签
+    painter.setPen(QColor(0, 120, 215))
+    font = QFont("Arial", 8)
+    painter.setFont(font)
+    painter.drawText(8, 26, "地名")
+
+    painter.end()
+    return QIcon(pixmap)
+
+
+def create_device_icon():
+    """创建设备位置图标"""
+    pixmap = QPixmap(30, 30)
+    pixmap.fill(QColor(0, 0, 0, 0))  # transparent
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # 绘制设备图标（类似定位图标）
+    pen = QPen(QColor(0, 120, 215))
+    pen.setWidth(2)
+    painter.setPen(pen)
+    painter.setBrush(QColor(0, 120, 215))
+
+    # 绘制外圈
+    painter.drawEllipse(10, 10, 10, 10)
+
+    # 绘制内圈
+    painter.setBrush(QColor(255, 255, 255))
+    painter.drawEllipse(13, 13, 4, 4)
+
+    # 绘制文字标签
+    painter.setPen(QColor(0, 120, 215))
+    font = QFont("Arial", 8)
+    painter.setFont(font)
+    painter.drawText(8, 26, "设备")
+
+    painter.end()
+    return QIcon(pixmap)
+
+
+def create_center_icon():
+    """创建中心点图标"""
+    pixmap = QPixmap(30, 30)
+    pixmap.fill(QColor(0, 0, 0, 0))  # transparent
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    
+    pen = QPen(QColor(0, 120, 215))
+    pen.setWidth(2)
+    painter.setPen(pen)
+    
+    painter.drawLine(5, 15, 25, 15)
+    painter.drawLine(15, 5, 15, 25)
+    
+    painter.setBrush(QColor(0, 120, 215))
+    painter.drawEllipse(13, 13, 4, 4)
+    
+    painter.end()
+    return QIcon(pixmap)
+
+
+def create_changescene_icon():
+    """创建中心点图标"""
+    pixmap = QPixmap(30, 30)
+    pixmap.fill(QColor(0, 0, 0, 0))  # transparent
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    pen = QPen(QColor(0, 120, 215))
+    pen.setWidth(2)
+    painter.setPen(pen)
+
+    painter.drawLine(5, 15, 25, 15)
+    painter.drawLine(15, 5, 15, 25)
+
+    painter.setBrush(QColor(0, 120, 215))
+    painter.drawEllipse(13, 13, 4, 4)
+
+    painter.end()
+    return QIcon(pixmap)
 
 
 class Map2DContainer(QWidget):
@@ -55,7 +187,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.client = None
-        self.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
+        settings.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
         self.setWindowTitle("高德地图应用")
         self.setGeometry(0, 0, 1900, 1000)
 
@@ -174,6 +306,141 @@ class MainWindow(QMainWindow):
         
         print("✅ 窗口初始化完成，3D场景和2D地图已添加")
     
+    # ==================== 地图控制按钮事件处理方法 ====================
+    def _add_route_to_map(self):
+        """切换显示/隐藏道路"""
+        # 检查路径显示状态，如果已有路径则清除
+        if self.googleMap2D._gps_routes:
+            self.googleMap2D._gps_routes.clear()
+            self.googleMap2D._update_display()
+            self.googleMap2D.clear_load()
+            print("已清除所有路径")
+            return
+
+        # 1. 定义需要查询的数据列
+        columns_to_get = ['route_id', 'roadinfo', 'roadname']
+
+        # 2. 定义主键范围：覆盖全表
+        inclusive_start_primary_key = [('route_id', INF_MAX)]
+        exclusive_end_primary_key = [('route_id', INF_MIN)]
+
+        try:
+            # 3. 执行范围查询，direction=BACKWARD 为倒序读取
+            consumed, next_start_primary_key, route_list, next_token = self.client.get_range(
+                table_name=settings.ROUTETABLE_NAME,
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=20
+            )
+
+            # 4. 处理查询结果并显示在表格中
+            print(f"成功读取 {len(route_list)} 条最新记录。")
+            for row_idx, row in enumerate(route_list):
+                # 解析属性列
+                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
+                roadinfo = attr_dict.get('roadinfo', '')
+
+                # 将 roadinfo 字符串解析为 arr 数组
+                arr = [float(x.strip()) for x in roadinfo.split(',')]
+
+                # 生成路线坐标
+                route_cords = []
+                for i in range(int(len(arr) / 2)):
+                    route_cords.append((arr[i * 2 + 0], arr[i * 2 + 1]))
+
+                # 添加路线到地图
+                self.googleMap2D.add_gps_route(route_cords)
+                self.googleMap2D.receive_load(route_cords)
+
+        except Exception as e:
+            print(f"查询失败: {e}")
+    
+    def _add_place_to_map(self):
+        """切换显示/隐藏地名"""
+        # 检查地名显示状态，如果已有地名则清除
+        if self.googleMap2D._gps_markers:
+            self.googleMap2D._gps_markers.clear()
+            self.googleMap2D.clear_place()
+            self.googleMap2D._update_display()
+            print("已隐藏所有地名")
+            return
+
+        # 查询地名数据
+        columns_to_get = ['placeid', 'gps', 'name']
+        inclusive_start_primary_key = [('placeid', INF_MAX)]
+        exclusive_end_primary_key = [('placeid', INF_MIN)]
+
+        try:
+            consumed, next_start_primary_key, place_list, next_token = self.client.get_range(
+                table_name=settings.PLACETABLE_NAME,
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=20
+            )
+
+            print(f"成功读取 {len(place_list)} 条最新记录。")
+            for row_idx, row in enumerate(place_list):
+                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
+                gps = attr_dict.get('gps', '')
+                name = attr_dict.get('name', '')
+                lat_str, lon_str = gps.split(',')
+                self.googleMap2D.add_gps_marker((float(lat_str.strip()), float(lon_str.strip())), name)
+                self.googleMap2D.receive_place((float(lat_str.strip()), float(lon_str.strip())), name)
+
+        except Exception as e:
+            print(f"查询失败: {e}")
+    
+    def _toggle_device_location(self):
+        """切换显示/隐藏设备位置"""
+        # 如果有设备标记，清除所有标记并停止闪烁计时器
+        if self.googleMap2D._device_markers:
+            self.googleMap2D._device_markers.clear()
+            self.googleMap2D._blink_timer.stop()
+            self.googleMap2D._update_display()
+            self.googleMap2D.clear_device()
+            print("已隐藏所有设备位置")
+            return
+
+        # 查询设备位置数据
+        columns_to_get = ['deviceId', 'gps', 'time']
+        inclusive_start_primary_key = [('deviceId', INF_MAX)]
+        exclusive_end_primary_key = [('deviceId', INF_MIN)]
+
+        try:
+            consumed, next_start_primary_key, device_list, next_token = self.client.get_range(
+                table_name=settings.DEVICETTABLE_NAME,
+                direction=Direction.BACKWARD,
+                inclusive_start_primary_key=inclusive_start_primary_key,
+                exclusive_end_primary_key=exclusive_end_primary_key,
+                columns_to_get=columns_to_get,
+                limit=20
+            )
+
+            print(f"成功读取 {len(device_list)} 条最新记录。")
+            for row_idx, row in enumerate(device_list):
+                # 解析主键
+                primary_key_dict = {key[0]: key[1] for key in row.primary_key}
+                deviceId = primary_key_dict.get('deviceId', '')
+                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
+                gps_str = attr_dict.get('gps', '')
+                time_str = attr_dict.get('time', '')
+
+                # 解析GPS坐标
+                if gps_str:
+                    lat_str, lon_str = gps_str.split(',')
+                    gps = (float(lat_str.strip()), float(lon_str.strip()))
+
+                    # 添加设备标记（默认不闪烁，不灰色）
+                    self.googleMap2D.add_device_marker(deviceId, gps, time_str, is_gray=False, loop=False)
+                    self.googleMap2D.receive_device(deviceId, gps, time_str)
+
+        except Exception as e:
+            print(f"查询失败: {e}")
+    
     def _create_map_control_buttons(self, parent_container):
         """创建地图控制按钮（右下角4个小图标）"""
         # 创建按钮容器
@@ -205,10 +472,10 @@ class MainWindow(QMainWindow):
                 background-color: rgba(255, 255, 255, 255); 
             }
         """)
-        btn_route.setIcon(GoogleMap2DWidget._create_route_icon())
+        btn_route.setIcon(create_route_icon())
         btn_route.setIconSize(QSize(24, 24))
         btn_route.setToolTip("显示/隐藏道路")
-        btn_route.clicked.connect(self.googleMap2D._add_route_to_map)
+        btn_route.clicked.connect(self._add_route_to_map)
         
         btn_place = QPushButton()
         btn_place.setFixedSize(30, 30)
@@ -222,10 +489,10 @@ class MainWindow(QMainWindow):
                 background-color: rgba(255, 255, 255, 255); 
             }
         """)
-        btn_place.setIcon(GoogleMap2DWidget._create_place_icon())
+        btn_place.setIcon(create_place_icon())
         btn_place.setIconSize(QSize(24, 24))
         btn_place.setToolTip("显示/隐藏地名")
-        btn_place.clicked.connect(self.googleMap2D._add_place_to_map)
+        btn_place.clicked.connect(self._add_place_to_map)
         
         btn_device = QPushButton()
         btn_device.setFixedSize(30, 30)
@@ -239,33 +506,57 @@ class MainWindow(QMainWindow):
                 background-color: rgba(255, 255, 255, 255); 
             }
         """)
-        btn_device.setIcon(GoogleMap2DWidget._create_device_icon())
+        btn_device.setIcon(create_device_icon())
         btn_device.setIconSize(QSize(24, 24))
         btn_device.setToolTip("显示/隐藏设备位置")
-        btn_device.clicked.connect(self.googleMap2D._toggle_device_location)
-        
+        btn_device.clicked.connect(self._toggle_device_location)
+
         btn_center = QPushButton()
         btn_center.setFixedSize(30, 30)
         btn_center.setStyleSheet("""
-            QPushButton { 
-                border: none; 
-                background-color: rgba(255, 255, 255, 200); 
-                border-radius: 4px; 
-            } 
-            QPushButton:hover { 
-                background-color: rgba(255, 255, 255, 255); 
-            }
-        """)
-        btn_center.setIcon(GoogleMap2DWidget._create_center_icon())
+                   QPushButton { 
+                       border: none; 
+                       background-color: rgba(255, 255, 255, 200); 
+                       border-radius: 4px; 
+                   } 
+                   QPushButton:hover { 
+                       background-color: rgba(255, 255, 255, 255); 
+                   }
+               """)
+        btn_center.setIcon(create_center_icon())
         btn_center.setIconSize(QSize(24, 24))
         btn_center.setToolTip("回到原始位置")
         btn_center.clicked.connect(lambda: self.googleMap2D.center_on_gps(settings.centenGps))
-        
+
         # 添加按钮到布局
         button_layout.addWidget(btn_route)
         button_layout.addWidget(btn_place)
         button_layout.addWidget(btn_device)
         button_layout.addWidget(btn_center)
+
+        btn_changeScene = QPushButton()
+        btn_changeScene.setFixedSize(30, 30)
+        btn_changeScene.setStyleSheet("""
+                   QPushButton { 
+                       border: none; 
+                       background-color: rgba(255, 255, 255, 200); 
+                       border-radius: 4px; 
+                   } 
+                   QPushButton:hover { 
+                       background-color: rgba(255, 255, 255, 255); 
+                   }
+               """)
+        btn_changeScene.setIcon(create_changescene_icon())
+        btn_changeScene.setIconSize(QSize(24, 24))
+        btn_changeScene.setToolTip("换场景")
+        btn_changeScene.clicked.connect( self.toggle_map_positions)
+
+        # 添加按钮到布局
+        button_layout.addWidget(btn_route)
+        button_layout.addWidget(btn_place)
+        button_layout.addWidget(btn_device)
+        button_layout.addWidget(btn_center)
+        button_layout.addWidget(btn_changeScene)
         
         # 保存按钮容器引用
         self.map_control_buttons = button_container
@@ -342,7 +633,7 @@ class MainWindow(QMainWindow):
     
     def toggle_map_positions(self):
         """切换2D地图和3D场景的位置和大小"""
-        print(f"🔄 切换地图位置... (当前模式: {self.current_mode})")
+        print(f"🔄 切换地图位置... (当前模式: {settings.current_mode})")
         
         if not hasattr(self, 'map2d_container') or not hasattr(self, 'scene3d_widget'):
             print("❌ 错误：缺少必要的组件")
@@ -351,7 +642,7 @@ class MainWindow(QMainWindow):
         left_widget = self.centralWidget().layout().itemAt(0).widget()
         left_layout = left_widget.layout()
         
-        if self.current_mode == "small_2d":
+        if settings.current_mode == "small_2d":
             # 当前是小窗口模式，切换到大屏模式
             print("📍 切换到：2D地图大屏 + 3D场景小窗")
             
@@ -402,8 +693,8 @@ class MainWindow(QMainWindow):
             
             # 更新按钮位置（保持在左侧区域右下角）
             QTimer.singleShot(150, lambda: self._update_map_control_buttons_position(left_widget))
-            
-            self.current_mode = "large_2d"
+
+            settings .current_mode = "large_2d"
             print("✅ 切换完成：2D地图全屏，3D场景小窗")
             
         else:
@@ -462,7 +753,7 @@ class MainWindow(QMainWindow):
             
             QTimer.singleShot(150, self._update_map2d_position)
             
-            self.current_mode = "small_2d"
+            settings.current_mode = "small_2d"
             print("✅ 切换完成：3D场景全屏，2D地图小窗")
     
     def _update_map_control_buttons_position(self, left_widget):

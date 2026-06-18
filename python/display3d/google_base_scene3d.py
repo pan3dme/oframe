@@ -14,6 +14,7 @@ from pan3d.core.Vector2D import Vector2D
 from pan3d.core.Vector3D import Vector3D
 from pan3d.core.TimeUtil import TimeUtilInter
 from pan3d.scene3D.Scene3D import Scene3D
+from config import settings
 
 
 class GoogleBaseScene3D(QWidget):
@@ -64,6 +65,9 @@ class GoogleBaseScene3D(QWidget):
         camera3D.camDis = camera3D.camDis + evt.wheelNum * 10  # 根据滚轮方向调整摄像机距离
 
     def uiStageDown(self, evt=InteractiveEvent()):
+
+        if settings.current_mode == "large_2d":
+            return
         if self.scene3D is None:
             return
         """鼠标按下事件：记录按下状态、旋转角度和位置，并检测双击"""
@@ -73,6 +77,7 @@ class GoogleBaseScene3D(QWidget):
         local_y = evt.y - global_pos.y()
         if not (0 <= local_x <= self.width() and 0 <= local_y <= self.height()):
             return
+
 
         camera3D = self.scene3D.camera3D
 
@@ -118,7 +123,7 @@ class GoogleBaseScene3D(QWidget):
             tx = evt.x - camera3D.downPos.x  # 水平偏移量
             ty = evt.y - camera3D.downPos.y  # 垂直偏移量
 
-            camera3D.rotationX = max(-50, min(-35, camera3D.downCamRoV2.x - ty*0.2))
+            camera3D.rotationX = max(-50, min(-35, camera3D.downCamRoV2.x - ty*0.25))
             camera3D.rotationY = camera3D.downCamRoV2.y - tx  # 水平拖拽控制偏航角
             return
 
@@ -142,9 +147,9 @@ class GoogleBaseScene3D(QWidget):
                 if camera3D.locaAtPos is None:
                     camera3D.locaAtPos = Vector3D(0, 0, 0)
 
-                camera3D.locaAtPos.x = camera3D.middleDownLocaAtPos.x - offset_x*50
+                camera3D.locaAtPos.x = camera3D.middleDownLocaAtPos.x - offset_x*100
                 camera3D.locaAtPos.y = 0
-                camera3D.locaAtPos.z = camera3D.middleDownLocaAtPos.z - offset_z*50
+                camera3D.locaAtPos.z = camera3D.middleDownLocaAtPos.z - offset_z*100
 
     def initializeGL(self):
         """初始化OpenGL设置"""

@@ -14,6 +14,7 @@ class _Config:
     PLACETABLE_NAME = 'placetable001'
 
     scaleScene = 17500
+    current_mode = "large_2d"
     gps_bounds = {
         'top_left': (26.542654, 109.358596),  # (latitude, longitude)
         'bottom_right': (26.504617, 109.440105)  # (latitude, longitude)
