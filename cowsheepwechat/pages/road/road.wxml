@@ -85,7 +85,7 @@
       <textarea
         class="modal-textarea modal-textarea-small path-textarea"
         placeholder="点击右侧按钮录制行走路径"
-        value="{{formRoadPoints}}"
+        value="{{formRoadPointsDisplay}}"
         disabled="{{true}}"
         maxlength="2000"
         auto-height

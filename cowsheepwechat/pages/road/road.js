@@ -13,6 +13,7 @@ Page({
     editRoadId: '',       // 编辑时有值
     formRoadName: '',
     formRoadPoints: '',
+    formRoadPointsDisplay: '',
     pathPointCount: 0,
     formRoadLevel: '1',
     levelOptions: ['1', '2', '3'],
@@ -29,8 +30,10 @@ Page({
     if (pathStr && this.data.showModal) {
       const parts = pathStr.split(',')
       const ptCount = parts.length >= 2 ? parts.length / 2 : 0
+      const display = pathStr.length > 20 ? pathStr.substring(0, 20) + '...' : pathStr
       this.setData({
         formRoadPoints: pathStr,
+        formRoadPointsDisplay: display,
         pathPointCount: ptCount
       })
       getApp().globalData._roadRecordedPath = null
@@ -68,6 +71,7 @@ Page({
       editRoadId: '',
       formRoadName: '',
       formRoadPoints: '',
+      formRoadPointsDisplay: '',
       pathPointCount: 0,
       formRoadLevel: '1',
       levelIndex: 0
@@ -106,6 +110,11 @@ Page({
       return
     }
 
+    if (this.data.pathPointCount < 2) {
+      wx.showToast({ title: '请录制至少2个坐标点', icon: 'none' })
+      return
+    }
+
     const level = this.data.formRoadLevel
     const editRoadId = this.data.editRoadId
     if (editRoadId) {
@@ -122,6 +131,7 @@ Page({
     wx.request({
       url: API_URL,
       method: 'POST',
+      timeout: 15000,
       data: {
         action: 'addRoad',
         info: {
@@ -133,15 +143,16 @@ Page({
         }
       },
       success: (res) => {
-        wx.hideLoading()
         console.log('新增道路返回:', JSON.stringify(res.data))
         wx.showToast({ title: '新增成功', icon: 'success', duration: 1500 })
         this._loadRoadList(true)
       },
       fail: (err) => {
-        wx.hideLoading()
         console.error('新增道路失败:', err)
         wx.showToast({ title: '提交失败', icon: 'error' })
+      },
+      complete: () => {
+        wx.hideLoading()
       }
     })
   },
@@ -152,8 +163,10 @@ Page({
     const item = this.data.roadList.find(v => v.roadId === roadId)
     if (!item) return
 
-    const parts = (item.points || '').split(',')
+    const rawPoints = item.points || ''
+    const parts = rawPoints.split(',')
     const pts = parts.length >= 2 ? parts.length / 2 : 0
+    const display = rawPoints.length > 20 ? rawPoints.substring(0, 20) + '...' : rawPoints
     const levelStr = String(item.level || '1')
     const levelIndex = this.data.levelOptions.indexOf(levelStr)
     const lvlIdx = levelIndex >= 0 ? levelIndex : 0
@@ -163,7 +176,8 @@ Page({
       modalTitle: '编辑道路',
       editRoadId: roadId,
       formRoadName: item.name || '',
-      formRoadPoints: item.points || '',
+      formRoadPoints: rawPoints,
+      formRoadPointsDisplay: display,
       pathPointCount: pts,
       formRoadLevel: levelStr,
       levelIndex: lvlIdx
@@ -177,6 +191,7 @@ Page({
     wx.request({
       url: API_URL,
       method: 'POST',
+      timeout: 15000,
       data: {
         action: 'updateRoad',
         info: {
@@ -188,15 +203,16 @@ Page({
         }
       },
       success: (res) => {
-        wx.hideLoading()
         console.log('更新道路返回:', JSON.stringify(res.data))
         wx.showToast({ title: '更新成功', icon: 'success', duration: 1500 })
         this._loadRoadList(true)
       },
       fail: (err) => {
-        wx.hideLoading()
         console.error('更新道路失败:', err)
         wx.showToast({ title: '更新失败', icon: 'error' })
+      },
+      complete: () => {
+        wx.hideLoading()
       }
     })
   },
@@ -233,20 +249,22 @@ Page({
     wx.request({
       url: API_URL,
       method: 'POST',
+      timeout: 15000,
       data: {
         action: 'deleteRoad',
         info: { route_id: roadId }
       },
       success: (res) => {
-        wx.hideLoading()
         console.log('删除道路返回:', JSON.stringify(res.data))
         wx.showToast({ title: '删除成功', icon: 'success', duration: 1500 })
         this._loadRoadList(true)
       },
       fail: (err) => {
-        wx.hideLoading()
         console.error('删除道路失败:', err)
         wx.showToast({ title: '删除失败', icon: 'error' })
+      },
+      complete: () => {
+        wx.hideLoading()
       }
     })
   },

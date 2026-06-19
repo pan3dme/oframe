@@ -115,20 +115,22 @@ Page({
     wx.request({
       url: API_URL,
       method: 'POST',
+      timeout: 15000,
       data: {
         action: 'addPlace',
         info: { placeid, name, gps, level, time: getApp().formatTime() }
       },
       success: (res) => {
-        wx.hideLoading()
         console.log('新增地名返回:', JSON.stringify(res.data))
         wx.showToast({ title: '新增成功', icon: 'success', duration: 1500 })
         this._loadPlaceList(true)
       },
       fail: (err) => {
-        wx.hideLoading()
         console.error('新增地名失败:', err)
         wx.showToast({ title: '提交失败', icon: 'error' })
+      },
+      complete: () => {
+        wx.hideLoading()
       }
     })
   },
@@ -173,20 +175,22 @@ Page({
     wx.request({
       url: API_URL,
       method: 'POST',
+      timeout: 15000,
       data: {
         action: 'updatePlace',
         info: { placeId, name, gps, level, time: getApp().formatTime() }
       },
       success: (res) => {
-        wx.hideLoading()
         console.log('更新地名返回:', JSON.stringify(res.data))
         wx.showToast({ title: '更新成功', icon: 'success', duration: 1500 })
         this._loadPlaceList(true)
       },
       fail: (err) => {
-        wx.hideLoading()
         console.error('更新地名失败:', err)
         wx.showToast({ title: '更新失败', icon: 'error' })
+      },
+      complete: () => {
+        wx.hideLoading()
       }
     })
   },
@@ -214,20 +218,22 @@ Page({
     wx.request({
       url: API_URL,
       method: 'POST',
+      timeout: 15000,
       data: {
         action: 'deletePlace',
         info: { placeid }
       },
       success: (res) => {
-        wx.hideLoading()
         console.log('删除地名返回:', JSON.stringify(res.data))
         wx.showToast({ title: '删除成功', icon: 'success', duration: 1500 })
         this._loadPlaceList(true)
       },
       fail: (err) => {
-        wx.hideLoading()
         console.error('删除地名失败:', err)
         wx.showToast({ title: '删除失败', icon: 'error' })
+      },
+      complete: () => {
+        wx.hideLoading()
       }
     })
   },

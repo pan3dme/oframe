@@ -32,15 +32,15 @@ Page({
       },
       {
         id: 6,
-        label: '连接蓝牙'
-      },
-      {
-        id: 7,
         label: '道路管理'
       },
       {
-        id: 8,
+        id: 7,
         label: '地名管理'
+      },
+      {
+        id: 8,
+        label: '连接蓝牙'
       },
     ]
   },
@@ -157,16 +157,16 @@ Page({
         url: '/pages/livestock/livestock'
       })
     } else if (id === 6) {
+      // 道路管理
+      wx.navigateTo({ url: '/pages/road/road' })
+    } else if (id === 7) {
+      // 地名管理
+      wx.navigateTo({ url: '/pages/places/places' })
+    } else if (id === 8) {
       // 连接蓝牙 - 跳转蓝牙页面
       wx.navigateTo({
         url: '/pages/bluetooth/bluetooth'
       })
-    } else if (id === 7) {
-      // 道路管理
-      wx.navigateTo({ url: '/pages/road/road' })
-    } else if (id === 8) {
-      // 地名管理
-      wx.navigateTo({ url: '/pages/places/places' })
     }
   },
 
