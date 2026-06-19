@@ -37,3 +37,5 @@
 /arduino/libraries/ThingsCloud_ESP_SDK
 /arduino/libraries/U8g2
 /arduino/libraries/Crypto
+/arduino/libraries/Heltec_ESP32_LoRa_v3
+/arduino/libraries/LoRaWAN_ESP32
