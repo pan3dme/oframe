@@ -110,10 +110,10 @@ Page({
     that._elapsedTimer = setInterval(() => {
       that._elapsedSec++
       that.setData({ elapsed: that._elapsedSec })
-      // 每秒检查：如果与上次记录间隔 >= 1s 且有新位置，强制记录
+      // 每3秒检查：如果与上次记录间隔 >= 3s 且有新位置，强制记录
       if (that._lastLocation && that.data.recording) {
         const now = Date.now()
-        if (now - that._lastRecordTime >= 900 && that._lastLocation !== that._lastRecordedRef) {
+        if (now - that._lastRecordTime >= 3000 && that._lastLocation !== that._lastRecordedRef) {
           that._recordPoint(that._lastLocation.latitude, that._lastLocation.longitude, now)
           that._lastRecordedRef = that._lastLocation
         }
@@ -204,8 +204,8 @@ Page({
       gcjLat, gcjLng
     )
 
-    // 移动超过 1 米就记录
-    if (dist >= 1) {
+    // 移动超过 10 米就记录
+    if (dist >= 10) {
       this._recordPoint(gcjLat, gcjLng, now)
       this._lastRecordedRef = locRef
     }

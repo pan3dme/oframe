@@ -87,7 +87,7 @@
         placeholder="点击右侧按钮录制行走路径"
         value="{{formRoadPointsDisplay}}"
         disabled="{{true}}"
-        maxlength="2000"
+        maxlength="50000"
         auto-height
       />
       <view class="path-btn" bindtap="onGetPath">
