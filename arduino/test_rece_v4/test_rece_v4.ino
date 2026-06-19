@@ -35,6 +35,9 @@ void setup() {
     while (1);
   }
 
+  // 配置DIO2为RF开关控制（启用外部PA的关键）
+  loraRadio.setDio2AsRfSwitch(true);
+
   // 3. 配置LoRa通信参数 (必须与发射端完全一致)
   loraRadio.setFrequency(928.0);       // 工作频率 928MHz
   loraRadio.setOutputPower(22, true);  // 输出功率22dBm + 启用外部PA

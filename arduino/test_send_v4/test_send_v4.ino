@@ -43,9 +43,15 @@ void setup() {
     while (1);
   }
 
+  // 配置DIO2为RF开关控制（启用外部PA的关键）
+  loraRadio.setDio2AsRfSwitch(true);
+
   // 配置LoRa通信参数
   loraRadio.setFrequency(LORA_FREQ);           // 设置工作频率
-  loraRadio.setOutputPower(22, true);          // 输出功率22dBm + 启用外部PA（GC1109）
+  loraRadio.setOutputPower(22, true);          // 输出功率22dBm + 优化模式
+  
+  // 设置PA ramp时间为200us（确保PA稳定）
+  loraRadio.setPaRampTime(RADIOLIB_SX126X_PA_RAMP_200U);
   loraRadio.setSpreadingFactor(SF_NUM);        // 设置扩频因子
   loraRadio.setBandwidth(BW_VAL);              // 设置带宽
   loraRadio.setCodingRate(CR_NUM);             // 设置编码率
@@ -57,7 +63,7 @@ void setup() {
 
 void loop() {
   // 构造测试数据包
-  String sendContent = "com7 out- " +String(sendCount)+"  ";
+  String sendContent = "com7 send- " +String(sendCount)+"  ";
   uint8_t sendBuffer[128];
   uint16_t dataLen = sendContent.length();
   sendContent.getBytes(sendBuffer, dataLen);
