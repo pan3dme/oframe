@@ -1,81 +1,79 @@
-/*
- * LoRa 接收端 - Heltec 官方库（高性能）
- */
-#include "LoRaWan_APP.h"
-#include "Arduino.h"
+// LoRa接收端测试程序 - Heltec V4板子 (极简版)
+#include <RadioLib.h>
 
-RadioEvents_t radioEvents;
-uint8_t recvBuffer[256];
-uint8_t recvSize = 0;
+// SX1262射频模块引脚定义 (与发射端完全一致)
+#define LORA_NSS    8    // NSS片选
+#define LORA_DIO1   14   // DIO1中断
+#define LORA_RST    12   // RST复位
+#define LORA_BUSY   13   // BUSY忙状态
+SX1262 loraRadio = new Module(LORA_NSS, LORA_DIO1, LORA_RST, LORA_BUSY);
 
-// 接收完成回调
-void onRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
-  Serial.println("-----------------------------------");
-  Serial.print("📥 收到: ");
-  Serial.println((char*)payload);
-  Serial.print("📶 RSSI: ");
-  Serial.print(rssi);
-  Serial.println(" dBm");
-  Serial.print("📊 SNR: ");
-  Serial.print(snr);
-  Serial.println(" dB");
-  Serial.println("-----------------------------------");
-  
-  // 重新启动接收
-  Radio.Rx(0);  // 连续接收模式
-}
-
-// 接收超时回调
-void onRxTimeout(void) {
-  // 超时后重新启动接收
-  Radio.Rx(0);
-}
-
-// CRC 错误回调
-void onRxError(void) {
-  Serial.println("❌ CRC 错误");
-  Radio.Rx(0);
-}
+// GC1109前端功放芯片引脚 (接收端也需要开启功放)
+#define PA_POWER    7
+#define PA_EN       2
+#define PA_TX_EN    46
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);
-  
-  // ⚠️ 关键：手动开启 V4 外部功放（FEM）
-  pinMode(7, OUTPUT);   // LORA_PA_POWER
-  digitalWrite(7, HIGH);
-  pinMode(2, OUTPUT);   // LORA_PA_EN
-  digitalWrite(2, HIGH);
-  pinMode(46, OUTPUT);  // LORA_PA_TX_EN
-  digitalWrite(46, LOW);  // 接收时关闭
-  
-  Serial.println("⚡ V4 外部功放已开启（接收模式）");
-  
-  // 初始化 MCU
-  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  
-  // 配置事件回调
-  radioEvents.RxDone = onRxDone;
-  radioEvents.RxTimeout = onRxTimeout;
-  radioEvents.RxError = onRxError;
-  
-  // 初始化 Radio
-  Radio.Init(&radioEvents);
-  Radio.SetChannel(928000000);  // 928 MHz (美版/中国版)
-  
-  // 配置接收参数（与发送端一致）
-  Radio.SetRxConfig(MODEM_LORA, LORA_BW_125, LORA_SF10, 
-                    LORA_CR_4_5, 0, 8, 
-                    0, false, 
-                    0, true, 0, 0, false, true);
-  
-  // 启动连续接收
-  Radio.Rx(0);
-  
-  Serial.println("✅ 接收端就绪 (SF10, BW125)");
+  delay(1000);
+
+  // 1. 配置GC1109功放引脚并开启
+  pinMode(PA_POWER, OUTPUT);
+  digitalWrite(PA_POWER, HIGH);    // 开启功放电源
+  pinMode(PA_EN, OUTPUT);
+  digitalWrite(PA_EN, HIGH);       // 使能功放芯片
+  pinMode(PA_TX_EN, OUTPUT);
+  digitalWrite(PA_TX_EN, HIGH);    // 开启射频前端通路
+
+  Serial.println("GC1109 接收通路已开启");
+
+  // 2. 初始化SX1262射频模块
+  int initResult = loraRadio.begin();
+  if (initResult != RADIOLIB_ERR_NONE) {
+    Serial.print("射频初始化失败：");
+    Serial.println(initResult);
+    while (1);
+  }
+
+  // 3. 配置LoRa通信参数 (必须与发射端完全一致)
+  loraRadio.setFrequency(928.0);       // 工作频率 928MHz
+  loraRadio.setOutputPower(22, true);  // 输出功率22dBm + 启用外部PA
+  loraRadio.setSpreadingFactor(10);    // 扩频因子 SF10
+  loraRadio.setBandwidth(125.0);       // 带宽 125kHz
+  loraRadio.setCodingRate(0);          // 编码率 4/5
+  loraRadio.setPreambleLength(8);      // 前导码长度
+  loraRadio.setCRC(true);              // 启用CRC校验
+
+  Serial.println("接收就绪 22dBm SF10 928MHz");
 }
 
 void loop() {
-  // 处理 Radio 事件
-  Radio.IrqProcess();
+  uint8_t rxBuffer[128];
+
+  // 阻塞等待接收数据
+  int ret = loraRadio.receive(rxBuffer, sizeof(rxBuffer));
+
+  // 检查接收结果
+  if (ret == RADIOLIB_ERR_NONE) {
+    // 获取实际接收到的数据长度
+    int len = loraRadio.getPacketLength();
+    
+    Serial.print("✅ 收到数据 (RSSI: ");
+    Serial.print(loraRadio.getRSSI());
+    Serial.print(" dBm, SNR: ");
+    Serial.print(loraRadio.getSNR());
+    Serial.println(" dB):");
+    
+    // 将接收到的字节转为字符串并打印
+    String message = String((char*)rxBuffer).substring(0, len);
+    Serial.println(message);
+    
+  } else if (ret == RADIOLIB_ERR_RX_TIMEOUT) {
+    // 接收超时是正常现象，无需报错，继续等待即可
+    
+  } else {
+    // 其他错误
+    Serial.print("❌ 接收错误码：");
+    Serial.println(ret);
+  }
 }
