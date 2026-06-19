@@ -35,8 +35,9 @@ void setup() {
     while (1);
   }
 
-  // 配置DIO2为RF开关控制（启用外部PA的关键）
-  loraRadio.setDio2AsRfSwitch(true);
+  // V4使用外部GC1109功放，已通过GPIO强制开启通路
+  // 必须禁用DIO2自动RF开关，避免与手动控制的GPIO冲突
+  loraRadio.setDio2AsRfSwitch(false);
 
   // 3. 配置LoRa通信参数 (必须与发射端完全一致)
   loraRadio.setFrequency(928.0);       // 工作频率 928MHz
