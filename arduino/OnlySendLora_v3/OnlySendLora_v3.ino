@@ -10,7 +10,7 @@
 
 // ==================== 常量定义 ====================
 const char* DEVICE_NAME_PREFIX = "v4-x";
-const unsigned long SEND_INTERVAL_MS = 60000;  // 总周期10秒
+const unsigned long SEND_INTERVAL_MS = 10000;  // 总周期10秒
 const int PACKET_TYPE_GPS = 1;                 // GPS数据包类型
 const int PACKET_TYPE_TIME = 2;                // 对时数据包类型
 
