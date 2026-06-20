@@ -162,15 +162,36 @@ Page({
     editAvatarUrl: '',      // 新上传的临时的头像 URL（OSS 回传）
 
     // 牛羊列表
-    livestockList: []
+    livestockList: [],
+    isAdmin: false,
+    singleLineRecord: false
   },
 
   _tapAvatarTime: 0,       // 修改面板头像双击计时
   _tapItemTime: 0,         // 列表项双击计时
   _tapItemName: '',        // 列表项双击缓存的名称
 
+  _readSettings() {
+    let isAdmin = false
+    let singleLineRecord = false
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+    } catch (e) { /* ignore */ }
+    try {
+      const raw = wx.getStorageSync('setting_single_line_record')
+      singleLineRecord = raw === true || raw === 'true' || raw === 1 || raw === '1'
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin, singleLineRecord })
+  },
+
   onLoad() {
+    this._readSettings()
     this.fetchLivestockList()
+  },
+
+  onShow() {
+    this._readSettings()
   },
 
   // ========== 列表项点击 → 跳转详情页 ==========
@@ -227,6 +248,10 @@ Page({
 
   // 强制刷新牛羊列表
   refreshLivestockList() {
+    this.fetchLivestockList(true)
+  },
+
+  onPullDownRefresh() {
     this.fetchLivestockList(true)
   },
 

@@ -23,6 +23,19 @@
     </view>
   </view>
 
+  <!-- 权限设置 -->
+  <view class="section">
+    <view class="section-title">权限设置</view>
+
+    <view class="setting-row">
+      <view class="setting-left">
+        <text class="setting-icon">👤</text>
+        <text class="setting-label">是否为管理员</text>
+      </view>
+      <switch checked="{{isAdmin}}" bindchange="onAdminChange" color="#07c160" />
+    </view>
+  </view>
+
   <!-- 说明 -->
   <view class="section">
     <view class="section-title">说明</view>

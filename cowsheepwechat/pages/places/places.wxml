@@ -3,7 +3,7 @@
 
 <view class="toolbar">
   <view class="toolbar-count">共 {{placeList.length}} 个地名</view>
-  <view class="toolbar-btn" bindtap="onAdd">＋ 新增地名</view>
+  <view class="toolbar-btn" bindtap="onAdd" wx:if="{{isAdmin}}">＋ 新增地名</view>
 </view>
 
 <scroll-view

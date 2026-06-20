@@ -17,14 +17,25 @@ Page({
     pathPointCount: 0,
     formRoadLevel: '1',
     levelOptions: ['1', '2', '3'],
-    levelIndex: 0
+    levelIndex: 0,
+    isAdmin: false
+  },
+
+  _readSettings() {
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      const isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+      this.setData({ isAdmin })
+    } catch (e) { /* ignore */ }
   },
 
   onLoad() {
+    this._readSettings()
     this._loadRoadList(false)
   },
 
   onShow() {
+    this._readSettings()
     // 从路径录制页返回，填充坐标
     const pathStr = getApp().globalData._roadRecordedPath
     if (pathStr && this.data.showModal) {

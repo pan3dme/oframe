@@ -15,14 +15,25 @@ Page({
     formPlaceGps: '',
     formPlaceLevel: '1',
     levelOptions: ['1', '2', '3'],
-    levelIndex: 0
+    levelIndex: 0,
+    isAdmin: false
+  },
+
+  _readSettings() {
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      const isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+      this.setData({ isAdmin })
+    } catch (e) { /* ignore */ }
   },
 
   onLoad() {
+    this._readSettings()
     this._loadPlaceList(false)
   },
 
   onShow() {
+    this._readSettings()
     // 检查是否从坐标选择页返回了 GPS
     const picked = getApp().globalData._placePickedGps
     if (picked) {

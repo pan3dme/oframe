@@ -138,43 +138,93 @@ Page({
     editPicFilePath: '',
 
     // 设备列表
-    deviceList: []
+    deviceList: [],
+    isAdmin: false,
+    singleLineRecord: false
+  },
+
+  _readSettings() {
+    let isAdmin = false
+    let singleLineRecord = false
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+    } catch (e) { /* ignore */ }
+    try {
+      const raw = wx.getStorageSync('setting_single_line_record')
+      singleLineRecord = raw === true || raw === 'true' || raw === 1 || raw === '1'
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin, singleLineRecord })
   },
 
   onLoad() {
+    this._readSettings()
     this.fetchDeviceList()
+  },
+
+  onShow() {
+    this._readSettings()
   },
 
   // ========== 获取设备列表 ==========
   fetchDeviceList(forceRefresh) {
     dataCache.getDeviceList((deviceData) => {
-      // 同时获取牛羊名字列表
+      // 同时获取牛羊名字列表 + 设备LOT最新数据
       dataCache.getLivestockList((livestockData) => {
-        const nameMap = {}
-        if (livestockData && livestockData.livestockList) {
-          livestockData.livestockList.forEach(item => {
-            if (item.cowsheepId) nameMap[item.cowsheepId] = item.name
+        dataCache.getDeviceLotRefresh((lotData) => {
+          const nameMap = {}
+          if (livestockData && livestockData.livestockList) {
+            livestockData.livestockList.forEach(item => {
+              if (item.cowsheepId) nameMap[item.cowsheepId] = item.name
+            })
+          }
+
+          // 建立 deviceId → LOT最新记录 的映射
+          const lotMap = {}
+          if (lotData && lotData.lotList) {
+            lotData.lotList.forEach(rec => {
+              if (rec.deviceId && rec.deviceId !== '-') {
+                // 保留最新的那条（lotList 已按时间排序）
+                if (!lotMap[rec.deviceId]) {
+                  lotMap[rec.deviceId] = rec
+                }
+              }
+            })
+          }
+
+          const deviceList = (deviceData.recordList || []).map(item => {
+            const lotRec = lotMap[item.deviceId]
+            // 用LOT最新数据的time替换设备表自身的time
+            const displayTime = lotRec ? lotRec.rawTime : item.rawTime
+            const displayDate = lotRec ? lotRec.date : item.date
+            const displayTimePart = lotRec ? lotRec.time_part : item.time_part
+            return {
+              ...item,
+              date: displayDate,
+              time_part: displayTimePart,
+              rawTime: displayTime,
+              bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
+              relativeTime: this._calcRelativeTime(displayTime)
+            }
           })
-        }
 
-        const deviceList = (deviceData.recordList || []).map(item => ({
-          ...item,
-          bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
-          relativeTime: this._calcRelativeTime(item.rawTime)
-        }))
-
-        this.setData({
-          deviceList,
-          livestockNames: livestockData.livestockNames || []
-        })
-        if (forceRefresh) {
-          wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
-        }
+          this.setData({
+            deviceList,
+            livestockNames: livestockData.livestockNames || []
+          })
+          if (forceRefresh) {
+            wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
+          }
+        }, forceRefresh)
       }, forceRefresh)
     }, forceRefresh)
   },
 
   refreshDeviceList() {
+    this.fetchDeviceList(true)
+  },
+
+  onPullDownRefresh() {
     this.fetchDeviceList(true)
   },
 

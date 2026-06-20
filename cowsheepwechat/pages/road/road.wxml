@@ -4,7 +4,7 @@
 <!-- 顶部操作栏 -->
 <view class="toolbar">
   <view class="toolbar-count">共 {{roadList.length}} 条道路</view>
-  <view class="toolbar-btn" bindtap="onAdd">＋ 新增道路</view>
+  <view class="toolbar-btn" bindtap="onAdd" wx:if="{{isAdmin}}">＋ 新增道路</view>
 </view>
 
 <!-- 道路列表 -->
