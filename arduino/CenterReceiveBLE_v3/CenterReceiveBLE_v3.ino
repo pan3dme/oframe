@@ -31,7 +31,9 @@ String displayBuf[4] = { "", "", "", "" };
 String dataArray[DATA_MAX_COUNT];
 int dataCount = 0;
 int receiveCount = 0;
-String deviceName = "v4-x";
+
+String deviceName = "x-x";
+
 
 // LoRa接收缓冲区
 char loraStr[BUFFER_SIZE];
@@ -96,6 +98,37 @@ String getAndRemoveFirstData() {
   }
   dataArray[--dataCount] = "";
   return first;
+}
+
+// 处理固件更新指令
+void handleFirmwareUpdate(String loraData) {
+  Serial.println("📦 开始处理固件更新...");
+  
+  // 解析固件更新信息
+  // 格式示例: 10|device-name|firmware-url|version|checksum
+  int parts[5];
+  int partIndex = 0;
+  int lastIndex = 0;
+  
+  for (int i = 0; i <= loraData.length() && partIndex < 5; i++) {
+    if (i == loraData.length() || loraData.charAt(i) == '|') {
+      if (partIndex < 5) {
+        parts[partIndex++] = i;
+      }
+    }
+  }
+  
+  if (partIndex >= 2) {
+    String deviceTarget = loraData.substring(parts[0] + 1, parts[1]);
+    Serial.print("🎯 目标设备: ");
+    Serial.println(deviceTarget);
+    
+    // TODO: 根据实际需求实现固件下载和烧录逻辑
+    // 可以集成 ESP32 OTA 更新功能
+    Serial.println("⚠️ 固件更新功能待实现");
+  } else {
+    Serial.println("❌ 固件更新指令格式错误");
+  }
 }
 
 // 初始化BLE服务
@@ -222,7 +255,7 @@ void loop() {
       Serial.println(messageType);
 
       // 类型2: 对时信息
-      if (messageType == 2) {
+      if (messageType == MSG_TYPE_TIME) {
         // 格式: 2|v4-1|2026/6/17 00:12:20
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
@@ -233,8 +266,14 @@ void loop() {
         }
       }
       // 类型1: 定位信息（原有逻辑）
-      else if (messageType == 1) {
+      else if (messageType == MSG_TYPE_GPS) {
         displayBuf[3] = String(loraStr).substring(0, 15);
+      }
+      // 类型10: 固件更新指令
+      else if (messageType == MSG_TYPE_FIRMWARE) {
+        Serial.println("🔄 收到固件更新指令");
+        // TODO: 在此添加固件更新逻辑
+        handleFirmwareUpdate(loraStr);
       }
       // 其他类型，直接显示
       else {

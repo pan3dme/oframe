@@ -12,6 +12,13 @@
 #include <BLE2902.h>
 #include "LoRaWan_APP.h"
 
+// LoRa消息类型枚举
+typedef enum {
+  MSG_TYPE_GPS = 1,        // GPS定位信息
+  MSG_TYPE_TIME = 2,       // 对时信息
+  MSG_TYPE_FIRMWARE = 10   // 固件更新指令
+} MessageType_t;
+
 // 前向声明：在头文件中避免包含过多实现细节
 class TinyGPSPlus;
 class BLEServer;
