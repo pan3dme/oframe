@@ -22,11 +22,17 @@ unsigned long loraSyncedMillis = 0; // LoRa同步时的本地毫秒计数
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
     0x248B9C697090, // v4    1
+    0x9875555,
     0x6809A21B5BF8, // v4    2
+    0x9875555,
     0x8442AAAC85D8, // v3    3
+    0x9875555,
     0x301BA21B5BF8, // v4    4
+    0x9875555,
     0x0C46AAAC85D8, // v3    5
+    0x9875555,
     0xB4E00404A7AC, // v3    6
+    0x9875555,
     0xF89A3604A7AC, // v3    7
     0x9875555       // 等待添加
 };
