@@ -1,7 +1,7 @@
 <!--livestock.wxml-->
 <navigation-bar title="管理牛羊" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <canvas type="2d" id="compressCanvas" style="width:512px;height:512px;position:fixed;left:-9999px"></canvas>
-<scroll-view class="scrollarea" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onPullDownRefresh">
+<scroll-view class="scrollarea" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refresherTriggered}}" bindrefresherrefresh="onPullDownRefresh">
 
 <!-- 顶部操作栏 -->
 <view class="toolbar">
@@ -12,6 +12,7 @@
   <!-- 牛羊列表（单行模式） -->
   <view class="list-panel" wx:if="{{livestockList.length > 0 && singleLineRecord}}">
     <view class="list-item list-item-compact" wx:for="{{livestockList}}" wx:key="name" bindtap="onItemTap" data-name="{{item.name}}">
+      <text class="item-index">{{index + 1}}</text>
       <view class="item-icon-compact">🐂</view>
       <view class="item-info">
         <view class="item-line-one">
@@ -25,6 +26,7 @@
   <!-- 牛羊列表（完整模式） -->
   <view class="list-panel" wx:elif="{{livestockList.length > 0}}">
     <view class="list-item" wx:for="{{livestockList}}" wx:key="name" bindtap="onItemTap" data-name="{{item.name}}">
+      <text class="item-index">{{index + 1}}</text>
       <image class="item-avatar" src="{{item.avatar}}" mode="aspectFill" wx:if="{{item.avatar}}" />
       <view class="item-avatar-placeholder" wx:else>🐂</view>
       <view class="item-info">

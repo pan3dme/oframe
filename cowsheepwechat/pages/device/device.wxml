@@ -1,7 +1,7 @@
 <!--device.wxml-->
 <navigation-bar title="设备管理" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <canvas type="2d" id="compressCanvas" style="width:512px;height:512px;position:fixed;left:-9999px"></canvas>
-<scroll-view class="scrollarea" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onPullDownRefresh">
+<scroll-view class="scrollarea" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refresherTriggered}}" bindrefresherrefresh="onPullDownRefresh">
 
 <!-- 顶部操作栏 -->
 <view class="toolbar">
@@ -12,6 +12,7 @@
   <!-- 设备列表（单行模式） -->
   <view class="list-panel" wx:if="{{deviceList.length > 0 && singleLineRecord}}">
     <view class="list-item list-item-compact" wx:for="{{deviceList}}" wx:key="deviceId" bindtap="onTapDevice" data-deviceid="{{item.deviceId}}">
+      <text class="item-index">{{index + 1}}</text>
       <view class="item-icon-compact">📡</view>
       <view class="item-info">
         <view class="item-line-one">
@@ -26,6 +27,7 @@
   <!-- 设备列表（完整模式） -->
   <view class="list-panel" wx:elif="{{deviceList.length > 0}}">
     <view class="list-item" wx:for="{{deviceList}}" wx:key="deviceId" data-deviceid="{{item.deviceId}}" bindtap="onTapDevice">
+      <text class="item-index">{{index + 1}}</text>
       <image class="item-device-pic" wx:if="{{item.picurl}}" src="{{item.picurl}}" mode="aspectFill" />
       <view class="item-avatar-placeholder" wx:else>📡</view>
       <view class="item-info">

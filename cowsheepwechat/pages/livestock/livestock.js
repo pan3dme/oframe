@@ -164,7 +164,8 @@ Page({
     // 牛羊列表
     livestockList: [],
     isAdmin: false,
-    singleLineRecord: false
+    singleLineRecord: false,
+    refresherTriggered: false
   },
 
   _tapAvatarTime: 0,       // 修改面板头像双击计时
@@ -210,7 +211,7 @@ Page({
   },
 
   // 从服务器获取牛羊列表（优先使用缓存）
-  fetchLivestockList(forceRefresh) {
+  fetchLivestockList(forceRefresh, onComplete) {
     dataCache.getLivestockList((cachedData) => {
       // 同时获取设备列表，建立 cowsheep_id → deviceId 映射
       dataCache.getDeviceList((deviceData) => {
@@ -242,6 +243,7 @@ Page({
         if (forceRefresh) {
           wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
         }
+        if (onComplete) onComplete()
       }, forceRefresh)
     }, forceRefresh)
   },
@@ -252,7 +254,10 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.fetchLivestockList(true)
+    this.setData({ refresherTriggered: true })
+    this.fetchLivestockList(true, () => {
+      this.setData({ refresherTriggered: false })
+    })
   },
 
   // 计算年龄：生日到今天，返回 "1年3个月" 格式

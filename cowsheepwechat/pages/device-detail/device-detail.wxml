@@ -2,47 +2,51 @@
 <navigation-bar title="设备详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <scroll-view class="scrollarea" scroll-y type="list">
   <block wx:if="{{deviceInfo}}">
-    <!-- 设备图片 -->
-    <view class="pic-area">
-      <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" />
-      <view class="detail-pic-placeholder" wx:else>📡</view>
+    <!-- 设备头部区域：左图右内容 -->
+    <view class="detail-header">
+      <!-- 左侧设备图片 -->
+      <view class="pic-area">
+        <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" />
+        <view class="detail-pic-placeholder" wx:else>📡</view>
+      </view>
+
+      <!-- 右侧设备信息 -->
+      <view class="info-area">
+        <view class="info-row">
+          <text class="info-label">deviceId</text>
+          <text class="info-value">{{deviceInfo.deviceId}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">别名</text>
+          <text class="info-value">{{deviceInfo.rename || '-'}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">编码</text>
+          <text class="info-value">{{deviceInfo.device_key || '-'}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">Lora串</text>
+          <text class="info-value info-value-lora">{{deviceInfo.lorastr || '-'}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">绑定</text>
+          <text class="info-value">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">时间</text>
+          <text class="info-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
+        </view>
+      </view>
     </view>
 
-    <!-- 设备信息卡片 -->
-    <view class="info-card">
-      <view class="info-row">
-        <text class="info-label">deviceId</text>
-        <text class="info-value">{{deviceInfo.deviceId}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">别名</text>
-        <text class="info-value">{{deviceInfo.rename || '-'}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">设备编码</text>
-        <text class="info-value">{{deviceInfo.device_key || '-'}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">Lora串</text>
-        <text class="info-value">{{deviceInfo.lorastr || '-'}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">绑定牛羊</text>
-        <text class="info-value">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
-      </view>
-      <view class="info-row">
-        <text class="info-label">记录时间</text>
-        <text class="info-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
-      </view>
-    </view>
-
-    <!-- 查看设备记录按钮 -->
+    <!-- 切换日期 / 轨迹地图按钮 -->
     <view class="record-btn" bindtap="onViewRecords">
-      <text>查看设备轨迹</text>
+      <text>切换日期 / 轨迹地图</text>
     </view>
 
     <!-- 轨迹数据表格 -->
     <view class="msg-panel" wx:if="{{showRecordTable}}">
+      <view class="track-date-bar">{{trackDate}} 轨迹记录 ({{recordList.length}}条)</view>
       <view class="record-table">
         <view class="table-header">
           <view class="th th-deviceId">deviceId</view>

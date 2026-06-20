@@ -33,13 +33,14 @@
       data-placeid="{{item.placeId}}"
       bindtap="onItemMap"
     >
+      <text class="item-index">{{index + 1}}</text>
       <view class="place-info">
         <view class="place-name">{{item.name || '未命名地名'}}</view>
         <view class="place-id">ID: {{item.placeId}}</view>
         <view wx:if="{{item.gps}}" class="place-gps">坐标: {{item.gps}}</view>
         <view class="place-level">等级: {{item.level || '1'}}</view>
       </view>
-      <view class="place-actions">
+      <view class="place-actions" wx:if="{{isAdmin}}">
         <view class="place-action-btn place-action-map" catchtap="onItemEdit" data-placeid="{{item.placeId}}">编辑</view>
         <view class="place-action-btn place-action-delete" catchtap="onItemDelete" data-placeid="{{item.placeId}}">删除</view>
       </view>

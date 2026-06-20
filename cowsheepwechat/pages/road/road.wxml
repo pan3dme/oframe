@@ -35,6 +35,7 @@
       data-roadid="{{item.roadId}}"
       bindtap="onItemMap"
     >
+      <text class="item-index">{{index + 1}}</text>
       <view class="road-info">
         <view class="road-name">{{item.name || '未命名道路'}}</view>
         <view class="road-id">ID: {{item.roadId}}</view>
@@ -42,7 +43,7 @@
         <view wx:if="{{item.points}}" class="road-points">路径点: {{item.points}}</view>
         <view wx:if="{{item.createTime}}" class="road-time">{{item.createTime}}</view>
       </view>
-      <view class="road-actions">
+      <view class="road-actions" wx:if="{{isAdmin}}">
         <view class="road-action-btn road-action-map" catchtap="onItemEdit" data-roadid="{{item.roadId}}">编辑</view>
         <view class="road-action-btn road-action-delete" catchtap="onItemDelete" data-roadid="{{item.roadId}}">删除</view>
       </view>

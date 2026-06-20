@@ -3,6 +3,7 @@ const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
 const STORAGE_KEY_SINGLE_LINE = 'setting_single_line_record'
 const STORAGE_KEY_IS_ADMIN = 'setting_is_admin'
 const ADMIN_PASSWORD = '1234'
+const dataCache = require('../../config/data-cache.js')
 
 Page({
   data: {
@@ -89,5 +90,19 @@ Page({
     wx.setStorageSync(STORAGE_KEY_IS_ADMIN, value)
     getApp().globalData.isAdmin = value
     wx.showToast({ title: value ? '已设为管理员' : '已取消管理员', icon: 'none', duration: 1000 })
+  },
+
+  // 清理所有数据库缓存
+  onClearCache() {
+    wx.showModal({
+      title: '确认清理',
+      content: '将清除所有本地数据库缓存（设备、牛羊、LOT、道路、地名），下次打开页面将重新拉取最新数据。',
+      success: (res) => {
+        if (res.confirm) {
+          dataCache.clearCache()
+          wx.showToast({ title: '缓存已清理', icon: 'success', duration: 1500 })
+        }
+      }
+    })
   }
 })

@@ -46,7 +46,7 @@ Page({
   },
 
   // ========== 获取地名列表（内存缓存优先，一天只请求一次网络） ==========
-  _loadPlaceList(forceRefresh) {
+  _loadPlaceList(forceRefresh, onComplete) {
     this.setData({ loading: true })
     dataCache.getPlaceListFromCache((cachedData) => {
       this.setData({ loading: false })
@@ -60,6 +60,7 @@ Page({
       if (forceRefresh) {
         wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
       }
+      if (onComplete) onComplete()
     }, forceRefresh)
   },
 
@@ -251,7 +252,8 @@ Page({
 
   // ========== 下拉刷新 ==========
   onPullDownRefresh() {
-    this._loadPlaceList(true)
-    setTimeout(() => wx.stopPullDownRefresh(), 1000)
+    this._loadPlaceList(true, () => {
+      wx.stopPullDownRefresh()
+    })
   }
 })

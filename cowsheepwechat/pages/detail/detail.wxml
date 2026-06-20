@@ -2,41 +2,44 @@
 <navigation-bar title="{{name}}的详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <canvas type="2d" id="compressCanvas" style="width:512px;height:512px;position:fixed;left:-9999px"></canvas>
 <scroll-view class="detail-scroll" scroll-y>
-  <!-- 大头像 -->
-  <view class="avatar-section">
-    <image class="detail-avatar" src="{{avatar}}" mode="aspectFit" wx:if="{{avatar}}" />
-    <view class="detail-avatar-placeholder" wx:else>🐂</view>
-  </view>
-
-  <!-- 信息卡片 -->
-  <view class="info-card">
-    <view class="info-title">{{name}}</view>
-
-    <view class="info-row">
-      <view class="info-label">编号</view>
-      <view class="info-value">{{cowsheepId || '-'}}</view>
+  <!-- 头部：左图右属性 -->
+  <view class="detail-header">
+    <!-- 左侧头像 -->
+    <view class="avatar-section">
+      <image class="detail-avatar" src="{{avatar}}" mode="aspectFill" wx:if="{{avatar}}" />
+      <view class="detail-avatar-placeholder" wx:else>🐂</view>
     </view>
 
-    <view class="info-row">
-      <view class="info-label">性别</view>
-      <view class="info-value">
-        <text class="gender-tag {{gender === '公' ? 'gender-male' : 'gender-female'}}">{{gender || '-'}}</text>
+    <!-- 右侧信息 -->
+    <view class="info-area">
+      <view class="info-title">{{name}}</view>
+
+      <view class="info-row">
+        <view class="info-label">编号</view>
+        <view class="info-value">{{cowsheepId || '-'}}</view>
       </view>
-    </view>
 
-    <view class="info-row">
-      <view class="info-label">生日</view>
-      <view class="info-value">{{birthday || '-'}}</view>
-    </view>
-
-    <view class="info-row">
-      <view class="info-label">连接设备</view>
-      <picker class="info-picker" mode="selector" range="{{deviceIdOptions}}" value="{{selectedDeviceIndex}}" bindchange="onDeviceChange">
-        <view class="info-picker-value">
-          <text>{{selectedDeviceId}}</text>
-          <text class="info-arrow">▼</text>
+      <view class="info-row">
+        <view class="info-label">性别</view>
+        <view class="info-value">
+          <text class="gender-tag {{gender === '公' ? 'gender-male' : 'gender-female'}}">{{gender || '-'}}</text>
         </view>
-      </picker>
+      </view>
+
+      <view class="info-row">
+        <view class="info-label">生日</view>
+        <view class="info-value">{{birthday || '-'}}</view>
+      </view>
+
+      <view class="info-row">
+        <view class="info-label">设备</view>
+        <picker class="info-picker" mode="selector" range="{{deviceIdOptions}}" value="{{selectedDeviceIndex}}" bindchange="onDeviceChange">
+          <view class="info-picker-value">
+            <text>{{selectedDeviceId}}</text>
+            <text class="info-arrow">▼</text>
+          </view>
+        </picker>
+      </view>
     </view>
   </view>
 

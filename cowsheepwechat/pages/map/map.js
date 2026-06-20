@@ -14,6 +14,9 @@ Page({
     markers: [],
     polylines: [],
     showRoadLayer: false,
+    currentLevel: 0,      // 当前显示等级：0=隐藏，1..maxLevel=显示到该级
+    maxLevel: 0,          // 道路/地名中 level 最大值
+    layerLabel: '图层',   // 图层按钮文字
     baiduAK: '',  // ⚠️ 填入百度 AK
     baiduZoom: 16,     // 当前卫星图 zoom 级别（限制<=16避免无图）
     zoomRetries: 0,    // zoom 降级重试次数
@@ -24,10 +27,12 @@ Page({
 
   _cowMarkers: [],
   _deviceMarkers: [],
-  _roadPolylines: [],   // 缓存已构建的道路折线数据
+  _roadPolylines: [],   // 缓存已构建的道路折线数据（按当前等级过滤）
   _roadFetched: false,  // 是否已请求过道路数据
   _placeFetched: false, // 是否已请求过地名数据
-  _placeMarkers: [],    // 缓存已构建的地名图钉标记
+  _placeMarkers: [],    // 缓存已构建的地名图钉标记（按当前等级过滤）
+  _fullRoadList: [],    // 完整道路列表（未过滤）
+  _fullPlaceList: [],   // 完整地名列表（未过滤）
   _pinIconPath: '',     // 地名蓝色图钉图标路径
   _deviceIconPath: '',  // 设备红色圆点图标路径
 
@@ -534,21 +539,53 @@ Page({
   },
 
   toggleLayer() {
-    if (!this._roadFetched) {
+    if (!this._roadFetched || !this._placeFetched) {
       // 首次点击：并行请求道路 + 地名数据
-      this.fetchRoadData()
-      this.fetchPlaceData()
+      if (!this._roadFetched) this.fetchRoadData()
+      if (!this._placeFetched) this.fetchPlaceData()
       return
     }
-    // 已加载：切换显隐
-    const show = !this.data.showRoadLayer
+
+    const { currentLevel, maxLevel } = this.data
+    if (currentLevel >= maxLevel) {
+      // 已到最大等级，再按隐藏所有
+      this._applyLevel(0)
+      return
+    }
+    // 升一级
+    this._applyLevel(currentLevel + 1)
+  },
+
+  /**
+   * 按等级刷新道路折线和地名标记
+   * @param {number} level - 0=隐藏，1..maxLevel=显示 level<=该值的所有项
+   */
+  _applyLevel(level) {
+    const show = level > 0
+
+    // 过滤道路
+    const filteredRoads = show
+      ? this._fullRoadList.filter(r => (parseInt(r.level) || 1) <= level)
+      : []
+    this._buildRoadPolylines(filteredRoads)
+
+    // 过滤地名
+    const filteredPlaces = show
+      ? this._fullPlaceList.filter(p => (parseInt(p.level) || 1) <= level)
+      : []
+    this._buildPlaceMarkers(filteredPlaces, this._pinIconPath)
+
+    const label = show ? ('Lv.' + level) : '图层'
+
     this.setData({
       showRoadLayer: show,
+      currentLevel: level,
+      layerLabel: label,
       polylines: show ? this._roadPolylines : []
     })
     this._applyAllMarkers()
     wx.showToast({
-      title: show ? '道路图层已显示' : '道路图层已隐藏',
+      title: show ? ('已显示等级 ≤' + level) : '图层已隐藏',
       icon: 'none',
       duration: 1000
     })
@@ -563,22 +600,13 @@ Page({
       if (roadList.length === 0) {
         wx.showToast({ title: '暂无道路数据', icon: 'none' })
         that._roadFetched = true
+        that._tryInitLevel()
         return
       }
       console.log('[道路] 已解析:', roadList.length, '条（缓存优先）')
-      that._buildRoadPolylines(roadList)
+      that._fullRoadList = roadList
       that._roadFetched = true
-      // 默认显示
-      that.setData({
-        showRoadLayer: true,
-        polylines: that._roadPolylines
-      })
-      that._applyAllMarkers()
-      wx.showToast({
-        title: '已加载 ' + roadList.length + ' 条道路',
-        icon: 'none',
-        duration: 1200
-      })
+      that._tryInitLevel()
     })
   },
 
@@ -702,13 +730,13 @@ Page({
         if (placeList.length === 0) {
           console.log('[地名] 暂无数据')
           that._placeFetched = true
-          that._markBothReady()
+          that._tryInitLevel()
           return
         }
         console.log('[地名] 已解析:', placeList.length, '条（缓存优先）')
-        that._buildPlaceMarkers(placeList, iconPath)
+        that._fullPlaceList = placeList
         that._placeFetched = true
-        that._markBothReady()
+        that._tryInitLevel()
       })
     })
   },
@@ -752,12 +780,26 @@ Page({
   },
 
   /**
-   * 道路和地名都完成（或失败）后，刷新地图显示
+   * 道路和地名都请求完成后，计算 maxLevel 并初始显示 level=1
    */
-  _markBothReady() {
-    if (this._roadFetched && this._placeFetched && this.data.showRoadLayer) {
-      this._applyAllMarkers()
-    }
+  _tryInitLevel() {
+    if (!this._roadFetched || !this._placeFetched) return
+    // 已初始化过不重复
+    if (this.data.currentLevel > 0) return
+
+    // 计算道路和地名中 level 的最大值
+    let maxLevel = 0
+    const allItems = [...this._fullRoadList, ...this._fullPlaceList]
+    allItems.forEach(item => {
+      const lv = parseInt(item.level) || 1
+      if (lv > maxLevel) maxLevel = lv
+    })
+    if (maxLevel < 1) maxLevel = 1
+
+    this.setData({ maxLevel })
+    console.log('[图层] maxLevel =', maxLevel)
+    // 默认显示 level=1
+    this._applyLevel(1)
   },
 
   /**

@@ -45,11 +45,10 @@
   <view class="track-dialog">
     <view class="track-close" bindtap="onInsertClose">✕</view>
     <view class="track-title">插入一条记录</view>
-    <view class="track-subtitle">请输入设备ID（deviceId）</view>
-    <input class="track-input" 
-      value="{{insertDeviceId}}" 
-      placeholder="例如：v4-1" 
-      bindinput="onInsertDeviceIdInput" />
+    <view class="track-subtitle">请选择设备</view>
+    <picker mode="selector" range="{{deviceIdOptions}}" value="{{selectedDeviceIndex}}" bindchange="onDevicePickerChange">
+      <view class="track-picker">{{deviceIdOptions[selectedDeviceIndex] || '请选择设备'}}</view>
+    </picker>
     <view class="track-subtitle">请输入LoRa数据（lorastr）</view>
     <input class="track-input" 
       value="{{insertLorastr}}" 

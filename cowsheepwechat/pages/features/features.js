@@ -1,5 +1,6 @@
 // features.js
 const API_URL = getApp().globalData.api_device_Url
+const dataCache = require('../../config/data-cache.js')
  
 Page({
   data: {
@@ -10,6 +11,8 @@ Page({
     insertDeviceId: '',
     insertLorastr: '',
     deviceIdList: [],
+    deviceIdOptions: ['v4-1'],
+    selectedDeviceIndex: 0,
     featureBtns: [{
         id: 1,
         label: '最近10条记录'
@@ -138,11 +141,23 @@ Page({
         }
       })
     } else if (id === 2) {
-      // 插入一条记录 — 弹出输入框
-      this.setData({
-        showInsertModal: true,
-        insertDeviceId: 'v4-1',
-        insertLorastr: '1|v3-1|26.530033, 109.390391|wechat'
+      // 插入一条记录 — 先从缓存获取设备列表，再弹出选择框
+      dataCache.getDeviceList((deviceData) => {
+        const idSet = new Set()
+        if (deviceData && deviceData.recordList) {
+          deviceData.recordList.forEach(record => {
+            if (record.deviceId && record.deviceId !== '-') idSet.add(record.deviceId)
+          })
+        }
+        const options = idSet.size > 0 ? Array.from(idSet).sort() : ['v4-1']
+        const defaultId = options[0]
+        this.setData({
+          showInsertModal: true,
+          deviceIdOptions: options,
+          selectedDeviceIndex: 0,
+          insertDeviceId: defaultId,
+          insertLorastr: '1|v3-1|26.530033, 109.390391|wechat'
+        })
       })
 
     } else if (id === 3) {
@@ -171,8 +186,12 @@ Page({
   },
 
   // ========== 插入记录弹窗 ==========
-  onInsertDeviceIdInput(e) {
-    this.setData({ insertDeviceId: e.detail.value })
+  onDevicePickerChange(e) {
+    const idx = parseInt(e.detail.value)
+    this.setData({
+      selectedDeviceIndex: idx,
+      insertDeviceId: this.data.deviceIdOptions[idx]
+    })
   },
   onInsertLorastrInput(e) {
     this.setData({ insertLorastr: e.detail.value })

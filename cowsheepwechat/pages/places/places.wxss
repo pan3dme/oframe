@@ -92,6 +92,17 @@ page {
   background: #f9f9f9;
 }
 
+/* 序号 */
+.item-index {
+  font-size: 30rpx;
+  color: #666;
+  font-weight: 700;
+  width: 56rpx;
+  text-align: center;
+  flex-shrink: 0;
+  margin-right: 14rpx;
+}
+
 .place-info {
   flex: 1;
   min-width: 0;

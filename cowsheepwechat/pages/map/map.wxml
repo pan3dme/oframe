@@ -18,7 +18,7 @@
 <!-- 左下角图层切换按钮 -->
 <view class="layer-toggle {{showRoadLayer ? 'layer-on' : ''}}" bindtap="toggleLayer">
   <text class="layer-icon">🗺️</text>
-  <text class="layer-label">{{showRoadLayer ? '已开启' : '图层'}}</text>
+  <text class="layer-label">{{layerLabel}}</text>
 </view>
 
 <!-- 右下角功能按钮组 -->

@@ -140,7 +140,8 @@ Page({
     // 设备列表
     deviceList: [],
     isAdmin: false,
-    singleLineRecord: false
+    singleLineRecord: false,
+    refresherTriggered: false
   },
 
   _readSettings() {
@@ -167,7 +168,7 @@ Page({
   },
 
   // ========== 获取设备列表 ==========
-  fetchDeviceList(forceRefresh) {
+  fetchDeviceList(forceRefresh, onComplete) {
     dataCache.getDeviceList((deviceData) => {
       // 同时获取牛羊名字列表 + 设备LOT最新数据
       dataCache.getLivestockList((livestockData) => {
@@ -215,6 +216,7 @@ Page({
           if (forceRefresh) {
             wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
           }
+          if (onComplete) onComplete()
         }, forceRefresh)
       }, forceRefresh)
     }, forceRefresh)
@@ -225,7 +227,10 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.fetchDeviceList(true)
+    this.setData({ refresherTriggered: true })
+    this.fetchDeviceList(true, () => {
+      this.setData({ refresherTriggered: false })
+    })
   },
 
   // 计算相对时间：返回 "1天前" "3小时前" "刚刚" 等

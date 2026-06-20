@@ -267,6 +267,17 @@ page {
   border-bottom: none;
 }
 
+/* 序号 */
+.item-index {
+  font-size: 30rpx;
+  color: #666;
+  font-weight: 700;
+  width: 56rpx;
+  text-align: center;
+  flex-shrink: 0;
+  margin-right: 14rpx;
+}
+
 .item-avatar {
   width: 96rpx;
   height: 96rpx;

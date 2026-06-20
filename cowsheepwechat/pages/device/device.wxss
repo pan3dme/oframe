@@ -254,6 +254,17 @@ page {
   border-bottom: none;
 }
 
+/* 序号 */
+.item-index {
+  font-size: 30rpx;
+  color: #666;
+  font-weight: 700;
+  width: 56rpx;
+  text-align: center;
+  flex-shrink: 0;
+  margin-right: 14rpx;
+}
+
 .item-avatar-placeholder {
   width: 96rpx;
   height: 96rpx;
@@ -397,11 +408,15 @@ page {
 }
 
 .item-time-compact {
-  font-size: 22rpx;
-  color: #999;
+  font-size: 24rpx;
+  color: #1565c0;
+  font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
   margin-left: 24rpx;
+  background: #e3f2fd;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
 }
 
 /* 空状态 */
