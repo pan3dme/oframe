@@ -18,7 +18,7 @@ bool loraTimeSynced = false;    // 是否已通过LoRa同步时间
 time_t loraSyncedEpoch = 0;     // LoRa同步的时间戳
 unsigned long loraSyncedMillis = 0; // LoRa同步时的本地毫秒计数
 
-
+//AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
     0x248B9C697090, // v4    1
@@ -362,11 +362,12 @@ bool initLibWifi()
   Serial.print(timeinfo.tm_min);
   Serial.print(":");
   Serial.println(timeinfo.tm_sec);
-
+  return true;
+}
+void disConnectWifi(){
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   Serial.println("📶 WiFi 已关闭，后续时间使用本地时钟增量");
-  return true;
 }
 
 // 从LoRa对时信息设置时间

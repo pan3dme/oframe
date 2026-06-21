@@ -11,7 +11,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include "LoRaWan_APP.h"
-
+//AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 // LoRa消息类型枚举
 typedef enum {
   MSG_TYPE_GPS = 1,        // GPS定位信息
@@ -71,6 +71,7 @@ struct BLECallbacks
 
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, BLECharacteristicCallbacks *charCallbacks);
 bool initLibWifi();
+void disConnectWifi();
 void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();
