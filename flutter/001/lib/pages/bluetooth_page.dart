@@ -5,7 +5,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
-import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/services.dart';
 import '../utils/db_helper.dart';
 
 /// 格式化时间为：2026/6/12 12:21:10
@@ -42,8 +42,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
   bool _uploadPaused = false; // 上传是否因断网暂停
   bool _scanCompleted = false; // 扫描是否已完成
   
-  // 声音控制
-  final List<AudioPlayer> _audioPlayers = []; // 音频播放器列表，支持叠加播放
+  // 声音/震动控制
+  static const _soundChannel = MethodChannel('com.app/sound');
   bool _soundEnabled = false; // 是否开启声音
   
   // 为每条数据生成随机背景色（使用固定种子保证同一索引颜色不变）
@@ -94,8 +94,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
     print('[蓝牙] ========== 声音设置加载 ==========');
     print('[蓝牙] 声音开关状态: $enabled');
     if (enabled) {
-      print('[蓝牙] ✓ 声音已开启,接收数据时将播放提示音');
-      print('[蓝牙] 音频文件: assets/sounds/notification.wav');
+      print('[蓝牙] ✓ 声音已开启,接收数据时将播放提示音+震动');
     } else {
       print('[蓝牙] ✗ 声音未开启,请在设置页面开启"蓝牙接收声音"');
     }
@@ -117,51 +116,10 @@ class _BluetoothPageState extends State<BluetoothPage> {
     }
   }
   
-  /// 播放提示音(每次接收数据都播放，支持叠加)
-  Future<void> _playNotificationSound() async {
-    if (!_soundEnabled) {
-      print('[蓝牙] 声音未开启,跳过播放');
-      return; // 如果未开启声音,直接返回
-    }
-      
-    try {
-      print('[蓝牙] ========== 开始播放提示音 ==========');
-      
-      // 创建新的播放器实例，实现声音叠加
-      final player = AudioPlayer();
-      _audioPlayers.add(player);
-      
-      // 设置音量
-      await player.setVolume(0.8);
-      
-      // 监听播放完成事件，清理资源
-      player.onPlayerComplete.listen((_) {
-        print('[蓝牙] 音频播放完成，清理播放器');
-        player.dispose();
-        _audioPlayers.remove(player);
-      });
-        
-      // iOS优先尝试本地音频文件
-      try {
-        print('[蓝牙] 尝试播放本地音频: assets/sounds/notification.wav');
-        await player.play(AssetSource('sounds/notification.wav'));
-        print('[蓝牙] ✓ 播放命令已发送（叠加模式）');
-      } catch (e) {
-        print('[蓝牙] ✗ 本地音频文件播放失败: $e');
-        print('[蓝牙] 请检查:');
-        print('[蓝牙] 1. assets/sounds/notification.wav 是否存在');
-        print('[蓝牙] 2. pubspec.yaml 中是否正确配置了 assets');
-        print('[蓝牙] 3. iOS AVAudioSession 是否配置成功');
-        // 播放失败时清理播放器
-        player.dispose();
-        _audioPlayers.remove(player);
-      }
-      
-      print('[蓝牙] ==========================================');
-    } catch (e) {
-      print('[蓝牙] ✗ 播放提示音异常: $e');
-      print('[蓝牙] 错误堆栈: ${e.toString()}');
-    }
+  /// 播放提示音+震动（通过iOS原生AudioServices，不经过AVAudioSession，不与蓝牙冲突）
+  void _playNotificationSound() {
+    if (!_soundEnabled) return;
+    _soundChannel.invokeMethod('playNotification');
   }
   
 
@@ -399,13 +357,6 @@ class _BluetoothPageState extends State<BluetoothPage> {
     // 停止扫描
     FlutterBluePlus.stopScan();
     
-    // 释放所有音频播放器，避免内存泄漏
-    for (final player in _audioPlayers) {
-      player.dispose();
-    }
-    _audioPlayers.clear();
-    print('[蓝牙] 已清理所有音频播放器');
-    
     super.dispose();
   }
 
@@ -600,23 +551,17 @@ class _BluetoothPageState extends State<BluetoothPage> {
       if (_notifyCharacteristic != null) {
         await _notifyCharacteristic!.setNotifyValue(true);
         _notifySubscription =
-            _notifyCharacteristic!.onValueReceived.listen((value) async {
+            _notifyCharacteristic!.onValueReceived.listen((value) {
           final data = utf8.decode(value, allowMalformed: true);
+          print('[蓝牙] 收到数据: $data');
+          
+          // 立即更新UI（不阻塞后续数据接收）
           setState(() {
             _receivedData.add(data);
           });
           
-          // 保存到本地数据库
-          final deviceName = _connectedDevice != null ? _getDeviceName(_connectedDevice!) : '未知设备';
-          final deviceId = _connectedDevice?.remoteId.str ?? '';
-          final time = formatTime(DateTime.now());
-          await DBHelper().saveBluetoothData(deviceName, deviceId, data, time);
-          
-          // 刷新缓存记录数
-          await _loadCachedBluetoothData();
-          
-          // 播放提示音
-          await _playNotificationSound();
+          // 后台处理：保存数据库、刷新缓存、播放声音（不阻塞监听器）
+          _handleReceivedDataInBackground(data);
         });
       }
 
@@ -729,67 +674,51 @@ class _BluetoothPageState extends State<BluetoothPage> {
     return name;
   }
 
-  /// 格式化显示接收的JSON数据
+  /// 后台处理接收到的蓝牙数据（不阻塞通知监听器）
+  void _handleReceivedDataInBackground(String data) {
+    // 保存数据库和刷新缓存用async执行
+    _saveAndRefreshCache(data);
+    // 播放声音（完全fire-and-forget）
+    _playNotificationSound();
+  }
+
+  Future<void> _saveAndRefreshCache(String data) async {
+    try {
+      final deviceName = _connectedDevice != null ? _getDeviceName(_connectedDevice!) : '未知设备';
+      final deviceId = _connectedDevice?.remoteId.str ?? '';
+      final time = formatTime(DateTime.now());
+      await DBHelper().saveBluetoothData(deviceName, deviceId, data, time);
+      if (mounted) {
+        await _loadCachedBluetoothData();
+      }
+    } catch (e) {
+      print('[蓝牙] 后台处理数据失败: $e');
+    }
+  }
+
+  /// 格式化显示接收的JSON数据（根据info类型区分显示）
   Widget _formatReceivedData(String jsonData) {
     try {
       final data = jsonDecode(jsonData) as Map<String, dynamic>;
-      
-      // 提取各个字段
-      final rssi = data['rssi'] ?? '';
-      final snr = data['snr'] ?? '';
       final info = data['info'] ?? '';
-      final upDateDevice = data['upDateDevice'] ?? '';
-      final time = data['time'] ?? '';
       
-      // 从info中提取设备ID（第二部分）
-      String deviceId = '';
+      // 从info中提取类型号（第一个|前的数字）
+      String typeStr = '';
       if (info.contains('|')) {
-        final parts = info.split('|');
-        if (parts.length >= 2) {
-          deviceId = parts[1];
-        }
+        typeStr = info.split('|')[0];
       }
       
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 第一行：rssi和snr，数值部分绿色显示
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return RichText(
-                text: TextSpan(
-                  style: const TextStyle(fontSize: 19, color: Colors.black, fontWeight: FontWeight.bold),
-                  children: [
-                    const TextSpan(text: '"rssi":'),
-                    TextSpan(
-                      text: '$rssi',
-                      style: const TextStyle(color: Colors.green),
-                    ),
-                    const TextSpan(text: ',"snr":'),
-                    TextSpan(
-                      text: '$snr',
-                      style: const TextStyle(color: Colors.green),
-                    ),
-                  ],
-                ),
-                softWrap: true,
-                overflow: TextOverflow.visible,
-              );
-            },
-          ),
-          const SizedBox(height: 4),
-          // 第二行：完整info，其中deviceId部分红色显示
-          if (info.isNotEmpty)
-            _buildInfoWithHighlightedDeviceId(info, deviceId),
-          const SizedBox(height: 4),
-          // 第三行：时间和上传设备
-          if (time.isNotEmpty || upDateDevice.isNotEmpty)
-            Text(
-              '${time.isNotEmpty ? time : ''}${upDateDevice.isNotEmpty ? ' ($upDateDevice)' : ''}',
-              style: const TextStyle(fontSize: 15),
-            ),
-        ],
-      );
+      // 根据类型选择不同的显示方式
+      if (typeStr == '1') {
+        // GPS信息：完整显示 rssi/snr/info/time
+        return _formatGpsData(data, info);
+      } else if (typeStr == '2') {
+        // 时间同步信息：显示 rssi/snr/info/time
+        return _formatTimeSyncData(data, info);
+      } else {
+        // 其它类型：只显示info内容
+        return _formatOtherData(data, info);
+      }
     } catch (e) {
       // 如果解析失败，直接显示原始文本
       return Text(
@@ -797,6 +726,153 @@ class _BluetoothPageState extends State<BluetoothPage> {
         style: const TextStyle(fontSize: 17),
       );
     }
+  }
+
+  /// 格式化GPS数据（类型1）
+  Widget _formatGpsData(Map<String, dynamic> data, String info) {
+    final rssi = data['rssi'] ?? '';
+    final snr = data['snr'] ?? '';
+    final upDateDevice = data['upDateDevice'] ?? '';
+    final time = data['time'] ?? '';
+    
+    String deviceId = '';
+    if (info.contains('|')) {
+      final parts = info.split('|');
+      if (parts.length >= 2) {
+        deviceId = parts[1];
+      }
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 第一行：rssi和snr，数值部分绿色显示
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 19, color: Colors.black, fontWeight: FontWeight.bold),
+                children: [
+                  const TextSpan(text: '"rssi":'),
+                  TextSpan(
+                    text: '$rssi',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                  const TextSpan(text: ',"snr":'),
+                  TextSpan(
+                    text: '$snr',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                ],
+              ),
+              softWrap: true,
+              overflow: TextOverflow.visible,
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        // 第二行：GPS图标 + 完整info，其中deviceId部分红色显示
+        if (info.isNotEmpty)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2, right: 4),
+                child: Icon(Icons.gps_fixed, size: 16, color: Colors.blue),
+              ),
+              Expanded(child: _buildInfoWithHighlightedDeviceId(info, deviceId)),
+            ],
+          ),
+        const SizedBox(height: 4),
+        // 第三行：时间和上传设备
+        if (time.isNotEmpty || upDateDevice.isNotEmpty)
+          Text(
+            '${time.isNotEmpty ? time : ''}${upDateDevice.isNotEmpty ? ' ($upDateDevice)' : ''}',
+            style: const TextStyle(fontSize: 15),
+          ),
+      ],
+    );
+  }
+
+  /// 格式化时间同步数据（类型2）
+  Widget _formatTimeSyncData(Map<String, dynamic> data, String info) {
+    final rssi = data['rssi'] ?? '';
+    final snr = data['snr'] ?? '';
+    final upDateDevice = data['upDateDevice'] ?? '';
+    final time = data['time'] ?? '';
+    
+    String deviceId = '';
+    if (info.contains('|')) {
+      final parts = info.split('|');
+      if (parts.length >= 2) {
+        deviceId = parts[1];
+      }
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 第一行：rssi和snr
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 19, color: Colors.black, fontWeight: FontWeight.bold),
+                children: [
+                  const TextSpan(text: '"rssi":'),
+                  TextSpan(
+                    text: '$rssi',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                  const TextSpan(text: ',"snr":'),
+                  TextSpan(
+                    text: '$snr',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                ],
+              ),
+              softWrap: true,
+              overflow: TextOverflow.visible,
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        // 第二行：时间图标 + info内容
+        if (info.isNotEmpty)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2, right: 4),
+                child: Icon(Icons.access_time, size: 16, color: Colors.orange),
+              ),
+              Expanded(child: _buildInfoWithHighlightedDeviceId(info, deviceId)),
+            ],
+          ),
+        const SizedBox(height: 4),
+        // 第三行：时间和上传设备
+        if (time.isNotEmpty || upDateDevice.isNotEmpty)
+          Text(
+            '${time.isNotEmpty ? time : ''}${upDateDevice.isNotEmpty ? ' ($upDateDevice)' : ''}',
+            style: const TextStyle(fontSize: 15),
+          ),
+      ],
+    );
+  }
+
+  /// 格式化其它类型数据：只显示info内容
+  Widget _formatOtherData(Map<String, dynamic> data, String info) {
+    if (info.isEmpty) {
+      // 没有info字段时，显示完整JSON
+      return Text(
+        jsonEncode(data),
+        style: const TextStyle(fontSize: 17),
+      );
+    }
+    return Text(
+      info,
+      style: const TextStyle(fontSize: 17),
+    );
   }
 
   /// 构建info文本，其中deviceId部分用红色显示，最后部分数字加粗
