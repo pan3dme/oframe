@@ -16,6 +16,7 @@
 typedef enum {
   MSG_TYPE_GPS = 1,        // GPS定位信息
   MSG_TYPE_TIME = 2,       // 对时信息
+  MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
   MSG_TYPE_FIRMWARE = 10   // 固件更新指令
 } MessageType_t;
 
@@ -45,7 +46,7 @@ extern unsigned long syncedMillis;
 #define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 928000000 // 433MHz 国内通用863 863  928
+#define LORA_FREQ 433000000 // 433MHz 国内通用863 863  928
 #define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 10          // 扩频因子
@@ -62,6 +63,11 @@ extern unsigned long syncedMillis;
 #define LORA_PA_POWER  7
 #define LORA_PA_EN     2
 #define LORA_PA_TX_EN  46
+
+
+#define VBAT_CTRL_PIN 37  // ADC_Ctrl（控制检测电路开关）
+#define VBAT_READ_PIN 1   // VBAT_Read（ADC1_CH0）
+
 
 
 const unsigned long SEND_INTERVAL_MS = 60000;  // 总周期10秒

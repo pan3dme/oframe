@@ -240,6 +240,18 @@ void loop() {
           setTimeFromLora(timeStr);
         }
       }
+      // 类型3: 电量信息
+      else if (messageType == MSG_TYPE_BATTERY) {
+        // 格式: 3|设备名|电量值(如0.5、0.1)
+        int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
+        if (secondPipeIndex > 0) {
+          String batteryStr = String(loraStr).substring(secondPipeIndex + 1);
+          float batteryLevel = batteryStr.toFloat();
+          Serial.print("🔋 收到电量信息: ");
+          Serial.println(batteryLevel, 2);
+          displayBuf[3] = "Bat:" + String(batteryLevel, 2) + "V";
+        }
+      }
       // 类型1: 定位信息（原有逻辑）
       else if (messageType == MSG_TYPE_GPS) {
         displayBuf[3] = String(loraStr).substring(0, 15);

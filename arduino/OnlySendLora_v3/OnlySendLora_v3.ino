@@ -8,18 +8,20 @@
 #include <pan3dme.h>
 #include "HT_TinyGPS++.h"
 
+// ==================== 电池检测引脚 ====================
+
 // ==================== 常量定义 ====================
 const char* DEVICE_NAME_PREFIX = "v4-x";
 const unsigned long RX_WINDOW_SECONDS = 5;  // 接收窗口秒数（周期最后N秒用于接收）
 
 
 // ==================== 全局变量 ====================
-String deviceName;               // 设备名称
-String gpsCoordinates;           // GPS坐标信息
-char sendData[BUFFER_SIZE];      // 发送数据缓存
-RadioEvents_t radioEvents;       // LoRa事件回调
-int packetCount = 0;             // 数据包计数器
-String displayLines[4];          // OLED显示内容
+String deviceName;           // 设备名称
+String gpsCoordinates;       // GPS坐标信息
+char sendData[BUFFER_SIZE];  // 发送数据缓存
+RadioEvents_t radioEvents;   // LoRa事件回调
+int packetCount = 0;         // 数据包计数器
+String displayLines[4];      // OLED显示内容
 
 // LoRa发射时间管理
 int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
@@ -27,10 +29,10 @@ int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 // LoRa接收窗口状态
-bool inRxMode = false;            // 当前是否处于接收模式
-unsigned long rxStartTime = 0;    // RX窗口开始的millis()
-bool didSend = false;             // 本周期是否已发送（控制RX窗口和休眠）
-char rxBuffer[BUFFER_SIZE + 1];   // 接收数据缓存
+bool inRxMode = false;           // 当前是否处于接收模式
+unsigned long rxStartTime = 0;   // RX窗口开始的millis()
+bool didSend = false;            // 本周期是否已发送（控制RX窗口和休眠）
+char rxBuffer[BUFFER_SIZE + 1];  // 接收数据缓存
 
 // ==================== 计算下次发送时间 ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
@@ -87,11 +89,46 @@ void initLora() {
   radioEvents.RxTimeout = onRxTimeout;
   initPanRadio(&radioEvents);
 }
+// ==================== 读取电池电量 ====================
+String readBatteryLevel() {
+  digitalWrite(VBAT_CTRL_PIN, LOW);
+  delay(100);
+
+  const int samples = 10;
+  long rawSum = 0;
+  long mvSum = 0;
+  for (int i = 0; i < samples; i++) {
+    rawSum += analogRead(VBAT_READ_PIN);
+    mvSum += analogReadMilliVolts(VBAT_READ_PIN);
+    delay(1);
+  }
+  float rawAvg = (float)rawSum / samples;
+  float mvAvg = (float)mvSum / samples;
+
+  digitalWrite(VBAT_CTRL_PIN, HIGH);
+
+  // 分压系数 5.35（实测校准：785mV × 5.35 ≈ 4.2V 满电）
+  float batteryVoltage = mvAvg * 5.35 / 1000.0;
+
+  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg, batteryVoltage);
+
+  int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 100);
+  soc = constrain(soc, 0, 100);
+  float socRatio = soc / 100.0;
+
+  // 格式: soc|adc_raw|adc_mV|voltage
+  return String(socRatio, 2) + "|" + String((int)rawAvg) + "|" + String((int)mvAvg) + "|" + String(batteryVoltage, 2);
+}
+
 // ==================== 系统初始化 ====================
 void setup() {
   delay(1000);
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+
+  analogReadResolution(12);
+  pinMode(VBAT_CTRL_PIN, OUTPUT);
+  digitalWrite(VBAT_CTRL_PIN, HIGH);
 
   // 生成设备名称并初始化显示
   deviceName = makeDivceName();
@@ -109,9 +146,12 @@ void buildAndSendPacket(int packetType) {
   String dataStr = String(packetType) + "|" + deviceName;
 
   if (packetType == MSG_TYPE_GPS) {
+    updateGpsInfo();
     dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
   } else if (packetType == MSG_TYPE_TIME) {
     dataStr += "|" + getCurrentTime();
+  } else if (packetType == MSG_TYPE_BATTERY) {
+    dataStr += "|" + readBatteryLevel();
   }
 
   // 安全拷贝到发送缓冲区
@@ -164,10 +204,10 @@ void loop() {
     didSend = true;
     packetCount++;
 
-    int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;
-    if (packetType == MSG_TYPE_GPS) {
-      updateGpsInfo();
-    }
+    // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;
+    const int typeList[] = { MSG_TYPE_BATTERY, MSG_TYPE_BATTERY, MSG_TYPE_BATTERY };
+    int packetType = typeList[packetCount % 3];
+
     buildAndSendPacket(packetType);
 
     openLedByNum(10, 50);
@@ -223,7 +263,7 @@ void onSendTimeout(void) {
 }
 
 // ==================== LoRa接收完成回调 ====================
-void onRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
   Radio.Sleep();
   inRxMode = false;
 
