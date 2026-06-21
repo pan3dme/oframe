@@ -10,6 +10,7 @@
 
 // ==================== 常量定义 ====================
 const char* DEVICE_NAME_PREFIX = "v4-x";
+const unsigned long RX_WINDOW_SECONDS = 5;  // 接收窗口秒数（周期最后N秒用于接收）
 
 
 // ==================== 全局变量 ====================
@@ -27,6 +28,11 @@ int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 time_t bootEpoch = 946684800;    // 开机基准时间：2000/1/1 0:0:0 (UTC)
 unsigned long bootMillis = 0;    // 开机时的millis()
+
+// LoRa接收窗口状态
+bool inRxMode = false;            // 当前是否处于接收模式
+bool didSend = false;             // 本周期是否已发送（控制RX窗口和休眠）
+char rxBuffer[BUFFER_SIZE + 1];   // 接收数据缓存
 
 // ==================== 计算下次发送时间 ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
@@ -100,6 +106,8 @@ void updateGpsInfo() {
 void initLora() {
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
+  radioEvents.RxDone = onRxDone;
+  radioEvents.RxTimeout = onRxTimeout;
   initPanRadio(&radioEvents);
 }
 // ==================== 系统初始化 ====================
@@ -154,29 +162,56 @@ void loop() {
   delay(1);
   gpsEncode();
 
-  // 使用智能时间管理判断是否发送
-  if (isTimeToSend(SEND_INTERVAL_MS / 1000)) {
-    lastSendTime = millis();
+  unsigned long currentMs = millis();
+  unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
+  bool canRx = (intervalSec > RX_WINDOW_SECONDS + 1);
+  unsigned long rxWindowMs = canRx ? RX_WINDOW_SECONDS * 1000 : 0;
+
+  // 首次运行：计算第一次发送时间
+  if (nextSendTime == 0) {
+    nextSendTime = calculateNextSendTime(intervalSec);
+  }
+
+  // ====== 阶段1：到达发送时间，执行发送 ======
+  if (currentMs >= nextSendTime) {
+    // 如果正在接收，先退出RX模式
+    if (inRxMode) {
+      Radio.Sleep();
+      inRxMode = false;
+    }
+
+    didSend = true;
     packetCount++;
 
-    // 随机选择发送GPS或对时信息（50%概率）
     int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;
-
-    // 更新GPS信息（仅当发送GPS时需要）
     if (packetType == MSG_TYPE_GPS) {
       updateGpsInfo();
     }
-
-    // 构建并发送数据包
     buildAndSendPacket(packetType);
 
-    // LED指示和状态显示
     openLedByNum(10, 50);
     displayLines[3] = "Sending...";
-  } else {
-    // 显示距离下次发送的剩余时间
-    unsigned long remaining = (nextSendTime - millis()) / 1000;
-    displayLines[3] = "LoRa Sleep";
+    displayLines[0] = "id:  " + deviceName + "  " + packetCount;
+    displayLines[1] = getCurrentTime();
+    showDisplayBy4Area(displayLines[0], displayLines[1], displayLines[2], displayLines[3]);
+
+    // 计算下一次发送时间
+    nextSendTime = calculateNextSendTime(intervalSec);
+    return;
+  }
+
+  // ====== 阶段2：接收窗口（已发送，距离下次发送不足RX_WINDOW_SECONDS时持续监听） ======
+  if (didSend && canRx && !inRxMode) {
+    unsigned long timeUntilSend = nextSendTime - currentMs;
+    if (timeUntilSend <= rxWindowMs && timeUntilSend > 0) {
+      startRxWindow();
+    }
+  }
+
+  // ====== 阶段3：非发送、非接收时间，休眠等待 ======
+  if (didSend && !inRxMode) {
+    unsigned long remaining = (nextSendTime - currentMs) / 1000;
+    displayLines[3] = "Sleep " + String(remaining) + "s";
   }
 
   // 处理LoRa中断
@@ -198,4 +233,33 @@ void onSendDone(void) {
 void onSendTimeout(void) {
   Radio.Sleep();
   Serial.println("❌ 发送超时");
+}
+
+// ==================== LoRa接收完成回调 ====================
+void onRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+  Radio.Sleep();
+  inRxMode = false;
+
+  int copyLen = (size < BUFFER_SIZE) ? size : BUFFER_SIZE;
+  memcpy(rxBuffer, payload, copyLen);
+  rxBuffer[copyLen] = '\0';
+
+  Serial.printf("📨 收到LoRa数据 [%d字节] RSSI:%d SNR:%d\n", size, rssi, snr);
+  Serial.printf("   内容: %s\n", rxBuffer);
+
+
+}
+
+// ==================== LoRa接收超时回调 ====================
+void onRxTimeout(void) {
+  Radio.Sleep();
+  inRxMode = false;
+}
+
+// ==================== 进入接收窗口 ====================
+void startRxWindow() {
+  inRxMode = true;
+  Serial.println("📡 进入接收窗口...");
+  displayLines[3] = "RX Listening";
+  Radio.Rx(0);  // 连续接收模式
 }
