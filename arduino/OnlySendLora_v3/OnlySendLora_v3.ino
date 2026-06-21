@@ -36,7 +36,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
     totalDevices = getTotalDevices();
     Serial.printf("设备索引: %d, 总设备数: %d\n", deviceIndex, totalDevices);
   }
-  
+
   if (deviceIndex < 0 || totalDevices <= 0) {
     Serial.println("⚠️ 设备未认证，使用默认间隔");
     return millis() + intervalSeconds * 1000;
@@ -88,7 +88,7 @@ bool isTimeToSend(unsigned long intervalSeconds) {
   return false;
 }
 
- 
+
 
 
 // ==================== 读取GPS信息 ====================
@@ -120,7 +120,6 @@ void setup() {
   displayLines[3] = "LoRa Ready";
 
   // 初始化LoRa模块
-  initLibWifi();
   initLora();
   initPanGPS();
 }
@@ -184,6 +183,8 @@ void loop() {
   Radio.IrqProcess();
 
   // 更新OLED显示
+  displayLines[0] = "id:  " + deviceName + "  " + packetCount;
+  displayLines[1] = getCurrentTime();
   showDisplayBy4Area(displayLines[0], displayLines[1], displayLines[2], displayLines[3]);
 }
 
