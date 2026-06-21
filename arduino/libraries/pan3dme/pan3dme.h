@@ -80,7 +80,6 @@ void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();
 void gpsEncode(); // GPS对象
 void initPanRadio(RadioEvents_t* radioEvents);
-String getCurrentGpsTm(TinyGPSPlus gps);
 String getGpsInfoStr();
 String getCurrentTime();
 bool hasValidTime();

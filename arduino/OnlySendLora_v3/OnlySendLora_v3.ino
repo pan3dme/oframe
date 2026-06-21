@@ -19,24 +19,21 @@ String gpsCoordinates;           // GPS坐标信息
 char sendData[BUFFER_SIZE];      // 发送数据缓存
 RadioEvents_t radioEvents;       // LoRa事件回调
 int packetCount = 0;             // 数据包计数器
-unsigned long lastSendTime = 0;  // 上次发送时间戳
 String displayLines[4];          // OLED显示内容
 
 // LoRa发射时间管理
 int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
-time_t bootEpoch = 946684800;    // 开机基准时间：2000/1/1 0:0:0 (UTC)
-unsigned long bootMillis = 0;    // 开机时的millis()
 
 // LoRa接收窗口状态
 bool inRxMode = false;            // 当前是否处于接收模式
+unsigned long rxStartTime = 0;    // RX窗口开始的millis()
 bool didSend = false;             // 本周期是否已发送（控制RX窗口和休眠）
 char rxBuffer[BUFFER_SIZE + 1];   // 接收数据缓存
 
 // ==================== 计算下次发送时间 ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
-  // 从pan3dme获取设备索引和总数
   if (deviceIndex < 0 || totalDevices == 0) {
     deviceIndex = getDevicesIdx();
     totalDevices = getTotalDevices();
@@ -48,16 +45,12 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
     return millis() + intervalSeconds * 1000;
   }
 
-  // 获取当前推算时间（基于开机时间+系统运行时间）
-  unsigned long elapsedSeconds = (millis() - bootMillis) / 1000;
-  time_t currentEpoch = bootEpoch + elapsedSeconds;
-  struct tm* tmNow = localtime(&currentEpoch);
+  // 通过getCurrentTime()获取当前时间（已统一所有时间源优先级）
+  String timeStr = getCurrentTime();
+  int hour = 0, minute = 0, second = 0;
+  sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
 
-  int hour = tmNow->tm_hour;
-  int minute = tmNow->tm_min;
-  int second = tmNow->tm_sec;
-
-  // 基于推算时间计算时隙
+  // 基于当前时间计算时隙
   unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
   float slotDuration = (float)intervalSeconds / totalDevices;
   float targetSecondInCycle = deviceIndex * slotDuration;
@@ -75,29 +68,13 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   long secondsDiff = (long)targetSeconds - (long)currentSeconds;
   unsigned long delayMillis = secondsDiff * 1000;
 
-  Serial.printf("推算时间: %02d:%02d:%02d, 设备%d, 时隙%.2f秒, 延迟%lu ms\n",
-                hour, minute, second, deviceIndex, slotDuration, delayMillis);
+  Serial.printf("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu ms\n",
+                timeStr.c_str(), deviceIndex, slotDuration, delayMillis);
 
   return millis() + delayMillis;
 }
 
-// ==================== 判断是否到达发送时间 ====================
-bool isTimeToSend(unsigned long intervalSeconds) {
-  unsigned long currentMillis = millis();
-
-  // 首次调用或已过发送时间，重新计算
-  if (nextSendTime == 0 || currentMillis >= nextSendTime) {
-    nextSendTime = calculateNextSendTime(intervalSeconds);
-    return true;  // 立即发送
-  }
-
-  return false;
-}
-
-
-
-
-// ==================== 读取GPS信息 ====================
+// ==================== 读取GPS信息 ======================================
 void updateGpsInfo() {
   gpsCoordinates = getGpsInfoStr();
   displayLines[2] = gpsCoordinates;
@@ -115,10 +92,6 @@ void setup() {
   delay(1000);
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-
-  // 初始化开机基准时间（2000/1/1 0:0:0 UTC）
-  bootMillis = millis();
-  Serial.println("开机基准时间: 2000/1/1 0:0:0 UTC");
 
   // 生成设备名称并初始化显示
   deviceName = makeDivceName();
@@ -172,12 +145,20 @@ void loop() {
     nextSendTime = calculateNextSendTime(intervalSec);
   }
 
+  // RX窗口5秒超时检查（独立于发送时间）
+  if (inRxMode && (currentMs - rxStartTime >= rxWindowMs)) {
+    Radio.Sleep();
+    inRxMode = false;
+    Serial.println("⏹ 结束接收窗口... " + getCurrentTime());
+  }
+
   // ====== 阶段1：到达发送时间，执行发送 ======
   if (currentMs >= nextSendTime) {
     // 如果正在接收，先退出RX模式
     if (inRxMode) {
       Radio.Sleep();
       inRxMode = false;
+      Serial.println("⏹ 结束接收窗口... " + getCurrentTime());
     }
 
     didSend = true;
@@ -200,10 +181,16 @@ void loop() {
     return;
   }
 
-  // ====== 阶段2：接收窗口（已发送，距离下次发送不足RX_WINDOW_SECONDS时持续监听） ======
+  // ====== 阶段2：接收窗口（周期最后RX_WINDOW_SECONDS秒开启接收） ======
   if (didSend && canRx && !inRxMode) {
-    unsigned long timeUntilSend = nextSendTime - currentMs;
-    if (timeUntilSend <= rxWindowMs && timeUntilSend > 0) {
+    // 基于当前时间计算周期边界，RX窗口对齐到周期最后5秒
+    String timeNow = getCurrentTime();
+    int h, m, s;
+    sscanf(timeNow.c_str(), "%*d/%*d/%*d %d:%d:%d", &h, &m, &s);
+    unsigned long timeOfDaySec = h * 3600UL + m * 60UL + s;
+    unsigned long nextCycleBoundaryMs = currentMs + (intervalSec - timeOfDaySec % intervalSec) * 1000UL;
+    unsigned long rxStartMs = nextCycleBoundaryMs - rxWindowMs;
+    if (currentMs >= rxStartMs && currentMs < nextCycleBoundaryMs) {
       startRxWindow();
     }
   }
@@ -247,19 +234,35 @@ void onRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   Serial.printf("📨 收到LoRa数据 [%d字节] RSSI:%d SNR:%d\n", size, rssi, snr);
   Serial.printf("   内容: %s\n", rxBuffer);
 
-
+  // 解析消息类型，处理对时消息
+  String rxStr = String(rxBuffer);
+  int typeEnd = rxStr.indexOf('|');
+  if (typeEnd > 0) {
+    int msgType = rxStr.substring(0, typeEnd).toInt();
+    if (msgType == MSG_TYPE_TIME) {
+      // 提取时间字段（第二个'|'之后的内容）
+      int secondPipe = rxStr.indexOf('|', typeEnd + 1);
+      if (secondPipe > 0) {
+        String timeStr = rxStr.substring(secondPipe + 1);
+        setTimeFromLora(timeStr);
+      }
+    }
+  }
+  displayLines[3] = "RX:" + String(copyLen) + "B";
 }
 
 // ==================== LoRa接收超时回调 ====================
 void onRxTimeout(void) {
   Radio.Sleep();
   inRxMode = false;
+  Serial.println("⏹ RX超时，结束接收... " + getCurrentTime());
 }
 
 // ==================== 进入接收窗口 ====================
 void startRxWindow() {
   inRxMode = true;
-  Serial.println("📡 进入接收窗口...");
+  rxStartTime = millis();
+  Serial.println("📡 进入接收窗口... " + getCurrentTime());
   displayLines[3] = "RX Listening";
   Radio.Rx(0);  // 连续接收模式
 }
