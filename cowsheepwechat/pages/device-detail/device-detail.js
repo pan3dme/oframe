@@ -106,6 +106,17 @@ Page({
   },
 
   // 查看设备轨迹 — 弹日期选择 → 查GPS数据 → 跳转地图页
+  // 点击设备图片放大预览
+  onPreviewImage() {
+    const picurl = this.data.deviceInfo && this.data.deviceInfo.picurl
+    if (picurl) {
+      wx.previewImage({
+        current: picurl,
+        urls: [picurl]
+      })
+    }
+  },
+
   onViewRecords() {
     this.setData({
       showTrackModal: true,

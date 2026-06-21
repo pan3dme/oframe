@@ -29,19 +29,19 @@ uint64_t allowedDevices[] = {
     0x9875555,
     0x9875555,
     0x9875555,
-    0x248B9C697090, // v4    1
+    0x248B9C697090, // v4    4
     0x9875555,
-    0x6809A21B5BF8, // v4    2
+    0x6809A21B5BF8, // v4    6
     0x9875555,
-    0x8442AAAC85D8, // v3    3
+    0x8442AAAC85D8, // v3    10
     0x9875555,
-    0x301BA21B5BF8, // v4    4
+    0x301BA21B5BF8, // v4    12
     0x9875555,
-    0x0C46AAAC85D8, // v3    5
+    0x0C46AAAC85D8, // v3    14
     0x9875555,
-    0xB4E00404A7AC, // v3    6
+    0xB4E00404A7AC, // v3    16
     0x9875555,
-    0xF89A3604A7AC, // v3    7
+    0xF89A3604A7AC, // v3    18
     0x9875555,
     0x9875555,
     0x9875555,
@@ -118,8 +118,9 @@ void gpsEncode()
     }
   }
 
-  // GPS时间有效且未存储过时，只存一次
-  if (gpsSyncedEpoch == 0 && gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025)
+  // GPS时间有效时，每SEND_INTERVAL_MS周期更新一次存储时间
+  if ((gpsSyncedEpoch == 0 || millis() - gpsSyncedMillis >= SEND_INTERVAL_MS)
+      && gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025)
   {
     struct tm tmGps;
     memset(&tmGps, 0, sizeof(tmGps));

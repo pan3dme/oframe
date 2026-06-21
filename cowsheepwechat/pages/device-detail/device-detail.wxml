@@ -6,7 +6,7 @@
     <view class="detail-header">
       <!-- 左侧设备图片 -->
       <view class="pic-area">
-        <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" />
+        <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" bindtap="onPreviewImage" />
         <view class="detail-pic-placeholder" wx:else>📡</view>
       </view>
 

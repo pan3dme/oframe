@@ -1,5 +1,6 @@
 // bluetooth.js
 const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
+const dataCache = require('../../config/data-cache.js')
 
 Page({
   data: {
@@ -462,10 +463,67 @@ Page({
       wx.showToast({ title: '暂无缓存数据', icon: 'none' })
       return
     }
-    if (!this.data.bluetoothConnected) {
-      wx.showToast({ title: '请先连接蓝牙设备', icon: 'none' })
+
+    // 提取所有记录中的设备ID并校验
+    this._validateDevices(this.data.cacheQueue, (unknownDevices) => {
+      if (unknownDevices.length > 0) {
+        wx.showModal({
+          title: '设备未注册',
+          content: '以下设备未在系统中找到：\n' + unknownDevices.join('、') + '\n\n是否继续上传？',
+          confirmText: '继续上传',
+          cancelText: '取消',
+          success: (res) => {
+            if (res.confirm) {
+              this._doUploadToCenter()
+            }
+          }
+        })
+      } else {
+        this._doUploadToCenter()
+      }
+    })
+  },
+
+  // 提取缓存数据中的deviceId并对比设备缓存
+  _validateDevices(cacheQueue, callback) {
+    // 先从缓存数据中提取所有deviceId
+    const deviceIds = new Set()
+    cacheQueue.forEach(item => {
+      try {
+        const obj = JSON.parse(item)
+        const info = obj.info || ''
+        const parts = info.split('|')
+        if (parts.length >= 2 && parts[0] === '1') {
+          const deviceId = parts[1].trim()
+          if (deviceId) deviceIds.add(deviceId)
+        }
+      } catch (e) {
+        // 非JSON数据，跳过
+      }
+    })
+
+    if (deviceIds.size === 0) {
+      // 没有提取到设备ID，直接放行
+      callback([])
       return
     }
+
+    const idList = Array.from(deviceIds)
+    // 检查设备缓存
+    dataCache.getDeviceList((deviceData) => {
+      const knownSet = new Set()
+      if (deviceData && deviceData.recordList) {
+        deviceData.recordList.forEach(r => {
+          if (r.deviceId && r.deviceId !== '-') knownSet.add(r.deviceId)
+        })
+      }
+      const unknown = idList.filter(id => !knownSet.has(id))
+      callback(unknown)
+    })
+  },
+
+  // 实际执行上传
+  _doUploadToCenter() {
     // 将缓存数据全部移入上传队列
     const allData = [...this.data.cacheQueue]
     this.setData({
