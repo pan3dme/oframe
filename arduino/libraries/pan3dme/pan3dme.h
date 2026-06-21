@@ -63,6 +63,9 @@ extern unsigned long syncedMillis;
 #define LORA_PA_EN     2
 #define LORA_PA_TX_EN  46
 
+
+const unsigned long SEND_INTERVAL_MS = 30000;  // 总周期10秒
+
 struct BLECallbacks
 {
   BLEServer *pServer;
@@ -80,6 +83,7 @@ void initPanRadio(RadioEvents_t* radioEvents);
 String getCurrentGpsTm(TinyGPSPlus gps);
 String getGpsInfoStr();
 String getCurrentTime();
+bool hasValidTime();
 void setTimeFromLora(String timeStr);
 int getDevicesIdx();
 int getTotalDevices();  // 获取设备总数

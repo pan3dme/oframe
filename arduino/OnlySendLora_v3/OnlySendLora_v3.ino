@@ -10,7 +10,7 @@
 
 // ==================== 常量定义 ====================
 const char* DEVICE_NAME_PREFIX = "v4-x";
-const unsigned long SEND_INTERVAL_MS = 30000;  // 总周期10秒
+
 
 // ==================== 全局变量 ====================
 String deviceName;               // 设备名称

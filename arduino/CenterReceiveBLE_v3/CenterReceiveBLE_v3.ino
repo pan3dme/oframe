@@ -286,12 +286,19 @@ void loop() {
 
     if (lastPayloadSize > 0) {
 
-      StaticJsonDocument<200> doc;
+      StaticJsonDocument<256> doc;
       doc["rssi"] = (int)lastRssi;
       doc["snr"] = (int)lastSnr;
       doc["info"] = loraStr;
       doc["upDateDevice"] = deviceName;
-      doc["time"] = getCurrentTime();
+
+      if (hasValidTime()) {
+        // 有有效时间，存本地时间
+        doc["time"] = getCurrentTime();
+      } else {
+        // 无有效时间，存millis()用于后续反算
+        doc["ms"] = millis();
+      }
 
       String jsonData;
       serializeJson(doc, jsonData);
@@ -308,16 +315,16 @@ void loop() {
   // LED提示
   if (needPlaLed) {
     needPlaLed = false;
-    openLedByNum(5, 50);
-    Serial.print("测试收到一条消息用时");
-    Serial.println(millis() - startm);
+    openLedByNum(1, 50);
+    // Serial.print("测试收到一条消息用时");
+    // Serial.println(millis() - startm);
     lastrecdLoraTm = startm;
   }
 
   // 超时检测与Radio状态恢复
   unsigned long timeSinceLastRecv = startm - lastrecdLoraTm;
-  if (timeSinceLastRecv > 60000) {
-    Serial.print("⚠️ 超过60秒未收到数据: ");
+  if (timeSinceLastRecv > SEND_INTERVAL_MS) {
+    Serial.print("⚠️ 超过一个周期没有收到到数据: ");
     Serial.println(timeSinceLastRecv);
 
     // 检查Radio当前状态

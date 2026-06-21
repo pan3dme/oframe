@@ -385,16 +385,9 @@ void disConnectWifi(){
   Serial.println("📶 WiFi 已关闭，后续时间使用本地时钟增量");
 }
 
-// 从LoRa对时信息设置时间
+// 从LoRa对时信息设置时间（仅当新时间比本地时间更新时才覆盖）
 void setTimeFromLora(String timeStr)
 {
-  // 如果已经有网络时间或已经通过LoRa同步过，则不再重复设置
-  if (wifiTimeSynced || loraTimeSynced)
-  {
-    Serial.println("⚠️ 时间已同步，忽略LoRa对时信息");
-    return;
-  }
-
   // 解析时间字符串格式: "2026/6/17 00:12:20"
   struct tm tmLora;
   memset(&tmLora, 0, sizeof(tmLora));
@@ -410,8 +403,30 @@ void setTimeFromLora(String timeStr)
     tmLora.tm_min = minute;
     tmLora.tm_sec = second;
 
-    // 转换为time_t
-    loraSyncedEpoch = mktime(&tmLora);
+    time_t newEpoch = mktime(&tmLora);
+
+    // 计算当前本地时间（如果已同步）
+    time_t currentEpoch = 0;
+    if (wifiTimeSynced)
+    {
+      unsigned long elapsedMs = millis() - syncedMillis;
+      currentEpoch = syncedEpoch + elapsedMs / 1000;
+    }
+    else if (loraTimeSynced)
+    {
+      unsigned long elapsedMs = millis() - loraSyncedMillis;
+      currentEpoch = loraSyncedEpoch + elapsedMs / 1000;
+    }
+
+    // 如果本地已有时间且新时间不比本地时间新，则忽略
+    if (currentEpoch > 0 && newEpoch <= currentEpoch)
+    {
+      Serial.println("⚠️ LoRa对时不比本地时间新，忽略");
+      return;
+    }
+
+    // 更新时间
+    loraSyncedEpoch = newEpoch;
     loraSyncedMillis = millis();
     loraTimeSynced = true;
 
@@ -424,6 +439,12 @@ void setTimeFromLora(String timeStr)
     Serial.print("❌ LoRa对时解析失败: ");
     Serial.println(timeStr);
   }
+}
+
+// 判断是否有有效时间（WiFi或LoRa对时）
+bool hasValidTime()
+{
+  return wifiTimeSynced || loraTimeSynced;
 }
 
 void initPanRadio(RadioEvents_t* radioEvents) {
