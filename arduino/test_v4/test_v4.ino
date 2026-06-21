@@ -10,7 +10,7 @@
 
 // ==================== 常量定义 ====================
 const char* DEVICE_NAME_PREFIX = "v4-x";
-const unsigned long SEND_INTERVAL_MS = 10000;  // 总周期10秒
+ 
 
 // ==================== 全局变量 ====================
 String deviceName;               // 设备名称
@@ -147,11 +147,11 @@ void buildAndSendPacket(int packetType) {
 }
 // ==================== 主循环 ====================
 void loop() {
-  delay(1);
+  delay(3000);
   gpsEncode();
 
   // 使用智能时间管理判断是否发送
-  if (isTimeToSend(SEND_INTERVAL_MS / 1000)) {
+ 
     lastSendTime = millis();
     packetCount++;
 
@@ -159,20 +159,16 @@ void loop() {
 
 
     // 构建并发送数据包
-    if (packetCount == 1) {
+ 
       buildAndSendPacket(MSG_TYPE_FIRMWARE);
-    }
+ 
 
 
 
     // LED指示和状态显示
     openLedByNum(10, 50);
     displayLines[3] = "Sending...";
-  } else {
-    // 显示距离下次发送的剩余时间
-    unsigned long remaining = (nextSendTime - millis()) / 1000;
-    displayLines[3] = "LoRa Sleep";
-  }
+ 
 
   // 处理LoRa中断
   Radio.IrqProcess();

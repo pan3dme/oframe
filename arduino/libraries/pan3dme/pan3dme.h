@@ -64,7 +64,7 @@ extern unsigned long syncedMillis;
 #define LORA_PA_TX_EN  46
 
 
-const unsigned long SEND_INTERVAL_MS = 30000;  // 总周期10秒
+const unsigned long SEND_INTERVAL_MS = 60000;  // 总周期10秒
 
 struct BLECallbacks
 {

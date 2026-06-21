@@ -103,32 +103,7 @@ String getAndRemoveFirstData() {
 // 处理固件更新指令
 void handleFirmwareUpdate(String loraData) {
   Serial.println("📦 开始处理固件更新...");
-  
-  // 解析固件更新信息
-  // 格式示例: 10|device-name|firmware-url|version|checksum
-  int parts[5];
-  int partIndex = 0;
-  int lastIndex = 0;
-  
-  for (int i = 0; i <= loraData.length() && partIndex < 5; i++) {
-    if (i == loraData.length() || loraData.charAt(i) == '|') {
-      if (partIndex < 5) {
-        parts[partIndex++] = i;
-      }
-    }
-  }
-  
-  if (partIndex >= 2) {
-    String deviceTarget = loraData.substring(parts[0] + 1, parts[1]);
-    Serial.print("🎯 目标设备: ");
-    Serial.println(deviceTarget);
-    
-    // TODO: 根据实际需求实现固件下载和烧录逻辑
-    // 可以集成 ESP32 OTA 更新功能
-    Serial.println("⚠️ 固件更新功能待实现");
-  } else {
-    Serial.println("❌ 固件更新指令格式错误");
-  }
+   
 }
 
 // 初始化BLE服务
@@ -345,6 +320,7 @@ void loop() {
 
   // BLE数据发送
   if (deviceConnected && needSync && dataCount > 0) {
+    delay(200); //延时200毫秒才发送蓝牙消息
     String data = getAndRemoveFirstData();
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
@@ -353,6 +329,7 @@ void loop() {
     Serial.println(data);
     Serial.print("📊 剩余：");
     Serial.println(dataCount);
+    
   }
 
   // 降低OLED刷新频率 (每500ms更新一次)

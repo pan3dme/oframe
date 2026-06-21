@@ -21,6 +21,10 @@ unsigned long loraSyncedMillis = 0; // LoRa同步时的本地毫秒计数
 //AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
     0x248B9C697090, // v4    1
     0x9875555,
     0x6809A21B5BF8, // v4    2
