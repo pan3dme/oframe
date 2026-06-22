@@ -103,7 +103,6 @@ String getAndRemoveFirstData() {
 // 处理固件更新指令
 void handleFirmwareUpdate(String loraData) {
   Serial.println("📦 开始处理固件更新...");
-   
 }
 
 // 初始化BLE服务
@@ -123,6 +122,18 @@ void OnRxTimeout(void) {
   Serial.println("⚠️ Radio接收超时!");
   // 超时后重新开启接收
   Radio.Rx(0);
+   StaticJsonDocument<256> doc;
+  doc["rssi"] = 0;
+  doc["snr"] = 0;
+  doc["info"] = "99|xxx|❌❌❌OnRxTimeout";
+  doc["upDateDevice"] = deviceName;
+  if (hasValidTime()) {
+    // 有有效时间，存本地时间
+    doc["time"] = getCurrentTime();
+  } else {
+    // 无有效时间，存millis()用于后续反算
+    doc["ms"] = millis();
+  }
 }
 
 // LoRa接收错误回调
@@ -130,6 +141,19 @@ void OnRxError(void) {
   Serial.println("❌ Radio接收错误!");
   // 错误后重新开启接收
   Radio.Rx(0);
+
+  StaticJsonDocument<256> doc;
+  doc["rssi"] = 0;
+  doc["snr"] = 0;
+  doc["info"] = "99|xxx|❌❌❌OnRxError";
+  doc["upDateDevice"] = deviceName;
+  if (hasValidTime()) {
+    // 有有效时间，存本地时间
+    doc["time"] = getCurrentTime();
+  } else {
+    // 无有效时间，存millis()用于后续反算
+    doc["ms"] = millis();
+  }
 }
 
 // LoRa接收回调 (仅做数据拷贝，耗时操作在主循环处理)
@@ -332,7 +356,7 @@ void loop() {
 
   // BLE数据发送
   if (deviceConnected && needSync && dataCount > 0) {
-    delay(200); //延时200毫秒才发送蓝牙消息
+    delay(200);  //延时200毫秒才发送蓝牙消息
     String data = getAndRemoveFirstData();
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
@@ -341,7 +365,6 @@ void loop() {
     Serial.println(data);
     Serial.print("📊 剩余：");
     Serial.println(dataCount);
-    
   }
 
   // 降低OLED刷新频率 (每500ms更新一次)

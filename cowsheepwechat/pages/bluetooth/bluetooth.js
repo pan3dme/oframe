@@ -20,7 +20,9 @@ Page({
     uploadedCount: 0,
     isCenterUploading: false, // 数据中心上传状态
     // 写入特征值信息（连接成功后缓存）
-    writeDeviceInfo: null
+    writeDeviceInfo: null,
+    // 发送指令面板
+    showCmdPanel: false
   },
 
   _lastCacheTapTime: 0,  // 双击清空缓存用
@@ -692,6 +694,63 @@ Page({
       fail(err) {
         console.error('发送失败:', err)
         wx.showToast({ title: '发送失败', icon: 'error' })
+      }
+    })
+  },
+
+  // ========== 发送指令面板 ==========
+  toggleCmdPanel() {
+    this.setData({ showCmdPanel: !this.data.showCmdPanel })
+  },
+
+  // 通过BLE发送指令
+  _sendBleCmd(cmdObj, successMsg) {
+    const info = this.data.writeDeviceInfo
+    if (!info) {
+      wx.showToast({ title: '未找到可写入特征值', icon: 'error' })
+      return
+    }
+    const text = JSON.stringify(cmdObj)
+    const buffer = this.textToAb(text)
+    wx.writeBLECharacteristicValue({
+      deviceId: info.deviceId,
+      serviceId: info.serviceId,
+      characteristicId: info.characteristicId,
+      value: buffer,
+      success: () => {
+        wx.showToast({ title: successMsg || '指令已发送', icon: 'success' })
+        console.log('BLE指令已发送:', text)
+      },
+      fail(err) {
+        console.error('BLE指令发送失败:', err)
+        wx.showToast({ title: '发送失败', icon: 'error' })
+      }
+    })
+  },
+
+  // 同步时间
+  onSyncTime() {
+    const time = getApp().formatTime()
+    this._sendBleCmd({ cmd: 'synctime', time: time }, '时间同步指令已发送')
+  },
+
+  // 改变发送频率
+  onChangeFreq() {
+    const that = this
+    wx.showModal({
+      title: '设置发送频率',
+      content: '请输入发送间隔（秒）：',
+      editable: true,
+      placeholderText: '例如 5',
+      success(res) {
+        if (res.confirm && res.content) {
+          const val = parseInt(res.content.trim())
+          if (isNaN(val) || val <= 0) {
+            wx.showToast({ title: '请输入有效的正整数', icon: 'none' })
+            return
+          }
+          that._sendBleCmd({ cmd: 'setfreq', value: val }, '频率已设置为 ' + val + ' 秒')
+        }
       }
     })
   },

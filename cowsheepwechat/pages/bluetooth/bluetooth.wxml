@@ -32,6 +32,25 @@
     <view class="device-card" wx:if="{{bluetoothConnected}}">
       <text class="device-bt">📡</text>
       <text class="device-name">{{connectedDeviceName}}</text>
+      <view class="device-cmd-btn" bindtap="toggleCmdPanel">
+        <text>发送指令</text>
+        <text class="cmd-arrow">{{showCmdPanel ? '▼' : '▶'}}</text>
+      </view>
+    </view>
+
+    <!-- 发送指令面板 -->
+    <view class="cmd-panel" wx:if="{{bluetoothConnected && showCmdPanel}}">
+      <view class="cmd-card-title">📋 设备指令</view>
+      <view class="cmd-btns">
+        <button class="cmd-btn cmd-btn-time" bindtap="onSyncTime">
+          <text class="cmd-btn-icon">🕐</text>
+          <text>同步时间</text>
+        </button>
+        <button class="cmd-btn cmd-btn-freq" bindtap="onChangeFreq">
+          <text class="cmd-btn-icon">⚡</text>
+          <text>改变发送频率</text>
+        </button>
+      </view>
     </view>
 
     <!-- 扫描设备列表（未连接时显示） -->

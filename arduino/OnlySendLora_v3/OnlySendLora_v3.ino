@@ -91,7 +91,9 @@ void initLora() {
 }
 // ==================== 读取电池电量 ====================
 String readBatteryLevel() {
-  digitalWrite(VBAT_CTRL_PIN, LOW);
+  // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
+  bool isV4 = deviceName.startsWith("v4-");
+  digitalWrite(VBAT_CTRL_PIN, isV4 ? HIGH : LOW);
   delay(100);
 
   const int samples = 10;
@@ -105,7 +107,8 @@ String readBatteryLevel() {
   float rawAvg = (float)rawSum / samples;
   float mvAvg = (float)mvSum / samples;
 
-  digitalWrite(VBAT_CTRL_PIN, HIGH);
+  // 关闭检测电路（V3 HIGH 关闭，V4 LOW 关闭）
+  digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
 
   // 分压系数 5.35（实测校准：785mV × 5.35 ≈ 4.2V 满电）
   float batteryVoltage = mvAvg * 5.35 / 1000.0;
@@ -149,9 +152,10 @@ void buildAndSendPacket(int packetType) {
     updateGpsInfo();
     dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
   } else if (packetType == MSG_TYPE_TIME) {
-    dataStr += "|" + getCurrentTime();
+    dataStr += "|" + getCurrentTime()+ "|" + String(packetCount);
   } else if (packetType == MSG_TYPE_BATTERY) {
-    dataStr += "|" + readBatteryLevel();
+    dataStr += "|" + readBatteryLevel()+ "|" + String(packetCount);
+ 
   }
 
   // 安全拷贝到发送缓冲区

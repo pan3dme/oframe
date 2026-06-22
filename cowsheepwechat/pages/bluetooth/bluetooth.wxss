@@ -128,6 +128,72 @@ page {
   color: #333;
 }
 
+.device-cmd-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding: 10rpx 24rpx;
+  font-size: 26rpx;
+  color: #1989fa;
+  background: #eaf3ff;
+  border-radius: 30rpx;
+}
+
+.cmd-arrow {
+  font-size: 20rpx;
+  margin-left: 8rpx;
+}
+
+/* ========== 发送指令面板 ========== */
+.cmd-panel {
+  margin: 0 24rpx 12rpx;
+  background: #fff;
+  border-radius: 14rpx;
+  padding: 20rpx 24rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.05);
+  border-left: 6rpx solid #1989fa;
+}
+
+.cmd-card-title {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 16rpx;
+}
+
+.cmd-btns {
+  display: flex;
+  gap: 16rpx;
+}
+
+.cmd-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 80rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  border-radius: 12rpx;
+  border: none;
+  padding: 0;
+}
+.cmd-btn::after { border: none; }
+
+.cmd-btn-icon {
+  font-size: 30rpx;
+  margin-right: 8rpx;
+}
+
+.cmd-btn-time {
+  color: #fff;
+  background: #ff9800;
+}
+
+.cmd-btn-freq {
+  color: #fff;
+  background: #07c160;
+}
+
 /* 扫描设备面板 */
 .scan-panel {
   margin: 0 24rpx 12rpx;
