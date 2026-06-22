@@ -38,6 +38,10 @@ String deviceName = "x-x";
 // LoRa接收缓冲区
 char loraStr[BUFFER_SIZE];
 
+// LoRa对时发送缓冲区
+char timeSyncSendBuf[BUFFER_SIZE];
+bool needSendTimeSync = false;
+
 // LoRa状态标志
 bool needPlaLed = false;
 bool loraReceivedFlag = false;
@@ -70,9 +74,32 @@ class MyCallbacks : public BLECharacteristicCallbacks {
     StaticJsonDocument<200> doc;
     DeserializationError error = deserializeJson(doc, rxValue);
 
-    if (!error && doc.containsKey("syncing")) {
-      needSync = doc["syncing"].as<bool>();
-      Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
+    if (!error) {
+      // 原有逻辑：数据同步开关
+      if (doc.containsKey("syncing")) {
+        needSync = doc["syncing"].as<bool>();
+        Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
+      }
+
+      // 新增逻辑：接收对时指令，通过LoRa转发
+      if (doc.containsKey("cmd")) {
+        String cmd = doc["cmd"].as<String>();
+        if (cmd == "synctime" && doc.containsKey("time")) {
+          String timeStr = doc["time"].as<String>();
+          Serial.print("⏰ 收到对时发送指令: ");
+          Serial.println(timeStr);
+
+          // 构造LoRa对时消息：2|设备名|时间
+          String msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + timeStr;
+          int len = snprintf(timeSyncSendBuf, BUFFER_SIZE, "%s", msg.c_str());
+          if (len < 0 || len >= BUFFER_SIZE) {
+            timeSyncSendBuf[BUFFER_SIZE - 1] = '\0';
+          }
+          needSendTimeSync = true;
+          Serial.print("📤 准备发送对时消息: ");
+          Serial.println(timeSyncSendBuf);
+        }
+      }
     }
   }
 };
@@ -116,6 +143,22 @@ void initBLE() {
 
 
 
+
+// LoRa发送完成回调
+void OnTxDone(void) {
+  Serial.println("✅ 对时发送完成，回到接收模式");
+  needSendTimeSync = false;
+  displayBuf[1] = "TX Done";
+  Radio.Rx(0);
+}
+
+// LoRa发送超时回调
+void OnTxTimeout(void) {
+  Serial.println("❌ 对时发送超时，回到接收模式");
+  needSendTimeSync = false;
+  displayBuf[1] = "TX Timeout";
+  Radio.Rx(0);
+}
 
 // LoRa接收超时回调
 void OnRxTimeout(void) {
@@ -203,6 +246,8 @@ void initRadio() {
   RadioEvents.RxDone = OnRxDone;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
+  RadioEvents.TxDone = OnTxDone;
+  RadioEvents.TxTimeout = OnTxTimeout;
   initPanRadio(&RadioEvents);
   Radio.Rx(0);  // 重新开启接收
 }
@@ -229,6 +274,15 @@ unsigned long lastrecdLoraTm = 0;
 void loop() {
   unsigned long startm = millis();
   Radio.IrqProcess();
+
+  // 处理BLE触发的对时LoRa发送
+  if (needSendTimeSync) {
+    Serial.print("📡 发送对时LoRa消息: ");
+    Serial.println(timeSyncSendBuf);
+    displayBuf[1] = "TX TimeSync";
+    Radio.Send((uint8_t*)timeSyncSendBuf, strlen(timeSyncSendBuf));
+    needSendTimeSync = false;
+  }
 
   // 处理LoRa接收数据
   if (loraReceivedFlag) {
