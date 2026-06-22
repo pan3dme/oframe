@@ -209,7 +209,7 @@ void loop() {
     packetCount++;
 
     // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;MSG_TYPE_BATTERY
-    const int typeList[] = { MSG_TYPE_TIME, MSG_TYPE_TIME, MSG_TYPE_TIME };
+    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
     int packetType = typeList[packetCount % 3];
 
     buildAndSendPacket(packetType);

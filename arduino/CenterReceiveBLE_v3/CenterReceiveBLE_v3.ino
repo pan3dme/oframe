@@ -41,6 +41,7 @@ char loraStr[BUFFER_SIZE];
 // LoRa对时发送缓冲区
 char timeSyncSendBuf[BUFFER_SIZE];
 bool needSendTimeSync = false;
+unsigned long scheduledSendMs = 0; // 窗口发送时间点(millis)
 
 // LoRa状态标志
 bool needPlaLed = false;
@@ -66,6 +67,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
 
 // 前向声明
 String findLastMessageByDevice(String deviceId);
+unsigned long calcRxWindowStartMs(String msgJson);
 
 // BLE特征值回调 (解析JSON指令)
 class MyCallbacks : public BLECharacteristicCallbacks {
@@ -95,7 +97,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
           // 1. 同步本地时间
           setTimeFromLora(timeStr);
 
-          // 2. 如果携带 deviceId，在队列中查找该设备的最后一条消息
+          // 2. 如果携带 deviceId，查找该设备的最后一条消息并计算接收窗口
           if (doc.containsKey("deviceId")) {
             String targetId = doc["deviceId"].as<String>();
             String lastMsg = findLastMessageByDevice(targetId);
@@ -104,21 +106,40 @@ class MyCallbacks : public BLECharacteristicCallbacks {
               Serial.print(targetId);
               Serial.print(" 最后一条消息: ");
               Serial.println(lastMsg);
+
+              // 计算接收窗口起始时间
+              unsigned long rxStartMs = calcRxWindowStartMs(lastMsg);
+              if (rxStartMs > 0) {
+                unsigned long nowMs = millis();
+                if (rxStartMs > nowMs) {
+                  // 窗口在未来，定时发送
+                  scheduledSendMs = rxStartMs;
+                  needSendTimeSync = true;
+                  unsigned long waitSec = (rxStartMs - nowMs) / 1000;
+                  Serial.printf("⏳ 将在 %lu 秒后（接收窗口开启时）发送对时\n", waitSec);
+                } else {
+                  // 窗口已过，立即发送
+                  needSendTimeSync = true;
+                  scheduledSendMs = 0;
+                  Serial.println("⚠️ 接收窗口已过，立即发送");
+                }
+              } else {
+                // 计算失败，立即发送
+                needSendTimeSync = true;
+                scheduledSendMs = 0;
+              }
             } else {
               Serial.print("⚠️ 队列中没有 ");
               Serial.println(targetId);
+              // 找不到设备消息，立即发送
+              needSendTimeSync = true;
+              scheduledSendMs = 0;
             }
+          } else {
+            // 无 deviceId，立即发送
+            needSendTimeSync = true;
+            scheduledSendMs = 0;
           }
-
-          // 3. 构造LoRa对时消息并转发
-          String msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + timeStr;
-          int len = snprintf(timeSyncSendBuf, BUFFER_SIZE, "%s", msg.c_str());
-          if (len < 0 || len >= BUFFER_SIZE) {
-            timeSyncSendBuf[BUFFER_SIZE - 1] = '\0';
-          }
-          needSendTimeSync = true;
-          Serial.print("📤 准备发送对时消息: ");
-          Serial.println(timeSyncSendBuf);
         }
       }
     }
@@ -169,6 +190,67 @@ String findLastMessageByDevice(String deviceId) {
     }
   }
   return "";
+}
+
+// 根据设备ID和中心接收时间计算设备的接收窗口
+// 原理：设备在时隙slotTime发送，RX窗口在时隙后(interval - slotTime - rxWinSec)秒
+// 例: v3-8 slot=14.55s, delay=60-14.55-5=40.45s
+unsigned long calcRxWindowStartMs(String msgJson) {
+  StaticJsonDocument<256> doc;
+  if (deserializeJson(doc, msgJson) != DeserializationError::Ok) return 0;
+
+  // 从 info 提取设备名，解析设备索引
+  // info格式: "2|v3-8|2000/1/1 08:14:14|15"
+  const char* infoCstr = doc["info"];
+  if (infoCstr == nullptr) return 0;
+  String infoStr = String(infoCstr);
+  int p1 = infoStr.indexOf('|');
+  if (p1 < 0) return 0;
+  int p2 = infoStr.indexOf('|', p1 + 1);
+  if (p2 < 0) return 0;
+  String devName = infoStr.substring(p1 + 1, p2);
+  int dashPos = devName.lastIndexOf('-');
+  if (dashPos < 0) return 0;
+  int deviceIdx = devName.substring(dashPos + 1).toInt();
+
+  int totalDevices = getTotalDevices(); // 33
+  const unsigned long intervalSec = SEND_INTERVAL_MS / 1000; // 60
+  const unsigned long rxWinSec = 5;
+
+  // 设备时隙 = deviceIdx * (周期 / 总设备数)
+  float slotDuration = (float)intervalSec / totalDevices;
+  float slotTime = deviceIdx * slotDuration; // v3-8: 8*1.818=14.55
+
+  // 从收到消息到设备RX窗口中心的延迟
+  // 设备在slotTime发送，RX窗口在周期最后rxWinSec秒，在窗口中心发送
+  // delay = interval - slotTime - rxWinSec/2
+  unsigned long delaySec = (unsigned long)(intervalSec - slotTime - rxWinSec / 2.0); // 42秒
+
+  // 扣除BLE指令到达前已流逝的时间
+  unsigned long elapsedSec = 0;
+  const char* recvTimeCstr = doc["time"];
+  if (recvTimeCstr != nullptr) {
+    int rh, rm, rs;
+    if (sscanf(recvTimeCstr, "%*d/%*d/%*d %d:%d:%d", &rh, &rm, &rs) == 3) {
+      unsigned long recvTimeOfDay = (unsigned long)rh * 3600UL + (unsigned long)rm * 60UL + rs;
+      String nowStr = getCurrentTime();
+      int nh, nm, ns;
+      if (sscanf(nowStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &nh, &nm, &ns) == 3) {
+        unsigned long nowTimeOfDay = (unsigned long)nh * 3600UL + (unsigned long)nm * 60UL + ns;
+        elapsedSec = (nowTimeOfDay >= recvTimeOfDay) ? (nowTimeOfDay - recvTimeOfDay) : 0;
+      }
+    }
+  }
+  long waitSec = (long)delaySec - (long)elapsedSec;
+  if (waitSec < 0) {
+    waitSec += intervalSec; // 窗口已过，放到下一个周期
+    Serial.println("⚠️ 窗口已过，推迟到下一周期");
+  }
+
+  Serial.printf("📌 %s idx=%d, 时隙%.2f秒, delay=%lu秒, 已过%lu秒, 等待%ld秒\n",
+                devName.c_str(), deviceIdx, slotTime, delaySec, elapsedSec, waitSec);
+
+  return millis() + (unsigned long)waitSec * 1000UL;
 }
 
 // 处理固件更新指令
@@ -319,13 +401,30 @@ void loop() {
   unsigned long startm = millis();
   Radio.IrqProcess();
 
-  // 处理BLE触发的对时LoRa发送
+  // 处理BLE触发的对时LoRa发送（等待接收窗口）
   if (needSendTimeSync) {
-    Serial.print("📡 发送对时LoRa消息: ");
-    Serial.println(timeSyncSendBuf);
-    displayBuf[1] = "TX TimeSync";
-    Radio.Send((uint8_t*)timeSyncSendBuf, strlen(timeSyncSendBuf));
-    needSendTimeSync = false;
+    unsigned long nowMs = millis();
+    if (scheduledSendMs > 0 && nowMs < scheduledSendMs) {
+      // 窗口未到，等待（每500ms打印一次倒计时）
+      static unsigned long lastPrint = 0;
+      if (nowMs - lastPrint >= 1000) {
+        lastPrint = nowMs;
+        Serial.printf("⏳ 等待接收窗口... 还剩 %lu 秒\n", (scheduledSendMs - nowMs) / 1000);
+      }
+    } else {
+      // 窗口已到达（或无窗口延迟），用当前实时时间发送
+      String currentTimeStr = getCurrentTime();
+      String msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + currentTimeStr;
+      snprintf(timeSyncSendBuf, BUFFER_SIZE, "%s", msg.c_str());
+      timeSyncSendBuf[BUFFER_SIZE - 1] = '\0';
+
+      Serial.print("📡 发送对时LoRa消息: ");
+      Serial.println(timeSyncSendBuf);
+      displayBuf[1] = "TX TimeSync";
+      Radio.Send((uint8_t*)timeSyncSendBuf, strlen(timeSyncSendBuf));
+      needSendTimeSync = false;
+      scheduledSendMs = 0;
+    }
   }
 
   // 处理LoRa接收数据
@@ -432,8 +531,8 @@ void loop() {
 
   // 超时检测与Radio状态恢复
   unsigned long timeSinceLastRecv = startm - lastrecdLoraTm;
-  if (timeSinceLastRecv > SEND_INTERVAL_MS) {
-    Serial.print("⚠️ 超过一个周期没有收到到数据: ");
+  if (timeSinceLastRecv > SEND_INTERVAL_MS*2) {
+    Serial.print("⚠️ 超过2个周期没有收到到数据: ");
     Serial.println(timeSinceLastRecv);
 
     // 检查Radio当前状态
