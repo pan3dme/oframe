@@ -152,10 +152,9 @@ void buildAndSendPacket(int packetType) {
     updateGpsInfo();
     dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
   } else if (packetType == MSG_TYPE_TIME) {
-    dataStr += "|" + getCurrentTime()+ "|" + String(packetCount);
+    dataStr += "|" + getCurrentTime() + "|" + String(packetCount);
   } else if (packetType == MSG_TYPE_BATTERY) {
-    dataStr += "|" + readBatteryLevel()+ "|" + String(packetCount);
- 
+    dataStr += "|" + readBatteryLevel() + "|" + String(packetCount);
   }
 
   // 安全拷贝到发送缓冲区
@@ -282,13 +281,17 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
   String rxStr = String(rxBuffer);
   int typeEnd = rxStr.indexOf('|');
   if (typeEnd > 0) {
+    int secondPipe = rxStr.indexOf('|', typeEnd + 1);
     int msgType = rxStr.substring(0, typeEnd).toInt();
-    if (msgType == MSG_TYPE_TIME) {
-      // 提取时间字段（第二个'|'之后的内容）
-      int secondPipe = rxStr.indexOf('|', typeEnd + 1);
-      if (secondPipe > 0) {
+    if (secondPipe > 0) {
+      if (msgType == MSG_TYPE_TIME) {
         String timeStr = rxStr.substring(secondPipe + 1);
         setTimeFromLora(timeStr);
+      } else if (msgType == MSG_TYPE_COM) {
+        String result = rxStr.substring(typeEnd + 1, secondPipe);
+        if (result == deviceName) {
+          Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
+        }
       }
     }
   }

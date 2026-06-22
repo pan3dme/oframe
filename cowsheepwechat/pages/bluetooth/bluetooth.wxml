@@ -48,7 +48,7 @@
         </button>
         <button class="cmd-btn cmd-btn-freq" bindtap="onPresetSetFreq">
           <text class="cmd-btn-icon">⚡</text>
-          <text>改变频率</text>
+          <text>发送指令</text>
         </button>
         <button class="cmd-btn cmd-btn-reboot" bindtap="onPresetReboot">
           <text class="cmd-btn-icon">🔄</text>
@@ -62,7 +62,7 @@
       <view class="cmd-mask" bindtap="closeCmdModal"></view>
       <view class="cmd-dialog">
         <view class="cmd-close" bindtap="closeCmdModal">✕</view>
-        <view class="cmd-title">发送指令</view>
+        <view class="cmd-title">{{cmdMode === 'synctime' ? '同步时间' : '发送指令'}}</view>
 
         <!-- 选择设备 -->
         <view class="cmd-label">目标设备</view>
