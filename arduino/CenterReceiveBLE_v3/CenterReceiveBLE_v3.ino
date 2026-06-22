@@ -64,6 +64,9 @@ class MyServerCallbacks : public BLEServerCallbacks {
   }
 };
 
+// 前向声明
+String findLastMessageByDevice(String deviceId);
+
 // BLE特征值回调 (解析JSON指令)
 class MyCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
@@ -81,7 +84,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
       }
 
-      // 新增逻辑：接收对时指令，通过LoRa转发
+      // 接收对时指令：同步本地 + LoRa转发 + 查找指定设备最新消息
       if (doc.containsKey("cmd")) {
         String cmd = doc["cmd"].as<String>();
         if (cmd == "synctime" && doc.containsKey("time")) {
@@ -89,7 +92,25 @@ class MyCallbacks : public BLECharacteristicCallbacks {
           Serial.print("⏰ 收到对时发送指令: ");
           Serial.println(timeStr);
 
-          // 构造LoRa对时消息：2|设备名|时间
+          // 1. 同步本地时间
+          setTimeFromLora(timeStr);
+
+          // 2. 如果携带 deviceId，在队列中查找该设备的最后一条消息
+          if (doc.containsKey("deviceId")) {
+            String targetId = doc["deviceId"].as<String>();
+            String lastMsg = findLastMessageByDevice(targetId);
+            if (lastMsg.length() > 0) {
+              Serial.print("📋 ");
+              Serial.print(targetId);
+              Serial.print(" 最后一条消息: ");
+              Serial.println(lastMsg);
+            } else {
+              Serial.print("⚠️ 队列中没有 ");
+              Serial.println(targetId);
+            }
+          }
+
+          // 3. 构造LoRa对时消息并转发
           String msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + timeStr;
           int len = snprintf(timeSyncSendBuf, BUFFER_SIZE, "%s", msg.c_str());
           if (len < 0 || len >= BUFFER_SIZE) {
@@ -125,6 +146,29 @@ String getAndRemoveFirstData() {
   }
   dataArray[--dataCount] = "";
   return first;
+}
+
+// 从队列末尾向前查找指定设备的最后一条消息
+String findLastMessageByDevice(String deviceId) {
+  for (int i = dataCount - 1; i >= 0; i--) {
+    StaticJsonDocument<256> doc;
+    if (deserializeJson(doc, dataArray[i]) == DeserializationError::Ok) {
+      const char* info = doc["info"];
+      if (info != nullptr) {
+        // info格式: "1|v4-6|xxx|xxx"，第二段是设备名
+        String infoStr = String(info);
+        int p1 = infoStr.indexOf('|');
+        if (p1 > 0) {
+          int p2 = infoStr.indexOf('|', p1 + 1);
+          String msgDeviceId = (p2 > 0) ? infoStr.substring(p1 + 1, p2) : infoStr.substring(p1 + 1);
+          if (msgDeviceId == deviceId) {
+            return dataArray[i];
+          }
+        }
+      }
+    }
+  }
+  return "";
 }
 
 // 处理固件更新指令
@@ -430,4 +474,7 @@ void loop() {
 
   delay(100);
   // Radio.Rx(0);  // 重新开启接收
+
+  // Serial.println(getCurrentTime());
+ 
 }

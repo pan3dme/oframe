@@ -38,18 +38,49 @@
       </view>
     </view>
 
-    <!-- 发送指令面板 -->
+    <!-- 发送指令预设面板 -->
     <view class="cmd-panel" wx:if="{{bluetoothConnected && showCmdPanel}}">
       <view class="cmd-card-title">📋 设备指令</view>
       <view class="cmd-btns">
-        <button class="cmd-btn cmd-btn-time" bindtap="onSyncTime">
+        <button class="cmd-btn cmd-btn-time" bindtap="onPresetSyncTime">
           <text class="cmd-btn-icon">🕐</text>
           <text>同步时间</text>
         </button>
-        <button class="cmd-btn cmd-btn-freq" bindtap="onChangeFreq">
+        <button class="cmd-btn cmd-btn-freq" bindtap="onPresetSetFreq">
           <text class="cmd-btn-icon">⚡</text>
-          <text>改变发送频率</text>
+          <text>改变频率</text>
         </button>
+        <button class="cmd-btn cmd-btn-reboot" bindtap="onPresetReboot">
+          <text class="cmd-btn-icon">🔄</text>
+          <text>重启设备</text>
+        </button>
+      </view>
+    </view>
+
+    <!-- 发送指令弹窗 -->
+    <view class="cmd-modal" wx:if="{{showCmdModal}}">
+      <view class="cmd-mask" bindtap="closeCmdModal"></view>
+      <view class="cmd-dialog">
+        <view class="cmd-close" bindtap="closeCmdModal">✕</view>
+        <view class="cmd-title">发送指令</view>
+
+        <!-- 选择设备 -->
+        <view class="cmd-label">目标设备</view>
+        <picker mode="selector" range="{{cmdDeviceList}}" value="{{cmdDeviceIndex}}" bindchange="onCmdDeviceChange">
+          <view class="cmd-picker">{{cmdDeviceList[cmdDeviceIndex] || '请选择设备'}}</view>
+        </picker>
+
+        <!-- 指令输入（同步时间模式隐藏） -->
+        <block wx:if="{{cmdMode !== 'synctime'}}">
+          <view class="cmd-label">指令内容</view>
+          <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令..." bindinput="onCmdInput" auto-height maxlength="-1" />
+        </block>
+        <view class="cmd-synctime-hint" wx:else>
+          <text>🕐 点击确定将以即时时间同步到设备</text>
+        </view>
+
+        <!-- 发送按钮 -->
+        <button class="cmd-send-btn" bindtap="onCmdSend">发送指令</button>
       </view>
     </view>
 

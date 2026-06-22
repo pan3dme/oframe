@@ -21,8 +21,13 @@ Page({
     isCenterUploading: false, // 数据中心上传状态
     // 写入特征值信息（连接成功后缓存）
     writeDeviceInfo: null,
-    // 发送指令面板
-    showCmdPanel: false
+    // 发送指令弹窗
+    showCmdPanel: false,
+    showCmdModal: false,
+    cmdMode: '',
+    cmdDeviceList: [],
+    cmdDeviceIndex: 0,
+    cmdText: ''
   },
 
   _lastCacheTapTime: 0,  // 双击清空缓存用
@@ -698,59 +703,101 @@ Page({
     })
   },
 
-  // ========== 发送指令面板 ==========
+  // ========== 发送指令面板 + 弹窗 ==========
   toggleCmdPanel() {
     this.setData({ showCmdPanel: !this.data.showCmdPanel })
   },
 
-  // 通过BLE发送指令
-  _sendBleCmd(cmdObj, successMsg) {
+  // 打开指令弹窗，可选预填指令文本
+  _openCmdModalWithPreset(presetText, mode) {
+    dataCache.getDeviceList((deviceData) => {
+      const list = []
+      if (deviceData && deviceData.recordList) {
+        deviceData.recordList.forEach(r => {
+          if (r.deviceId && r.deviceId !== '-') list.push(r.deviceId)
+        })
+      }
+      this.setData({
+        showCmdModal: true,
+        cmdDeviceList: list.length > 0 ? list : [this.data.connectedDeviceName || '未知设备'],
+        cmdDeviceIndex: 0,
+        cmdText: presetText || '',
+        cmdMode: mode || 'custom'
+      })
+    })
+  },
+
+  // 同步时间 — 只选设备，确定时以即时时间为准
+  onPresetSyncTime() {
+    this._openCmdModalWithPreset('', 'synctime')
+  },
+
+  // 改变频率预填
+  onPresetSetFreq() {
+    this._openCmdModalWithPreset(JSON.stringify({ cmd: 'setfreq', value: 5 }), 'custom')
+  },
+
+  // 重启设备预填
+  onPresetReboot() {
+    this._openCmdModalWithPreset(JSON.stringify({ cmd: 'reboot' }), 'custom')
+  },
+
+  closeCmdModal() {
+    this.setData({ showCmdModal: false })
+  },
+
+  onCmdDeviceChange(e) {
+    this.setData({ cmdDeviceIndex: e.detail.value })
+  },
+
+  onCmdInput(e) {
+    this.setData({ cmdText: e.detail.value })
+  },
+
+  onCmdSend() {
+    const deviceId = this.data.cmdDeviceList[this.data.cmdDeviceIndex]
+    let cmdText = this.data.cmdText.trim()
+
+    // 同步时间模式：以点击确定时的即时时间为准
+    if (this.data.cmdMode === 'synctime') {
+      cmdText = JSON.stringify({ cmd: 'synctime', time: getApp().formatTime() })
+    }
+
+    if (!cmdText) {
+      wx.showToast({ title: '请输入指令内容', icon: 'none' })
+      return
+    }
+    // 尝试解析为JSON，解析失败则作为纯文本发送
+    let sendText = cmdText
+    try {
+      const obj = JSON.parse(cmdText)
+      // 确保包含deviceId
+      obj.deviceId = deviceId
+      sendText = JSON.stringify(obj)
+    } catch (e) {
+      // 非JSON，直接发送原始文本
+    }
+
     const info = this.data.writeDeviceInfo
     if (!info) {
       wx.showToast({ title: '未找到可写入特征值', icon: 'error' })
       return
     }
-    const text = JSON.stringify(cmdObj)
-    const buffer = this.textToAb(text)
+    const buffer = this.textToAb(sendText)
+    const that = this
     wx.writeBLECharacteristicValue({
       deviceId: info.deviceId,
       serviceId: info.serviceId,
       characteristicId: info.characteristicId,
       value: buffer,
       success: () => {
-        wx.showToast({ title: successMsg || '指令已发送', icon: 'success' })
-        console.log('BLE指令已发送:', text)
+        wx.showToast({ title: '指令已发送 → ' + deviceId, icon: 'success' })
+        console.log('BLE指令已发送:', sendText)
+        that.setData({ showCmdModal: false })
       },
       fail(err) {
         console.error('BLE指令发送失败:', err)
         wx.showToast({ title: '发送失败', icon: 'error' })
-      }
-    })
-  },
-
-  // 同步时间
-  onSyncTime() {
-    const time = getApp().formatTime()
-    this._sendBleCmd({ cmd: 'synctime', time: time }, '时间同步指令已发送')
-  },
-
-  // 改变发送频率
-  onChangeFreq() {
-    const that = this
-    wx.showModal({
-      title: '设置发送频率',
-      content: '请输入发送间隔（秒）：',
-      editable: true,
-      placeholderText: '例如 5',
-      success(res) {
-        if (res.confirm && res.content) {
-          const val = parseInt(res.content.trim())
-          if (isNaN(val) || val <= 0) {
-            wx.showToast({ title: '请输入有效的正整数', icon: 'none' })
-            return
-          }
-          that._sendBleCmd({ cmd: 'setfreq', value: val }, '频率已设置为 ' + val + ' 秒')
-        }
       }
     })
   },
