@@ -32,6 +32,12 @@ String dataArray[DATA_MAX_COUNT];
 int dataCount = 0;
 int receiveCount = 0;
 
+// 设备最后消息缓存（每个设备只保留最新一条，不随dataArray同步清空）
+#define DEVICE_CACHE_MAX 50
+String deviceCacheId[DEVICE_CACHE_MAX];    // 设备ID
+String deviceCacheMsg[DEVICE_CACHE_MAX];   // 该设备最后一条完整JSON
+int deviceCacheCount = 0;
+
 String deviceName = "x-x";
 
 
@@ -154,24 +160,37 @@ String getAndRemoveFirstData() {
   return first;
 }
 
-// 从队列末尾向前查找指定设备的最后一条消息
+// 从info字段提取设备ID（第二段，如"v3-8"）
+String extractDeviceIdFromInfo(String infoStr) {
+  int p1 = infoStr.indexOf('|');
+  if (p1 <= 0) return "";
+  int p2 = infoStr.indexOf('|', p1 + 1);
+  return (p2 > 0) ? infoStr.substring(p1 + 1, p2) : infoStr.substring(p1 + 1);
+}
+
+// 更新设备最后消息缓存
+void updateDeviceCache(String deviceId, String msgJson) {
+  if (deviceId.length() == 0) return;
+  // 查找是否已存在该设备
+  for (int i = 0; i < deviceCacheCount; i++) {
+    if (deviceCacheId[i] == deviceId) {
+      deviceCacheMsg[i] = msgJson;
+      return;
+    }
+  }
+  // 新设备，追加
+  if (deviceCacheCount < DEVICE_CACHE_MAX) {
+    deviceCacheId[deviceCacheCount] = deviceId;
+    deviceCacheMsg[deviceCacheCount] = msgJson;
+    deviceCacheCount++;
+  }
+}
+
+// 从设备缓存中查找指定设备的最后一条消息
 String findLastMessageByDevice(String deviceId) {
-  for (int i = dataCount - 1; i >= 0; i--) {
-    StaticJsonDocument<256> doc;
-    if (deserializeJson(doc, dataArray[i]) == DeserializationError::Ok) {
-      const char *info = doc["info"];
-      if (info != nullptr) {
-        // info格式: "1|v4-6|xxx|xxx"，第二段是设备名
-        String infoStr = String(info);
-        int p1 = infoStr.indexOf('|');
-        if (p1 > 0) {
-          int p2 = infoStr.indexOf('|', p1 + 1);
-          String msgDeviceId = (p2 > 0) ? infoStr.substring(p1 + 1, p2) : infoStr.substring(p1 + 1);
-          if (msgDeviceId == deviceId) {
-            return dataArray[i];
-          }
-        }
-      }
+  for (int i = 0; i < deviceCacheCount; i++) {
+    if (deviceCacheId[i] == deviceId) {
+      return deviceCacheMsg[i];
     }
   }
   return "";
@@ -511,6 +530,14 @@ void loop() {
       String jsonData;
       serializeJson(doc, jsonData);
       addDataToQueue(jsonData);
+
+      // 同步更新设备最后消息缓存
+      const char *infoRaw = doc["info"];
+      if (infoRaw != nullptr) {
+        String devId = extractDeviceIdFromInfo(String(infoRaw));
+        updateDeviceCache(devId, jsonData);
+      }
+
       lastPayloadSize = 0;
     }
   }
