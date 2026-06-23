@@ -580,7 +580,7 @@ void loop() {
 
   // BLE数据发送
   if (deviceConnected && needSync && dataCount > 0) {
-    delay(200);  //延时200毫秒才发送蓝牙消息
+    delay(50);  //延时200毫秒才发送蓝牙消息
     String data = getAndRemoveFirstData();
     pCharacteristic->setValue(data.c_str());
     pCharacteristic->notify();
