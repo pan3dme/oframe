@@ -433,6 +433,30 @@ page {
   margin-left: auto;
   font-size: 26rpx;
   color: #999;
+  flex-shrink: 0;
+}
+
+.recv-filters {
+  display: flex;
+  gap: 10rpx;
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+
+.recv-filter-btn {
+  font-size: 22rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid #ddd;
+  color: #999;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.recv-filter-on {
+  color: #fff;
+  background: #1989fa;
+  border-color: #1989fa;
 }
 
 .recv-scroll {

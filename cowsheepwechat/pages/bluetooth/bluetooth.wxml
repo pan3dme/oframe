@@ -111,10 +111,15 @@
     <view class="recv-header">
       <text class="recv-icon">⬇</text>
       <text class="recv-label">接收数据</text>
-      <text class="recv-count">{{receivedList.length}} 条</text>
+      <view class="recv-filters">
+        <text class="recv-filter-btn {{filterType === 'gps' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterGps">📍 GPS</text>
+        <text class="recv-filter-btn {{filterType === 'time' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterTime">🕐 对时</text>
+        <text class="recv-filter-btn {{filterType === 'battery' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterBattery">🔋 电量</text>
+      </view>
+      <text class="recv-count">{{displayList.length}} 条</text>
     </view>
     <scroll-view class="recv-scroll" scroll-y>
-      <view class="recv-item" wx:for="{{receivedList}}" wx:key="index" style="background-color:{{item.bgColor}}">
+      <view class="recv-item" wx:for="{{displayList}}" wx:key="index" style="background-color:{{item.bgColor}}">
         <text wx:for="{{item.displayParts}}" wx:for-item="part" wx:key="text" style="color:{{part.color}};{{part.bold ? 'font-weight:900;font-size:34rpx;' : ''}}">{{part.text}}</text>
       </view>
     </scroll-view>

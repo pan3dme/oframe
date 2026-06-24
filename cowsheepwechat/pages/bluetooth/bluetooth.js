@@ -10,6 +10,8 @@ Page({
     devices: [],
     // 接收到的数据列表
     receivedList: [],
+    displayList: [],       // 过滤后的显示列表
+    filterType: '',        // ''=全部, 'gps', 'time', 'battery'
     // 数据缓存（先存后上传）
     cacheQueue: [],
     cacheCount: 0,
@@ -352,10 +354,8 @@ Page({
           if (that.data.isCenterUploading) {
             // 上报模式：直接推入上传队列，不缓存
             that.data.gpsQueue.push(msg)
-            that.setData({
-              gpsQueue: that.data.gpsQueue,
-              receivedList: trimmedList
-            })
+            that.setData({ gpsQueue: that.data.gpsQueue })
+            that._setReceivedList(trimmedList)
             if (!that.data.uploading) {
               that.processGPSQueue()
             }
@@ -364,9 +364,9 @@ Page({
             const newCache = that.data.cacheQueue.concat([msg])
             that.setData({
               cacheQueue: newCache,
-              cacheCount: newCache.length,
-              receivedList: trimmedList
+              cacheCount: newCache.length
             })
+            that._setReceivedList(trimmedList)
             that._saveCacheToStorage()
           }
         })
@@ -379,6 +379,7 @@ Page({
   _getTypeIcon(typeStr) {
     if (typeStr === '1') return { text: '◉', color: '#1989fa' }   // 靶心图标 = GPS定位
     if (typeStr === '2') return { text: '🕐', color: '#666' }       // 时钟 = 对时
+    if (typeStr === '3') return { text: '🔋', color: '#07c160' }    // 电池 = 电量
     return null
   },
 
@@ -449,6 +450,59 @@ Page({
     return parts
   },
 
+  // 从原始消息文本判断类型：'gps' | 'time' | 'battery' | ''
+  _getMsgType(text) {
+    try {
+      const obj = JSON.parse(text)
+      const info = obj.info || ''
+      const parts = info.split('|')
+      if (parts[0] === '1') return 'gps'
+      if (parts[0] === '2') return 'time'
+      if (parts[0] === '3') return 'battery'
+    } catch (e) { /* 非JSON */ }
+    // 回退：| 分隔格式，首段为类型
+    const idx = text.indexOf('|')
+    if (idx !== -1) {
+      const typeStr = text.substring(0, idx)
+      if (typeStr === '1') return 'gps'
+      if (typeStr === '2') return 'time'
+      if (typeStr === '3') return 'battery'
+    }
+    return ''
+  },
+
+  // 应用当前筛选条件，更新 displayList
+  _applyFilter() {
+    const all = this.data.receivedList
+    const ft = this.data.filterType
+    if (!ft) {
+      this.setData({ displayList: all })
+    } else {
+      this.setData({ displayList: all.filter(item => this._getMsgType(item.text) === ft) })
+    }
+  },
+
+  // 设置 receivedList 并同步更新 displayList
+  _setReceivedList(newList) {
+    this.setData({ receivedList: newList }, () => { this._applyFilter() })
+  },
+
+  // 筛选按钮：GPS 切换
+  onToggleFilterGps() {
+    const next = this.data.filterType === 'gps' ? '' : 'gps'
+    this.setData({ filterType: next }, () => { this._applyFilter() })
+  },
+  // 筛选按钮：对时 切换
+  onToggleFilterTime() {
+    const next = this.data.filterType === 'time' ? '' : 'time'
+    this.setData({ filterType: next }, () => { this._applyFilter() })
+  },
+  // 筛选按钮：电量 切换
+  onToggleFilterBattery() {
+    const next = this.data.filterType === 'battery' ? '' : 'battery'
+    this.setData({ filterType: next }, () => { this._applyFilter() })
+  },
+
   // ArrayBuffer 转可读文本
   abToText(buffer) {
     if (!buffer) return ''
@@ -494,6 +548,7 @@ Page({
           bluetoothConnected: false,
           connectedDeviceName: '',
           receivedList: [],
+          displayList: [],
           writeDeviceInfo: null,
           isSyncing: false,
           // cacheQueue/cacheCount 保留，不随断开清空
