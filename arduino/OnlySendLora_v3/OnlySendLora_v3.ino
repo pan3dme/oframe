@@ -292,9 +292,11 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
         if (result == deviceName) {
           Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
 
-          
+          int lastValue = rxStr.substring(secondPipe + 1).toInt();
 
-
+          // 打印验证一下
+          Serial.print("提取到的最后整数是: ");
+          Serial.println(lastValue);
         }
       }
     }
