@@ -74,6 +74,12 @@
         <block wx:if="{{cmdMode !== 'synctime'}}">
           <view class="cmd-label">指令内容</view>
           <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令..." bindinput="onCmdInput" auto-height maxlength="-1" />
+          <!-- 快捷填充按钮 -->
+          <view class="cmd-quick-row">
+            <button class="cmd-quick-btn" bindtap="onQuickFreq1">⚡ 高频</button>
+            <button class="cmd-quick-btn" bindtap="onQuickGps">📍 获取GPS</button>
+            <button class="cmd-quick-btn" bindtap="onQuickBattery">🔋 获取电量</button>
+          </view>
         </block>
         <view class="cmd-synctime-hint" wx:else>
           <text>🕐 点击确定将以即时时间同步到设备</text>

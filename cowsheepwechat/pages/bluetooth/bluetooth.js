@@ -791,6 +791,21 @@ Page({
     this.setData({ showCmdModal: false })
   },
 
+  // 快捷填充：高频 value=1
+  onQuickFreq1() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 1 }) })
+  },
+
+  // 快捷填充：获取GPS value=2
+  onQuickGps() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 2 }) })
+  },
+
+  // 快捷填充：获取电量 value=3
+  onQuickBattery() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 3 }) })
+  },
+
   onCmdDeviceChange(e) {
     this.setData({ cmdDeviceIndex: e.detail.value })
   },
