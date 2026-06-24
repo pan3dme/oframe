@@ -276,7 +276,44 @@ Page({
         wx.onBLECharacteristicValueChange(function (res) {
           that._playBleSound()  // 播放接收提示音
           const msg = that.abToText(res.value)
-          console.log('收到蓝牙数据:', msg)
+          // 打印原始数据，方便对消息分类
+          const rawHex = that.abToHex(res.value)
+          console.log('═════════════════════════════════')
+          console.log('[蓝牙] 原始长度:', res.value.byteLength, 'bytes')
+          console.log('[蓝牙] 原始HEX:', rawHex)
+          console.log('[蓝牙] 文本内容:', msg)
+
+          // 尝试 JSON 解析，判断是否 tip 指令
+          let isTip = false
+          let tipInfo = ''
+          try {
+            const obj = JSON.parse(msg)
+            console.log('[蓝牙] JSON解析，cmd:', obj.cmd || '(无)', 'info:', obj.info || '(无)')
+            if (obj.cmd === 'tip') {
+              isTip = true
+              tipInfo = obj.info || ''
+            }
+          } catch (e) { /* 非JSON，非管道 */ }
+
+          // tip 消息：弹框提示，不缓存
+          if (isTip) {
+            console.log('[蓝牙] ⚠️ 收到tip消息，弹框提示，不缓存')
+            wx.showModal({
+              title: '设备提示',
+              content: tipInfo,
+              showCancel: false,
+              confirmText: '知道了'
+            })
+            return
+          }
+
+          // 预判管道类型
+          const firstPipe = msg.indexOf('|')
+          if (firstPipe !== -1) {
+            const typeId = msg.substring(0, firstPipe)
+            console.log('[蓝牙] 管道分隔，首段typeId:', typeId)
+          }
+          console.log('═════════════════════════════════')
           const now = getApp().formatTime()
           const displayResult = that._parseDisplay(msg)
           const newItem = {

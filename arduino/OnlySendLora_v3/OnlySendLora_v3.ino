@@ -291,6 +291,10 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
         String result = rxStr.substring(typeEnd + 1, secondPipe);
         if (result == deviceName) {
           Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
+
+          
+
+
         }
       }
     }

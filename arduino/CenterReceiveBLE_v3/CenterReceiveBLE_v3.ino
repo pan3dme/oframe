@@ -34,8 +34,8 @@ int receiveCount = 0;
 
 // 设备最后消息缓存（每个设备只保留最新一条，不随dataArray同步清空）
 #define DEVICE_CACHE_MAX 50
-String deviceCacheId[DEVICE_CACHE_MAX];    // 设备ID
-String deviceCacheMsg[DEVICE_CACHE_MAX];   // 该设备最后一条完整JSON
+String deviceCacheId[DEVICE_CACHE_MAX];   // 设备ID
+String deviceCacheMsg[DEVICE_CACHE_MAX];  // 该设备最后一条完整JSON
 int deviceCacheCount = 0;
 
 String deviceName = "x-x";
@@ -118,8 +118,13 @@ class MyCallbacks : public BLECharacteristicCallbacks {
               }
             }
           } else {
-            Serial.print("⚠️ 队列中没有 ");
-            Serial.println(targetId);
+
+
+            // String str="⚠️ 队列中没有 "+targetId;
+            String str = "{\"cmd\":\"tip\", \"info\":\"⚠️ 队列中没有"+targetId+"的记录\"}";
+            Serial.println(str);
+            pCharacteristic->setValue(str.c_str());
+            pCharacteristic->notify();
           }
 
 
