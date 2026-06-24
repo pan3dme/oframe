@@ -6,6 +6,38 @@ const API_DEVICE_URL = app.globalData.api_device_Url
 const API_COWSHEEP_URL = app.globalData.api_cowsheep_Url
 const API_ROUTE_PLACE_URL = app.globalData.api_route_place_Url
 
+// ==================== 请求去重：避免同时发出多个相同请求 ====================
+
+// 正在进行的请求回调队列，key 为请求标识
+const _pendingCallbacks = {}
+
+/**
+ * 通用加载器：有缓存直接回，有进行中的请求则排队，否则发起新请求
+ * @param {string} key - 请求唯一标识
+ * @param {object} cacheObj - app.globalData 上的缓存字段名
+ * @param {function} fetchFn - 发起请求的函数 (successCallback)
+ * @param {function} callback - 外部回调
+ * @param {boolean} forceRefresh - 是否强制刷新
+ */
+function _loadWithDedup(key, cacheObj, fetchFn, callback, forceRefresh) {
+  if (!forceRefresh && app.globalData[cacheObj]) {
+    callback(app.globalData[cacheObj])
+    return
+  }
+  if (_pendingCallbacks[key]) {
+    _pendingCallbacks[key].push(callback)
+    return
+  }
+  _pendingCallbacks[key] = [callback]
+  fetchFn((cachedData) => {
+    const queue = _pendingCallbacks[key] || []
+    delete _pendingCallbacks[key]
+    queue.forEach(cb => {
+      try { cb(cachedData) } catch (e) { console.error(e) }
+    })
+  })
+}
+
 // ==================== 设备数据缓存 ====================
 
 /**
@@ -14,43 +46,36 @@ const API_ROUTE_PLACE_URL = app.globalData.api_route_place_Url
  * @param {boolean} forceRefresh - 是否强制刷新
  */
 function getDeviceList(callback, forceRefresh) {
-  if (!forceRefresh && app.globalData.deviceCache) {
-    // 命中缓存直接返回
-    callback(app.globalData.deviceCache)
-    return
-  }
-
-  wx.request({
-    url: API_DEVICE_URL,
-    method: 'POST',
-    data: { action: 'getDeviceTaleAll' },
-    success: (res) => {
-      const recordList = _parseDeviceRecords(res.data)
-      const idSet = new Set()
-      const bindMap = {}
-      recordList.forEach(r => {
-        if (r.deviceId && r.deviceId !== '-') {
-          idSet.add(r.deviceId)
-          if (!bindMap[r.deviceId] && r.link_cowsheep_id) {
-            bindMap[r.deviceId] = r.link_cowsheep_id
+  _loadWithDedup('deviceList', 'deviceCache', (done) => {
+    wx.request({
+      url: API_DEVICE_URL,
+      method: 'POST',
+      data: { action: 'getDeviceTaleAll' },
+      timeout: 8000,
+      success: (res) => {
+        const recordList = _parseDeviceRecords(res.data)
+        const idSet = new Set()
+        const bindMap = {}
+        recordList.forEach(r => {
+          if (r.deviceId && r.deviceId !== '-') {
+            idSet.add(r.deviceId)
+            if (!bindMap[r.deviceId] && r.link_cowsheep_id) {
+              bindMap[r.deviceId] = r.link_cowsheep_id
+            }
           }
-        }
-      })
-      const deviceIdOptions = Array.from(idSet).sort()
-      deviceIdOptions.unshift('未连接')
-
-      const cachedData = { recordList, deviceIdOptions, deviceBindMap: bindMap }
-      app.globalData.deviceCache = cachedData
-      callback(cachedData)
-    },
-    fail: (err) => {
-      console.error('获取设备列表失败:', err)
-      // 返回旧缓存兜底
-      if (app.globalData.deviceCache) {
-        callback(app.globalData.deviceCache)
+        })
+        const deviceIdOptions = Array.from(idSet).sort()
+        deviceIdOptions.unshift('未连接')
+        const cachedData = { recordList, deviceIdOptions, deviceBindMap: bindMap }
+        app.globalData.deviceCache = cachedData
+        done(cachedData)
+      },
+      fail: (err) => {
+        console.error('获取设备列表失败:', err)
+        done(app.globalData.deviceCache || null)
       }
-    }
-  })
+    })
+  }, callback, forceRefresh)
 }
 
 /**
@@ -109,55 +134,51 @@ function _parseDeviceRecords(data) {
  * @param {boolean} forceRefresh - 是否强制刷新
  */
 function getLivestockList(callback, forceRefresh) {
-  if (!forceRefresh && app.globalData.livestockCache) {
-    callback(app.globalData.livestockCache)
-    return
-  }
-
-  wx.request({
-    url: API_COWSHEEP_URL,
-    method: 'POST',
-    data: { action: 'getLivestockList' },
-    success: (res) => {
-      const list = []
-      const data = res.data
-      if (data && data.data && Array.isArray(data.data)) {
-        data.data.forEach(item => {
-          let name = ''
-          let cowsheepId = ''
-          let birthday = ''
-          let gender = false
-          if (item.primaryKey && Array.isArray(item.primaryKey)) {
-            item.primaryKey.forEach(pk => {
-              if (pk.name === 'cowsheep_id') cowsheepId = String(pk.value)
-            })
-          }
-          let avatar = ''
-          if (item.attributes) {
-            item.attributes.forEach(attr => {
-              if (attr.columnName === 'rename') name = attr.columnValue
-              if (attr.columnName === 'birthday') birthday = attr.columnValue
-              if (attr.columnName === 'gender') gender = attr.columnValue === true || attr.columnValue === 'true'
-              if (attr.columnName === 'avatar') avatar = attr.columnValue || ''
-            })
-          }
-          if (name) {
-            list.push({ name, cowsheepId, birthday: birthday || '-', gender: gender ? '公' : '母', avatar })
-          }
-        })
+  _loadWithDedup('livestockList', 'livestockCache', (done) => {
+    wx.request({
+      url: API_COWSHEEP_URL,
+      method: 'POST',
+      data: { action: 'getLivestockList' },
+      timeout: 8000,
+      success: (res) => {
+        const list = []
+        const data = res.data
+        if (data && data.data && Array.isArray(data.data)) {
+          data.data.forEach(item => {
+            let name = ''
+            let cowsheepId = ''
+            let birthday = ''
+            let gender = false
+            if (item.primaryKey && Array.isArray(item.primaryKey)) {
+              item.primaryKey.forEach(pk => {
+                if (pk.name === 'cowsheep_id') cowsheepId = String(pk.value)
+              })
+            }
+            let avatar = ''
+            if (item.attributes) {
+              item.attributes.forEach(attr => {
+                if (attr.columnName === 'rename') name = attr.columnValue
+                if (attr.columnName === 'birthday') birthday = attr.columnValue
+                if (attr.columnName === 'gender') gender = attr.columnValue === true || attr.columnValue === 'true'
+                if (attr.columnName === 'avatar') avatar = attr.columnValue || ''
+              })
+            }
+            if (name) {
+              list.push({ name, cowsheepId, birthday: birthday || '-', gender: gender ? '公' : '母', avatar })
+            }
+          })
+        }
+        const names = list.map(item => item.name)
+        const cachedData = { livestockList: list, livestockNames: names }
+        app.globalData.livestockCache = cachedData
+        done(cachedData)
+      },
+      fail: (err) => {
+        console.error('获取牛羊列表失败:', err)
+        done(app.globalData.livestockCache || null)
       }
-      const names = list.map(item => item.name)
-      const cachedData = { livestockList: list, livestockNames: names }
-      app.globalData.livestockCache = cachedData
-      callback(cachedData)
-    },
-    fail: (err) => {
-      console.error('获取牛羊列表失败:', err)
-      if (app.globalData.livestockCache) {
-        callback(app.globalData.livestockCache)
-      }
-    }
-  })
+    })
+  }, callback, forceRefresh)
 }
 
 /**
@@ -175,28 +196,24 @@ function refreshLivestockList(callback) {
  * @param {boolean} forceRefresh - 是否强制刷新
  */
 function getDeviceLotRefresh(callback, forceRefresh) {
-  if (!forceRefresh && app.globalData.deviceLotCache) {
-    callback(app.globalData.deviceLotCache)
-    return
-  }
-
-  wx.request({
-    url: API_DEVICE_URL,
-    method: 'POST',
-    data: { action: 'getDeviceLotRefreshAll' },
-    success: (res) => {
-      const lotList = _parseDeviceLotRecords(res.data)
-      const cachedData = { lotList }
-      app.globalData.deviceLotCache = cachedData
-      callback(cachedData)
-    },
-    fail: (err) => {
-      console.error('获取设备LOT最新数据失败:', err)
-      if (app.globalData.deviceLotCache) {
-        callback(app.globalData.deviceLotCache)
+  _loadWithDedup('deviceLot', 'deviceLotCache', (done) => {
+    wx.request({
+      url: API_DEVICE_URL,
+      method: 'POST',
+      data: { action: 'getDeviceLotRefreshAll' },
+      timeout: 8000,
+      success: (res) => {
+        const lotList = _parseDeviceLotRecords(res.data)
+        const cachedData = { lotList }
+        app.globalData.deviceLotCache = cachedData
+        done(cachedData)
+      },
+      fail: (err) => {
+        console.error('获取设备LOT最新数据失败:', err)
+        done(app.globalData.deviceLotCache || null)
       }
-    }
-  })
+    })
+  }, callback, forceRefresh)
 }
 
 function _parseDeviceLotRecords(data) {
@@ -241,6 +258,67 @@ function _parseDeviceLotRecords(data) {
  */
 function refreshDeviceLotRefresh(callback) {
   getDeviceLotRefresh(callback, true)
+}
+
+// ==================== 设备电量数据缓存 ====================
+
+/**
+ * 获取设备电量表 device_battery
+ * @param {function} callback - 回调 (cachedData)，cachedData 为 { batteryMap }
+ * @param {boolean} forceRefresh - 是否强制刷新
+ */
+function getDeviceBatteryAll(callback, forceRefresh) {
+  _loadWithDedup('deviceBattery', 'deviceBatteryCache', (done) => {
+    wx.request({
+      url: API_DEVICE_URL,
+      method: 'POST',
+      data: { action: 'getDeviceBatteryAll' },
+      timeout: 8000,
+      success: (res) => {
+        const batteryMap = _parseBatteryRecords(res.data)
+        const cachedData = { batteryMap }
+        app.globalData.deviceBatteryCache = cachedData
+        done(cachedData)
+      },
+      fail: (err) => {
+        console.error('获取设备电量失败:', err)
+        done(app.globalData.deviceBatteryCache || { batteryMap: {} })
+      }
+    })
+  }, callback, forceRefresh)
+}
+
+function _parseBatteryRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) {
+    rawList = data.data
+  } else if (Array.isArray(data)) {
+    rawList = data
+  }
+  const map = {}
+  rawList.forEach(record => {
+    const attr = {}
+    if (record.attributes) {
+      record.attributes.forEach(item => {
+        attr[item.columnName] = item.columnValue
+      })
+    }
+    if (record.primaryKey) {
+      record.primaryKey.forEach(item => {
+        attr[item.name] = item.value
+      })
+    }
+    const deviceId = attr.deviceId || attr.deviceid || ''
+    const battery = attr.battery || ''
+    if (deviceId && battery) {
+      map[deviceId] = battery
+    }
+  })
+  return map
+}
+
+function refreshDeviceBatteryAll(callback) {
+  getDeviceBatteryAll(callback, true)
 }
 
 // ==================== 道路列表缓存（按天：一天只请求一次网络） ====================
@@ -434,6 +512,8 @@ module.exports = {
   refreshLivestockList,
   getDeviceLotRefresh,
   refreshDeviceLotRefresh,
+  getDeviceBatteryAll,
+  refreshDeviceBatteryAll,
   getRoadListFromCache,
   refreshRoadList,
   clearRoadCache,

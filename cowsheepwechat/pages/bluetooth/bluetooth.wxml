@@ -9,11 +9,11 @@
         <text class="cache-icon">☁️</text>
         <text class="cache-text" bindtap="onTapCacheText">缓存记录: <text class="cache-num">{{cacheCount}}</text> 条</text>
         <button class="cache-upload-btn {{isCenterUploading ? 'cache-upload-cancel' : ''}}" bindtap="uploadToCenter">
-          {{isCenterUploading ? '■ 取消上传' : '↑ 上传数据中心'}}
+          {{isCenterUploading ? '⏸ 暂停上报' : '▶ 上报'}}
         </button>
       </view>
-      <view class="cache-progress-line" wx:if="{{uploading || uploadedCount > 0}}">
-        已上传 {{uploadedCount}} 条，队列中 {{gpsQueue.length}} 条
+      <view class="cache-progress-line" wx:if="{{isCenterUploading || uploadedCount > 0}}">
+        {{isCenterUploading ? '上报中' : ''}}{{uploadedCount > 0 ? ' | 已上传 ' + uploadedCount + ' 条' : ''}}{{gpsQueue.length > 0 ? ' | 队列 ' + gpsQueue.length + ' 条' : ''}}
       </view>
     </view>
 
@@ -32,6 +32,59 @@
     <view class="device-card" wx:if="{{bluetoothConnected}}">
       <text class="device-bt">📡</text>
       <text class="device-name">{{connectedDeviceName}}</text>
+      <view class="device-cmd-btn" bindtap="toggleCmdPanel">
+        <text>发送指令</text>
+        <text class="cmd-arrow">{{showCmdPanel ? '▼' : '▶'}}</text>
+      </view>
+    </view>
+
+    <!-- 发送指令预设面板 -->
+    <view class="cmd-panel" wx:if="{{bluetoothConnected && showCmdPanel}}">
+      <view class="cmd-card-title">📋 设备指令</view>
+      <view class="cmd-btns">
+        <button class="cmd-btn cmd-btn-time" bindtap="onPresetSyncTime">
+          <text class="cmd-btn-icon">🕐</text>
+          <text>同步时间</text>
+        </button>
+        <button class="cmd-btn cmd-btn-freq" bindtap="onPresetSetFreq">
+          <text class="cmd-btn-icon">⚡</text>
+          <text>发送指令</text>
+        </button>
+      </view>
+    </view>
+
+    <!-- 发送指令弹窗 -->
+    <view class="cmd-modal" wx:if="{{showCmdModal}}">
+      <view class="cmd-mask" bindtap="closeCmdModal"></view>
+      <view class="cmd-dialog">
+        <view class="cmd-close" bindtap="closeCmdModal">✕</view>
+        <view class="cmd-title">{{cmdMode === 'synctime' ? '同步时间' : '发送指令'}}</view>
+
+        <!-- 选择设备 -->
+        <view class="cmd-label">目标设备</view>
+        <picker mode="selector" range="{{cmdDeviceList}}" value="{{cmdDeviceIndex}}" bindchange="onCmdDeviceChange">
+          <view class="cmd-picker">{{cmdDeviceList[cmdDeviceIndex] || '请选择设备'}}</view>
+        </picker>
+
+        <!-- 指令输入（同步时间模式隐藏） -->
+        <block wx:if="{{cmdMode !== 'synctime'}}">
+          <view class="cmd-label">指令内容</view>
+          <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令..." bindinput="onCmdInput" auto-height maxlength="-1" />
+          <!-- 快捷填充按钮 -->
+          <view class="cmd-quick-row">
+            <button class="cmd-quick-btn" bindtap="onQuickFreq1">⚡ 高频</button>
+            <button class="cmd-quick-btn" bindtap="onQuickGps">📍 获取GPS</button>
+            <button class="cmd-quick-btn" bindtap="onQuickBattery">🔋 获取电量</button>
+            <button class="cmd-quick-btn" bindtap="onQuickReboot">🔄 重启设备</button>
+          </view>
+        </block>
+        <view class="cmd-synctime-hint" wx:else>
+          <text>🕐 点击确定将以即时时间同步到设备</text>
+        </view>
+
+        <!-- 发送按钮 -->
+        <button class="cmd-send-btn" bindtap="onCmdSend">发送指令</button>
+      </view>
     </view>
 
     <!-- 扫描设备列表（未连接时显示） -->
@@ -58,10 +111,15 @@
     <view class="recv-header">
       <text class="recv-icon">⬇</text>
       <text class="recv-label">接收数据</text>
-      <text class="recv-count">{{receivedList.length}} 条</text>
+      <view class="recv-filters">
+        <text class="recv-filter-btn {{filterType === 'gps' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterGps">📍 GPS</text>
+        <text class="recv-filter-btn {{filterType === 'time' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterTime">🕐 对时</text>
+        <text class="recv-filter-btn {{filterType === 'battery' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterBattery">🔋 电量</text>
+      </view>
+      <text class="recv-count">{{displayList.length}} 条</text>
     </view>
     <scroll-view class="recv-scroll" scroll-y>
-      <view class="recv-item" wx:for="{{receivedList}}" wx:key="index" style="background-color:{{item.bgColor}}">
+      <view class="recv-item" wx:for="{{displayList}}" wx:key="index" style="background-color:{{item.bgColor}}">
         <text wx:for="{{item.displayParts}}" wx:for-item="part" wx:key="text" style="color:{{part.color}};{{part.bold ? 'font-weight:900;font-size:34rpx;' : ''}}">{{part.text}}</text>
       </view>
     </scroll-view>

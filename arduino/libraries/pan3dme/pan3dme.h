@@ -11,12 +11,14 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include "LoRaWan_APP.h"
-
+//AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 // LoRa消息类型枚举
 typedef enum {
   MSG_TYPE_GPS = 1,        // GPS定位信息
   MSG_TYPE_TIME = 2,       // 对时信息
-  MSG_TYPE_FIRMWARE = 10   // 固件更新指令
+  MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
+  MSG_TYPE_FIRMWARE = 10,   // 固件更新指令
+  MSG_TYPE_COM = 11   // 下载指令到设备
 } MessageType_t;
 
 // 前向声明：在头文件中避免包含过多实现细节
@@ -45,7 +47,7 @@ extern unsigned long syncedMillis;
 #define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 928000000 // 433MHz 国内通用863 863  928
+#define LORA_FREQ 433000000 // 433MHz 国内通用863 863  928
 #define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 10          // 扩频因子
@@ -63,6 +65,14 @@ extern unsigned long syncedMillis;
 #define LORA_PA_EN     2
 #define LORA_PA_TX_EN  46
 
+
+#define VBAT_CTRL_PIN 37  // ADC_Ctrl（控制检测电路开关）
+#define VBAT_READ_PIN 1   // VBAT_Read（ADC1_CH0）
+
+
+
+const unsigned long SEND_INTERVAL_MS = 60000;  // 总周期10秒
+
 struct BLECallbacks
 {
   BLEServer *pServer;
@@ -71,14 +81,15 @@ struct BLECallbacks
 
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, BLECharacteristicCallbacks *charCallbacks);
 bool initLibWifi();
+void disConnectWifi();
 void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();
 void gpsEncode(); // GPS对象
 void initPanRadio(RadioEvents_t* radioEvents);
-String getCurrentGpsTm(TinyGPSPlus gps);
 String getGpsInfoStr();
 String getCurrentTime();
+bool hasValidTime();
 void setTimeFromLora(String timeStr);
 int getDevicesIdx();
 int getTotalDevices();  // 获取设备总数

@@ -319,6 +319,14 @@ page {
   color: #999;
 }
 
+.item-battery {
+  font-size: 24rpx;
+  color: #07c160;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .item-relative {
   font-size: 22rpx;
   color: #ff9800;
@@ -415,6 +423,18 @@ page {
   flex-shrink: 0;
   margin-left: 24rpx;
   background: #e3f2fd;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+}
+
+.item-battery-compact {
+  font-size: 24rpx;
+  color: #07c160;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  background: #e8f5e9;
   padding: 6rpx 16rpx;
   border-radius: 8rpx;
 }

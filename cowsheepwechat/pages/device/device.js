@@ -169,57 +169,60 @@ Page({
 
   // ========== 获取设备列表 ==========
   fetchDeviceList(forceRefresh, onComplete) {
-    dataCache.getDeviceList((deviceData) => {
-      // 同时获取牛羊名字列表 + 设备LOT最新数据
-      dataCache.getLivestockList((livestockData) => {
-        dataCache.getDeviceLotRefresh((lotData) => {
-          const nameMap = {}
-          if (livestockData && livestockData.livestockList) {
-            livestockData.livestockList.forEach(item => {
-              if (item.cowsheepId) nameMap[item.cowsheepId] = item.name
-            })
-          }
+    let deviceData, livestockData, lotData, batteryData
+    let done = 0
+    const merge = () => {
+      done++
+      if (done < 4) return
 
-          // 建立 deviceId → LOT最新记录 的映射
-          const lotMap = {}
-          if (lotData && lotData.lotList) {
-            lotData.lotList.forEach(rec => {
-              if (rec.deviceId && rec.deviceId !== '-') {
-                // 保留最新的那条（lotList 已按时间排序）
-                if (!lotMap[rec.deviceId]) {
-                  lotMap[rec.deviceId] = rec
-                }
-              }
-            })
-          }
+      const nameMap = {}
+      if (livestockData && livestockData.livestockList) {
+        livestockData.livestockList.forEach(item => {
+          if (item.cowsheepId) nameMap[item.cowsheepId] = item.name
+        })
+      }
 
-          const deviceList = (deviceData.recordList || []).map(item => {
-            const lotRec = lotMap[item.deviceId]
-            // 用LOT最新数据的time替换设备表自身的time
-            const displayTime = lotRec ? lotRec.rawTime : item.rawTime
-            const displayDate = lotRec ? lotRec.date : item.date
-            const displayTimePart = lotRec ? lotRec.time_part : item.time_part
-            return {
-              ...item,
-              date: displayDate,
-              time_part: displayTimePart,
-              rawTime: displayTime,
-              bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
-              relativeTime: this._calcRelativeTime(displayTime)
-            }
-          })
-
-          this.setData({
-            deviceList,
-            livestockNames: livestockData.livestockNames || []
-          })
-          if (forceRefresh) {
-            wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
+      const lotMap = {}
+      if (lotData && lotData.lotList) {
+        lotData.lotList.forEach(rec => {
+          if (rec.deviceId && rec.deviceId !== '-') {
+            if (!lotMap[rec.deviceId]) lotMap[rec.deviceId] = rec
           }
-          if (onComplete) onComplete()
-        }, forceRefresh)
-      }, forceRefresh)
-    }, forceRefresh)
+        })
+      }
+
+      const batteryMap = (batteryData && batteryData.batteryMap) || {}
+
+      const deviceList = (deviceData.recordList || []).map(item => {
+        const lotRec = lotMap[item.deviceId]
+        const displayTime = lotRec ? lotRec.rawTime : item.rawTime
+        const displayDate = lotRec ? lotRec.date : item.date
+        const displayTimePart = lotRec ? lotRec.time_part : item.time_part
+        return {
+          ...item,
+          date: displayDate,
+          time_part: displayTimePart,
+          rawTime: displayTime,
+          bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
+          relativeTime: this._calcRelativeTime(displayTime),
+          battery: batteryMap[item.deviceId] || ''
+        }
+      })
+
+      this.setData({
+        deviceList,
+        livestockNames: livestockData.livestockNames || []
+      })
+      if (forceRefresh) {
+        wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
+      }
+      if (onComplete) onComplete()
+    }
+
+    dataCache.getDeviceList((data) => { deviceData = data; merge() }, forceRefresh)
+    dataCache.getLivestockList((data) => { livestockData = data; merge() }, forceRefresh)
+    dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
+    dataCache.getDeviceBatteryAll((data) => { batteryData = data; merge() }, forceRefresh)
   },
 
   refreshDeviceList() {

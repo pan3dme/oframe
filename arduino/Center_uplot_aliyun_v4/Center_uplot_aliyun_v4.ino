@@ -13,7 +13,18 @@
 #include <WiFi.h>
 #include <time.h>
 #include <ArduinoJson.h>
+#include <AliyunIoTSDK.h>
 #include <pan3dme.h>
+
+
+
+#define PRODUCT_KEY "iq66cDleQPs"
+// 注意：DEVICE_NAME 必须是你在控制台里创建的那个真实设备名
+#define DEVICE_NAME "wifi_rola_v4_1001"
+#define DEVICE_SECRET "7945f515736e7e0ae98289db07525d95"
+#define REGION_ID "cn-shanghai"
+WiFiClient espClient;
+AliyunIoTSDK iot;
 
 // BLE全局对象
 BLEServer *pServer = NULL;
@@ -90,37 +101,10 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (docCom.containsKey("syncing")) {
         needSync = docCom["syncing"].as<bool>();
         Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
-        return;
       }
       // 接收对时指令：同步本地 + LoRa转发 + 查找指定设备最新消息
       if (docCom.containsKey("cmd")) {
         String cmd = docCom["cmd"].as<String>();
-        if (cmd == "getDeviceList") {
-          Serial.println("获取设备列表");
-          StaticJsonDocument<256> doc;
-          doc["cmd"] = "getDeviceList";
-          JsonArray infoArray = doc.createNestedArray("info");
-          // infoArray.add("v1-1");
-          // infoArray.add("v1-2");
-          // infoArray.add("v1-3");
-          for (int i = 0; i < deviceCacheCount; i++) {
-             infoArray.add(deviceCacheId[i]);
-          }
-          String str;
-          serializeJson(doc, str);
-          Serial.println(str);
-          pCharacteristic->setValue(str.c_str());
-          pCharacteristic->notify();
-
-          return;
-        } else if (cmd == "synctime" && docCom.containsKey("time")) {
-          String timeStr = docCom["time"].as<String>();
-          Serial.print("⏰ 收到对时发送指令: ");
-          Serial.println(timeStr);
-          // 1. 同步本地时间
-          setTimeFromLora(timeStr);
-        }
-
 
         // 2. 如果携带 deviceId，查找该设备的最后一条消息并计算接收窗口
         if (docCom.containsKey("deviceId")) {
@@ -145,13 +129,18 @@ class MyCallbacks : public BLECharacteristicCallbacks {
               }
             }
           } else {
+            Serial.print("⚠️ 队列中没有 ");
+            Serial.println(targetId);
+          }
 
 
-            // String str="⚠️ 队列中没有 "+targetId;
-            String str = "{\"cmd\":\"tip\", \"info\":\"⚠️ 队列中没有" + targetId + "的记录\"}";
-            Serial.println(str);
-            pCharacteristic->setValue(str.c_str());
-            pCharacteristic->notify();
+          if (cmd == "synctime" && docCom.containsKey("time")) {
+            String timeStr = docCom["time"].as<String>();
+            Serial.print("⏰ 收到对时发送指令: ");
+            Serial.println(timeStr);
+
+            // 1. 同步本地时间
+            setTimeFromLora(timeStr);
           }
         }
       }
@@ -416,6 +405,14 @@ void setup() {
 
   initRadio();
   initBLE();
+  initLibWifi();
+
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n⚠️ WiFi 链接成功，进行阿里物联网同步");
+    AliyunIoTSDK::begin(espClient, PRODUCT_KEY, DEVICE_NAME, DEVICE_SECRET, REGION_ID);
+  }
+
 
   Serial.println("✅ 系统启动完成");
 }
@@ -427,6 +424,9 @@ void loop() {
   unsigned long startm = millis();
   Radio.IrqProcess();
 
+  if (WiFi.status() == WL_CONNECTED) {
+    AliyunIoTSDK::loop();
+  }
   // 处理BLE触发的对时LoRa发送（等待接收窗口）
   if (needSendTimeSync) {
     unsigned long nowMs = millis();
@@ -446,7 +446,7 @@ void loop() {
           String currentTimeStr = getCurrentTime();
           msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + currentTimeStr;
           Serial.print("📡 发送对时LoRa消息: ");
-        } else if (cmd == "setfreq") {
+        } else {
           String targetId = docCom["deviceId"].as<String>();
           msg = String(MSG_TYPE_COM) + "|" + targetId;
           if (docCom.containsKey("value")) {
@@ -455,11 +455,6 @@ void loop() {
             msg += "|value=null";
           }
           Serial.print("📡 下达指令: ");
-
-        } else {
-          msg = "no cmd:" + cmd;
-          Serial.print("📡 没有对应的cmd: ");
-          Serial.println(cmd);
         }
         snprintf(timeSyncSendBuf, BUFFER_SIZE, "%s", msg.c_str());
         timeSyncSendBuf[BUFFER_SIZE - 1] = '\0';
@@ -481,6 +476,13 @@ void loop() {
     Serial.print(lastRssi);
     Serial.print("  Snr");
     Serial.println(lastSnr);
+
+    if (WiFi.status() == WL_CONNECTED) {
+      // loraStr 是 char[36]，直接传入指针
+      AliyunIoTSDK::send("lorainfo", loraStr );
+      Serial.print("[上报] ");
+      Serial.println(loraStr);
+    }
 
 
     displayBuf[2] = "Rssi" + String(lastRssi) + " Snr" + String(lastSnr);

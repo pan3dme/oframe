@@ -157,6 +157,13 @@ Page({
       this.setData({ deviceUpdateTime })
       console.log('设备LOT最新数据缓存已就绪:', lotList.length + '条记录')
     }, force)
+
+    // 加载设备电量表
+    dataCache.getDeviceBatteryAll((data) => {
+      const batteryMap = data.batteryMap || {}
+      const keys = Object.keys(batteryMap)
+      console.log('设备电量表缓存已就绪:', keys.length + '条记录')
+    }, force)
   },
 
   // 相对时间：刚刚 / X分钟前 / X小时前 / X天前

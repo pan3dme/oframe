@@ -18,22 +18,45 @@ bool loraTimeSynced = false;    // 是否已通过LoRa同步时间
 time_t loraSyncedEpoch = 0;     // LoRa同步的时间戳
 unsigned long loraSyncedMillis = 0; // LoRa同步时的本地毫秒计数
 
+// GPS存储时间变量
+time_t gpsSyncedEpoch = 0;      // GPS存储的时间戳(北京时间)
+unsigned long gpsSyncedMillis = 0; // GPS存储时的millis()
 
+//AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
-    0x248B9C697090, // v4    1
     0x9875555,
-    0x6809A21B5BF8, // v4    2
     0x9875555,
-    0x8442AAAC85D8, // v3    3
     0x9875555,
-    0x301BA21B5BF8, // v4    4
     0x9875555,
-    0x0C46AAAC85D8, // v3    5
+    0x248B9C697090, // v4    4
     0x9875555,
-    0xB4E00404A7AC, // v3    6
+    0x6809A21B5BF8, // v4    6
     0x9875555,
-    0xF89A3604A7AC, // v3    7
+    0x8442AAAC85D8, // v3    10
+    0x9875555,
+    0x301BA21B5BF8, // v4    12
+    0x9875555,
+    0x0C46AAAC85D8, // v3    14
+    0x9875555,
+    0xB4E00404A7AC, // v3    16
+    0x9875555,
+    0xF89A3604A7AC, // v3    18
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
+    0x9875555,
     0x9875555       // 等待添加
 };
 const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);
@@ -94,6 +117,26 @@ void gpsEncode()
       gps.encode(Serial2.read());
     }
   }
+
+  // GPS时间有效时，每SEND_INTERVAL_MS周期更新一次存储时间
+  if ((gpsSyncedEpoch == 0 || millis() - gpsSyncedMillis >= SEND_INTERVAL_MS)
+      && gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025)
+  {
+    struct tm tmGps;
+    memset(&tmGps, 0, sizeof(tmGps));
+    tmGps.tm_year = gps.date.year() - 1900;
+    tmGps.tm_mon = gps.date.month() - 1;
+    tmGps.tm_mday = gps.date.day();
+    tmGps.tm_hour = gps.time.hour(); // 存UTC时间，不手动+8
+    tmGps.tm_min = gps.time.minute();
+    tmGps.tm_sec = gps.time.second();
+    gpsSyncedEpoch = mktime(&tmGps); // UTC值→UTC epoch
+    gpsSyncedMillis = millis();
+    Serial.printf("GPS存储: %04d/%d/%d %02d:%02d:%02d UTC, epoch=%ld\n",
+                  gps.date.year(), gps.date.month(), gps.date.day(),
+                  gps.time.hour(), gps.time.minute(), gps.time.second(),
+                  (long)gpsSyncedEpoch);
+  }
 }
 String getGpsInfoStr(){
   // int hour = gps.time.hour();
@@ -106,43 +149,6 @@ String getGpsInfoStr(){
    }
 }
 
-// 获取GPS时间 (带自动同步逻辑)
-// 获取GPS时间并转换为北京时间 (UTC+8)
-String getCurrentGpsTm(TinyGPSPlus &gps)
-{
-  if (!gps.time.isValid())
-    return "no gps time";
-
-  // 1. 获取GPS原始时间（UTC）
-  int hour = gps.time.hour();
-  int minute = gps.time.minute();
-  int second = gps.time.second();
-  int day = gps.date.day();
-  int month = gps.date.month();
-  int year = gps.date.year();
-
-  // 2. 转换为北京时间 (UTC+8)
-  // 简单的加法
-  hour += 8;
-
-  // 3. 处理进位（跨天）
-  // 如果小时数大于等于24，需要进位到天
-  if (hour >= 24)
-  {
-    hour -= 24;
-    day += 1;
-
-    // 注意：这里仅做了简单的+1处理，未处理跨月/跨年（对于调试显示足够）
-    // 如果需要严谨的日期计算，建议使用 time_t 和 mktime，但考虑到内存限制，此处简化
-  }
-
-  // 4. 格式化输出
-  char timeStr[30];
-  snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-           year, month, day, hour, minute, second);
-
-  return String(timeStr); // 返回 月/日 时:分:秒
-}
 
 // 设备ID认证 (根据MAC地址生成设备名)
 int getDevicesIdx(){
@@ -194,7 +200,7 @@ BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, 
 
   BLECallbacks cbs;
 
-  BLEDevice::init("牛羊GPS" + deviceName);
+  BLEDevice::init("牛羊GPS" + deviceName+"-"+(LORA_FREQ/1000000));
   cbs.pServer = BLEDevice::createServer();
   cbs.pServer->setCallbacks(serverCallbacks);
 
@@ -229,79 +235,54 @@ void showDisplayBy4Area(String a, String b, String c, String d)
 // 初始化WiFi并同步网络时间
 // 初始化WiFi并同步网络时间 (获取后自动断开以省电)
 
-// 获取可用的时间字符串 (优先网络，其次GPS，再次LoRa对时，最后默认)
+// 从UTC epoch输出北京时间字符串 (UTC+8)
+String epochToBeijingStr(time_t epoch)
+{
+  struct tm *tmUtc = gmtime(&epoch);
+  if (tmUtc == NULL) return "";
+  int hour = tmUtc->tm_hour + 8;
+  int day = tmUtc->tm_mday;
+  int month = tmUtc->tm_mon + 1;
+  int year = tmUtc->tm_year + 1900;
+  if (hour >= 24) {
+    hour -= 24;
+    // 简化进位：仅+1天（跨月/跨年交给mktime精确计算）
+    time_t nextDay = epoch + 86400;
+    struct tm *tmNext = gmtime(&nextDay);
+    if (tmNext) { day = tmNext->tm_mday; month = tmNext->tm_mon + 1; year = tmNext->tm_year + 1900; }
+  }
+  char timeStr[30];
+  snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d", year, month, day, hour, tmUtc->tm_min, tmUtc->tm_sec);
+  return String(timeStr);
+}
+
+// 获取可用的时间字符串 (优先GPS存储时间，其次LoRa对时，最后默认运行时间)
 String getCurrentTime()
 {
-  // 1. 优先使用网络时间
-  if (wifiTimeSynced)
+  // 1. 优先使用GPS存储时间 + millis差值
+  if (gpsSyncedEpoch > 0)
   {
-    unsigned long elapsedMs = millis() - syncedMillis;
-    time_t currentEpoch = syncedEpoch + elapsedMs / 1000;
-    struct tm *tmNow = localtime(&currentEpoch);
-    if (tmNow != NULL)
-    {
-      char timeStr[30];
-      snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-               tmNow->tm_year + 1900,
-               tmNow->tm_mon + 1,
-               tmNow->tm_mday,
-               tmNow->tm_hour,
-               tmNow->tm_min,
-               tmNow->tm_sec);
-      return String(timeStr);
-    }
-    else
-    {
-      return "2000/0/0 0:0:0";
-    }
+    unsigned long elapsedMs = millis() - gpsSyncedMillis;
+    time_t currentEpoch = gpsSyncedEpoch + elapsedMs / 1000;
+    String s = epochToBeijingStr(currentEpoch);
+    if (s.length() > 0) return s;
   }
 
-  // 2. 其次使用GPS时间（转换为北京时间）
-  if (gps.time.isValid() && gps.date.isValid())
-  {
-    int hour = gps.time.hour();
-    int minute = gps.time.minute();
-    int second = gps.time.second();
-    int day = gps.date.day();
-    int month = gps.date.month();
-    int year = gps.date.year();
-
-    // 转换为北京时间 (UTC+8)
-    hour += 8;
-    if (hour >= 24)
-    {
-      hour -= 24;
-      day += 1;
-    }
-
-    char timeStr[30];
-    snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-             year, month, day, hour, minute, second);
-    return String(timeStr);
-  }
-
-  // 3. 再次尝试使用 LoRa 对时
+  // 2. 其次使用 LoRa 对时
   if (loraTimeSynced)
   {
     unsigned long elapsedMs = millis() - loraSyncedMillis;
     time_t currentEpoch = loraSyncedEpoch + elapsedMs / 1000;
-    struct tm *tmNow = localtime(&currentEpoch);
-    if (tmNow != NULL)
-    {
-      char timeStr[30];
-      snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d",
-               tmNow->tm_year + 1900,
-               tmNow->tm_mon + 1,
-               tmNow->tm_mday,
-               tmNow->tm_hour,
-               tmNow->tm_min,
-               tmNow->tm_sec);
-      return String(timeStr);
-    }
+    String s = epochToBeijingStr(currentEpoch);
+    if (s.length() > 0) return s;
   }
 
-  // 4. 都没有则返回默认值
-  return "0000/00/00 00:00:00";
+  // 3. 都没有则返回开机时间 + 运行时间
+  time_t bootEpoch = 946684800; // 2000/1/1 00:00:00 UTC
+  time_t currentEpoch = bootEpoch + millis() / 1000;
+  String s = epochToBeijingStr(currentEpoch);
+  if (s.length() > 0) return s;
+  return "2000/1/1 08:00:00";
 }
 bool initLibWifi()
 {
@@ -362,23 +343,17 @@ bool initLibWifi()
   Serial.print(timeinfo.tm_min);
   Serial.print(":");
   Serial.println(timeinfo.tm_sec);
-
+  return true;
+}
+void disConnectWifi(){
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   Serial.println("📶 WiFi 已关闭，后续时间使用本地时钟增量");
-  return true;
 }
 
-// 从LoRa对时信息设置时间
+// 从LoRa对时信息设置时间（仅当新时间比本地时间更新时才覆盖）
 void setTimeFromLora(String timeStr)
 {
-  // 如果已经有网络时间或已经通过LoRa同步过，则不再重复设置
-  if (wifiTimeSynced || loraTimeSynced)
-  {
-    Serial.println("⚠️ 时间已同步，忽略LoRa对时信息");
-    return;
-  }
-
   // 解析时间字符串格式: "2026/6/17 00:12:20"
   struct tm tmLora;
   memset(&tmLora, 0, sizeof(tmLora));
@@ -387,6 +362,17 @@ void setTimeFromLora(String timeStr)
   if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d",
              &year, &month, &day, &hour, &minute, &second) == 6)
   {
+    // LoRa时间是北京时间，先转UTC再存epoch
+    hour -= 8;
+    if (hour < 0) {
+      hour += 24;
+      day -= 1;
+      if (day < 1) {
+        // 简化处理：跨月回退用mktime自动修正
+        day = 28; month -= 1;
+        if (month < 1) { month = 12; year -= 1; }
+      }
+    }
     tmLora.tm_year = year - 1900;
     tmLora.tm_mon = month - 1;
     tmLora.tm_mday = day;
@@ -394,8 +380,30 @@ void setTimeFromLora(String timeStr)
     tmLora.tm_min = minute;
     tmLora.tm_sec = second;
 
-    // 转换为time_t
-    loraSyncedEpoch = mktime(&tmLora);
+    time_t newEpoch = mktime(&tmLora);
+
+    // 计算当前本地时间（如果已同步）
+    time_t currentEpoch = 0;
+    if (gpsSyncedEpoch > 0)
+    {
+      unsigned long elapsedMs = millis() - gpsSyncedMillis;
+      currentEpoch = gpsSyncedEpoch + elapsedMs / 1000;
+    }
+    else if (loraTimeSynced)
+    {
+      unsigned long elapsedMs = millis() - loraSyncedMillis;
+      currentEpoch = loraSyncedEpoch + elapsedMs / 1000;
+    }
+
+    // 如果本地已有时间且新时间不比本地时间新，则忽略
+    if (currentEpoch > 0 && newEpoch <= currentEpoch)
+    {
+      Serial.println("⚠️ LoRa对时不比本地时间新，忽略");
+      return;
+    }
+
+    // 更新时间
+    loraSyncedEpoch = newEpoch;
     loraSyncedMillis = millis();
     loraTimeSynced = true;
 
@@ -408,6 +416,12 @@ void setTimeFromLora(String timeStr)
     Serial.print("❌ LoRa对时解析失败: ");
     Serial.println(timeStr);
   }
+}
+
+// 判断是否有有效时间（GPS存储时间或LoRa对时）
+bool hasValidTime()
+{
+  return (gpsSyncedEpoch > 0) || loraTimeSynced;
 }
 
 void initPanRadio(RadioEvents_t* radioEvents) {
