@@ -200,7 +200,7 @@ BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, 
 
   BLECallbacks cbs;
 
-  BLEDevice::init("牛羊GPS" + deviceName);
+  BLEDevice::init("牛羊GPS" + deviceName+"-"+(LORA_FREQ/1000000));
   cbs.pServer = BLEDevice::createServer();
   cbs.pServer->setCallbacks(serverCallbacks);
 
