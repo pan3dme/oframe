@@ -28,6 +28,13 @@ int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
+// 快速发送模式控制
+bool fastModeEnabled = false;        // 是否启用快速发送模式
+unsigned long fastModeStartTime = 0; // 快速模式启动时间
+const unsigned long FAST_MODE_DURATION = SEND_INTERVAL_MS; // 快速模式持续时间（等于正常周期）
+const unsigned long FAST_SEND_INTERVAL = 5000; // 快速模式下发送间隔（5秒）
+unsigned long lastFastSendTime = 0;  // 上次快速发送的时间
+
 // LoRa接收窗口状态
 bool inRxMode = false;           // 当前是否处于接收模式
 unsigned long rxStartTime = 0;   // RX窗口开始的millis()
@@ -188,7 +195,41 @@ void loop() {
     nextSendTime = calculateNextSendTime(intervalSec);
   }
 
-  // RX窗口5秒超时检查（独立于发送时间）
+  // ====== 快速发送模式处理 ======
+  if (fastModeEnabled) {
+    // 检查快速模式是否超时
+    if (currentMs - fastModeStartTime >= FAST_MODE_DURATION) {
+      fastModeEnabled = false;
+      nextSendTime = calculateNextSendTime(intervalSec); // 重新计算下次正常发送时间
+      Serial.println("⏹ 快速发送模式结束，恢复正常周期发送");
+    } else {
+      // 在快速模式下，每5秒发送一次
+      if (lastFastSendTime == 0 || (currentMs - lastFastSendTime >= FAST_SEND_INTERVAL)) {
+        // 如果正在接收，先退出RX模式
+        if (inRxMode) {
+          Radio.Sleep();
+          inRxMode = false;
+        }
+
+        packetCount++;
+        const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
+        int packetType = typeList[packetCount % 3];
+
+        buildAndSendPacket(packetType);
+
+        openLedByNum(10, 50);
+        displayLines[3] = "Fast Mode";
+        displayLines[0] = "id:  " + deviceName + "  " + packetCount;
+        displayLines[1] = getCurrentTime();
+        showDisplayBy4Area(displayLines[0], displayLines[1], displayLines[2], displayLines[3]);
+
+        lastFastSendTime = currentMs;
+        return;
+      }
+    }
+  }
+
+  // ====== 正常模式：RX窗口5秒超时检查 ======
   if (inRxMode && (currentMs - rxStartTime >= rxWindowMs)) {
     Radio.Sleep();
     inRxMode = false;
@@ -297,6 +338,14 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
           // 打印验证一下
           Serial.print("提取到的最后整数是: ");
           Serial.println(lastValue);
+
+          // 如果lastValue为1，启动快速发送模式
+          if (lastValue == 1) {
+            fastModeEnabled = true;
+            fastModeStartTime = millis();
+            lastFastSendTime = 0; // 重置快速发送计时
+            Serial.println("🚀 启动快速发送模式：每5秒发送一次，持续" + String(FAST_MODE_DURATION / 1000) + "秒");
+          }
         }
       }
     }
