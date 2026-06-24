@@ -806,6 +806,11 @@ Page({
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 3 }) })
   },
 
+  // 快捷填充：重启设备 value=4
+  onQuickReboot() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 4 }) })
+  },
+
   onCmdDeviceChange(e) {
     this.setData({ cmdDeviceIndex: e.detail.value })
   },

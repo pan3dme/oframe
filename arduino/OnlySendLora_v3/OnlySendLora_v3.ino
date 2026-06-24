@@ -29,11 +29,11 @@ int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 // 快速发送模式控制
-bool fastModeEnabled = false;        // 是否启用快速发送模式
-unsigned long fastModeStartTime = 0; // 快速模式启动时间
-const unsigned long FAST_MODE_DURATION = SEND_INTERVAL_MS; // 快速模式持续时间（等于正常周期）
-const unsigned long FAST_SEND_INTERVAL = 5000; // 快速模式下发送间隔（5秒）
-unsigned long lastFastSendTime = 0;  // 上次快速发送的时间
+bool fastModeEnabled = false;                               // 是否启用快速发送模式
+unsigned long fastModeStartTime = 0;                        // 快速模式启动时间
+const unsigned long FAST_MODE_DURATION = SEND_INTERVAL_MS;  // 快速模式持续时间（等于正常周期）
+const unsigned long FAST_SEND_INTERVAL = 5000;              // 快速模式下发送间隔（5秒）
+unsigned long lastFastSendTime = 0;                         // 上次快速发送的时间
 
 // LoRa接收窗口状态
 bool inRxMode = false;           // 当前是否处于接收模式
@@ -200,7 +200,7 @@ void loop() {
     // 检查快速模式是否超时
     if (currentMs - fastModeStartTime >= FAST_MODE_DURATION) {
       fastModeEnabled = false;
-      nextSendTime = calculateNextSendTime(intervalSec); // 重新计算下次正常发送时间
+      nextSendTime = calculateNextSendTime(intervalSec);  // 重新计算下次正常发送时间
       Serial.println("⏹ 快速发送模式结束，恢复正常周期发送");
     } else {
       // 在快速模式下，每5秒发送一次
@@ -343,8 +343,12 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
           if (lastValue == 1) {
             fastModeEnabled = true;
             fastModeStartTime = millis();
-            lastFastSendTime = 0; // 重置快速发送计时
+            lastFastSendTime = 0;  // 重置快速发送计时
             Serial.println("🚀 启动快速发送模式：每5秒发送一次，持续" + String(FAST_MODE_DURATION / 1000) + "秒");
+          } else if (lastValue == 4) {
+            Serial.println("⚠️ 收到重启指令，系统将在 1 秒后重启...");
+            delay(1000);    // 强烈建议加一个短暂的延时，确保串口日志能发送出去
+            ESP.restart();  // 执行重启
           }
         }
       }

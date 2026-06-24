@@ -90,10 +90,22 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (docCom.containsKey("syncing")) {
         needSync = docCom["syncing"].as<bool>();
         Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
+        return;
       }
       // 接收对时指令：同步本地 + LoRa转发 + 查找指定设备最新消息
       if (docCom.containsKey("cmd")) {
         String cmd = docCom["cmd"].as<String>();
+        if (cmd == "getDeviceList") {
+          Serial.println("获取设备列表");
+          return;
+        } else if (cmd == "synctime" && docCom.containsKey("time")) {
+          String timeStr = docCom["time"].as<String>();
+          Serial.print("⏰ 收到对时发送指令: ");
+          Serial.println(timeStr);
+          // 1. 同步本地时间
+          setTimeFromLora(timeStr);
+        }
+
 
         // 2. 如果携带 deviceId，查找该设备的最后一条消息并计算接收窗口
         if (docCom.containsKey("deviceId")) {
@@ -121,20 +133,10 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 
 
             // String str="⚠️ 队列中没有 "+targetId;
-            String str = "{\"cmd\":\"tip\", \"info\":\"⚠️ 队列中没有"+targetId+"的记录\"}";
+            String str = "{\"cmd\":\"tip\", \"info\":\"⚠️ 队列中没有" + targetId + "的记录\"}";
             Serial.println(str);
             pCharacteristic->setValue(str.c_str());
             pCharacteristic->notify();
-          }
-
-
-          if (cmd == "synctime" && docCom.containsKey("time")) {
-            String timeStr = docCom["time"].as<String>();
-            Serial.print("⏰ 收到对时发送指令: ");
-            Serial.println(timeStr);
-
-            // 1. 同步本地时间
-            setTimeFromLora(timeStr);
           }
         }
       }
@@ -429,7 +431,7 @@ void loop() {
           String currentTimeStr = getCurrentTime();
           msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + currentTimeStr;
           Serial.print("📡 发送对时LoRa消息: ");
-        } else {
+        } else if (cmd == "setfreq") {
           String targetId = docCom["deviceId"].as<String>();
           msg = String(MSG_TYPE_COM) + "|" + targetId;
           if (docCom.containsKey("value")) {
@@ -438,6 +440,11 @@ void loop() {
             msg += "|value=null";
           }
           Serial.print("📡 下达指令: ");
+
+        } else {
+          msg = "no cmd:" + cmd;
+          Serial.print("📡 没有对应的cmd: ");
+          Serial.println(cmd);
         }
         snprintf(timeSyncSendBuf, BUFFER_SIZE, "%s", msg.c_str());
         timeSyncSendBuf[BUFFER_SIZE - 1] = '\0';
