@@ -12,10 +12,10 @@ from crowui.submenu.tab_refrish_info import TobRefrishInfo
 class RightPanelContainer(QWidget):
     """右侧面板容器，管理多个页面的切换"""
     
-    def __init__(self, parent=None, ots_client=None, toggle_callback=None):
+    def __init__(self, parent=None, ots_client=None):
         super().__init__(parent)
         self.ots_client = ots_client
-        self.toggle_callback = toggle_callback  # 保存切换地图位置的回调函数
+
         
         # 设置背景色
         self.setAutoFillBackground(True)
@@ -146,10 +146,7 @@ class RightPanelContainer(QWidget):
         self.btn_cow_sheep.clicked.connect(self.show_cowsheep_list_page)
         self.btn_latest_data.clicked.connect(self.show_latest_data_page)
         self.btn_cruise.clicked.connect(lambda: print("巡航画面按钮被点击"))
-        if self.toggle_callback:
-            self.btn_toggle.clicked.connect(self.toggle_callback)
-        else:
-            self.btn_toggle.clicked.connect(lambda: print("切换地图位置按钮被点击（未设置回调）"))
+
         
         print("✅ 右侧面板容器初始化完成")
     
