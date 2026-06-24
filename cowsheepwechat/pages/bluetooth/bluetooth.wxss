@@ -68,11 +68,13 @@ page {
 }
 
 .cache-progress-line {
-  margin-top: 12rpx;
-  padding-top: 12rpx;
-  border-top: 1rpx solid #f0f0f0;
-  font-size: 24rpx;
-  color: #999;
+  margin-top: 16rpx;
+  padding: 14rpx 24rpx;
+  background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+  border-radius: 10rpx;
+  font-size: 28rpx;
+  color: #2e7d32;
+  font-weight: bold;
   text-align: center;
 }
 

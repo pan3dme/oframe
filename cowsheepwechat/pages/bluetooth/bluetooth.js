@@ -1,6 +1,5 @@
 // bluetooth.js
 const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
-const dataCache = require('../../config/data-cache.js')
 
 Page({
   data: {
@@ -283,15 +282,20 @@ Page({
           console.log('[蓝牙] 原始HEX:', rawHex)
           console.log('[蓝牙] 文本内容:', msg)
 
-          // 尝试 JSON 解析，判断是否 tip 指令
+          // 尝试 JSON 解析，判断 cmd 类型
           let isTip = false
           let tipInfo = ''
+          let isDeviceList = false
+          let deviceListRaw = ''
           try {
             const obj = JSON.parse(msg)
             console.log('[蓝牙] JSON解析，cmd:', obj.cmd || '(无)', 'info:', obj.info || '(无)')
             if (obj.cmd === 'tip') {
               isTip = true
               tipInfo = obj.info || ''
+            } else if (obj.cmd === 'getDeviceList') {
+              isDeviceList = true
+              deviceListRaw = obj.info || ''
             }
           } catch (e) { /* 非JSON，非管道 */ }
 
@@ -303,6 +307,26 @@ Page({
               content: tipInfo,
               showCancel: false,
               confirmText: '知道了'
+            })
+            return
+          }
+
+          // getDeviceList 响应：更新指令弹窗的设备下拉列表
+          if (isDeviceList) {
+            console.log('[蓝牙] 收到 getDeviceList 响应:', deviceListRaw)
+            let deviceList = []
+            try {
+              if (typeof deviceListRaw === 'string') {
+                deviceList = JSON.parse(deviceListRaw)
+              } else if (Array.isArray(deviceListRaw)) {
+                deviceList = deviceListRaw
+              }
+            } catch (e) {
+              console.warn('[蓝牙] getDeviceList info 解析失败:', e)
+            }
+            that.setData({
+              cmdDeviceList: deviceList.length > 0 ? deviceList : [that.data.connectedDeviceName || '未知设备'],
+              cmdDeviceIndex: 0
             })
             return
           }
@@ -322,16 +346,29 @@ Page({
             displayParts: displayResult,
             bgColor: that._randomPastel()  // 随机浅色背景
           }
-          const newCache = that.data.cacheQueue.concat([msg])
           // 最新数据插到最前面，方便直接看到
           const newList = [newItem].concat(that.data.receivedList)
           const trimmedList = newList.length > 200 ? newList.slice(0, 200) : newList
-          that.setData({
-            cacheQueue: newCache,
-            cacheCount: newCache.length,
-            receivedList: trimmedList
-          })
-          that._saveCacheToStorage()
+          if (that.data.isCenterUploading) {
+            // 上报模式：直接推入上传队列，不缓存
+            that.data.gpsQueue.push(msg)
+            that.setData({
+              gpsQueue: that.data.gpsQueue,
+              receivedList: trimmedList
+            })
+            if (!that.data.uploading) {
+              that.processGPSQueue()
+            }
+          } else {
+            // 暂停模式：存入本地缓存
+            const newCache = that.data.cacheQueue.concat([msg])
+            that.setData({
+              cacheQueue: newCache,
+              cacheCount: newCache.length,
+              receivedList: trimmedList
+            })
+            that._saveCacheToStorage()
+          }
         })
       },
       fail(err) { console.error('获取特征值失败:', err) }
@@ -495,110 +532,36 @@ Page({
     }
   },
 
-  // ========== 上传数据中心（切换） ==========
+  // ========== 上报数据中心（切换：上报 / 暂停） ==========
   uploadToCenter() {
     if (this.data.isCenterUploading) {
-      // 正在上传 → 取消
-      this.cancelCenterUpload()
-      return
-    }
-    const cacheLen = this.data.cacheQueue.length
-    if (cacheLen === 0) {
-      wx.showToast({ title: '暂无缓存数据', icon: 'none' })
+      // 正在上报 → 暂停
+      this.setData({ isCenterUploading: false })
+      wx.showToast({ title: '已暂停上报', icon: 'none' })
       return
     }
 
-    // 提取所有记录中的设备ID并校验
-    this._validateDevices(this.data.cacheQueue, (unknownDevices) => {
-      if (unknownDevices.length > 0) {
-        wx.showModal({
-          title: '设备未注册',
-          content: '以下设备未在系统中找到：\n' + unknownDevices.join('、') + '\n\n是否继续上传？',
-          confirmText: '继续上传',
-          cancelText: '取消',
-          success: (res) => {
-            if (res.confirm) {
-              this._doUploadToCenter()
-            }
-          }
-        })
-      } else {
-        this._doUploadToCenter()
-      }
-    })
-  },
+    // 开始上报
+    this.setData({ isCenterUploading: true })
 
-  // 提取缓存数据中的deviceId并对比设备缓存
-  _validateDevices(cacheQueue, callback) {
-    // 先从缓存数据中提取所有deviceId
-    const deviceIds = new Set()
-    cacheQueue.forEach(item => {
-      try {
-        const obj = JSON.parse(item)
-        const info = obj.info || ''
-        const parts = info.split('|')
-        if (parts.length >= 2 && parts[0] === '1') {
-          const deviceId = parts[1].trim()
-          if (deviceId) deviceIds.add(deviceId)
-        }
-      } catch (e) {
-        // 非JSON数据，跳过
-      }
-    })
-
-    if (deviceIds.size === 0) {
-      // 没有提取到设备ID，直接放行
-      callback([])
-      return
+    const cache = this.data.cacheQueue
+    if (cache.length > 0) {
+      // 有缓存：先上传缓存
+      this.setData({
+        cacheQueue: [],
+        cacheCount: 0,
+        gpsQueue: this.data.gpsQueue.concat(cache)
+      })
+      wx.setStorageSync(this._storageKey, [])
+      wx.showToast({ title: '上报已开启，先上传 ' + cache.length + ' 条缓存', icon: 'none' })
+    } else {
+      wx.showToast({ title: '上报已开启，等待接收数据...', icon: 'none' })
     }
 
-    const idList = Array.from(deviceIds)
-    // 检查设备缓存
-    dataCache.getDeviceList((deviceData) => {
-      const knownSet = new Set()
-      if (deviceData && deviceData.recordList) {
-        deviceData.recordList.forEach(r => {
-          if (r.deviceId && r.deviceId !== '-') knownSet.add(r.deviceId)
-        })
-      }
-      const unknown = idList.filter(id => !knownSet.has(id))
-      callback(unknown)
-    })
-  },
-
-  // 实际执行上传
-  _doUploadToCenter() {
-    // 将缓存数据全部移入上传队列
-    const allData = [...this.data.cacheQueue]
-    this.setData({
-      cacheQueue: [],
-      cacheCount: 0,
-      gpsQueue: this.data.gpsQueue.concat(allData),
-      isCenterUploading: true
-    })
-    wx.setStorageSync(this._storageKey, [])
-    // 如果未在上传中，开始处理
+    // 启动队列处理
     if (!this.data.uploading) {
       this.processGPSQueue()
     }
-  },
-
-  // 取消数据中心上传
-  cancelCenterUpload() {
-    wx.showModal({
-      title: '取消上传',
-      content: '确定取消上传？队列中剩余 ' + this.data.gpsQueue.length + ' 条数据将丢失。',
-      success: (res) => {
-        if (res.confirm) {
-          this.setData({
-            gpsQueue: [],
-            uploading: false,
-            isCenterUploading: false
-          })
-          wx.showToast({ title: '上传已取消', icon: 'none' })
-        }
-      }
-    })
   },
 
   // 清空缓存
@@ -624,11 +587,7 @@ Page({
     if (this.data.uploading) return
     const queue = this.data.gpsQueue
     if (queue.length === 0) {
-      // 队列已空，结束上传状态
-      if (this.data.isCenterUploading) {
-        this.setData({ isCenterUploading: false })
-        wx.showToast({ title: '全部上传完成', icon: 'success' })
-      }
+      // 队列已空，等待新数据（上报模式下不自动停止）
       return
     }
 
@@ -753,22 +712,43 @@ Page({
     this.setData({ showCmdPanel: !this.data.showCmdPanel })
   },
 
-  // 打开指令弹窗，可选预填指令文本
+  // 打开指令弹窗，可选预填指令文本（通过BLE获取设备列表）
   _openCmdModalWithPreset(presetText, mode) {
-    dataCache.getDeviceList((deviceData) => {
-      const list = []
-      if (deviceData && deviceData.recordList) {
-        deviceData.recordList.forEach(r => {
-          if (r.deviceId && r.deviceId !== '-') list.push(r.deviceId)
+    // 先打开弹窗，显示加载中
+    this.setData({
+      showCmdModal: true,
+      cmdDeviceList: ['正在获取设备列表...'],
+      cmdDeviceIndex: 0,
+      cmdText: presetText || '',
+      cmdMode: mode || 'custom'
+    })
+
+    // 通过 BLE 发送 getDeviceList 指令获取可发送的设备列表
+    const info = this.data.writeDeviceInfo
+    if (!info) {
+      console.warn('[蓝牙] 无写入特征值，使用当前设备作为默认')
+      this.setData({
+        cmdDeviceList: [this.data.connectedDeviceName || '未知设备']
+      })
+      return
+    }
+
+    const that = this
+    const buffer = this.textToAb(JSON.stringify({ cmd: 'getDeviceList' }))
+    wx.writeBLECharacteristicValue({
+      deviceId: info.deviceId,
+      serviceId: info.serviceId,
+      characteristicId: info.characteristicId,
+      value: buffer,
+      success: () => {
+        console.log('[蓝牙] 已发送 getDeviceList 请求')
+      },
+      fail(err) {
+        console.error('[蓝牙] getDeviceList 发送失败:', err)
+        that.setData({
+          cmdDeviceList: [that.data.connectedDeviceName || '未知设备']
         })
       }
-      this.setData({
-        showCmdModal: true,
-        cmdDeviceList: list.length > 0 ? list : [this.data.connectedDeviceName || '未知设备'],
-        cmdDeviceIndex: 0,
-        cmdText: presetText || '',
-        cmdMode: mode || 'custom'
-      })
     })
   },
 

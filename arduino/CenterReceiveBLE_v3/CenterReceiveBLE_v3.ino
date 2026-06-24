@@ -97,6 +97,21 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         String cmd = docCom["cmd"].as<String>();
         if (cmd == "getDeviceList") {
           Serial.println("获取设备列表");
+          StaticJsonDocument<256> doc;
+          doc["cmd"] = "getDeviceList";
+          JsonArray infoArray = doc.createNestedArray("info");
+          // infoArray.add("v1-1");
+          // infoArray.add("v1-2");
+          // infoArray.add("v1-3");
+          for (int i = 0; i < deviceCacheCount; i++) {
+             infoArray.add(deviceCacheId[i]);
+          }
+          String str;
+          serializeJson(doc, str);
+          Serial.println(str);
+          pCharacteristic->setValue(str.c_str());
+          pCharacteristic->notify();
+
           return;
         } else if (cmd == "synctime" && docCom.containsKey("time")) {
           String timeStr = docCom["time"].as<String>();
