@@ -22,6 +22,9 @@ unsigned long loraSyncedMillis = 0; // LoRa同步时的本地毫秒计数
 time_t gpsSyncedEpoch = 0;      // GPS存储的时间戳(北京时间)
 unsigned long gpsSyncedMillis = 0; // GPS存储时的millis()
 
+
+bool isGpsOn = false;
+
 //AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 // 设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
@@ -33,15 +36,15 @@ uint64_t allowedDevices[] = {
     0x9875555,
     0x6809A21B5BF8, // v4    6
     0x9875555,
-    0x8442AAAC85D8, // v3    10
+    0x8442AAAC85D8, // v3    8
     0x9875555,
-    0x301BA21B5BF8, // v4    12
+    0x301BA21B5BF8, // v4    10
     0x9875555,
-    0x0C46AAAC85D8, // v3    14
+    0x0C46AAAC85D8, // v3    12
     0x9875555,
-    0xB4E00404A7AC, // v3    16
+    0xB4E00404A7AC, // v3    14
     0x9875555,
-    0xF89A3604A7AC, // v3    18
+    0xF89A3604A7AC, // v3    15
     0x9875555,
     0x9875555,
     0x9875555,
@@ -100,16 +103,39 @@ void initOLED()
 
 void initPanGPS()
 {
-  pinMode(VGNSS_CTRL, OUTPUT);
-  digitalWrite(VGNSS_CTRL, LOW); // 开启GPS电源
-  pinMode(GPS_ANT_EN, OUTPUT);
-  digitalWrite(GPS_ANT_EN, HIGH); // 开启天线供电
-  Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-  Serial.println("GPS 已启动");
-}
+    pinMode(VGNSS_CTRL, OUTPUT);
+    pinMode(GPS_ANT_EN, OUTPUT);
+    setGpsEnable(false);
+    delay(500);
+    setGpsEnable(true);
+    delay(500);
+    Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
 
+}
+bool getGpsStatus() {
+    return isGpsOn;
+}
+void  setGpsEnable(bool  value){
+    if (value == isGpsOn) return; // 【优化】如果状态没变，直接返回，避免重复操作
+
+    if (value) {
+        digitalWrite(VGNSS_CTRL, LOW);
+        digitalWrite(GPS_ANT_EN, HIGH);
+        Serial.println("GPS 已开启");
+    } else {
+        Serial2.end();
+        digitalWrite(VGNSS_CTRL, HIGH);
+        digitalWrite(GPS_ANT_EN, LOW);
+        Serial.println("GPS 已关闭");
+    }
+
+    isGpsOn = value; // 更新状态记录
+}
 void gpsEncode()
 {
+    if(!isGpsOn){
+        return;
+    }
   if (Serial2.available() > 0)
   {
     while (Serial2.available())

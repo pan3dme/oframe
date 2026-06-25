@@ -10,7 +10,8 @@ Page({
     devices: [],
     // 接收到的数据列表
     receivedList: [],
-    displayList: [],       // 过滤后的显示列表
+    displayList: [],       // 过滤后的显示列表（已连接）
+    cacheDisplayList: [],  // 缓存数据显示列表（未连接时展示）
     filterType: '',        // ''=全部, 'gps', 'time', 'battery'
     // 数据缓存（先存后上传）
     cacheQueue: [],
@@ -113,7 +114,9 @@ Page({
     try {
       const saved = wx.getStorageSync(this._storageKey)
       if (saved && Array.isArray(saved)) {
-        this.setData({ cacheQueue: saved, cacheCount: saved.length })
+        this.setData({ cacheQueue: saved, cacheCount: saved.length }, () => {
+          this._rebuildCacheDisplay()
+        })
       }
     } catch (e) {
       console.error('读取缓存失败:', e)
@@ -365,7 +368,7 @@ Page({
             that.setData({
               cacheQueue: newCache,
               cacheCount: newCache.length
-            })
+            }, () => { that._rebuildCacheDisplay() })
             that._setReceivedList(trimmedList)
             that._saveCacheToStorage()
           }
@@ -487,20 +490,46 @@ Page({
     this.setData({ receivedList: newList }, () => { this._applyFilter() })
   },
 
+  // 从 cacheQueue 构建缓存显示列表，格式与 receivedList 一致
+  _rebuildCacheDisplay() {
+    const ft = this.data.filterType
+    let queue = this.data.cacheQueue
+    if (ft) {
+      queue = queue.filter(msg => this._getMsgType(msg) === ft)
+    }
+    // 倒序显示，最新在前，与接收数据列表一致
+    const items = queue.slice().reverse().map(msg => ({
+      text: msg,
+      time: '',
+      displayParts: this._parseDisplay(msg),
+      bgColor: this._randomPastel()
+    }))
+    this.setData({ cacheDisplayList: items })
+  },
+
   // 筛选按钮：GPS 切换
   onToggleFilterGps() {
     const next = this.data.filterType === 'gps' ? '' : 'gps'
-    this.setData({ filterType: next }, () => { this._applyFilter() })
+    this.setData({ filterType: next }, () => {
+      this._applyFilter()
+      this._rebuildCacheDisplay()
+    })
   },
   // 筛选按钮：对时 切换
   onToggleFilterTime() {
     const next = this.data.filterType === 'time' ? '' : 'time'
-    this.setData({ filterType: next }, () => { this._applyFilter() })
+    this.setData({ filterType: next }, () => {
+      this._applyFilter()
+      this._rebuildCacheDisplay()
+    })
   },
   // 筛选按钮：电量 切换
   onToggleFilterBattery() {
     const next = this.data.filterType === 'battery' ? '' : 'battery'
-    this.setData({ filterType: next }, () => { this._applyFilter() })
+    this.setData({ filterType: next }, () => {
+      this._applyFilter()
+      this._rebuildCacheDisplay()
+    })
   },
 
   // ArrayBuffer 转可读文本
@@ -576,7 +605,7 @@ Page({
         content: '确定清空 ' + this.data.cacheCount + ' 条缓存数据？',
         success: (res) => {
           if (res.confirm) {
-            this.setData({ cacheQueue: [], cacheCount: 0 })
+            this.setData({ cacheQueue: [], cacheCount: 0 }, () => { this._rebuildCacheDisplay() })
             wx.setStorageSync(this._storageKey, [])
             wx.showToast({ title: '缓存已清空', icon: 'success' })
           }
@@ -606,7 +635,7 @@ Page({
         cacheQueue: [],
         cacheCount: 0,
         gpsQueue: this.data.gpsQueue.concat(cache)
-      })
+      }, () => { this._rebuildCacheDisplay() })
       wx.setStorageSync(this._storageKey, [])
       wx.showToast({ title: '上报已开启，先上传 ' + cache.length + ' 条缓存', icon: 'none' })
     } else {

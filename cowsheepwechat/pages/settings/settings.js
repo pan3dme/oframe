@@ -68,7 +68,7 @@ Page({
       // 打开管理员 → 弹出密码输入
       wx.showModal({
         title: '验证密码',
-        content: '请输入管理员密码',
+        content: '1234',
         editable: true,
         placeholderText: '请输入密码',
         success: (res) => {

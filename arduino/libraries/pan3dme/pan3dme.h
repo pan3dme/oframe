@@ -33,6 +33,7 @@ extern bool wifiTimeSynced;
 extern time_t syncedEpoch;
 extern unsigned long syncedMillis;
 
+
 // ================================== 硬件引脚定义 ==================================
 // GPS模块引脚
 #define VGNSS_CTRL 34 // GPS电源控制 (低电平开启)
@@ -47,7 +48,7 @@ extern unsigned long syncedMillis;
 #define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 433000000 // 433MHz 国内通用863 863  928
+#define LORA_FREQ 928000000 // 433MHz 国内通用863 863  928
 #define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 10          // 扩频因子
@@ -85,6 +86,8 @@ void disConnectWifi();
 void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();
+void setGpsEnable(bool  value);
+bool getGpsStatus();
 void gpsEncode(); // GPS对象
 void initPanRadio(RadioEvents_t* radioEvents);
 String getGpsInfoStr();

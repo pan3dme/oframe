@@ -3,6 +3,7 @@ const API_URL = getApp().globalData.api_cowsheep_Url
 const OSS_CONFIG = require('../../config/oss-config.js')
 const dataCache = require('../../config/data-cache.js')
 const { compressImage } = require('../../utils/image-compress.js')
+const { uploadToOSS } = require('../../utils/oss-upload.js')
 
 // ==================== 时间格式化 ====================
 function formatDate(date) {
@@ -14,117 +15,6 @@ function formatDate(date) {
   const s = date.getSeconds()
   const pad = (n) => n < 10 ? '0' + n : n
   return y + '/' + m + '/' + d + ' ' + pad(h) + ':' + pad(min) + ':' + pad(s)
-}
-
-// ==================== SHA1 / HMAC-SHA1 纯 JS 实现 ====================
-function _sha1Core(msgBytes) {
-  const rotl = (n, s) => (n << s) | (n >>> (32 - s))
-  const len = msgBytes.length * 8
-  const blocks = []
-  for (let i = 0; i < msgBytes.length; i += 4) {
-    blocks[i >> 2] = (msgBytes[i] << 24) | (msgBytes[i + 1] << 16) | (msgBytes[i + 2] << 8) | msgBytes[i + 3]
-  }
-  blocks[len >> 5] |= 0x80 << (24 - (len % 32))
-  blocks[((len + 64 >> 9) << 4) + 15] = len
-  let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0
-  for (let i = 0; i < blocks.length; i += 16) {
-    let a = h0, b = h1, c = h2, d = h3, e = h4
-    const w = []
-    for (let j = 0; j < 80; j++) {
-      w[j] = j < 16 ? (blocks[i + j] || 0) : rotl(w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16], 1)
-      let f, k
-      if (j < 20) { f = (b & c) | (~b & d); k = 0x5A827999 }
-      else if (j < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1 }
-      else if (j < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC }
-      else { f = b ^ c ^ d; k = 0xCA62C1D6 }
-      const temp = (rotl(a, 5) + f + e + k + (w[j] >>> 0)) >>> 0
-      e = d; d = c; c = rotl(b, 30); b = a; a = temp
-    }
-    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0
-    h3 = (h3 + d) >>> 0; h4 = (h4 + e) >>> 0
-  }
-  const buf = new ArrayBuffer(20), dv = new DataView(buf)
-  dv.setUint32(0, h0); dv.setUint32(4, h1); dv.setUint32(8, h2)
-  dv.setUint32(12, h3); dv.setUint32(16, h4)
-  return buf
-}
-
-function _strToBytes(str) {
-  const bytes = new Uint8Array(str.length)
-  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xFF
-  return bytes
-}
-
-function _hmacSha1(key, msg) {
-  const blockSize = 64
-  let keyBytes = _strToBytes(key)
-  if (keyBytes.length > blockSize) {
-    keyBytes = new Uint8Array(_sha1Core(keyBytes))
-  }
-  const padded = new Uint8Array(blockSize)
-  padded.set(keyBytes)
-  const ipad = new Uint8Array(blockSize), opad = new Uint8Array(blockSize)
-  for (let i = 0; i < blockSize; i++) {
-    ipad[i] = padded[i] ^ 0x36
-    opad[i] = padded[i] ^ 0x5C
-  }
-  const inner = _sha1Core(_concatBytes(ipad, _strToBytes(msg)))
-  return _sha1Core(_concatBytes(opad, new Uint8Array(inner)))
-}
-
-function _concatBytes(a, b) {
-  const c = new Uint8Array(a.length + b.length)
-  c.set(a); c.set(b, a.length); return c
-}
-
-function _base64(arrayBuffer) {
-  return wx.arrayBufferToBase64(arrayBuffer)
-}
-
-// ==================== OSS 上传 ====================
-function uploadToOSS(filePath, objectKey) {
-  return new Promise((resolve, reject) => {
-    const { region, bucket, accessKeyId, accessKeySecret } = OSS_CONFIG
-    const host = `https://${bucket}.${region}.aliyuncs.com/`
-
-    const expire = new Date(Date.now() + 86400000).toISOString()
-    const policyObj = {
-      expiration: expire,
-      conditions: [
-        { bucket: bucket },
-        ['starts-with', '$key', OSS_CONFIG.uploadDir],
-        { 'x-oss-object-acl': 'public-read' },
-        ['content-length-range', 0, 104857600]
-      ]
-    }
-    const policyStr = JSON.stringify(policyObj)
-    const policyBase64 = _base64(_strToBytes(policyStr).buffer)
-    const signature = _base64(_hmacSha1(accessKeySecret, policyBase64))
-
-    wx.uploadFile({
-      url: host,
-      filePath: filePath,
-      name: 'file',
-      formData: {
-        key: objectKey,
-        policy: policyBase64,
-        OSSAccessKeyId: accessKeyId,
-        signature: signature,
-        'x-oss-object-acl': 'public-read',
-        success_action_status: '200'
-      },
-      success: (res) => {
-        if (res.statusCode === 200 || res.statusCode === 204) {
-          resolve(host + objectKey)
-        } else {
-          reject(new Error('OSS 返回 ' + res.statusCode))
-        }
-      },
-      fail: (err) => {
-        reject(err)
-      }
-    })
-  })
 }
 
 Page({
@@ -149,8 +39,27 @@ Page({
     showVideoPlayer: false,     // 视频播放弹窗
     showUploadModal: false,     // 上传媒体弹窗
     uploadFilePath: '',         // 选中的文件路径
-    uploadFileType: ''          // 'image' | 'video'
+    uploadFileType: '',         // 'image' | 'video'
+    // 管理员模式
+    isAdmin: false,
+    // 编辑牛羊弹窗
+    showEditModal: false,
+    editName: '',
+    editOriginalName: '',
+    editBirthday: '',
+    editGenderIndex: 0,
+    editCowsheepId: '',
+    editAvatar: '',
+    editAvatarUrl: '',
+    genderOptions: ['公', '母'],
+    // 连接设备弹窗
+    showDeviceModal: false,
+    bindCowsheepId: '',
+    bindCowsheepName: '',
+    bindDeviceIndex: 0
   },
+
+  _tapAvatarTime: 0,
 
   onLoad(options) {
     this.setData({
@@ -160,6 +69,14 @@ Page({
       gender: decodeURIComponent(options.gender || ''),
       avatar: decodeURIComponent(options.avatar || '')
     })
+
+    // 读取管理员设置
+    let isAdmin = false
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin })
 
     // 初始化时加载所有设备信息
     this.loadDeviceInfo()
@@ -534,8 +451,8 @@ Page({
 
     // 视频直接上传，图片先压缩
     const uploadPromise = fileType === 'video'
-      ? uploadToOSS(filePath, objectKey)
-      : compressImage(filePath).then((compressedPath) => uploadToOSS(compressedPath, objectKey))
+      ? uploadToOSS(filePath, objectKey, OSS_CONFIG.uploadDir)
+      : compressImage(filePath).then((compressedPath) => uploadToOSS(compressedPath, objectKey, OSS_CONFIG.uploadDir))
 
     uploadPromise.then((ossUrl) => {
         wx.showLoading({ title: '保存记录...' })
@@ -566,6 +483,199 @@ Page({
         console.error('OSS 上传失败:', err)
         wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
       })
+  },
+
+  // ========== 编辑牛羊弹窗 ==========
+  onEditTap() {
+    this.setData({
+      showEditModal: true,
+      editName: this.data.name,
+      editOriginalName: this.data.name,
+      editBirthday: this.data.birthday === '-' ? '' : this.data.birthday,
+      editGenderIndex: this.data.gender === '公' ? 0 : 1,
+      editCowsheepId: this.data.cowsheepId,
+      editAvatar: this.data.avatar || '',
+      editAvatarUrl: ''
+    })
+  },
+
+  onEditClose() {
+    this.setData({ showEditModal: false })
+  },
+
+  // 双击头像 → 选择图片 → 上传 OSS
+  onEditAvatarTap() {
+    const now = Date.now()
+    if (now - this._tapAvatarTime < 500) {
+      this._tapAvatarTime = 0
+      this._chooseAndUploadAvatar()
+    } else {
+      this._tapAvatarTime = now
+      setTimeout(() => { this._tapAvatarTime = 0 }, 500)
+    }
+  },
+
+  _chooseAndUploadAvatar() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['compressed'],
+      success: (res) => {
+        const filePath = res.tempFiles[0].tempFilePath
+        const cowsheepId = this.data.editCowsheepId
+        const objectKey = OSS_CONFIG.uploadDir + 'avatar_' + (cowsheepId || Date.now()) + '_' + Date.now() + '.jpg'
+
+        wx.showLoading({ title: '压缩上传...' })
+
+        compressImage(filePath).then((compressedPath) => {
+          return uploadToOSS(compressedPath, objectKey, OSS_CONFIG.uploadDir)
+        }).then((ossUrl) => {
+            wx.hideLoading()
+            this.setData({ editAvatarUrl: ossUrl })
+            wx.showToast({ title: '头像已更新', icon: 'success', duration: 1200 })
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            console.error('头像上传 OSS 失败:', err)
+            wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
+          })
+      },
+      fail: () => {
+        console.log('取消选择头像')
+      }
+    })
+  },
+
+  onEditNameInput(e) {
+    this.setData({ editName: e.detail.value })
+  },
+
+  onEditBirthdayChange(e) {
+    this.setData({ editBirthday: e.detail.value })
+  },
+
+  onEditGenderChange(e) {
+    this.setData({ editGenderIndex: parseInt(e.detail.value) })
+  },
+
+  onEditConfirm() {
+    const birthday = this.data.editBirthday
+    const gender = this.data.editGenderIndex === 0
+    const cowsheepId = this.data.editCowsheepId
+    const rename = this.data.editName
+    const avatarUrl = this.data.editAvatarUrl || this.data.editAvatar || ''
+
+    if (!birthday) {
+      wx.showToast({ title: '请选择生日', icon: 'none' })
+      return
+    }
+
+    this.setData({ showEditModal: false })
+    wx.showLoading({ title: '提交中...' })
+
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'updateLivestock',
+        info: {
+          cowsheep_id: cowsheepId,
+          rename: rename,
+          birthday: birthday,
+          gender: gender,
+          avatar: avatarUrl
+        }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('修改牛羊返回:', JSON.stringify(res.data))
+        wx.showToast({ title: '修改成功', icon: 'success', duration: 1500 })
+        // 刷新页面数据
+        this.setData({
+          name: rename,
+          birthday: birthday,
+          gender: gender ? '公' : '母',
+          avatar: avatarUrl || this.data.avatar
+        })
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('修改牛羊失败:', err)
+        wx.showToast({ title: '提交失败', icon: 'error', duration: 2000 })
+      }
+    })
+  },
+
+  // ========== 连接设备弹窗 ==========
+  onConnectTap() {
+    this.setData({
+      showDeviceModal: true,
+      bindCowsheepId: this.data.cowsheepId,
+      bindCowsheepName: this.data.name,
+      bindDeviceIndex: this.data.selectedDeviceIndex
+    })
+  },
+
+  onBindDevicePickerChange(e) {
+    this.setData({ bindDeviceIndex: parseInt(e.detail.value) })
+  },
+
+  onBindDeviceClose() {
+    this.setData({ showDeviceModal: false })
+  },
+
+  onBindDeviceConfirm() {
+    const index = this.data.bindDeviceIndex
+    const deviceId = this.data.deviceIdOptions[index] || ''
+    const cowsheepId = this.data.bindCowsheepId
+
+    if (index === 0 || deviceId === '未连接') {
+      wx.showToast({ title: '请选择一个设备', icon: 'none' })
+      return
+    }
+
+    if (this.data.deviceBindMap[deviceId] === cowsheepId) {
+      this.setData({ showDeviceModal: false })
+      wx.showToast({ title: '设备已连接，无需重复绑定', icon: 'none' })
+      return
+    }
+
+    this.setData({ showDeviceModal: false })
+    wx.showLoading({ title: '绑定中...' })
+
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'bindDeviceCow',
+        info: { deviceId, cowsheepId }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        let result = res.data
+        if (typeof result === 'string') {
+          try { result = JSON.parse(result) } catch (e) {}
+        }
+        if (result && result.status === 'success') {
+          const newBindMap = { ...this.data.deviceBindMap }
+          newBindMap[deviceId] = cowsheepId
+          this.setData({
+            deviceBindMap: newBindMap,
+            selectedDeviceId: deviceId,
+            selectedDeviceIndex: index
+          })
+          wx.showToast({ title: result.msg || '连接成功', icon: 'success', duration: 1500 })
+        } else {
+          wx.showToast({ title: (result && result.msg) || '连接失败', icon: 'none', duration: 2500 })
+        }
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('设备绑定失败:', err)
+        wx.showToast({ title: '网络请求失败', icon: 'error', duration: 2000 })
+      }
+    })
   },
 
   // 统一解析接口返回数据，提取 deviceId / lorastr / time

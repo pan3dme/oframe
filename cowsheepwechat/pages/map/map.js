@@ -1,12 +1,10 @@
 // map.js
+const app = getApp()
 const dataCache = require('../../config/data-cache.js')
+const { wgs84ToGcj02, parseRoadPoints } = require('../../utils/coord-transform.js')
 
 Page({
   data: {
-    scale: 1,
-    baiduMapUrl: '',
-    useBaidu: false,
-    coords: { lng: 109.390224, lat: 26.529950 },
     showNativeMap: false,
     nativeLat: 26.529950,
     nativeLng: 109.390224,
@@ -14,114 +12,249 @@ Page({
     markers: [],
     polylines: [],
     showRoadLayer: false,
-    currentLevel: 0,      // 当前显示等级：0=隐藏，1..maxLevel=显示到该级
-    maxLevel: 0,          // 道路/地名中 level 最大值
-    layerLabel: '图层',   // 图层按钮文字
-    baiduAK: '',  // ⚠️ 填入百度 AK
-    baiduZoom: 16,     // 当前卫星图 zoom 级别（限制<=16避免无图）
-    zoomRetries: 0,    // zoom 降级重试次数
-    isSatellite: true,  // 原生map卫星图开关
-    lockScale: false,    // 防止 regionchange 递归触发
-    currentMarker: -1    // 当前巡览到的 marker 索引，-1=未选中
+    currentLevel: 0,
+    maxLevel: 0,
+    layerLabel: '图层',
+    isSatellite: true,     // 全程开启卫星底图
+    currentMarker: -1,
+    groundOverlays: []
   },
 
   _cowMarkers: [],
   _deviceMarkers: [],
-  _roadPolylines: [],   // 缓存已构建的道路折线数据（按当前等级过滤）
-  _roadFetched: false,  // 是否已请求过道路数据
-  _placeFetched: false, // 是否已请求过地名数据
-  _placeMarkers: [],    // 缓存已构建的地名图钉标记（按当前等级过滤）
-  _fullRoadList: [],    // 完整道路列表（未过滤）
-  _fullPlaceList: [],   // 完整地名列表（未过滤）
-  _pinIconPath: '',     // 地名蓝色图钉图标路径
-  _deviceIconPath: '',  // 设备红色圆点图标路径
+  _roadPolylines: [],
+  _roadFetched: false,
+  _placeFetched: false,
+  _placeMarkers: [],
+  _fullRoadList: [],
+  _fullPlaceList: [],
+  _pinIconPath: '',
+  _cowIconPath: '',
+  _deviceIconPath: '',
 
   onLoad() {
-    this._generateDeviceDot()  // 提前生成设备图标
+    // 清理历史临时文件，避免累积超过存储上限
+    this._cleanTempDir()
+    this._generateCowPin()
+    this._generateDevPin()
     this.loadMap()
     this.fetchCrowData()
     this.fetchDeviceLotData()
   },
 
-  buildBaiduUrl(lng, lat, zoom) {
-    const { baiduAK } = this.data
-    if (!baiduAK) return ''
-    const info = wx.getSystemInfoSync()
-    const size = Math.max(info.windowWidth, info.windowHeight)
-    // 限制 zoom <= 16，避免百度返回"此区域无卫星图"占位图
-    const safeZoom = Math.min(zoom, 16)
-    return 'https://api.map.baidu.com/staticimage/v2' +
-      '?ak=' + baiduAK +
-      '&center=' + lng + ',' + lat +
-      '&width=' + Math.round(size) +
-      '&height=' + Math.round(size) +
-      '&zoom=' + safeZoom +
-      '&maptype=satellite' +
-      '&scale=2'
+  // 清理临时目录中旧的无用文件
+  _cleanTempDir() {
+    try {
+      const fs = wx.getFileSystemManager()
+      const tmpDir = (wx.env.USER_DATA_PATH || '')
+      fs.readdir({
+        dirPath: tmpDir,
+        success: (res) => {
+          (res.files || []).forEach(file => {
+            try { fs.unlinkSync(tmpDir + '/' + file) } catch (e) { /* ignore */ }
+          })
+        },
+        fail: () => {}
+      })
+    } catch (e) { /* ignore */ }
   },
 
-  gcjToBd(lng, lat) {
-    const x = +lng, y = +lat
-    const z = Math.sqrt(x * x + y * y) + 0.00002 * Math.sin(y * Math.PI)
-    const theta = Math.atan2(y, x) + 0.000003 * Math.cos(x * Math.PI)
+  // ========== 高德瓦片叠加 ==========
+  _latLngToTile(lat, lng, zoom) {
+    const n = Math.pow(2, zoom)
+    const x = Math.floor((lng + 180) / 360 * n)
+    const latRad = lat * Math.PI / 180
+    const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n)
+    return { x, y }
+  },
+
+  _tileToBounds(tx, ty, zoom) {
+    const n = Math.pow(2, zoom)
     return {
-      lng: (z * Math.cos(theta) + 0.0065).toFixed(6),
-      lat: (z * Math.sin(theta) + 0.006).toFixed(6)
+      southwest: { longitude: tx / n * 360 - 180, latitude: Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 1) / n))) * 180 / Math.PI },
+      northeast: { longitude: (tx + 1) / n * 360 - 180, latitude: Math.atan(Math.sinh(Math.PI * (1 - 2 * ty / n))) * 180 / Math.PI }
     }
   },
 
-  // WGS-84 → GCJ-02（火星坐标系）
-  wgs84ToGcj02(lng, lat) {
-    const a = 6378245.0
-    const ee = 0.00669342162296594323
-    const x = +lng - 105.0
-    const y = +lat - 35.0
-    let dLat = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
-    dLat += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0
-    dLat += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0
-    dLat += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0
-    let dLng = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
-    dLng += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0
-    dLng += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0
-    dLng += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0
-    const radLat = +lat / 180.0 * Math.PI
-    let magic = Math.sin(radLat)
-    magic = 1 - ee * magic * magic
-    const sqrtMagic = Math.sqrt(magic)
-    const dLatFinal = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI)
-    const dLngFinal = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI)
-    return { lat: +lat + dLatFinal, lng: +lng + dLngFinal }
+  _buildAmapUrl(x, y, z) {
+    const s = ((x + y) % 4) + 1
+    // 高德瓦片服务器不需要 Key
+    return 'https://webst0' + s + '.is.autonavi.com/appmaptile?style=6&x=' + x + '&y=' + y + '&z=' + z
   },
 
-  // WGS-84 → BD-09（百度坐标系）
-  wgs84ToBd09(lng, lat) {
-    const gcj = this.wgs84ToGcj02(lng, lat)
-    return this.gcjToBd(gcj.lng, gcj.lat)
+  // 生成稳定的 overlay ID（基于 zoom + 瓦片坐标，避免与其它 ID 冲突）
+  _tileOverlayId(EZ, x, y) {
+    return 2000 + ((EZ * 1000000 + x * 10000 + y) % 98000)
+  },
+  _tileKey(EZ, x, y) {
+    return EZ + '_' + x + '_' + y
   },
 
-  // 统一的标记点渲染：接收 recordList，生成 markers 并加入合并
+  // 加载多片高德卫星瓦片覆盖可见区域，增量更新——已显示的瓦片不动，只删多余、加新增
+  _loadOverlayTile(lat, lng, zoom) {
+    const EZ = Math.max(8, Math.min(16, Math.floor(zoom)))
+    const center = this._latLngToTile(lat, lng, EZ)
+    const range = EZ <= 9 ? 1 : (EZ <= 12 ? 2 : 3)
+    const newTiles = []
+    const newKeySet = {}
+    for (var dx = -range; dx <= range; dx++) {
+      for (var dy = -range; dy <= range; dy++) {
+        var tx = center.x + dx
+        var ty = center.y + dy
+        var key = this._tileKey(EZ, tx, ty)
+        newTiles.push({ x: tx, y: ty, key: key })
+        newKeySet[key] = true
+      }
+    }
+
+    console.log('[overlay] 中心 GCJ-02:', lat.toFixed(4), lng.toFixed(4), ' zoom:', zoom, ' EZ:', EZ,
+      ' 瓦片:', newTiles.length, '片')
+
+    // 加锁
+    this._refreshingTiles = true
+    if (this._refreshTimeout) clearTimeout(this._refreshTimeout)
+    this._refreshTimeout = setTimeout(() => { this._refreshingTiles = false }, 30000)
+
+    var that = this
+    var mapCtx = wx.createMapContext('cowMap')
+
+    // 初始化瓦片缓存
+    if (!this._tileCache) this._tileCache = {}
+
+    // 1. 删除不在新范围内的旧瓦片
+    var removed = 0
+    for (var oldKey in this._tileCache) {
+      if (!newKeySet[oldKey]) {
+        mapCtx.removeGroundOverlay({ id: this._tileCache[oldKey].id })
+        delete this._tileCache[oldKey]
+        removed++
+      }
+    }
+    if (removed > 0) console.log('[overlay] 移除过期瓦片:', removed, '个，保留:', Object.keys(this._tileCache).length, '个')
+
+    // 2. 新瓦片中过滤掉已缓存的
+    var toDownload = []
+    newTiles.forEach(function(t) {
+      if (!that._tileCache[t.key]) toDownload.push(t)
+    })
+    if (toDownload.length === 0) {
+      // 全部命中缓存，直接解锁
+      console.log('[overlay] 全部瓦片已缓存，无需下载')
+      that._refreshingTiles = false
+      return
+    }
+
+    console.log('[overlay] 需下载:', toDownload.length, '片（缓存命中:', (newTiles.length - toDownload.length), '片）')
+
+    var loaded = 0
+    var total = toDownload.length
+
+    toDownload.forEach(function(t) {
+      var bounds = that._tileToBounds(t.x, t.y, EZ)
+      var url = that._buildAmapUrl(t.x, t.y, EZ)
+      var overlayId = that._tileOverlayId(EZ, t.x, t.y)
+
+      wx.downloadFile({
+        url: url,
+        success: function(res) {
+          if (res.statusCode !== 200) {
+            console.log('[overlay] 瓦片', t.key, 'HTTP', res.statusCode)
+            checkTileDone()
+            return
+          }
+          mapCtx.addGroundOverlay({
+            id: overlayId,
+            src: res.tempFilePath,
+            bounds: {
+              southwest: { longitude: bounds.southwest.longitude, latitude: bounds.southwest.latitude },
+              northeast: { longitude: bounds.northeast.longitude, latitude: bounds.northeast.latitude }
+            },
+            opacity: 1,
+            zIndex: 1000 + (t.x + t.y) % 100,
+            success: function() {
+              that._tileCache[t.key] = { id: overlayId, bounds: bounds }
+            },
+            fail: function(err) {
+              console.log('[overlay] 瓦片', t.key, 'addGroundOverlay 失败:', JSON.stringify(err))
+            }
+          })
+          checkTileDone()
+        },
+        fail: function(err) {
+          console.log('[overlay] 瓦片', t.key, '下载失败:', JSON.stringify(err))
+          checkTileDone()
+        }
+      })
+    })
+
+    function checkTileDone() {
+      loaded++
+      if (loaded < total) return
+
+      that._refreshingTiles = false
+      if (that._refreshTimeout) { clearTimeout(that._refreshTimeout); that._refreshTimeout = null }
+      var cached = Object.keys(that._tileCache).length
+      console.log('[overlay] 完成，缓存瓦片:', cached, '（本次新增:', total - removed, '移除:', removed, '）')
+    }
+  },
+
+  _refreshOverlays(lat, lng, zoom) {
+    const key = lat.toFixed(4) + ',' + lng.toFixed(4) + ',' + zoom
+    if (this._lastOverlayKey === key) return
+    this._lastOverlayKey = key
+
+    const SATELLITE_THRESHOLD = 15  // 15级以上才覆盖高德卫星瓦片
+
+    if (zoom < SATELLITE_THRESHOLD) {
+      // 低于15级：清除高德瓦片，保留腾讯卫星底图
+      this._clearAllOverlays()
+      console.log('[overlay] 缩放' + zoom + ' < ' + SATELLITE_THRESHOLD + '，仅腾讯卫星底图')
+      return
+    }
+
+    // 15级以上：腾讯卫星底图 + 高德瓦片覆盖
+    if (!this.data.isSatellite) {
+      this.setData({ isSatellite: true })
+    }
+    this._loadOverlayTile(lat, lng, zoom)
+  },
+
+  // 清除所有 ground overlay
+  _clearAllOverlays() {
+    var mapCtx = wx.createMapContext('cowMap')
+    // 清除瓦片缓存
+    if (this._tileCache) {
+      for (var key in this._tileCache) {
+        mapCtx.removeGroundOverlay({ id: this._tileCache[key].id })
+      }
+      this._tileCache = {}
+    }
+    console.log('[overlay] 清除所有瓦片')
+  },
+
+  // ========== marker 渲染 ==========
   renderMarkersFromData(recordList) {
     if (!recordList || recordList.length === 0) {
       this._cowMarkers = []
       this._applyAllMarkers()
       return
     }
-    // 归一化 recordList，兼容 features 页传入的格式（crow_id/gps/rawTime）
     const normalized = recordList.map(item => ({
       crow_id: item.crow_id || item.crow_idx || '-',
       crow_idx: item.crow_idx || item.crow_id || '-',
       gps: item.gps || '-',
       time: item.time || item.rawTime || '-'
     }))
-    console.log('renderMarkersFromData 归一化:', JSON.stringify(normalized))
 
-    // 获取当前时间（只显示时分秒）
-    const now = new Date()
-    const currentTime = [now.getHours(), now.getMinutes(), now.getSeconds()]
-      .map(n => String(n).padStart(2, '0'))
-      .join(':')
+    // 构建牛羊名称映射：cowsheepId → name
+    const nameMap = {}
+    const livestockCache = getApp().globalData.livestockCache
+    if (livestockCache && livestockCache.livestockList) {
+      livestockCache.livestockList.forEach(l => {
+        if (l.cowsheepId) nameMap[String(l.cowsheepId)] = l.name
+      })
+    }
 
-    // 将记录转换为地图标记点
     const markers = normalized
       .filter(item => item.gps !== '-')
       .map((item, index) => {
@@ -130,27 +263,35 @@ Page({
         const wgsLat = parseFloat(parts[0])
         const wgsLng = parseFloat(parts[1])
         if (isNaN(wgsLat) || isNaN(wgsLng)) return null
-        const gcj = this.wgs84ToGcj02(wgsLng, wgsLat)
+        const gcj = wgs84ToGcj02(wgsLng, wgsLat)
+
+        const labelText = nameMap[item.crow_id] || (item.crow_id || item.crow_idx)
+
         return {
           id: index,
           latitude: gcj.lat,
           longitude: gcj.lng,
-          width: 30,
-          height: 30,
-          iconPath: this._deviceIconPath || '',
-          title: '牛群 ' + item.crow_id,
+          width: 28,
+          height: 28,
+          iconPath: this._cowIconPath || '',
+          title: labelText,
           callout: {
-            content: 'ID:' + item.crow_id + '\n时间:' + currentTime,
+            content: labelText + '\nID:' + item.crow_id,
             display: 'BYCLICK',
             textAlign: 'center'
           },
           label: {
-            content: item.crow_idx + '\n' + currentTime,
-            color: '#ffffff',
-            fontSize: 13,
-            anchorX: 0,
-            anchorY: 3,
-            textAlign: 'center'
+            content: labelText,
+            color: '#333333',
+            fontSize: 14,
+            bgColor: '#ffffff',
+            borderColor: '#999999',
+            borderWidth: 1,
+            borderRadius: 4,
+            padding: 2,
+            anchorX: 60,
+            anchorY: -28,
+            textAlign: 'left'
           }
         }
       })
@@ -164,16 +305,27 @@ Page({
   // ==================== 设备 LOT 标记点 ====================
 
   fetchDeviceLotData() {
-    dataCache.getDeviceLotRefresh((data) => {
-      const lotList = data.lotList || []
-      console.log('[地图] 设备LOT数据:', lotList.length, '条')
-      this._renderDeviceMarkers(lotList)
-      this._applyAllMarkers()
-      wx.hideLoading()
-    }, true)
+    // 先获取设备列表（含rename别名），构建 deviceId -> rename 映射
+    dataCache.getDeviceList((devData) => {
+      const renameMap = {}
+      const recordList = devData.recordList || []
+      recordList.forEach(r => {
+        if (r.deviceId && r.rename) {
+          renameMap[r.deviceId] = r.rename
+        }
+      })
+
+      dataCache.getDeviceLotRefresh((lotData) => {
+        const lotList = lotData.lotList || []
+        console.log('[地图] 设备LOT数据:', lotList.length, '条')
+        this._renderDeviceMarkers(lotList, renameMap)
+        this._applyAllMarkers()
+        wx.hideLoading()
+      }, true)
+    })
   },
 
-  _renderDeviceMarkers(lotList) {
+  _renderDeviceMarkers(lotList, renameMap) {
     if (!lotList || lotList.length === 0) {
       this._deviceMarkers = []
       return
@@ -210,13 +362,16 @@ Page({
     lotList.forEach((item, index) => {
       const coord = extractCoord(item)
       if (!coord) return
-      const gcj = this.wgs84ToGcj02(coord.lng, coord.lat)
-      const shortId = (item.deviceId || '-').substring(0, 10)
+      const gcj = wgs84ToGcj02(coord.lng, coord.lat)
+      const rename = renameMap[item.deviceId] || ''
+      const labelText = (item.deviceId || '-').substring(0, 10) + (rename ? '（' + rename + '）' : '')
       markers.push({
         id: index + 50000,
         latitude: gcj.lat,
         longitude: gcj.lng,
-        width: 30,
+        width: 28,
+        height: 28,
+        iconPath: this._deviceIconPath || '',
         title: '设备 ' + (item.deviceId || '-'),
         callout: {
           content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng,
@@ -224,12 +379,18 @@ Page({
           textAlign: 'center'
         },
         label: {
-          content: shortId,
-          color: '#ffffff',
-          fontSize: 13,
-          anchorX: 0,
-          anchorY: 3,
-          textAlign: 'center'
+          content: labelText,
+          color: '#333333',
+          fontSize: 14,
+          bgColor: '#ffffff',
+          borderColor: '#999999',
+          borderWidth: 1,
+          borderRadius: 4,
+          padding: 2,
+          maxWidth: 300,
+          anchorX: 122,
+          anchorY: -26,
+          textAlign: 'left'
         }
       })
     })
@@ -237,59 +398,13 @@ Page({
     this._deviceMarkers = markers
   },
 
-  // ==================== 合并标记点并统一调整邻近标签 ====================
+  // ==================== 合并标记点 ====================
 
   _applyAllMarkers() {
     const base = [...(this._cowMarkers || []), ...(this._deviceMarkers || [])]
-    // 图层开启时追加地名黄点（放在末尾，不参与邻近标签分散）
     const places = this.data.showRoadLayer ? (this._placeMarkers || []) : []
     const all = [...base, ...places]
     all.forEach((m, i) => { m.id = i })
-
-    // 邻近标记点的标签围绕红点均匀分布，避免文字叠压
-    const PROXIMITY = 0.001
-    const LABEL_RADIUS = 26
-
-    function getAngle(N, posIdx) {
-      if (N === 1) return 180
-      if (N === 2) return [90, 270][posIdx]
-      if (N === 3) return [180, 60, 300][posIdx]
-      if (N === 4) return [180, 0, 90, 270][posIdx]
-      const step = 360 / N
-      return (180 + posIdx * step) % 360
-    }
-
-    const visited = new Array(all.length).fill(false)
-    // 地名黄点不参与邻近标签分散，保持 label 在正下方
-    for (let i = base.length; i < all.length; i++) { visited[i] = true }
-    for (let i = 0; i < all.length; i++) {
-      if (visited[i]) continue
-      const cluster = [i]
-      visited[i] = true
-      let expanded = true
-      while (expanded) {
-        expanded = false
-        for (let j = 0; j < all.length; j++) {
-          if (visited[j]) continue
-          for (const ci of cluster) {
-            if (Math.abs(all[ci].latitude - all[j].latitude) < PROXIMITY &&
-                Math.abs(all[ci].longitude - all[j].longitude) < PROXIMITY) {
-              cluster.push(j)
-              visited[j] = true
-              expanded = true
-              break
-            }
-          }
-        }
-      }
-      const useRadius = cluster.length === 1 ? 7 : LABEL_RADIUS
-      cluster.forEach((mi, posIdx) => {
-        const angleDeg = getAngle(cluster.length, posIdx)
-        const rad = angleDeg * Math.PI / 180
-        all[mi].label.anchorX = Math.round(useRadius * Math.sin(rad))
-        all[mi].label.anchorY = -Math.round(useRadius * Math.cos(rad))
-      })
-    }
 
     console.log('[地图] 合并标记点总数:', all.length)
     this.setData({ markers: all, currentMarker: -1 })
@@ -298,13 +413,14 @@ Page({
   fetchCrowData() {
     const crowAllData = {
       time: new Date().toLocaleString(),
-      action: "getcrowtableall"
+      action: "getCowTableAll"
     }
     console.log('地图页 POST发送数据:', crowAllData)
     wx.request({
-      url: 'https://insertcrow-mlkndrhadh.cn-shanghai.fcapp.run',
+      url: app.globalData.api_cowsheep_Url,
       method: 'POST',
       data: crowAllData,
+      timeout: 10000,
       success: (res) => {
         const data = res.data
         console.log('地图页返回原始数据:', JSON.stringify(data))
@@ -337,8 +453,9 @@ Page({
         wx.hideLoading()
       },
       fail: (err) => {
-        console.error('地图页请求失败:', err)
+        console.error('地图页请求牛群数据失败:', JSON.stringify(err))
         wx.hideLoading()
+        wx.showToast({ title: '牛群数据加载失败', icon: 'none' })
       }
     })
   },
@@ -348,70 +465,21 @@ Page({
     wx.getLocation({
       type: 'gcj02',
       success: (res) => {
-        const lat = res.latitude.toFixed(6)
-        const lng = res.longitude.toFixed(6)
-        if (that.data.baiduAK) {
-          const bd = that.gcjToBd(lng, lat)
-          that.setData({
-            coords: bd,
-            baiduMapUrl: that.buildBaiduUrl(bd.lng, bd.lat, 16),
-            baiduZoom: 16,
-            zoomRetries: 0,
-            useBaidu: true,
-            showNativeMap: false
-          })
-        } else {
-          that.setData({
-            nativeLat: res.latitude,
-            nativeLng: res.longitude,
-            nativeScale: 15,
-            showNativeMap: true
-          })
-        }
+        that.setData({
+          nativeLat: res.latitude,
+          nativeLng: res.longitude,
+          showNativeMap: true
+        })
+        that._refreshOverlays(res.latitude, res.longitude, that.data.nativeScale)
       },
       fail: () => {
-        // 定位失败 → 默认湖南怀化基准点
-        const baseLat = 26.529950
-        const baseLon = 109.390224
-        if (that.data.baiduAK) {
-          const bd = that.gcjToBd(baseLon, baseLat)
-          that.setData({
-            coords: bd,
-            baiduMapUrl: that.buildBaiduUrl(bd.lng, bd.lat, 14),
-            useBaidu: true,
-            showNativeMap: false
-          })
-        } else {
-          that.setData({
-            nativeLat: baseLat,
-            nativeLng: baseLon,
-            showNativeMap: true
-          })
-        }
+        that.setData({
+          nativeLat: 26.529950, nativeLng: 109.390224,
+          showNativeMap: true
+        })
+        that._refreshOverlays(26.529950, 109.390224, that.data.nativeScale)
       }
     })
-  },
-
-  onScale(e) {
-    this.setData({ scale: e.detail.scale })
-  },
-
-  onImageError() {
-    // 卫星图加载失败 → 逐级降低 zoom 重试，用低分辨率图放大显示
-    const { baiduZoom, zoomRetries, coords } = this.data
-    const fallbackZoom = baiduZoom - 2
-    if (zoomRetries < 3 && fallbackZoom >= 4) {
-      this.setData({
-        baiduZoom: fallbackZoom,
-        zoomRetries: zoomRetries + 1,
-        baiduMapUrl: this.buildBaiduUrl(coords.lng, coords.lat, fallbackZoom)
-      })
-      wx.showToast({ title: '卫星图降级显示 (zoom ' + fallbackZoom + ')', icon: 'none', duration: 1200 })
-      return
-    }
-    // 所有重试耗尽，切回原生地图
-    wx.showToast({ title: '卫星图全部不可用，切换原生地图', icon: 'none' })
-    this.setData({ showNativeMap: true, useBaidu: false })
   },
 
   // 回到我的位置
@@ -420,37 +488,19 @@ Page({
     wx.getLocation({
       type: 'gcj02',
       success: (res) => {
-        if (that.data.showNativeMap) {
-          // 原生地图：用 MapContext 移动
-          const mapCtx = wx.createMapContext('cowMap')
-          mapCtx.moveToLocation({
-            latitude: res.latitude,
-            longitude: res.longitude
-          })
-          that.setData({
-            nativeLat: res.latitude,
-            nativeLng: res.longitude
-          })
-        } else if (that.data.useBaidu && that.data.baiduAK) {
-          // 百度静态图：重新生成图片 URL
-          const bd = that.gcjToBd(res.longitude, res.latitude)
-          that.setData({
-            coords: bd,
-            baiduMapUrl: that.buildBaiduUrl(bd.lng, bd.lat, 16),
-            baiduZoom: 16,
-            zoomRetries: 0
-          })
-        }
+        const mapCtx = wx.createMapContext('cowMap')
+        mapCtx.moveToLocation({ latitude: res.latitude, longitude: res.longitude })
+        that.setData({
+          nativeLat: res.latitude, nativeLng: res.longitude
+        })
+        that._refreshOverlays(res.latitude, res.longitude, that.data.nativeScale)
         wx.showToast({ title: '已定位', icon: 'success', duration: 1000 })
       },
-      fail: () => {
-        wx.showToast({ title: '定位失败', icon: 'error' })
-      }
+      fail: () => { wx.showToast({ title: '定位失败', icon: 'error' }) }
     })
   },
 
   onToolBtn2() {
-    // 清掉旧标记，重新拉取最新数据
     this._cowMarkers = []
     this._deviceMarkers = []
     this.setData({ markers: [] })
@@ -459,23 +509,42 @@ Page({
     this.fetchDeviceLotData()
   },
 
-  // 监听原生 map 手势缩放：超过卫星图可用级别自动拉回
+  // 手势缩放/拖动 → 刷新瓦片
   onRegionChange(e) {
-    if (e.type !== 'end' || e.causedBy !== 'gesture') return
-    if (this.data.lockScale) return
+    if (e.type !== 'end') return
+    if (this._refreshingTiles) {
+      console.log('[overlay] regionChange 被忽略（瓦片加载中）')
+      return
+    }
     const mapCtx = wx.createMapContext('cowMap')
-    mapCtx.getScale({
-      success: (res) => {
-        if (res.scale > 16) {
-          this.setData({ lockScale: true })
-          this.setData({ nativeScale: 16 })
-          wx.showToast({ title: '已到卫星图最大级别', icon: 'none', duration: 1000 })
-          // 解锁，避免阻塞下次手势
-          setTimeout(() => this.setData({ lockScale: false }), 400)
+    const isProgrammatic = e.causedBy === 'update'
+    const that = this
+
+    mapCtx.getRegion({
+      success: (region) => {
+        const sw = region.southwest || {}
+        const ne = region.northeast || {}
+        const swLat = parseFloat(sw.latitude) || 0
+        const swLng = parseFloat(sw.longitude) || 0
+        const neLat = parseFloat(ne.latitude) || 0
+        const neLng = parseFloat(ne.longitude) || 0
+        const cLat = (swLat + neLat) / 2
+        const cLng = (swLng + neLng) / 2
+
+        const doRefresh = function(newScale) {
+          console.log('[overlay] regionChange 刷新瓦片: lat=', cLat.toFixed(4), 'lng=', cLng.toFixed(4), 'scale=', newScale)
+          that._refreshOverlays(cLat, cLng, newScale)
         }
-      },
-      fail: () => {
-        // getScale 失败不处理
+
+        if (isProgrammatic) return
+        mapCtx.getScale({
+          success: function(res) {
+            doRefresh(res.scale)
+          },
+          fail: function() {
+            doRefresh(that.data.nativeScale)
+          }
+        })
       }
     })
   },
@@ -490,27 +559,17 @@ Page({
     const next = (currentMarker + 1) % markers.length
     const marker = markers[next]
 
-    if (this.data.showNativeMap) {
-      const mapCtx = wx.createMapContext('cowMap')
-      mapCtx.moveToLocation({
-        latitude: marker.latitude,
-        longitude: marker.longitude
-      })
-      this.setData({
-        nativeLat: marker.latitude,
-        nativeLng: marker.longitude,
-        currentMarker: next
-      })
-    } else if (this.data.useBaidu && this.data.baiduAK) {
-      const bd = this.gcjToBd(marker.longitude, marker.latitude)
-      this.setData({
-        coords: bd,
-        baiduMapUrl: this.buildBaiduUrl(bd.lng, bd.lat, 16),
-        baiduZoom: 16,
-        zoomRetries: 0,
-        currentMarker: next
-      })
-    }
+    const mapCtx = wx.createMapContext('cowMap')
+    mapCtx.moveToLocation({
+      latitude: marker.latitude,
+      longitude: marker.longitude
+    })
+    this.setData({
+      nativeLat: marker.latitude,
+      nativeLng: marker.longitude,
+      currentMarker: next
+    })
+    this._refreshOverlays(marker.latitude, marker.longitude, this.data.nativeScale)
     // 弹起该点的 callout 信息气泡
     setTimeout(() => {
       const mapCtx = wx.createMapContext('cowMap')
@@ -528,14 +587,10 @@ Page({
   },
 
   toggleMapType() {
-    // 原生地图：卫星图 / 标准地图切换
+    // 切换腾讯卫星图/标准地图
     const next = !this.data.isSatellite
     this.setData({ isSatellite: next })
-    wx.showToast({
-      title: next ? '已切换卫星图' : '已切换标准地图',
-      icon: 'none',
-      duration: 1000
-    })
+    wx.showToast({ title: next ? '卫星图' : '标准地图', icon: 'none', duration: 1000 })
   },
 
   toggleLayer() {
@@ -554,6 +609,50 @@ Page({
     }
     // 升一级
     this._applyLevel(currentLevel + 1)
+  },
+
+  /**
+   * 通用图钉绘制：canvas选择器 → fillColor/strokeColor → 导图
+   */
+  _drawPin(canvasSelector, fillColor, strokeColor, targetPath, cb) {
+    const query = wx.createSelectorQuery()
+    query.select(canvasSelector).fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return
+      const canvas = res[0].node
+      const ctx = canvas.getContext('2d')
+      const dpr = wx.getSystemInfoSync().pixelRatio
+      canvas.width = 28 * dpr
+      canvas.height = 28 * dpr
+      ctx.scale(dpr, dpr)
+
+      const cx = 14, cy = 14, r = 10
+
+      // 白色圆底 + 绿色描边
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+      ctx.strokeStyle = fillColor
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      // 内部绿色倒三角
+      ctx.beginPath()
+      ctx.moveTo(cx - 5, cy - 5)
+      ctx.lineTo(cx, cy + 5)
+      ctx.lineTo(cx + 5, cy - 5)
+      ctx.closePath()
+      ctx.fillStyle = fillColor
+      ctx.fill()
+
+      wx.canvasToTempFilePath({
+        canvas: canvas,
+        fileType: 'png',
+        filePath: targetPath,
+        success: (fileRes) => cb(fileRes.tempFilePath),
+        fail: () => {}
+      })
+    })
   },
 
   /**
@@ -627,52 +726,36 @@ Page({
   },
 
   /**
-   * 用 Canvas 绘制红色圆点图标（设备/牛群用），返回临时文件路径
+   * 用 Canvas 绘制牛群定位图钉图标（蓝色），固定路径，每次覆盖不累积
    */
-  _generateDeviceDot() {
-    const query = wx.createSelectorQuery()
-    query.select('#deviceDotCanvas').fields({ node: true, size: true }).exec((res) => {
-      if (!res || !res[0] || !res[0].node) return
-      const canvas = res[0].node
-      const ctx = canvas.getContext('2d')
-      const dpr = wx.getSystemInfoSync().pixelRatio
-      canvas.width = 30 * dpr
-      canvas.height = 30 * dpr
-      ctx.scale(dpr, dpr)
-
-      // 红色实心圆 + 深色描边
-      ctx.beginPath()
-      ctx.arc(15, 15, 12, 0, 2 * Math.PI)
-      ctx.fillStyle = '#F44336'
-      ctx.fill()
-      ctx.strokeStyle = '#B71C1C'
-      ctx.lineWidth = 2
-      ctx.stroke()
-
-      // 内部高光小白点
-      ctx.beginPath()
-      ctx.arc(12, 11, 4, 0, 2 * Math.PI)
-      ctx.fillStyle = '#FFCDD2'
-      ctx.fill()
-
-      wx.canvasToTempFilePath({
-        canvas: canvas,
-        success: (fileRes) => {
-          this._deviceIconPath = fileRes.tempFilePath
-          // 如果牛群标记已构建，刷新图标
-          if ((this._cowMarkers || []).length > 0) {
-            this._cowMarkers.forEach(m => { m.iconPath = this._deviceIconPath })
-            this._applyAllMarkers()
-          }
-        }
-      })
+  _generateCowPin() {
+    const that = this
+    const targetPath = (wx.env.USER_DATA_PATH || '') + '/cow_pin.png'
+    this._drawPin('#cowPinCanvas', '#2979FF', '#0D47A1', targetPath, (filePath) => {
+      that._cowIconPath = filePath
+      if ((that._cowMarkers || []).length > 0) {
+        that._cowMarkers.forEach(m => { m.iconPath = that._cowIconPath })
+        that._applyAllMarkers()
+      }
     })
   },
 
   /**
-   * 用 Canvas 绘制经典定位图钉图标，返回临时文件路径
+   * 用 Canvas 绘制设备定位图钉图标（绿色），固定路径，每次覆盖不累积
+   */
+  _generateDevPin() {
+    const that = this
+    const targetPath = (wx.env.USER_DATA_PATH || '') + '/dev_pin.png'
+    this._drawPin('#devPinCanvas', '#00C853', '#1B5E20', targetPath, (filePath) => {
+      that._deviceIconPath = filePath
+    })
+  },
+
+  /**
+   * 用 Canvas 绘制经典定位图钉图标，固定路径，每次覆盖不累积
    */
   _generateYellowDot() {
+    const targetPath = (wx.env.USER_DATA_PATH || '') + '/pin_icon.png'
     return new Promise((resolve) => {
       const query = wx.createSelectorQuery()
       query.select('#pinCanvas').fields({ node: true, size: true }).exec((res) => {
@@ -707,6 +790,8 @@ Page({
 
         wx.canvasToTempFilePath({
           canvas: canvas,
+          fileType: 'png',
+          filePath: targetPath,
           success: (fileRes) => resolve(fileRes.tempFilePath),
           fail: () => resolve('')
         })
@@ -748,7 +833,7 @@ Page({
     placeList.forEach((place, index) => {
       const coord = this._parseSingleGPS(place.gps)
       if (!coord) return
-      const gcj = this.wgs84ToGcj02(coord.lng, coord.lat)
+      const gcj = wgs84ToGcj02(coord.lng, coord.lat)
       const name = place.name || place.placeid || '-'
       markers.push({
         id: ID_BASE + index,
@@ -768,7 +853,7 @@ Page({
         label: {
           content: name,
           color: '#ffffff',
-          fontSize: 12,
+          fontSize: 14,
           anchorX: 0,
           anchorY: 4,
           textAlign: 'center'
@@ -784,7 +869,6 @@ Page({
    */
   _tryInitLevel() {
     if (!this._roadFetched || !this._placeFetched) return
-    // 已初始化过不重复
     if (this.data.currentLevel > 0) return
 
     // 计算道路和地名中 level 的最大值
@@ -798,7 +882,6 @@ Page({
 
     this.setData({ maxLevel })
     console.log('[图层] maxLevel =', maxLevel)
-    // 默认显示 level=1
     this._applyLevel(1)
   },
 
@@ -809,84 +892,17 @@ Page({
    *   lat1|lng1|lat2|lng2|...        (竖线交替)
    *   lat1,lng1;lat2,lng2;...        (分号分隔点)
    */
-  _parseRoadPoints(roadinfo) {
-    if (!roadinfo || roadinfo === '-') return []
-
-    // Strategy 0: flat lat, lng, lat, lng, ... (逗号交替平铺)
-    const commaAll = roadinfo.split(/[,，]\s*/)
-    if (commaAll.length >= 4 && commaAll.length % 2 === 0) {
-      const points = []
-      let allValid = true
-      for (let i = 0; i + 1 < commaAll.length; i += 2) {
-        const lat = parseFloat(commaAll[i])
-        const lng = parseFloat(commaAll[i + 1])
-        if (isNaN(lat) || isNaN(lng)) { allValid = false; break }
-        points.push({ lat, lng })
-      }
-      if (allValid && points.length >= 2) return points
-    }
-
-    // Strategy 1: split by | → for each segment try lat,lng
-    const segs = roadinfo.split(/[｜|]/)
-    if (segs.length >= 2) {
-      const points = []
-      for (const seg of segs) {
-        const parts = seg.split(/[,，]\s*/)
-        if (parts.length >= 2) {
-          const lat = parseFloat(parts[0])
-          const lng = parseFloat(parts[1])
-          if (!isNaN(lat) && !isNaN(lng)) {
-            points.push({ lat, lng })
-          }
-        }
-      }
-      if (points.length >= 2) return points
-    }
-
-    // Strategy 2: split by | → alternating lat|lng|lat|lng...
-    if (segs.length >= 4) {
-      const points = []
-      for (let i = 0; i + 1 < segs.length; i += 2) {
-        const lat = parseFloat(segs[i])
-        const lng = parseFloat(segs[i + 1])
-        if (!isNaN(lat) && !isNaN(lng)) {
-          points.push({ lat, lng })
-        }
-      }
-      if (points.length >= 2) return points
-    }
-
-    // Strategy 3: split by ; for point groups
-    const semicolonSegs = roadinfo.split(';')
-    if (semicolonSegs.length >= 2) {
-      const points = []
-      for (const seg of semicolonSegs) {
-        const parts = seg.split(/[,，]\s*/)
-        if (parts.length >= 2) {
-          const lat = parseFloat(parts[0])
-          const lng = parseFloat(parts[1])
-          if (!isNaN(lat) && !isNaN(lng)) {
-            points.push({ lat, lng })
-          }
-        }
-      }
-      if (points.length >= 2) return points
-    }
-
-    return []
-  },
-
   _buildRoadPolylines(roadList) {
     const polylines = []
     roadList.forEach((road) => {
-      const points = this._parseRoadPoints(road.roadinfo)
+      const points = parseRoadPoints(road.roadinfo)
       if (points.length < 2) {
         console.warn('[道路] 坐标点不足，跳过:', road.roadname || road.route_id)
         return
       }
       // WGS-84 → GCJ-02 转换全部点
       const gcjPoints = points.map(p => {
-        const gcj = this.wgs84ToGcj02(p.lng, p.lat)
+        const gcj = wgs84ToGcj02(p.lng, p.lat)
         return { latitude: gcj.lat, longitude: gcj.lng }
       })
       polylines.push({
@@ -894,7 +910,6 @@ Page({
         color: '#C8C8C8',
         width: 4,
         borderColor: '#808080',
-        borderWidth: 1.2,
         borderWidth: 1.5,
         arrowLine: false,
         dottedLine: false

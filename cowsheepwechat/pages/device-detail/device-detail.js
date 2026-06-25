@@ -1,6 +1,9 @@
 // device-detail.js - 设备详情
 const API_URL = getApp().globalData.api_device_Url
+const API_COWSHEEP_URL = getApp().globalData.api_cowsheep_Url
 const dataCache = require('../../config/data-cache.js')
+const { compressImage } = require('../../utils/image-compress.js')
+const { uploadToOSS } = require('../../utils/oss-upload.js')
 
 Page({
   data: {
@@ -11,13 +14,33 @@ Page({
     trackDate: '',
     // 列出数据（表格展示）
     showRecordTable: false,
-    recordList: []
+    recordList: [],
+    // 编辑设备弹窗
+    showEditModal: false,
+    editOldDeviceKey: '',
+    editDeviceCode: '',
+    editRename: '',
+    editPicurl: '',
+    editPicFilePath: '',
+    // 连接牛羊弹窗
+    showBindModal: false,
+    bindDeviceId: '',
+    bindNameIndex: 0,
+    livestockNames: [],
+    // 管理员模式
+    isAdmin: false
   },
 
   onLoad(options) {
     const deviceId = options.deviceId || ''
     const today = this.getTodayStr()
-    this.setData({ deviceId, trackDate: today })
+    // 读取管理员设置
+    let isAdmin = false
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+    } catch (e) { /* ignore */ }
+    this.setData({ deviceId, trackDate: today, isAdmin })
     if (deviceId) {
       this.loadDeviceInfo(deviceId)
     }
@@ -41,6 +64,10 @@ Page({
           }
           // 用LOT数据覆盖设备表的lorastr和时间
           const enriched = { ...item }
+          // 保存设备表原始时间作为"上次充电时间"
+          const devDate = item.date && item.date !== '-' ? item.date : ''
+          const devTime = item.time_part && item.time_part !== '-' ? item.time_part : ''
+          enriched.chargeTime = devDate || devTime ? (devDate + ' ' + devTime).trim() : ''
           if (lotRec) {
             enriched.lorastr = lotRec.lorastr || item.lorastr
             enriched.date = lotRec.date || item.date
@@ -103,6 +130,184 @@ Page({
   getTodayStr() {
     const d = new Date()
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  },
+
+  // ========== 编辑设备弹窗 ==========
+  onDetailEdit() {
+    const info = this.data.deviceInfo
+    if (!info) return
+    this.setData({
+      showEditModal: true,
+      editOldDeviceKey: info.deviceId,
+      editDeviceCode: info.device_key || '',
+      editRename: info.rename || '',
+      editPicurl: info.picurl || '',
+      editPicFilePath: ''
+    })
+  },
+
+  onEditDeviceCodeInput(e) {
+    this.setData({ editDeviceCode: e.detail.value })
+  },
+
+  onEditRenameInput(e) {
+    this.setData({ editRename: e.detail.value })
+  },
+
+  onEditPic() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['compressed'],
+      success: (res) => {
+        const file = res.tempFiles[0]
+        this.setData({
+          editPicFilePath: file.tempFilePath,
+          editPicurl: file.tempFilePath
+        })
+      },
+      fail: () => { console.log('取消选择图片') }
+    })
+  },
+
+  onEditClose() {
+    this.setData({ showEditModal: false })
+  },
+
+  onEditConfirm() {
+    const oldKey = this.data.editOldDeviceKey
+    const device_key = this.data.editDeviceCode.trim()
+    const rename = this.data.editRename.trim()
+    const picFilePath = this.data.editPicFilePath
+
+    this.setData({ showEditModal: false })
+
+    if (picFilePath) {
+      wx.showLoading({ title: '压缩上传...' })
+      const objectKey = 'device/' + (device_key || oldKey) + '_' + Date.now() + '.jpg'
+      compressImage(picFilePath).then((compressedPath) => {
+        return uploadToOSS(compressedPath, objectKey, 'device/')
+      }).then((ossUrl) => {
+        this._doEditConfirm(oldKey, device_key, rename, ossUrl)
+      }).catch((err) => {
+        wx.hideLoading()
+        console.error('OSS 上传失败:', err)
+        wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
+      })
+    } else {
+      this._doEditConfirm(oldKey, device_key, rename, this.data.editPicurl)
+    }
+  },
+
+  _doEditConfirm(oldKey, device_key, rename, picurl) {
+    wx.showLoading({ title: '更新中...' })
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'updateDevice',
+        info: { deviceId: oldKey, device_key, rename, picurl }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('编辑设备返回:', JSON.stringify(res.data))
+        let result = res.data
+        if (typeof result === 'string') {
+          try { result = JSON.parse(result) } catch (e) {}
+        }
+        if (result && result.status === 'success') {
+          wx.showToast({ title: result.msg || '更新成功', icon: 'success', duration: 1500 })
+          dataCache.clearCache()
+          this.loadDeviceInfo(this.data.deviceId)
+        } else {
+          wx.showToast({ title: (result && result.msg) || '更新失败', icon: 'none', duration: 2500 })
+        }
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('编辑设备失败:', err)
+        wx.showToast({ title: '网络请求失败', icon: 'error', duration: 2000 })
+      }
+    })
+  },
+
+  // ========== 连接牛羊弹窗 ==========
+  onDetailBind() {
+    const info = this.data.deviceInfo
+    if (!info) return
+    let nameIdx = 0
+    if (info.link_cowsheep_id && info.bindName) {
+      nameIdx = this.data.livestockNames.indexOf(info.bindName)
+      if (nameIdx < 0) nameIdx = 0
+    }
+
+    // 加载牛名列表
+    dataCache.getLivestockList((livestockData) => {
+      const names = (livestockData && livestockData.livestockNames) ? livestockData.livestockNames : []
+      this.setData({
+        showBindModal: true,
+        bindDeviceId: info.deviceId,
+        bindNameIndex: nameIdx,
+        livestockNames: names
+      })
+    })
+  },
+
+  onBindNameChange(e) {
+    this.setData({ bindNameIndex: parseInt(e.detail.value) })
+  },
+
+  onBindClose() {
+    this.setData({ showBindModal: false })
+  },
+
+  onBindConfirm() {
+    const name = this.data.livestockNames[this.data.bindNameIndex]
+    const deviceId = this.data.bindDeviceId
+    if (!name || !deviceId) {
+      wx.showToast({ title: '请选择牛羊', icon: 'none' })
+      return
+    }
+
+    dataCache.getLivestockList((livestockData) => {
+      const item = (livestockData.livestockList || []).find(v => v.name === name)
+      if (!item || !item.cowsheepId) {
+        wx.showToast({ title: '未找到对应牛羊', icon: 'none' })
+        return
+      }
+
+      this.setData({ showBindModal: false })
+      wx.showLoading({ title: '绑定中...' })
+
+      wx.request({
+        url: API_COWSHEEP_URL,
+        method: 'POST',
+        data: {
+          action: 'bindDeviceCow',
+          info: { deviceId, cowsheepId: item.cowsheepId }
+        },
+        success: (res) => {
+          wx.hideLoading()
+          console.log('设备绑定返回:', JSON.stringify(res.data))
+          let result = res.data
+          if (typeof result === 'string') {
+            try { result = JSON.parse(result) } catch (e) {}
+          }
+          if (result && result.status === 'success') {
+            wx.showToast({ title: result.msg || '绑定成功', icon: 'success', duration: 1500 })
+            this.loadDeviceInfo(this.data.deviceId)
+          } else {
+            wx.showToast({ title: (result && result.msg) || '绑定失败', icon: 'none', duration: 2500 })
+          }
+        },
+        fail: (err) => {
+          wx.hideLoading()
+          console.error('设备绑定失败:', err)
+          wx.showToast({ title: '网络请求失败', icon: 'error', duration: 2000 })
+        }
+      })
+    })
   },
 
   // 查看设备轨迹 — 弹日期选择 → 查GPS数据 → 跳转地图页

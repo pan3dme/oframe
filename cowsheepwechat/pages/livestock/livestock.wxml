@@ -38,12 +38,6 @@
         <view class="item-id" wx:if="{{item.cowsheepId}}">ID: {{item.cowsheepId}}</view>
         <view class="item-device" wx:if="{{item.connectedDevice}}">连接设备: {{item.connectedDevice}}</view>
       </view>
-      <view class="item-edit-btn" wx:if="{{isAdmin}}" data-name="{{item.name}}" catchtap="onItemEdit">
-        <text class="item-edit-icon">✎</text>
-      </view>
-      <view class="item-connect-btn" wx:if="{{isAdmin}}" data-name="{{item.name}}" catchtap="onItemConnectDevice">
-        <text class="item-connect-icon">🔗</text>
-      </view>
     </view>
   </view>
 
@@ -87,69 +81,3 @@
   </view>
 </view>
 
-<!-- 连接设备弹窗 -->
-<view class="modal" wx:if="{{showDeviceModal}}">
-  <view class="modal-mask" bindtap="onBindDeviceClose"></view>
-  <view class="modal-dialog">
-    <view class="modal-close" bindtap="onBindDeviceClose">✕</view>
-    <view class="modal-title">连接设备</view>
-
-    <!-- 当前牛羊 -->
-    <view class="modal-label">绑定至：{{bindCowsheepName}}</view>
-
-    <!-- 选择设备 -->
-    <view class="modal-label">选择设备</view>
-    <picker mode="selector" range="{{deviceIdOptions}}" value="{{bindDeviceIndex}}" bindchange="onBindDevicePickerChange">
-      <view class="modal-picker">{{deviceIdOptions[bindDeviceIndex] || '未连接'}}</view>
-    </picker>
-
-    <!-- 按钮 -->
-    <view class="modal-btns">
-      <button class="modal-btn modal-btn-gray" bindtap="onBindDeviceClose">取消</button>
-      <button class="modal-btn modal-btn-confirm" bindtap="onBindDeviceConfirm">确认连接</button>
-    </view>
-  </view>
-</view>
-
-<!-- 修改记录弹窗 -->
-<view class="modal" wx:if="{{showEditModal}}">
-  <view class="modal-mask" bindtap="onEditClose"></view>
-  <view class="modal-dialog">
-    <view class="modal-close" bindtap="onEditClose">✕</view>
-    <view class="modal-title">修改记录</view>
-
-    <!-- 头像 -->
-    <view class="modal-label">头像（双击更换）</view>
-    <view class="edit-avatar-box" bindtap="onEditAvatarTap">
-      <image wx:if="{{editAvatarUrl}}" class="edit-avatar-img" src="{{editAvatarUrl}}" mode="aspectFill" />
-      <image wx:elif="{{editAvatar}}" class="edit-avatar-img" src="{{editAvatar}}" mode="aspectFill" />
-      <view wx:else class="edit-avatar-placeholder">🐂</view>
-      <view class="edit-avatar-tag" wx:if="{{editAvatarUrl}}">已更新</view>
-    </view>
-
-    <!-- 名称 -->
-    <view class="modal-label">名称</view>
-    <input class="modal-input" 
-      value="{{editName}}" 
-      placeholder="请输入名称" 
-      bindinput="onEditNameInput" />
-
-    <!-- 生日 -->
-    <view class="modal-label">生日</view>
-    <picker mode="date" value="{{editBirthday}}" bindchange="onEditBirthdayChange">
-      <view class="modal-picker">{{editBirthday || '请选择生日'}}</view>
-    </picker>
-
-    <!-- 性别 -->
-    <view class="modal-label">性别</view>
-    <picker mode="selector" range="{{genderOptions}}" value="{{editGenderIndex}}" bindchange="onEditGenderChange">
-      <view class="modal-picker">{{genderOptions[editGenderIndex]}}</view>
-    </picker>
-
-    <!-- 按钮 -->
-    <view class="modal-btns">
-      <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
-      <button class="modal-btn modal-btn-confirm" bindtap="onEditConfirm">确认修改</button>
-    </view>
-  </view>
-</view>

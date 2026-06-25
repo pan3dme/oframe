@@ -23,6 +23,7 @@ App({
     api_device_Url: 'https://gpsmoveinfo.cn/fc/device',
     api_cowsheep_Url: 'https://gpsmoveinfo.cn/fc/cowsheep',
     api_route_place_Url: 'https://gpsmoveinfo.cn/fc/route_place',
+    amap_key: '9f13e28346ef46071add1dc6ca4bd0ec',  // 高德地图 Key (Web服务)
  
     gpsData: null,          // 定位数据
     deviceCache: null,      // 设备列表缓存

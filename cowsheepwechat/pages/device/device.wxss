@@ -328,8 +328,9 @@ page {
 }
 
 .item-relative {
-  font-size: 22rpx;
+  font-size: 28rpx;
   color: #ff9800;
+  font-weight: 700;
 }
 
 .item-id {
@@ -416,9 +417,9 @@ page {
 }
 
 .item-time-compact {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #1565c0;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
   margin-left: 24rpx;
