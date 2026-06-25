@@ -1,5 +1,5 @@
 // road/detail/detail.js - 单条道路地图展示
-const { wgs84ToGcj02, parseRoadPoints } = require('../../utils/coord-transform.js')
+const { wgs84ToGcj02, parseRoadPoints } = require('../../../utils/coord-transform.js')
 
 Page({
   data: {

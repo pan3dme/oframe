@@ -1,5 +1,5 @@
 // road/record/record.js - 路径录制页
-const { gcj02ToWgs84, calcDistance } = require('../../utils/coord-transform.js')
+const { gcj02ToWgs84, calcDistance } = require('../../../utils/coord-transform.js')
 const app = getApp()
 
 Page({

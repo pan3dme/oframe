@@ -10,7 +10,8 @@
 
 <map wx:if="{{showNativeMap}}" id="trackMap" class="map"
   latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
-  markers="{{markers}}" polyline="{{polyline}}" show-location="{{true}}" enable-satellite="{{isSatellite}}" />
+  markers="{{markers}}" polyline="{{polyline}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
+  bindregionchange="onRegionChange" />
 
 <!-- 右下角功能按钮组 -->
 <view class="map-toolbar">
