@@ -14,6 +14,15 @@
     <view class="info-area">
       <view class="info-title">{{name}}</view>
 
+      <view class="info-row-actions" wx:if="{{isAdmin}}">
+        <view class="detail-action-btn" bindtap="onEditTap">
+          <text>✏️ 编辑</text>
+        </view>
+        <view class="detail-action-btn" bindtap="onConnectTap">
+          <text>🔗 连接设备</text>
+        </view>
+      </view>
+
       <view class="info-row">
         <view class="info-label">编号</view>
         <view class="info-value">{{cowsheepId || '-'}}</view>
@@ -141,32 +150,65 @@
   </view>
 </view>
 
-<!-- 视频播放弹窗 -->
-<view class="video-player-overlay" wx:if="{{showVideoPlayer}}" bindtap="onCloseVideo">
-  <view class="video-player-box" catchtap="">
-    <view class="video-close-btn" bindtap="onCloseVideo">✕</view>
-    <video
-      class="video-player"
-      src="{{currentVideo}}"
-      autoplay
-      controls
-      show-center-play-btn
-      enable-progress-gesture
-    />
+<!-- 编辑牛羊弹窗 -->
+<view class="modal" wx:if="{{showEditModal}}">
+  <view class="modal-mask" bindtap="onEditClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onEditClose">✕</view>
+    <view class="modal-title">修改记录</view>
+
+    <!-- 头像 -->
+    <view class="modal-label">头像（双击更换）</view>
+    <view class="edit-avatar-box" bindtap="onEditAvatarTap">
+      <image wx:if="{{editAvatarUrl}}" class="edit-avatar-img" src="{{editAvatarUrl}}" mode="aspectFill" />
+      <image wx:elif="{{editAvatar}}" class="edit-avatar-img" src="{{editAvatar}}" mode="aspectFill" />
+      <view wx:else class="edit-avatar-placeholder">🐂</view>
+      <view class="edit-avatar-tag" wx:if="{{editAvatarUrl}}">已更新</view>
+    </view>
+
+    <!-- 名称 -->
+    <view class="modal-label">名称</view>
+    <input class="modal-input"
+      value="{{editName}}"
+      placeholder="请输入名称"
+      bindinput="onEditNameInput" />
+
+    <!-- 生日 -->
+    <view class="modal-label">生日</view>
+    <picker mode="date" value="{{editBirthday}}" bindchange="onEditBirthdayChange">
+      <view class="modal-picker">{{editBirthday || '请选择生日'}}</view>
+    </picker>
+
+    <!-- 性别 -->
+    <view class="modal-label">性别</view>
+    <picker mode="selector" range="{{genderOptions}}" value="{{editGenderIndex}}" bindchange="onEditGenderChange">
+      <view class="modal-picker">{{genderOptions[editGenderIndex]}}</view>
+    </picker>
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onEditConfirm">确认修改</button>
+    </view>
   </view>
 </view>
 
-<!-- 视频播放弹窗 -->
-<view class="video-player-overlay" wx:if="{{showVideoPlayer}}" bindtap="onCloseVideo">
-  <view class="video-player-box" catchtap="">
-    <view class="video-close-btn" bindtap="onCloseVideo">✕</view>
-    <video
-      class="video-player"
-      src="{{currentVideo}}"
-      autoplay
-      controls
-      show-center-play-btn
-      enable-progress-gesture
-    />
+<!-- 连接设备弹窗 -->
+<view class="modal" wx:if="{{showDeviceModal}}">
+  <view class="modal-mask" bindtap="onBindDeviceClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onBindDeviceClose">✕</view>
+    <view class="modal-title">连接设备</view>
+
+    <view class="modal-label">绑定至：{{bindCowsheepName}}</view>
+
+    <view class="modal-label">选择设备</view>
+    <picker mode="selector" range="{{deviceIdOptions}}" value="{{bindDeviceIndex}}" bindchange="onBindDevicePickerChange">
+      <view class="modal-picker">{{deviceIdOptions[bindDeviceIndex] || '未连接'}}</view>
+    </picker>
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onBindDeviceClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onBindDeviceConfirm">确认连接</button>
+    </view>
   </view>
 </view>

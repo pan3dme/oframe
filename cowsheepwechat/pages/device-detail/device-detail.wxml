@@ -16,6 +16,14 @@
           <text class="info-label">deviceId</text>
           <text class="info-value">{{deviceInfo.deviceId}}</text>
         </view>
+        <view class="info-row info-row-actions" wx:if="{{isAdmin}}">
+          <view class="detail-action-btn" bindtap="onDetailEdit">
+            <text>✏️ 编辑</text>
+          </view>
+          <view class="detail-action-btn" bindtap="onDetailBind">
+            <text>🔗 连接牛羊</text>
+          </view>
+        </view>
         <view class="info-row">
           <text class="info-label">别名</text>
           <text class="info-value">{{deviceInfo.rename || '-'}}</text>
@@ -25,16 +33,16 @@
           <text class="info-value">{{deviceInfo.device_key || '-'}}</text>
         </view>
         <view class="info-row">
-          <text class="info-label">Lora串</text>
-          <text class="info-value info-value-lora">{{deviceInfo.lorastr || '-'}}</text>
-        </view>
-        <view class="info-row">
           <text class="info-label">绑定</text>
           <text class="info-value">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
         </view>
         <view class="info-row">
           <text class="info-label">时间</text>
           <text class="info-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">上次换电</text>
+          <text class="info-value">{{deviceInfo.chargeTime || '-'}}</text>
         </view>
       </view>
     </view>
@@ -70,6 +78,66 @@
   <!-- 加载中 -->
   <view class="empty-tip" wx:else>加载中...</view>
 </scroll-view>
+
+<!-- 连接牛羊弹窗 -->
+<view class="modal" wx:if="{{showBindModal}}">
+  <view class="modal-mask" bindtap="onBindClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onBindClose">✕</view>
+    <view class="modal-title">连接牛羊</view>
+
+    <view class="modal-label">绑定设备：{{bindDeviceId}}</view>
+
+    <view class="modal-label">选择牛羊</view>
+    <picker mode="selector" range="{{livestockNames}}" value="{{bindNameIndex}}" bindchange="onBindNameChange">
+      <view class="modal-picker">{{livestockNames[bindNameIndex] || '请新增牛羊'}}</view>
+    </picker>
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onBindClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onBindConfirm">确认连接</button>
+    </view>
+  </view>
+</view>
+
+<!-- 编辑设备弹窗 -->
+<view class="modal" wx:if="{{showEditModal}}">
+  <view class="modal-mask" bindtap="onEditClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onEditClose">✕</view>
+    <view class="modal-title">编辑设备</view>
+
+    <!-- 设备图片 -->
+    <view class="modal-label">设备图片</view>
+    <view class="edit-pic-wrap" bindtap="onEditPic">
+      <image class="edit-pic-img" wx:if="{{editPicurl}}" src="{{editPicurl}}" mode="aspectFill" />
+      <view class="edit-pic-placeholder" wx:else>📡 点击选图</view>
+    </view>
+
+    <!-- deviceId（不可编辑） -->
+    <view class="modal-label">deviceId</view>
+    <view class="edit-readonly">{{editOldDeviceKey}}</view>
+
+    <!-- 设备编码 -->
+    <view class="modal-label">设备编码</view>
+    <input class="modal-input"
+      value="{{editDeviceCode}}"
+      placeholder="请输入设备编码"
+      bindinput="onEditDeviceCodeInput" />
+
+    <!-- 别名 -->
+    <view class="modal-label">别名</view>
+    <input class="modal-input"
+      value="{{editRename}}"
+      placeholder="请输入别名"
+      bindinput="onEditRenameInput" />
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onEditConfirm">确认修改</button>
+    </view>
+  </view>
+</view>
 
 <!-- 设备轨迹日期选择弹窗 -->
 <view class="track-modal" wx:if="{{showTrackModal}}">

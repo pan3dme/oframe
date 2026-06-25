@@ -149,8 +149,27 @@ Page({
     showVideoPlayer: false,     // 视频播放弹窗
     showUploadModal: false,     // 上传媒体弹窗
     uploadFilePath: '',         // 选中的文件路径
-    uploadFileType: ''          // 'image' | 'video'
+    uploadFileType: '',         // 'image' | 'video'
+    // 管理员模式
+    isAdmin: false,
+    // 编辑牛羊弹窗
+    showEditModal: false,
+    editName: '',
+    editOriginalName: '',
+    editBirthday: '',
+    editGenderIndex: 0,
+    editCowsheepId: '',
+    editAvatar: '',
+    editAvatarUrl: '',
+    genderOptions: ['公', '母'],
+    // 连接设备弹窗
+    showDeviceModal: false,
+    bindCowsheepId: '',
+    bindCowsheepName: '',
+    bindDeviceIndex: 0
   },
+
+  _tapAvatarTime: 0,
 
   onLoad(options) {
     this.setData({
@@ -160,6 +179,14 @@ Page({
       gender: decodeURIComponent(options.gender || ''),
       avatar: decodeURIComponent(options.avatar || '')
     })
+
+    // 读取管理员设置
+    let isAdmin = false
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin })
 
     // 初始化时加载所有设备信息
     this.loadDeviceInfo()
@@ -566,6 +593,199 @@ Page({
         console.error('OSS 上传失败:', err)
         wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
       })
+  },
+
+  // ========== 编辑牛羊弹窗 ==========
+  onEditTap() {
+    this.setData({
+      showEditModal: true,
+      editName: this.data.name,
+      editOriginalName: this.data.name,
+      editBirthday: this.data.birthday === '-' ? '' : this.data.birthday,
+      editGenderIndex: this.data.gender === '公' ? 0 : 1,
+      editCowsheepId: this.data.cowsheepId,
+      editAvatar: this.data.avatar || '',
+      editAvatarUrl: ''
+    })
+  },
+
+  onEditClose() {
+    this.setData({ showEditModal: false })
+  },
+
+  // 双击头像 → 选择图片 → 上传 OSS
+  onEditAvatarTap() {
+    const now = Date.now()
+    if (now - this._tapAvatarTime < 500) {
+      this._tapAvatarTime = 0
+      this._chooseAndUploadAvatar()
+    } else {
+      this._tapAvatarTime = now
+      setTimeout(() => { this._tapAvatarTime = 0 }, 500)
+    }
+  },
+
+  _chooseAndUploadAvatar() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['compressed'],
+      success: (res) => {
+        const filePath = res.tempFiles[0].tempFilePath
+        const cowsheepId = this.data.editCowsheepId
+        const objectKey = OSS_CONFIG.uploadDir + 'avatar_' + (cowsheepId || Date.now()) + '_' + Date.now() + '.jpg'
+
+        wx.showLoading({ title: '压缩上传...' })
+
+        compressImage(filePath).then((compressedPath) => {
+          return uploadToOSS(compressedPath, objectKey)
+        }).then((ossUrl) => {
+            wx.hideLoading()
+            this.setData({ editAvatarUrl: ossUrl })
+            wx.showToast({ title: '头像已更新', icon: 'success', duration: 1200 })
+          })
+          .catch((err) => {
+            wx.hideLoading()
+            console.error('头像上传 OSS 失败:', err)
+            wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
+          })
+      },
+      fail: () => {
+        console.log('取消选择头像')
+      }
+    })
+  },
+
+  onEditNameInput(e) {
+    this.setData({ editName: e.detail.value })
+  },
+
+  onEditBirthdayChange(e) {
+    this.setData({ editBirthday: e.detail.value })
+  },
+
+  onEditGenderChange(e) {
+    this.setData({ editGenderIndex: parseInt(e.detail.value) })
+  },
+
+  onEditConfirm() {
+    const birthday = this.data.editBirthday
+    const gender = this.data.editGenderIndex === 0
+    const cowsheepId = this.data.editCowsheepId
+    const rename = this.data.editName
+    const avatarUrl = this.data.editAvatarUrl || this.data.editAvatar || ''
+
+    if (!birthday) {
+      wx.showToast({ title: '请选择生日', icon: 'none' })
+      return
+    }
+
+    this.setData({ showEditModal: false })
+    wx.showLoading({ title: '提交中...' })
+
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'updateLivestock',
+        info: {
+          cowsheep_id: cowsheepId,
+          rename: rename,
+          birthday: birthday,
+          gender: gender,
+          avatar: avatarUrl
+        }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('修改牛羊返回:', JSON.stringify(res.data))
+        wx.showToast({ title: '修改成功', icon: 'success', duration: 1500 })
+        // 刷新页面数据
+        this.setData({
+          name: rename,
+          birthday: birthday,
+          gender: gender ? '公' : '母',
+          avatar: avatarUrl || this.data.avatar
+        })
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('修改牛羊失败:', err)
+        wx.showToast({ title: '提交失败', icon: 'error', duration: 2000 })
+      }
+    })
+  },
+
+  // ========== 连接设备弹窗 ==========
+  onConnectTap() {
+    this.setData({
+      showDeviceModal: true,
+      bindCowsheepId: this.data.cowsheepId,
+      bindCowsheepName: this.data.name,
+      bindDeviceIndex: this.data.selectedDeviceIndex
+    })
+  },
+
+  onBindDevicePickerChange(e) {
+    this.setData({ bindDeviceIndex: parseInt(e.detail.value) })
+  },
+
+  onBindDeviceClose() {
+    this.setData({ showDeviceModal: false })
+  },
+
+  onBindDeviceConfirm() {
+    const index = this.data.bindDeviceIndex
+    const deviceId = this.data.deviceIdOptions[index] || ''
+    const cowsheepId = this.data.bindCowsheepId
+
+    if (index === 0 || deviceId === '未连接') {
+      wx.showToast({ title: '请选择一个设备', icon: 'none' })
+      return
+    }
+
+    if (this.data.deviceBindMap[deviceId] === cowsheepId) {
+      this.setData({ showDeviceModal: false })
+      wx.showToast({ title: '设备已连接，无需重复绑定', icon: 'none' })
+      return
+    }
+
+    this.setData({ showDeviceModal: false })
+    wx.showLoading({ title: '绑定中...' })
+
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'bindDeviceCow',
+        info: { deviceId, cowsheepId }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        let result = res.data
+        if (typeof result === 'string') {
+          try { result = JSON.parse(result) } catch (e) {}
+        }
+        if (result && result.status === 'success') {
+          const newBindMap = { ...this.data.deviceBindMap }
+          newBindMap[deviceId] = cowsheepId
+          this.setData({
+            deviceBindMap: newBindMap,
+            selectedDeviceId: deviceId,
+            selectedDeviceIndex: index
+          })
+          wx.showToast({ title: result.msg || '连接成功', icon: 'success', duration: 1500 })
+        } else {
+          wx.showToast({ title: (result && result.msg) || '连接失败', icon: 'none', duration: 2500 })
+        }
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('设备绑定失败:', err)
+        wx.showToast({ title: '网络请求失败', icon: 'error', duration: 2000 })
+      }
+    })
   },
 
   // 统一解析接口返回数据，提取 deviceId / lorastr / time
