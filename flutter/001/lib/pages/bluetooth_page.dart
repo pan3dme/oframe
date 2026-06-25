@@ -41,6 +41,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
   bool _isUploading = false; // 是否正在上传
   bool _uploadPaused = false; // 上传是否因断网暂停
   bool _scanCompleted = false; // 扫描是否已完成
+  String? _filterType; // 数据过滤类型: null=全部, '1'=GPS, '2'=对时, '3'=电量
   
   // 声音/震动控制
   static const _soundChannel = MethodChannel('com.app/sound');
@@ -124,30 +125,41 @@ class _BluetoothPageState extends State<BluetoothPage> {
   
 
 
-  /// 上传缓存数据到数据中心
-  Future<void> _uploadCachedData() async {
-    if (_cachedBluetoothData.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('没有缓存数据可上传'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
+  /// 切换上传/暂停上传状态
+  void _toggleUpload() {
+    if (_isUploading) {
+      // 暂停上传
+      setState(() {
+        _isUploading = false;
+        _uploadPaused = true;
+      });
+      print('[蓝牙上传] 用户暂停上传');
+    } else {
+      // 开始/恢复上传
+      setState(() {
+        _isUploading = true;
+        _uploadPaused = false;
+      });
+      _processUploadQueue();
     }
+  }
 
-    setState(() {
-      _isUploading = true;
-      _uploadPaused = false;
-    });
+  /// 处理上传队列（持续运行，上传中新数据也会自动进入队列）
+  Future<void> _processUploadQueue() async {
+    while (_isUploading) {
+      // 等待缓存数据加载完成
+      await _loadCachedBluetoothData();
+      
+      if (_cachedBluetoothData.isEmpty) {
+        // 没有数据时等待一下再检查（新数据可能正在保存中）
+        await Future.delayed(const Duration(milliseconds: 500));
+        continue;
+      }
 
-    // 逐条上传，确保上次成功后再上报下一个，间隔1秒
-    while (_cachedBluetoothData.isNotEmpty && _isUploading) {
       final item = _cachedBluetoothData.first;
       try {
-        // 解析蓝牙数据，提取deviceId和lorastr
         final dataStr = item['data'] ?? '';
-        final dataId = item['id'] as int; // 获取数据库ID
+        final dataId = item['id'] as int;
 
         print('[蓝牙上传] 原始数据: $dataStr');
         
@@ -157,19 +169,15 @@ class _BluetoothPageState extends State<BluetoothPage> {
         String time = item['time'] ?? formatTime(DateTime.now());
         
         try {
-          // dataStr 是JSON字符串: {"info":"1|v4-3|26.52956,109.39073|368","upDateDevice":"v4-1","time":"2026/6/12 13:12:44"}
           final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+          lorastr = jsonData['info'] ?? '';
+          upDateDevice = jsonData['upDateDevice'] ?? '';
+          time = jsonData['time'] ?? time;
           
-          // 提取info字段
-          lorastr = jsonData['info'] ?? ''; // "1|v4-3|26.52956,109.39073|368"
-          upDateDevice = jsonData['upDateDevice'] ?? ''; // "v4-1"
-          time = jsonData['time'] ?? time; // "2026/6/12 13:12:44"
-          
-          // 从info中提取deviceId（第2部分）
           if (lorastr.contains('|')) {
             final parts = lorastr.split('|');
             if (parts.length >= 2) {
-              deviceId = parts[1]; // v4-3
+              deviceId = parts[1];
             }
           }
           
@@ -195,19 +203,14 @@ class _BluetoothPageState extends State<BluetoothPage> {
         if (resp.statusCode == 200) {
           final json = jsonDecode(resp.body) as Map<String, dynamic>;
           if (json['status'] == 'success') {
-            print('[蓝牙上传] 成功上传: deviceId=$deviceId, data=$dataStr');
-            // 上传成功后只删除该条数据
+            print('[蓝牙上传] 成功上传: deviceId=$deviceId');
             await DBHelper().deleteBluetoothDataById(dataId);
-            // 重新加载缓存
             await _loadCachedBluetoothData();
-            
-            // 上传成功后立即继续下一条，不延迟
           } else {
             print('[蓝牙上传] 上传失败: ${json['msg']}');
-            // 服务端返回失败，停止上传
             setState(() {
-              _uploadPaused = true;
               _isUploading = false;
+              _uploadPaused = true;
             });
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -223,8 +226,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
         } else {
           print('[蓝牙上传] HTTP错误: ${resp.statusCode}');
           setState(() {
-            _uploadPaused = true;
             _isUploading = false;
+            _uploadPaused = true;
           });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -240,8 +243,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
       } catch (e) {
         print('[蓝牙上传] 上传失败（可能断网）: $e');
         setState(() {
-          _uploadPaused = true;
           _isUploading = false;
+          _uploadPaused = true;
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -252,20 +255,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
             ),
           );
         }
-        break; // 断网就停止
+        break;
       }
-    }
-
-    if (_isUploading && mounted) {
-      setState(() {
-        _isUploading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('上传完成'),
-          backgroundColor: Colors.green,
-        ),
-      );
     }
   }
 
@@ -684,6 +675,21 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
   Future<void> _saveAndRefreshCache(String data) async {
     try {
+      // 只缓存类型1(GPS)、2(对时)、3(电量)的数据，其它类型不入缓存
+      String typeStr = '';
+      try {
+        final jsonData = jsonDecode(data) as Map<String, dynamic>;
+        final info = jsonData['info'] as String? ?? '';
+        if (info.contains('|')) {
+          typeStr = info.split('|')[0];
+        }
+      } catch (_) {}
+      
+      if (typeStr != '1' && typeStr != '2' && typeStr != '3') {
+        print('[蓝牙] 跳过非类型1/2/3数据，不入缓存: type=$typeStr');
+        return;
+      }
+      
       final deviceName = _connectedDevice != null ? _getDeviceName(_connectedDevice!) : '未知设备';
       final deviceId = _connectedDevice?.remoteId.str ?? '';
       final time = formatTime(DateTime.now());
@@ -715,6 +721,9 @@ class _BluetoothPageState extends State<BluetoothPage> {
       } else if (typeStr == '2') {
         // 时间同步信息：显示 rssi/snr/info/time
         return _formatTimeSyncData(data, info);
+      } else if (typeStr == '3') {
+        // 电量信息：显示 rssi/snr/info/time
+        return _formatBatteryData(data, info);
       } else {
         // 其它类型：只显示info内容
         return _formatOtherData(data, info);
@@ -751,7 +760,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
           builder: (context, constraints) {
             return RichText(
               text: TextSpan(
-                style: const TextStyle(fontSize: 19, color: Colors.black, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 17, color: Colors.grey, fontWeight: FontWeight.normal),
                 children: [
                   const TextSpan(text: '"rssi":'),
                   TextSpan(
@@ -817,7 +826,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
           builder: (context, constraints) {
             return RichText(
               text: TextSpan(
-                style: const TextStyle(fontSize: 19, color: Colors.black, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 17, color: Colors.grey, fontWeight: FontWeight.normal),
                 children: [
                   const TextSpan(text: '"rssi":'),
                   TextSpan(
@@ -845,6 +854,72 @@ class _BluetoothPageState extends State<BluetoothPage> {
               const Padding(
                 padding: EdgeInsets.only(top: 2, right: 4),
                 child: Icon(Icons.access_time, size: 16, color: Colors.orange),
+              ),
+              Expanded(child: _buildInfoWithHighlightedDeviceId(info, deviceId)),
+            ],
+          ),
+        const SizedBox(height: 4),
+        // 第三行：时间和上传设备
+        if (time.isNotEmpty || upDateDevice.isNotEmpty)
+          Text(
+            '${time.isNotEmpty ? time : ''}${upDateDevice.isNotEmpty ? ' ($upDateDevice)' : ''}',
+            style: const TextStyle(fontSize: 15),
+          ),
+      ],
+    );
+  }
+
+  /// 格式化电量数据（类型3）
+  Widget _formatBatteryData(Map<String, dynamic> data, String info) {
+    final rssi = data['rssi'] ?? '';
+    final snr = data['snr'] ?? '';
+    final upDateDevice = data['upDateDevice'] ?? '';
+    final time = data['time'] ?? '';
+    
+    String deviceId = '';
+    if (info.contains('|')) {
+      final parts = info.split('|');
+      if (parts.length >= 2) {
+        deviceId = parts[1];
+      }
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 第一行：rssi和snr，数值部分绿色显示
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 17, color: Colors.grey, fontWeight: FontWeight.normal),
+                children: [
+                  const TextSpan(text: '"rssi":'),
+                  TextSpan(
+                    text: '$rssi',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                  const TextSpan(text: ',"snr":'),
+                  TextSpan(
+                    text: '$snr',
+                    style: const TextStyle(color: Colors.green),
+                  ),
+                ],
+              ),
+              softWrap: true,
+              overflow: TextOverflow.visible,
+            );
+          },
+        ),
+        const SizedBox(height: 4),
+        // 第二行：电量图标 + 完整info，其中deviceId部分红色显示
+        if (info.isNotEmpty)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2, right: 4),
+                child: Icon(Icons.battery_full, size: 16, color: Colors.green),
               ),
               Expanded(child: _buildInfoWithHighlightedDeviceId(info, deviceId)),
             ],
@@ -941,25 +1016,57 @@ class _BluetoothPageState extends State<BluetoothPage> {
     );
   }
 
+  // ---- 过滤接收到的数据 ----
+  List<String> _getFilteredReceivedData() {
+    if (_filterType == null) return _receivedData;
+    return _receivedData.where((item) {
+      try {
+        final data = jsonDecode(item) as Map<String, dynamic>;
+        final info = data['info'] ?? '';
+        if (info.contains('|')) {
+          return info.split('|')[0] == _filterType;
+        }
+      } catch (_) {}
+      return false;
+    }).toList();
+  }
+
+  // ---- 过滤缓存数据 ----
+  List<Map<String, dynamic>> _getFilteredCachedData() {
+    if (_filterType == null) return _cachedBluetoothData;
+    return _cachedBluetoothData.where((item) {
+      try {
+        final dataStr = item['data'] as String? ?? '';
+        final data = jsonDecode(dataStr) as Map<String, dynamic>;
+        final info = data['info'] ?? '';
+        if (info.contains('|')) {
+          return info.split('|')[0] == _filterType;
+        }
+      } catch (_) {}
+      return false;
+    }).toList();
+  }
+
   // ---- 构建数据列表 ----
   Widget _buildDataList() {
+    final filteredData = _getFilteredReceivedData();
     // 如果已连接设备，显示接收到的数据（无论是否正在同步）
     if (_isConnected) {
       // 有接收数据时，显示数据列表
-      if (_receivedData.isNotEmpty) {
+      if (filteredData.isNotEmpty) {
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: _receivedData.length,
+          itemCount: filteredData.length,
           itemBuilder: (context, index) {
             // 从后往前遍历，让最新的数据显示在最上面
-            final dataIndex = _receivedData.length - 1 - index;
+            final dataIndex = filteredData.length - 1 - index;
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 2),
               color: _getRandomLightColor(dataIndex), // 随机浅色背景
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: _formatReceivedData(_receivedData[dataIndex]),
+                child: _formatReceivedData(filteredData[dataIndex]),
               ),
             );
           },
@@ -977,19 +1084,19 @@ class _BluetoothPageState extends State<BluetoothPage> {
     }
     
     // 未连接设备时，显示缓存的蓝牙数据
-    if (_cachedBluetoothData.isNotEmpty) {
+    final filteredCachedData = _getFilteredCachedData();
+    if (filteredCachedData.isNotEmpty) {
       return ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _cachedBluetoothData.length,
+        itemCount: filteredCachedData.length,
         itemBuilder: (context, index) {
-          // 从后往前遍历，让最新的数据显示在最上面
-          final dataIndex = _cachedBluetoothData.length - 1 - index;
-          final item = _cachedBluetoothData[dataIndex];
+          // 数据库已按cached_at DESC排序，直接显示即可（最新在最上面）
+          final item = filteredCachedData[index];
           final dataStr = item['data'] ?? '';
           
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 2),
-            color: _getRandomLightColor(dataIndex), // 随机浅色背景
+            color: _getRandomLightColor(index), // 随机浅色背景
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: _formatReceivedData(dataStr),
@@ -1042,47 +1149,47 @@ class _BluetoothPageState extends State<BluetoothPage> {
         children: [
           // 缓存数据Card
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
             child: GestureDetector(
               onDoubleTap: _cachedBluetoothData.isEmpty ? null : _showClearCacheDialog,
               child: Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   child: Row(
                     children: [
-                      const Icon(Icons.cloud_upload, size: 24, color: Colors.blue),
-                      const SizedBox(width: 12),
+                      const Icon(Icons.cloud_upload, size: 20, color: Colors.blue),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           '缓存记录: ${_cachedBluetoothData.length} 条',
                           style: const TextStyle(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
                       ElevatedButton.icon(
-                        onPressed: _isUploading || _cachedBluetoothData.isEmpty
-                            ? null
-                            : _uploadCachedData,
+                        onPressed: _toggleUpload,
                         icon: _isUploading
                             ? const SizedBox(
-                                width: 16,
-                                height: 16,
+                                width: 14,
+                                height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   color: Colors.white,
                                 ),
                               )
-                            : const Icon(Icons.upload, size: 18),
-                        label: Text(_isUploading ? '上传中...' : '上传数据中心'),
+                            : (_uploadPaused
+                                ? const Icon(Icons.play_arrow, size: 16)
+                                : const Icon(Icons.upload, size: 16)),
+                        label: Text(_isUploading ? '上传中' : (_uploadPaused ? '暂停上传' : '上传')),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                            horizontal: 10,
+                            vertical: 6,
                           ),
-                          backgroundColor: _uploadPaused ? Colors.orange : null,
-                          disabledBackgroundColor: Colors.grey.withValues(alpha: 0.3),
+                          backgroundColor: _isUploading ? Colors.green : (_uploadPaused ? Colors.orange : Colors.blue),
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ],
@@ -1120,8 +1227,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
                         ),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: _isConnected ? Colors.red : null,
-                          foregroundColor: _isConnected ? Colors.white : null,
+                          backgroundColor: _isConnected ? Colors.red : Colors.blue,
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ),
@@ -1142,11 +1249,10 @@ class _BluetoothPageState extends State<BluetoothPage> {
                         ),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: _isSyncing ? Colors.orange : null,
-                          foregroundColor: _isSyncing ? Colors.white : null,
-                          disabledBackgroundColor:
-                              Colors.grey.withValues(alpha: 0.3),
-                          disabledForegroundColor: Colors.grey,
+                          backgroundColor: _isSyncing ? Colors.orange : Colors.blue,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          disabledForegroundColor: Colors.grey.shade600,
                         ),
                       ),
                     ),
@@ -1267,10 +1373,124 @@ class _BluetoothPageState extends State<BluetoothPage> {
                                         fontSize: 14,
                                       ),
                                     ),
-                                    const Spacer(),
+                                    const SizedBox(width: 12),
+                                    // GPS过滤按钮
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _filterType = _filterType == '1' ? null : '1';
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: _filterType == '1' ? Colors.blue.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.10),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.gps_fixed,
+                                                size: 14,
+                                                color: _filterType == '1' ? Colors.blue : Colors.grey.shade700,
+                                              ),
+                                              const SizedBox(width: 2),
+                                              Text(
+                                                'GPS',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: _filterType == '1' ? Colors.blue : Colors.grey.shade700,
+                                                  fontWeight: _filterType == '1' ? FontWeight.w600 : FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    // 对时过滤按钮
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _filterType = _filterType == '2' ? null : '2';
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: _filterType == '2' ? Colors.orange.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.10),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.access_time,
+                                                size: 14,
+                                                color: _filterType == '2' ? Colors.orange : Colors.grey.shade700,
+                                              ),
+                                              const SizedBox(width: 2),
+                                              Text(
+                                                '对时',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: _filterType == '2' ? Colors.orange : Colors.grey.shade700,
+                                                  fontWeight: _filterType == '2' ? FontWeight.w600 : FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    // 电量过滤按钮
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _filterType = _filterType == '3' ? null : '3';
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: _filterType == '3' ? Colors.green.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.10),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.battery_full,
+                                                size: 14,
+                                                color: _filterType == '3' ? Colors.green : Colors.grey.shade700,
+                                              ),
+                                              const SizedBox(width: 2),
+                                              Text(
+                                                '电量',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: _filterType == '3' ? Colors.green : Colors.grey.shade700,
+                                                  fontWeight: _filterType == '3' ? FontWeight.w600 : FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
                                     if (_cachedBluetoothData.isNotEmpty)
                                       Text(
-                                        '${_cachedBluetoothData.length} 条',
+                                        '${_getFilteredCachedData().length} 条',
                                         style: const TextStyle(color: Colors.grey, fontSize: 12),
                                       ),
                                   ],
@@ -1367,10 +1587,124 @@ class _BluetoothPageState extends State<BluetoothPage> {
                 style: const TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 14),
               ),
-              const Spacer(),
-              if (_isSyncing && _receivedData.isNotEmpty)
+              const SizedBox(width: 12),
+              // GPS过滤按钮
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _filterType = _filterType == '1' ? null : '1';
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _filterType == '1' ? Colors.blue.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.gps_fixed,
+                          size: 14,
+                          color: _filterType == '1' ? Colors.blue : Colors.grey.shade700,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          'GPS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _filterType == '1' ? Colors.blue : Colors.grey.shade700,
+                            fontWeight: _filterType == '1' ? FontWeight.w600 : FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // 对时过滤按钮
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _filterType = _filterType == '2' ? null : '2';
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _filterType == '2' ? Colors.orange.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color: _filterType == '2' ? Colors.orange : Colors.grey.shade700,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '对时',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _filterType == '2' ? Colors.orange : Colors.grey.shade700,
+                            fontWeight: _filterType == '2' ? FontWeight.w600 : FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              // 电量过滤按钮
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _filterType = _filterType == '3' ? null : '3';
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _filterType == '3' ? Colors.green.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.battery_full,
+                          size: 14,
+                          color: _filterType == '3' ? Colors.green : Colors.grey.shade700,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '电量',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _filterType == '3' ? Colors.green : Colors.grey.shade700,
+                            fontWeight: _filterType == '3' ? FontWeight.w600 : FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (_receivedData.isNotEmpty)
                 Text(
-                  '${_receivedData.length} 条',
+                  '${_getFilteredReceivedData().length} 条',
                   style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
             ],
