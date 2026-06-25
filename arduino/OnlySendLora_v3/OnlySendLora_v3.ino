@@ -28,6 +28,7 @@ int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
+
 // 快速发送模式控制
 bool fastModeEnabled = false;                               // 是否启用快速发送模式
 unsigned long fastModeStartTime = 0;                        // 快速模式启动时间
@@ -184,6 +185,7 @@ void buildAndSendPacket(int packetType) {
 void loop() {
   delay(1);
   gpsEncode();
+ 
 
   unsigned long currentMs = millis();
   unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
@@ -331,24 +333,32 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
       } else if (msgType == MSG_TYPE_COM) {
         String result = rxStr.substring(typeEnd + 1, secondPipe);
         if (result == deviceName) {
-          Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
-
           int lastValue = rxStr.substring(secondPipe + 1).toInt();
-
           // 打印验证一下
           Serial.print("提取到的最后整数是: ");
           Serial.println(lastValue);
-
           // 如果lastValue为1，启动快速发送模式
           if (lastValue == 1) {
             fastModeEnabled = true;
             fastModeStartTime = millis();
             lastFastSendTime = 0;  // 重置快速发送计时
             Serial.println("🚀 启动快速发送模式：每5秒发送一次，持续" + String(FAST_MODE_DURATION / 1000) + "秒");
+          } else if (lastValue == 2) {
+            if (getGpsStatus() == true) {
+              setGpsEnable(false);
+              Serial.println("❌❌❌❌❌❌关闭GPS❌❌❌❌❌❌");
+            } else {
+              initPanGPS();
+              Serial.println("⚠️⚠️⚠️⚠️ 重新开启GPS⚠️⚠️⚠️⚠️");
+            }
+
+
           } else if (lastValue == 4) {
-            Serial.println("⚠️ 收到重启指令，系统将在 1 秒后重启...");
+            Serial.println("⚠️⚠️⚠️⚠️ 收到重启指令，系统将在 1 秒后重启...");
             delay(1000);    // 强烈建议加一个短暂的延时，确保串口日志能发送出去
             ESP.restart();  // 执行重启
+          } else {
+            Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
           }
         }
       }
