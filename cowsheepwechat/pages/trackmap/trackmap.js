@@ -1,4 +1,6 @@
 // trackmap.js - 轨迹地图页（接收设备详情传入的GPS数据，红点+连线）
+const { wgs84ToGcj02 } = require('../../utils/coord-transform.js')
+
 Page({
   data: {
     scale: 1,
@@ -68,28 +70,6 @@ Page({
       lng: (z * Math.cos(theta) + 0.0065).toFixed(6),
       lat: (z * Math.sin(theta) + 0.006).toFixed(6)
     }
-  },
-
-  wgs84ToGcj02(lng, lat) {
-    const a = 6378245.0
-    const ee = 0.00669342162296594323
-    const x = +lng - 105.0
-    const y = +lat - 35.0
-    let dLat = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
-    dLat += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0
-    dLat += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0
-    dLat += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0
-    let dLng = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
-    dLng += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0
-    dLng += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0
-    dLng += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0
-    const radLat = +lat / 180.0 * Math.PI
-    let magic = Math.sin(radLat)
-    magic = 1 - ee * magic * magic
-    const sqrtMagic = Math.sqrt(magic)
-    const dLatFinal = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI)
-    const dLngFinal = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI)
-    return { lat: +lat + dLatFinal, lng: +lng + dLngFinal }
   },
 
   // ==================== 加载地图 ====================
@@ -171,7 +151,7 @@ Page({
     trackData.forEach((item, index) => {
       const coord = this._extractCoord(item)
       if (!coord) return
-      const gcj = this.wgs84ToGcj02(coord.lng, coord.lat)
+      const gcj = wgs84ToGcj02(coord.lng, coord.lat)
       const labelText = (index + 1) + ''
       markers.push({
         id: index,

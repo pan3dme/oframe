@@ -14,12 +14,11 @@ Page({
     iotNotifyLine1: '',
     iotNotifyLine2: '',
     iotNotifyLine3: '',
-    // 统计告警（TODO: 后续从服务端拉取真实数据）
+    // 统计告警（动态计算）
     alerts: [
-      { icon: '🚨', text: '3只牛羊走出了安全范围', color: '#ff5252' },
-      { icon: '📶', text: '2只牛羊可能在无信号区域', color: '#ff9500' },
-      { icon: '⏱️', text: '2台中继设备1小时以上没有上报数据', color: '#ff9500' },
-      { icon: '🔋', text: '2台设备电量不足', color: '#ff9500' }
+      { icon: '📶', text: '暂无设备离线数据', color: '#999999' },
+      { icon: '🔋', text: '暂无电量数据', color: '#999999' },
+      { icon: '🐮', text: '暂无绑定数据', color: '#999999' }
     ]
   },
 
@@ -89,6 +88,7 @@ Page({
       if (key !== this._lastLotKey) {
         this._lastLotKey = key
         console.log('[首页] IoT 检测到新数据! rawTime:', latest.rawTime)
+        this._updateAlerts()
 
         const deviceId = latest.deviceId || '未知设备'
         const gps = latest.gps || ''
@@ -156,6 +156,7 @@ Page({
       }
       this.setData({ deviceUpdateTime })
       console.log('设备LOT最新数据缓存已就绪:', lotList.length + '条记录')
+      this._updateAlerts()
     }, force)
 
     // 加载设备电量表
@@ -163,6 +164,7 @@ Page({
       const batteryMap = data.batteryMap || {}
       const keys = Object.keys(batteryMap)
       console.log('设备电量表缓存已就绪:', keys.length + '条记录')
+      this._updateAlerts()
     }, force)
   },
 
@@ -183,7 +185,7 @@ Page({
     return days + '天前'
   },
 
-  // 计算已绑定设备的牛羊数量
+  // 计算已绑定设备的牛羊数量，同时刷新告警
   _calcBoundCount() {
     const app = getApp()
     const deviceCache = app.globalData.deviceCache
@@ -204,6 +206,67 @@ Page({
       }
     }
     this.setData({ boundCount })
+    this._updateAlerts()
+  },
+
+  // 动态更新告警：根据 LOT 数据（离线时间）和电量数据计算
+  _updateAlerts() {
+    const app = getApp()
+    const lotCache = app.globalData.deviceLotCache
+    const batteryCache = app.globalData.deviceBatteryCache
+    const livestockCache = app.globalData.livestockCache
+
+    const alerts = []
+
+    // 1. 设备离线告警：LOT 数据中超过 1 小时未上报的设备
+    if (lotCache && lotCache.lotList && lotCache.lotList.length > 0) {
+      const now = Date.now()
+      const ONE_HOUR = 3600000
+      // 取每个设备的最新一条 LOT 记录
+      const deviceLatest = {}
+      lotCache.lotList.forEach(item => {
+        const t = new Date(item.rawTime).getTime()
+        if (!isNaN(t) && (!deviceLatest[item.deviceId] || t > deviceLatest[item.deviceId])) {
+          deviceLatest[item.deviceId] = t
+        }
+      })
+      const offlineCount = Object.values(deviceLatest).filter(t => now - t > ONE_HOUR).length
+      if (offlineCount > 0) {
+        alerts.push({ icon: '📶', text: offlineCount + '台设备1小时以上未上报数据', color: '#ff5252' })
+      } else {
+        alerts.push({ icon: '📶', text: '所有设备在线', color: '#4CAF50' })
+      }
+    }
+
+    // 2. 设备电量告警：电量低于 20% 的设备
+    if (batteryCache && batteryCache.batteryMap) {
+      const batteryMap = batteryCache.batteryMap
+      const lowBatteryDevices = Object.entries(batteryMap).filter(([, val]) => {
+        const num = parseFloat(val)
+        return !isNaN(num) && num < 20
+      })
+      if (lowBatteryDevices.length > 0) {
+        alerts.push({ icon: '🔋', text: lowBatteryDevices.length + '台设备电量不足', color: '#ff9500' })
+      } else {
+        alerts.push({ icon: '🔋', text: '设备电量正常', color: '#4CAF50' })
+      }
+    }
+
+    // 3. 牛羊绑定状态
+    if (livestockCache && livestockCache.livestockList) {
+      const total = livestockCache.livestockList.length
+      const bound = this.data.boundCount
+      const unbound = total - bound
+      if (unbound > 0) {
+        alerts.push({ icon: '🐮', text: unbound + '头牛羊未绑定设备', color: '#ff9500' })
+      } else {
+        alerts.push({ icon: '🐮', text: '全部' + total + '头牛羊已绑定设备', color: '#4CAF50' })
+      }
+    }
+
+    if (alerts.length > 0) {
+      this.setData({ alerts })
+    }
   },
 
   // 点击飘窗通知 → 跳设备管理页
