@@ -1,0 +1,173 @@
+/**road-optimize.wxss**/
+page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+}
+
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ========== 顶部控制区 ========== */
+.control-bar {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 20rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.06);
+  z-index: 10;
+  gap: 16rpx;
+}
+
+.picker-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.road-picker {
+  width: 100%;
+}
+
+.picker-display {
+  display: flex;
+  align-items: center;
+  height: 68rpx;
+  background: #f8f9fa;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  color: #333;
+}
+
+.picker-display:active {
+  background: #eee;
+}
+
+.picker-dot {
+  font-size: 24rpx;
+  margin-right: 12rpx;
+}
+
+.dot-a {
+  color: #FF3B30;
+}
+
+.dot-b {
+  color: #007AFF;
+}
+
+.picker-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-arrow {
+  font-size: 20rpx;
+  color: #999;
+  margin-left: 8rpx;
+}
+
+/* ========== 合并按钮 ========== */
+.merge-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100rpx;
+  height: 100rpx;
+  background: linear-gradient(135deg, #07c160, #06ad56);
+  border-radius: 16rpx;
+  box-shadow: 0 4rpx 12rpx rgba(7, 193, 96, 0.35);
+  flex-shrink: 0;
+}
+
+.merge-btn:active {
+  transform: scale(0.94);
+  opacity: 0.85;
+}
+
+.merge-icon {
+  font-size: 32rpx;
+}
+
+.merge-label {
+  font-size: 22rpx;
+  color: #fff;
+  font-weight: bold;
+  margin-top: 4rpx;
+}
+
+/* ========== 加载提示 ========== */
+.loading-tip {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 28rpx;
+}
+
+.loading-spinner {
+  width: 48rpx;
+  height: 48rpx;
+  border: 4rpx solid #e0e0e0;
+  border-top-color: #07c160;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16rpx;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ========== 地图 ========== */
+.optimize-map {
+  flex: 1;
+  width: 100%;
+}
+
+/* ========== 图例 ========== */
+.legend-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40rpx;
+  padding: 16rpx 20rpx;
+  background: #fff;
+  border-top: 1rpx solid #eee;
+  box-shadow: 0 -2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  font-size: 24rpx;
+  color: #666;
+}
+
+.legend-line {
+  width: 48rpx;
+  height: 6rpx;
+  border-radius: 3rpx;
+}
+
+.legend-line-a {
+  background: #FF3B30;
+}
+
+.legend-line-b {
+  background: #007AFF;
+}

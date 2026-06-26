@@ -1,0 +1,63 @@
+<!--road-optimize.wxml - 道路优化-->
+<navigation-bar title="道路优化" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<view class="page-body">
+  <!-- 顶部控制区：两个下拉 + 合并按钮 -->
+  <view class="control-bar">
+    <view class="picker-group">
+      <picker class="road-picker" mode="selector" range="{{roadNamesA}}" value="{{roadIndexA}}" bindchange="onRoadAChange">
+        <view class="picker-display picker-a">
+          <text class="picker-dot dot-a">●</text>
+          <text class="picker-text">{{roadNamesA[roadIndexA]}}</text>
+          <text class="picker-arrow">▼</text>
+        </view>
+      </picker>
+
+      <picker class="road-picker" mode="selector" range="{{roadNamesB}}" value="{{roadIndexB}}" bindchange="onRoadBChange">
+        <view class="picker-display picker-b">
+          <text class="picker-dot dot-b">●</text>
+          <text class="picker-text">{{roadNamesB[roadIndexB]}}</text>
+          <text class="picker-arrow">▼</text>
+        </view>
+      </picker>
+    </view>
+
+    <view class="merge-btn" bindtap="onMerge">
+      <text class="merge-icon">🔗</text>
+      <text class="merge-label">合并</text>
+    </view>
+  </view>
+
+  <!-- 加载提示 -->
+  <view wx:if="{{loading}}" class="loading-tip">
+    <view class="loading-spinner"></view>
+    <text>加载道路数据中...</text>
+  </view>
+
+  <!-- 卫星地图 -->
+  <map
+    wx:else
+    id="optimizeMap"
+    class="optimize-map"
+    latitude="{{mapCenter.lat}}"
+    longitude="{{mapCenter.lng}}"
+    scale="{{scale}}"
+    polyline="{{polylines}}"
+    show-location="{{true}}"
+    enable-satellite="{{true}}"
+    bindregionchange="onRegionChange"
+  >
+  </map>
+
+  <!-- 图例 -->
+  <view class="legend-bar" wx:if="{{!loading}}">
+    <view class="legend-item">
+      <view class="legend-line legend-line-a"></view>
+      <text>道路A</text>
+    </view>
+    <view class="legend-item">
+      <view class="legend-line legend-line-b"></view>
+      <text>道路B</text>
+    </view>
+  </view>
+</view>
