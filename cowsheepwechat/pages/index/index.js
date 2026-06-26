@@ -285,6 +285,11 @@ Page({
     wx.navigateTo({ url: '/pages/livestock/livestock' })
   },
 
+  // 跳转到蓝牙连接
+  goToBluetooth() {
+    wx.navigateTo({ url: '/pages/bluetooth/bluetooth' })
+  },
+
   // 跳转到设备管理页面
   goToDevice() {
     wx.navigateTo({ url: '/pages/device/device' })

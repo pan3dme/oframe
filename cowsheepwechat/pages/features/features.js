@@ -45,6 +45,10 @@ Page({
         id: 8,
         label: '连接蓝牙'
       },
+      {
+        id: 9,
+        label: '电量分析'
+      },
     ]
   },
 
@@ -182,6 +186,9 @@ Page({
       wx.navigateTo({
         url: '/pages/bluetooth/bluetooth'
       })
+    } else if (id === 9) {
+      // 电量分析
+      wx.navigateTo({ url: '/pages/battery-analysis/battery-analysis' })
     }
   },
 

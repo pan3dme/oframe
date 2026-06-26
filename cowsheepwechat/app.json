@@ -15,7 +15,8 @@
     "pages/road/record/record",
     "pages/places/places",
     "pages/places/detail/detail",
-    "pages/places/picker/picker"
+    "pages/places/picker/picker",
+    "pages/battery-analysis/battery-analysis"
   ],
   "window": {
     "navigationBarTextStyle": "black",

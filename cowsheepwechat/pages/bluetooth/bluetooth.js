@@ -105,7 +105,7 @@ Page({
       console.log('开发工具环境，跳过蓝牙自动连接')
       return
     }
-    // 打开小程序自动连接蓝牙
+    // 打开小程序自动连接蓝牙（走完整扫描流程）
     this.connectBluetooth()
   },
 
@@ -220,6 +220,8 @@ Page({
           connectedDeviceName: devicename,
           devices: []
         })
+        // 缓存最后连接设备ID，供首页直连使用
+        that._saveLastDevice(deviceid, devicename)
         wx.showToast({ title: '蓝牙已连接', icon: 'success' })
         that.getBLEDeviceServices(deviceid)
       },
@@ -229,6 +231,54 @@ Page({
         wx.showToast({ title: '设备连接失败', icon: 'error' })
       }
     })
+  },
+
+  // 从首页缓存设备ID直连（跳过扫描）
+  _reconnectDevice(deviceId) {
+    const that = this
+    wx.showLoading({ title: '正在重连蓝牙...' })
+    wx.openBluetoothAdapter({
+      success() {
+        wx.createBLEConnection({
+          deviceId: deviceId,
+          success() {
+            wx.hideLoading()
+            that.setData({
+              bluetoothConnected: true,
+              connectedDeviceName: '已连接设备',
+              devices: []
+            })
+            that._saveLastDevice(deviceId, '已连接设备')
+            wx.showToast({ title: '蓝牙已连接', icon: 'success' })
+            that.getBLEDeviceServices(deviceId)
+          },
+          fail(err) {
+            wx.hideLoading()
+            console.error('缓存设备直连失败:', err)
+            wx.showModal({
+              title: '连接失败',
+              content: '缓存设备无法连接，是否重新扫描？',
+              success: (res) => {
+                if (res.confirm) that.connectBluetooth()
+              }
+            })
+          }
+        })
+      },
+      fail() {
+        wx.hideLoading()
+        wx.showToast({ title: '蓝牙适配器启动失败', icon: 'error' })
+      }
+    })
+  },
+
+  // 缓存最后连接设备信息到本地
+  _saveLastDevice(deviceId, deviceName) {
+    try {
+      wx.setStorageSync('bt_last_device', { deviceId, deviceName, time: Date.now() })
+    } catch (e) {
+      console.warn('缓存蓝牙设备ID失败:', e)
+    }
   },
 
   // 获取设备服务
