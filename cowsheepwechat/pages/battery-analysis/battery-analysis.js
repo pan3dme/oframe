@@ -8,6 +8,7 @@ Page({
     selectedDeviceIndex: 0,
     selectedDeviceId: '',
     records: [],
+    chartRecords: [],
     loading: false,
     hasSearched: false
   },
@@ -61,7 +62,20 @@ Page({
       success: (res) => {
         console.log('[电量分析] 返回:', JSON.stringify(res.data))
         const records = that._parseBatteryRecords(res.data, deviceId)
-        that.setData({ records, hasSearched: true, loading: false })
+        // 过滤2025年及以后的电量记录用于图表
+        const chartRecords = records
+          .filter(r => {
+            const y = new Date(r.rawTime).getFullYear()
+            return y >= 2025 && r.msgType === '3' && r.batteryVal !== '-' && !isNaN(Number(r.batteryVal))
+          })
+          .reverse() // 图表按时间升序
+        that.setData({ records, chartRecords, hasSearched: true, loading: false })
+        if (chartRecords.length > 0) {
+          // 延迟等待 Canvas 渲染完成
+          setTimeout(function () {
+            that._drawChart()
+          }, 300)
+        }
       },
       fail: (err) => {
         console.error('[电量分析] 获取失败:', err)
@@ -128,5 +142,124 @@ Page({
       return tb - ta
     })
     return records
+  },
+
+  // 绘制电量趋势图
+  _drawChart: function() {
+    const that = this
+    const query = wx.createSelectorQuery()
+    query.select('#batteryCanvas')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        if (!res || !res[0] || !res[0].node) return
+        const canvas = res[0].node
+        const ctx = canvas.getContext('2d')
+        const dpr = wx.getSystemInfoSync().pixelRatio
+        const width = res[0].width
+        const height = res[0].height
+        canvas.width = width * dpr
+        canvas.height = height * dpr
+        ctx.scale(dpr, dpr)
+
+        const records = that.data.chartRecords
+        if (records.length === 0) return
+
+        const PAD_LEFT = 60
+        const PAD_RIGHT = 20
+        const PAD_TOP = 20
+        const PAD_BOTTOM = 36
+        const plotW = width - PAD_LEFT - PAD_RIGHT
+        const plotH = height - PAD_TOP - PAD_BOTTOM
+
+        const values = records.map(r => Number(r.batteryVal))
+        const minVal = 0
+        const maxVal = Math.min(1.0, Math.ceil(Math.max(...values) * 10) / 10)
+        const valRange = maxVal - minVal || 1
+
+        // 坐标转换
+        const xFor = (i) => PAD_LEFT + (i / (records.length - 1 || 1)) * plotW
+        const yFor = (v) => PAD_TOP + plotH - ((v - minVal) / valRange) * plotH
+
+        // 背景
+        ctx.clearRect(0, 0, width, height)
+
+        // 网格线
+        ctx.strokeStyle = '#f0f0f0'
+        ctx.lineWidth = 0.5
+        const ySteps = 5
+        for (let i = 0; i <= ySteps; i++) {
+          const y = PAD_TOP + (plotH / ySteps) * i
+          ctx.beginPath()
+          ctx.moveTo(PAD_LEFT, y)
+          ctx.lineTo(width - PAD_RIGHT, y)
+          ctx.stroke()
+        }
+
+        // 渐变填充
+        const gradient = ctx.createLinearGradient(0, PAD_TOP, 0, PAD_TOP + plotH)
+        gradient.addColorStop(0, 'rgba(76, 175, 80, 0.30)')
+        gradient.addColorStop(1, 'rgba(76, 175, 80, 0.02)')
+
+        // 填充区域
+        ctx.beginPath()
+        ctx.moveTo(xFor(0), PAD_TOP + plotH)
+        for (let i = 0; i < records.length; i++) {
+          ctx.lineTo(xFor(i), yFor(values[i]))
+        }
+        ctx.lineTo(xFor(records.length - 1), PAD_TOP + plotH)
+        ctx.closePath()
+        ctx.fillStyle = gradient
+        ctx.fill()
+
+        // 折线
+        ctx.beginPath()
+        ctx.strokeStyle = '#4CAF50'
+        ctx.lineWidth = 2.5
+        ctx.lineJoin = 'round'
+        ctx.lineCap = 'round'
+        for (let i = 0; i < records.length; i++) {
+          if (i === 0) ctx.moveTo(xFor(i), yFor(values[i]))
+          else ctx.lineTo(xFor(i), yFor(values[i]))
+        }
+        ctx.stroke()
+
+        // 数据点
+        for (let i = 0; i < records.length; i++) {
+          const cx = xFor(i), cy = yFor(values[i])
+          ctx.beginPath()
+          ctx.arc(cx, cy, 4, 0, Math.PI * 2)
+          ctx.fillStyle = '#fff'
+          ctx.fill()
+          ctx.strokeStyle = '#4CAF50'
+          ctx.lineWidth = 2
+          ctx.stroke()
+        }
+
+        // Y轴标签
+        ctx.fillStyle = '#999'
+        ctx.font = '10px sans-serif'
+        ctx.textAlign = 'right'
+        for (let i = 0; i <= ySteps; i++) {
+          const val = maxVal - (valRange / ySteps) * i
+          const y = PAD_TOP + (plotH / ySteps) * i
+          ctx.fillText((val * 100).toFixed(0) + '%', PAD_LEFT - 6, y + 3)
+        }
+
+        // X轴标签（MM-DD）
+        ctx.textAlign = 'center'
+        const maxLabels = Math.min(records.length, 6)
+        const step = Math.max(1, Math.floor((records.length - 1) / (maxLabels - 1)))
+        for (let i = 0; i < records.length; i += step) {
+          const t = records[i].rawTime
+          const d = new Date(t)
+          let label = ''
+          if (!isNaN(d.getTime())) {
+            const m = String(d.getMonth() + 1).padStart(2, '0')
+            const day = String(d.getDate()).padStart(2, '0')
+            label = m + '-' + day
+          }
+          ctx.fillText(label, xFor(i), PAD_TOP + plotH + 16)
+        }
+      })
   }
 })

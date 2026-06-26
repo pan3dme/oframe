@@ -5,13 +5,24 @@
   <!-- 设备选择区 -->
   <view class="select-card">
     <view class="select-label">选择设备</view>
-    <picker mode="selector" range="{{deviceIdOptions}}" value="{{selectedDeviceIndex}}" bindchange="onDevicePickerChange">
-      <view class="select-picker">
-        <text>{{selectedDeviceId || '请选择设备'}}</text>
-        <text class="picker-arrow">▼</text>
-      </view>
-    </picker>
-    <button class="fetch-btn" bindtap="onFetchLogs" loading="{{loading}}">查询LOG记录</button>
+    <view class="select-row">
+      <picker mode="selector" range="{{deviceIdOptions}}" value="{{selectedDeviceIndex}}" bindchange="onDevicePickerChange">
+        <view class="select-picker">
+          <text>{{selectedDeviceId || '请选择设备'}}</text>
+          <text class="picker-arrow">▼</text>
+        </view>
+      </picker>
+      <button class="fetch-btn" bindtap="onFetchLogs" loading="{{loading}}">查询</button>
+    </view>
+  </view>
+
+  <!-- 电量趋势图表 -->
+  <view class="chart-card" wx:if="{{chartRecords.length > 0}}">
+    <view class="chart-title">📊 电量趋势 ({{chartRecords.length}}条记录)</view>
+    <canvas id="batteryCanvas" type="2d" class="chart-canvas"></canvas>
+  </view>
+  <view class="chart-card chart-empty-card" wx:elif="{{hasSearched && chartRecords.length === 0}}">
+    <view class="chart-empty-text">暂无2025年后的电量数据</view>
   </view>
 
   <!-- 结果表格 -->
