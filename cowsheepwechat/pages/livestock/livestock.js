@@ -74,7 +74,7 @@ Page({
           })
         }
 
-        // 给每条牛羊附上连接设备信息 + 年龄
+        // 给每条牛羊附上连接设备信息 + 年龄 + 随机浅色背景
         const enrichedList = cachedData.livestockList.map(item => ({
           ...item,
           connectedDevice: deviceBindMap[item.cowsheepId] || '',

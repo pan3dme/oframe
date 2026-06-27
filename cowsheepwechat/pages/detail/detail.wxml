@@ -1,7 +1,9 @@
 <!--detail.wxml-->
-<navigation-bar title="{{name}}的详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="{{name}}的详情" back="{{true}}" color="white" background="#1b5e20"></navigation-bar>
 <canvas type="2d" id="compressCanvas" style="width:512px;height:512px;position:fixed;left:-9999px"></canvas>
 <scroll-view class="detail-scroll" scroll-y>
+  <!-- 顶部渐变背景 -->
+  <view class="detail-header-bg"></view>
   <!-- 头部：左图右属性 -->
   <view class="detail-header">
     <!-- 左侧头像 -->
@@ -52,14 +54,14 @@
     </view>
   </view>
 
-  <!-- 上传图片/视频按钮 -->
-  <view class="fetch-media-btn upload-media-btn" bindtap="onUploadPhoto">
-    <text>📤 上传图片或视频</text>
-  </view>
-
-  <!-- 获取更多图像按钮 -->
-  <view class="fetch-media-btn" bindtap="fetchMedia">
-    <text>{{mediaLoading ? '加载中...' : '📷 获取更多详细图像'}}</text>
+  <!-- 上传图片/视频 + 获取更多图像 并排按钮 -->
+  <view class="fetch-media-row">
+    <view class="fetch-media-btn upload-media-btn" bindtap="onUploadPhoto">
+      <text>📤 上传图片或视频</text>
+    </view>
+    <view class="fetch-media-btn" bindtap="fetchMedia">
+      <text>{{mediaLoading ? '加载中...' : '📷 获取更多详细图像'}}</text>
+    </view>
   </view>
 
   <!-- 媒体展示区域 -->
