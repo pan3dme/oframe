@@ -112,14 +112,50 @@ page {
   min-width: 0;
 }
 
+.road-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 6rpx;
+}
+
 .road-name {
   font-size: 30rpx;
   font-weight: 700;
   color: #333;
-  margin-bottom: 6rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 道路等级徽章 */
+.road-level {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  line-height: 1.4;
+}
+
+.road-level-1 {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1rpx solid #a5d6a7;
+}
+
+.road-level-2 {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1rpx solid #ffcc80;
+}
+
+.road-level-3 {
+  background: #fce4ec;
+  color: #c62828;
+  border: 1rpx solid #ef9a9a;
 }
 
 .road-id {
@@ -245,20 +281,28 @@ page {
 
 .modal-picker {
   width: 100%;
+}
+
+.modal-picker-value {
+  width: 100%;
   height: 72rpx;
+  line-height: 72rpx;
   border: 1rpx solid #e0e0e0;
   border-radius: 10rpx;
   padding: 0 16rpx;
+  font-size: 28rpx;
   box-sizing: border-box;
+  color: #333;
+  background: #fff;
   display: flex;
   align-items: center;
-  background: #fff;
+  justify-content: space-between;
 }
 
-.modal-picker-val {
-  font-size: 28rpx;
-  color: #333;
-  line-height: 72rpx;
+.modal-picker-value::after {
+  content: '▼';
+  font-size: 20rpx;
+  color: #999;
 }
 
 .modal-textarea {

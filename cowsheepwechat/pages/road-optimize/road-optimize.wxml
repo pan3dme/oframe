@@ -59,5 +59,17 @@
       <view class="legend-line legend-line-b"></view>
       <text>道路B</text>
     </view>
+    <view class="legend-item" wx:if="{{merged}}">
+      <view class="legend-line legend-line-m"></view>
+      <text>合并路 ({{mergedPointCount}}点)</text>
+    </view>
+  </view>
+
+  <!-- 提交按钮 -->
+  <view class="submit-bar" wx:if="{{merged}}">
+    <view class="submit-btn" bindtap="onSubmitMerged">
+      <text class="submit-icon">📤</text>
+      <text>提交合并道路到服务器</text>
+    </view>
   </view>
 </view>

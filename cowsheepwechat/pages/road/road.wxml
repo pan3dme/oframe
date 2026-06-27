@@ -37,7 +37,10 @@
     >
       <text class="item-index">{{index + 1}}</text>
       <view class="road-info">
-        <view class="road-name">{{item.name || '未命名道路'}}</view>
+        <view class="road-name-row">
+          <text class="road-name">{{item.name || '未命名道路'}}</text>
+          <view class="road-level road-level-{{item.level}}">Lv.{{item.level || '1'}}</view>
+        </view>
         <view class="road-id">ID: {{item.roadId}}</view>
         <view wx:if="{{item.desc}}" class="road-desc">{{item.desc}}</view>
         <view wx:if="{{item.points}}" class="road-points">路径点: {{item.points}}</view>
@@ -73,10 +76,10 @@
       class="modal-picker"
       mode="selector"
       range="{{levelOptions}}"
-      value="{{levelIndex}}"
+      value="{{formRoadLevelIndex}}"
       bindchange="onLevelChange"
     >
-      <view class="modal-picker-val">{{formRoadLevel || '1'}}</view>
+      <view class="modal-picker-value">{{formRoadLevel || '请选择道路等级'}}</view>
     </picker>
   </view>
 

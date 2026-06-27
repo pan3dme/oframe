@@ -16,8 +16,8 @@ Page({
     formRoadPointsDisplay: '',
     pathPointCount: 0,
     formRoadLevel: '1',
+    formRoadLevelIndex: 0,
     levelOptions: ['1', '2', '3'],
-    levelIndex: 0,
     isAdmin: false
   },
 
@@ -86,7 +86,7 @@ Page({
       formRoadPointsDisplay: '',
       pathPointCount: 0,
       formRoadLevel: '1',
-      levelIndex: 0
+      formRoadLevelIndex: 0
     })
   },
 
@@ -103,10 +103,10 @@ Page({
   },
 
   onLevelChange(e) {
-    const index = e.detail.value
+    const idx = parseInt(e.detail.value)
     this.setData({
-      levelIndex: index,
-      formRoadLevel: this.data.levelOptions[index]
+      formRoadLevelIndex: idx,
+      formRoadLevel: this.data.levelOptions[idx]
     })
   },
 
@@ -180,8 +180,8 @@ Page({
     const pts = parts.length >= 2 ? parts.length / 2 : 0
     const display = rawPoints.length > 20 ? rawPoints.substring(0, 20) + '...' : rawPoints
     const levelStr = String(item.level || '1')
-    const levelIndex = this.data.levelOptions.indexOf(levelStr)
-    const lvlIdx = levelIndex >= 0 ? levelIndex : 0
+    const levelIdx = ['1', '2', '3'].indexOf(levelStr)
+    const formRoadLevelIndex = levelIdx >= 0 ? levelIdx : 0
 
     this.setData({
       showModal: true,
@@ -192,7 +192,7 @@ Page({
       formRoadPointsDisplay: display,
       pathPointCount: pts,
       formRoadLevel: levelStr,
-      levelIndex: lvlIdx
+      formRoadLevelIndex
     })
   },
 
