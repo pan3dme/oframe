@@ -55,40 +55,89 @@ Page({
   },
 
   loadDeviceInfo(deviceId) {
-    dataCache.getDeviceList((deviceData) => {
-      if (!deviceData || !deviceData.recordList) {
-        wx.showToast({ title: '数据加载失败', icon: 'none' })
-        return
-      }
-      const recordList = deviceData.recordList || []
-      const item = recordList.find(v => v.deviceId === deviceId)
+    let deviceItem = null
+    let lotDataRes = null
+    let batteryDataRes = null
+    let done = 0
+    const merge = () => {
+      done++
+      if (done < 3) return
 
-      if (item) {
-        // 从LOT表取最新lorastr和时间
-        dataCache.getDeviceLotRefresh((lotData) => {
-          let lotRec = null
-          if (lotData && lotData.lotList) {
-            lotRec = lotData.lotList.find(v => v.deviceId === deviceId)
-          }
-          // 用LOT数据覆盖设备表的lorastr和时间
-          const enriched = { ...item }
-          // 保存设备表原始时间作为"上次充电时间"
-          const devDate = item.date && item.date !== '-' ? item.date : ''
-          const devTime = item.time_part && item.time_part !== '-' ? item.time_part : ''
-          enriched.chargeTime = devDate || devTime ? (devDate + ' ' + devTime).trim() : ''
-          if (lotRec) {
-            enriched.lorastr = lotRec.lorastr || item.lorastr
-            enriched.date = lotRec.date || item.date
-            enriched.time_part = lotRec.time_part || item.time_part
-            enriched.rawTime = lotRec.rawTime || item.rawTime
-          }
-          this._loadBindName(enriched)
-        })
-      } else {
+      if (!deviceItem) {
         wx.showToast({ title: '未找到设备', icon: 'none' })
         setTimeout(() => wx.navigateBack(), 1500)
+        return
       }
+
+      // 从LOT表取最新记录
+      let lotRec = null
+      if (lotDataRes && lotDataRes.lotList) {
+        lotRec = lotDataRes.lotList.find(v => v.deviceId === deviceId)
+      }
+
+      // 从电量表取最新记录
+      let batInfo = null
+      if (batteryDataRes && batteryDataRes.batteryMap) {
+        batInfo = batteryDataRes.batteryMap[deviceId]
+      }
+
+      const enriched = { ...deviceItem }
+
+      // 保存设备表原始时间作为"上次充电时间"
+      const devDate = deviceItem.date && deviceItem.date !== '-' ? deviceItem.date : ''
+      const devTime = deviceItem.time_part && deviceItem.time_part !== '-' ? deviceItem.time_part : ''
+      enriched.chargeTime = devDate || devTime ? (devDate + ' ' + devTime).trim() : ''
+
+      // 对比设备表、LOT表、电量表三者时间，取最新的
+      let bestRawTime = deviceItem.rawTime
+      let bestDate = deviceItem.date
+      let bestTimePart = deviceItem.time_part
+      let bestLorastr = deviceItem.lorastr
+
+      const deviceTime = new Date(deviceItem.rawTime || '').getTime()
+      const lotTime = (lotRec && lotRec.rawTime) ? new Date(lotRec.rawTime).getTime() : NaN
+      const batTime = (batInfo && batInfo.rawTime) ? new Date(batInfo.rawTime).getTime() : NaN
+
+      let newestTime = isNaN(deviceTime) ? 0 : deviceTime
+
+      if (lotRec) {
+        bestLorastr = lotRec.lorastr || deviceItem.lorastr
+      }
+      if (!isNaN(lotTime) && lotTime > newestTime) {
+        newestTime = lotTime
+        bestRawTime = lotRec.rawTime
+        bestDate = lotRec.date
+        bestTimePart = lotRec.time_part
+        bestLorastr = lotRec.lorastr || bestLorastr
+      }
+      if (!isNaN(batTime) && batTime > newestTime) {
+        bestRawTime = batInfo.rawTime
+        bestDate = batInfo.date
+        bestTimePart = batInfo.time_part
+      }
+
+      enriched.lorastr = bestLorastr
+      enriched.date = bestDate
+      enriched.time_part = bestTimePart
+      enriched.rawTime = bestRawTime
+
+      // 电量显示
+      if (batInfo) {
+        enriched.battery = batInfo.battery
+      }
+
+      this._loadBindName(enriched)
+    }
+
+    // 并行拉取三表数据
+    dataCache.getDeviceList((deviceData) => {
+      if (deviceData && deviceData.recordList) {
+        deviceItem = deviceData.recordList.find(v => v.deviceId === deviceId) || null
+      }
+      merge()
     })
+    dataCache.getDeviceLotRefresh((data) => { lotDataRes = data; merge() })
+    dataCache.getDeviceBatteryAll((data) => { batteryDataRes = data; merge() })
   },
 
   _loadBindName(item) {

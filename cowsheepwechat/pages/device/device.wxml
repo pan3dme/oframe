@@ -17,8 +17,8 @@
       <view class="item-info">
         <view class="item-line-one">
           <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}{{item.battery ? ' 🔋' + item.battery : ''}}</text>
-          <text class="item-time-compact" wx:if="{{item.relativeTime}}">{{item.relativeTime}}</text>
-          <text class="item-time-compact" wx:else>{{item.date && item.date !== '-' ? item.date + ' ' + item.time_part : '暂无数据'}}</text>
+          <text class="item-time-compact" wx:if="{{item.relativeTime}}" style="color:{{item.timeColor}};background:{{item.timeBgColor}}">{{item.relativeTime}}</text>
+          <text class="item-time-compact" wx:else style="color:#999;background:#f5f5f5">{{item.date && item.date !== '-' ? item.date + ' ' + item.time_part : '暂无数据'}}</text>
         </view>
       </view>
     </view>
@@ -39,7 +39,7 @@
         <view class="item-id" wx:else style="color:#ccc;">未绑定牛羊</view>
         <view class="item-meta">
           <text class="item-time">{{item.date && item.date !== '-' ? item.date + ' ' + item.time_part : ''}}</text>
-          <text class="item-relative" wx:if="{{item.relativeTime}}">（{{item.relativeTime}}）</text>
+          <text class="item-relative" wx:if="{{item.relativeTime}}" style="color:{{item.timeColor}}">（{{item.relativeTime}}）</text>
         </view>
       </view>
     </view>

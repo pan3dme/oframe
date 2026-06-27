@@ -66,17 +66,44 @@ Page({
 
       const deviceList = (deviceData.recordList || []).map(item => {
         const lotRec = lotMap[item.deviceId]
-        const displayTime = lotRec ? lotRec.rawTime : item.rawTime
-        const displayDate = lotRec ? lotRec.date : item.date
-        const displayTimePart = lotRec ? lotRec.time_part : item.time_part
+        const batInfo = batteryMap[item.deviceId]
+
+        // 对比设备表、LOT表、电量表三者的时间，取最新的显示
+        let displayTime = item.rawTime
+        let displayDate = item.date
+        let displayTimePart = item.time_part
+
+        const deviceTime = new Date(item.rawTime || '').getTime()
+        const lotTime = (lotRec && lotRec.rawTime) ? new Date(lotRec.rawTime).getTime() : NaN
+        const batTime = (batInfo && batInfo.rawTime) ? new Date(batInfo.rawTime).getTime() : NaN
+
+        let newestTime = isNaN(deviceTime) ? 0 : deviceTime
+
+        if (!isNaN(lotTime) && lotTime > newestTime) {
+          newestTime = lotTime
+          displayTime = lotRec.rawTime
+          displayDate = lotRec.date
+          displayTimePart = lotRec.time_part
+        }
+        if (!isNaN(batTime) && batTime > newestTime) {
+          newestTime = batTime
+          displayTime = batInfo.rawTime
+          displayDate = batInfo.date
+          displayTimePart = batInfo.time_part
+        }
+
+        const timeInfo = this._calcRelativeTime(displayTime)
+
         return {
           ...item,
           date: displayDate,
           time_part: displayTimePart,
           rawTime: displayTime,
           bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
-          relativeTime: this._calcRelativeTime(displayTime),
-          battery: batteryMap[item.deviceId] || ''
+          relativeTime: timeInfo.text,
+          timeColor: timeInfo.color,
+          timeBgColor: timeInfo.bgColor,
+          battery: (batInfo && batInfo.battery) || ''
         }
       })
 
@@ -104,23 +131,45 @@ Page({
     })
   },
 
-  // 计算相对时间：返回 "1天前" "3小时前" "刚刚" 等
+  // 计算相对时间：返回 { text, color, bgColor }
+  // 超过1天→灰色，超过10分钟→红色，其他→默认蓝色
   _calcRelativeTime(rawTime) {
-    if (!rawTime || rawTime === '-') return ''
+    const empty = { text: '', color: '', bgColor: '' }
+    if (!rawTime || rawTime === '-') return empty
     const t = new Date(rawTime).getTime()
-    if (isNaN(t)) return ''
+    if (isNaN(t)) return empty
     const now = Date.now()
     const diff = now - t
     const sec = Math.floor(diff / 1000)
     const min = Math.floor(sec / 60)
     const hour = Math.floor(min / 60)
     const day = Math.floor(hour / 24)
-    if (sec < 60) return sec + '秒前'
-    if (min < 60) return min + '分钟前'
-    if (hour < 24) return hour + '小时前'
-    if (day < 30) return day + '天前'
-    if (day < 365) return Math.floor(day / 30) + '个月前'
-    return Math.floor(day / 365) + '年前'
+
+    let text = ''
+    if (sec < 60) text = sec + '秒前'
+    else if (min < 60) text = min + '分钟前'
+    else if (hour < 24) text = hour + '小时前'
+    else if (day < 30) text = day + '天前'
+    else if (day < 365) text = Math.floor(day / 30) + '个月前'
+    else text = Math.floor(day / 365) + '年前'
+
+    // 颜色规则：超过1天灰色，超过5分钟红色，小于1分钟绿色，否则默认蓝色
+    let color, bgColor
+    if (day >= 1) {
+      color = '#999'
+      bgColor = '#f5f5f5'
+    } else if (min > 5) {
+      color = '#f44336'
+      bgColor = '#ffebee'
+    } else if (sec < 60) {
+      color = '#4caf50'
+      bgColor = '#e8f5e9'
+    } else {
+      color = '#1565c0'
+      bgColor = '#e3f2fd'
+    }
+
+    return { text, color, bgColor }
   },
 
   // ========== 新增设备 ==========

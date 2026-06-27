@@ -310,8 +310,15 @@ function _parseBatteryRecords(data) {
     }
     const deviceId = attr.deviceId || attr.deviceid || ''
     const battery = attr.battery || ''
+    const rawTime = attr.time || record.time || '-'
     if (deviceId && battery) {
-      map[deviceId] = battery
+      // 保留每台设备最新的电量记录（含时间）
+      const existing = map[deviceId]
+      const newTime = new Date(rawTime).getTime()
+      if (!existing || (newTime > new Date(existing.rawTime || '').getTime())) {
+        const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
+        map[deviceId] = { battery, rawTime, date: date || '-', time_part: time_part || '' }
+      }
     }
   })
   return map
