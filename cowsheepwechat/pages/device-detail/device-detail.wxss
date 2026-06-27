@@ -12,6 +12,7 @@ page {
 
 /* ========== 设备头部卡片：左图片 + 右基本信息 ========== */
 .detail-header {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -66,16 +67,11 @@ page {
   min-width: 0;
 }
 .header-title {
-  font-size: 38rpx;
-  font-weight: 700;
+  font-size: 30rpx;
+  font-weight: 600;
   color: #fff;
   word-break: break-all;
-  line-height: 1.4;
-  margin-bottom: 2rpx;
-}
-.header-id {
-  font-size: 26rpx;
-  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.5;
   margin-bottom: 14rpx;
 }
 
@@ -106,42 +102,30 @@ page {
   font-weight: 500;
 }
 
-/* ========== 操作按钮区 ========== */
-.action-bar {
+/* ========== 右上角操作图标 ========== */
+.header-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
-  margin: 24rpx 24rpx;
-  gap: 20rpx;
+  gap: 4rpx;
+  padding: 16rpx 16rpx 0 0;
 }
-.action-btn {
-  flex: 1;
+.header-icon-btn {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 88rpx;
-  border-radius: 16rpx;
-  font-size: 28rpx;
-  font-weight: 500;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
   transition: all 0.2s;
 }
-.action-btn:active {
-  transform: scale(0.97);
-  opacity: 0.9;
+.header-icon-btn:active {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.4);
 }
-.action-btn-edit {
-  background: #fff;
-  color: #1565c0;
-  border: 2rpx solid #1565c0;
-}
-.action-btn-bind {
-  background: linear-gradient(135deg, #07c160, #06ad56);
-  color: #fff;
-}
-.action-icon {
-  font-size: 32rpx;
-  margin-right: 8rpx;
-}
-.action-text {
+.header-icon {
   font-size: 28rpx;
 }
 

@@ -15,8 +15,7 @@
 
       <!-- 右边：基本信息 -->
       <view class="header-info">
-        <text class="header-title">{{deviceInfo.rename || deviceInfo.deviceId}}</text>
-        <text class="header-id">ID: {{deviceInfo.deviceId}}</text>
+        <text class="header-title">id: {{deviceInfo.deviceId}}<text wx:if="{{deviceInfo.rename}}">({{deviceInfo.rename}})</text></text>
         <view class="header-info-grid">
           <view class="hi-item">
             <text class="hi-label">设备编码</text>
@@ -36,17 +35,15 @@
           </view>
         </view>
       </view>
-    </view>
 
-    <!-- 操作按钮区 -->
-    <view class="action-bar" wx:if="{{isAdmin}}">
-      <view class="action-btn action-btn-edit" bindtap="onDetailEdit">
-        <text class="action-icon">✏️</text>
-        <text class="action-text">编辑设备</text>
-      </view>
-      <view class="action-btn action-btn-bind" bindtap="onDetailBind">
-        <text class="action-icon">🔗</text>
-        <text class="action-text">连接牛羊</text>
+      <!-- 右上角操作图标 -->
+      <view class="header-actions" wx:if="{{isAdmin}}">
+        <view class="header-icon-btn" bindtap="onDetailEdit">
+          <text class="header-icon">✏️</text>
+        </view>
+        <view class="header-icon-btn" bindtap="onDetailBind">
+          <text class="header-icon">🔗</text>
+        </view>
       </view>
     </view>
 
