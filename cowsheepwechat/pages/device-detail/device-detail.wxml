@@ -32,6 +32,9 @@
           <view class="hi-item">
             <text class="hi-label">上次换电</text>
             <text class="hi-value">{{deviceInfo.chargeTime || '-'}}</text>
+            <view class="battery-link" bindtap="onBatteryAnalysisTap">
+              <text class="battery-icon">🔋</text>
+            </view>
           </view>
         </view>
       </view>
@@ -57,17 +60,13 @@
       <view class="track-date-bar">{{trackDate}} 轨迹记录 ({{recordList.length}}条)</view>
       <view class="record-list">
         <view class="record-item" wx:for="{{recordList}}" wx:key="rawTime" style="background-color:{{item.bgColor}}">
-          <view class="rec-row">
-            <text class="rec-label">upDateDevice</text>
-            <text class="rec-val rec-val-id">{{item.upDateDevice}}</text>
+          <view class="rec-row rec-row-time">
+            <text class="rec-val rec-val-time">{{item.date}} {{item.time_part}}</text>
+            <text class="rec-val rec-val-update" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}</text>
           </view>
-          <view class="rec-row">
-            <text class="rec-label">lorastr</text>
+          <view class="rec-row rec-row-content">
+            <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType}}</text>
             <text class="rec-val rec-val-lora">{{item.lorastr}}</text>
-          </view>
-          <view class="rec-row">
-            <text class="rec-label">time</text>
-            <text class="rec-val">{{item.date}} {{item.time_part}}</text>
           </view>
         </view>
       </view>

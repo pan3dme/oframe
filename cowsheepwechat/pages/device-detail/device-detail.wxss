@@ -97,6 +97,26 @@ page {
   word-break: break-all;
   line-height: 1.5;
 }
+.battery-link {
+  flex-shrink: 0;
+  margin-left: 8rpx;
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.2s;
+}
+.battery-link:active {
+  transform: scale(0.85);
+  background: rgba(255, 255, 255, 0.4);
+}
+.battery-icon {
+  font-size: 26rpx;
+  line-height: 1;
+}
 .hi-value-highlight {
   color: #a7f0ba;
   font-weight: 500;
@@ -339,34 +359,89 @@ page {
 
 .rec-row {
   display: flex;
-  align-items: flex-start;
-  padding: 4rpx 0;
+  align-items: center;
+  padding: 6rpx 0;
 }
 
-.rec-label {
-  width: 160rpx;
-  font-size: 28rpx;
-  color: #666;
+.rec-row-time {
+  padding-bottom: 0;
+}
+
+.rec-row-content {
+}
+
+.rec-icon {
+  width: 48rpx;
+  font-size: 32rpx;
   flex-shrink: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: center;
+  line-height: 1;
 }
 
 .rec-val {
   flex: 1;
-  font-size: 30rpx;
+  font-size: 28rpx;
   color: #333;
   word-break: break-all;
 }
 
-.rec-val-id {
-  color: #e74c3c;
-  font-weight: 700;
+.rec-val-time {
+  color: #555;
+  font-weight: 500;
+}
+
+.rec-val-update {
+  color: #888;
+  font-size: 24rpx;
+  flex-shrink: 0;
 }
 
 .rec-val-lora {
   color: #1565c0;
+  font-size: 32rpx;
+}
+
+.rec-icon-lora {
+  display: inline-block;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  font-size: 22rpx;
+  color: #fff;
+  background: #999;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+  line-height: 1.6;
+}
+.rec-icon-lora.type-1 {
+  background: #1976d2;
+}
+.rec-icon-lora.type-2 {
+  background: #ff9500;
+}
+.rec-icon-lora.type-3 {
+  background: #4CAF50;
+}
+
+/* 类型标签 */
+.type-tag {
+  display: inline-block;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  font-size: 20rpx;
+  color: #fff;
+  background: #999;
+  margin-left: 12rpx;
+  flex-shrink: 0;
+  line-height: 1.6;
+}
+.type-tag.type-1 {
+  background: #1976d2;
+}
+.type-tag.type-2 {
+  background: #ff9500;
+}
+.type-tag.type-3 {
+  background: #4CAF50;
 }
 
 /* ========== 弹窗（编辑/连接） ========== */

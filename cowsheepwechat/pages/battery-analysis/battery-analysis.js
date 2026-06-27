@@ -13,7 +13,9 @@ Page({
     hasSearched: false
   },
 
-  onLoad() {
+  onLoad(options) {
+    const targetDeviceId = options.deviceId ? decodeURIComponent(options.deviceId) : ''
+
     // 从设备列表缓存加载设备ID下拉选项
     dataCache.getDeviceList((deviceData) => {
       const idSet = new Set()
@@ -23,10 +25,28 @@ Page({
         })
       }
       const options = idSet.size > 0 ? Array.from(idSet).sort() : []
+
+      // 如果传入了设备ID，尝试匹配下拉选项
+      let selectedIndex = 0
+      let selectedDeviceId = options.length > 0 ? options[0] : ''
+      if (targetDeviceId && options.length > 0) {
+        const idx = options.indexOf(targetDeviceId)
+        if (idx >= 0) {
+          selectedIndex = idx
+          selectedDeviceId = targetDeviceId
+        }
+      }
+
       this.setData({
         deviceIdOptions: options,
-        selectedDeviceId: options.length > 0 ? options[0] : ''
+        selectedDeviceIndex: selectedIndex,
+        selectedDeviceId: selectedDeviceId
       })
+
+      // 如果传入了设备ID且匹配成功，自动查询
+      if (targetDeviceId && selectedDeviceId === targetDeviceId) {
+        this.onFetchLogs()
+      }
     }, true)
   },
 

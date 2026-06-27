@@ -319,6 +319,15 @@ Page({
   },
 
   // 查看设备轨迹 — 弹日期选择 → 查GPS数据 → 跳转地图页
+  // 点击电池图标 → 跳转电量分析页
+  onBatteryAnalysisTap() {
+    const deviceId = this.data.deviceId
+    if (!deviceId) return
+    wx.navigateTo({
+      url: '/pages/battery-analysis/battery-analysis?deviceId=' + encodeURIComponent(deviceId)
+    })
+  },
+
   // 点击设备图片放大预览
   onPreviewImage() {
     const picurl = this.data.deviceInfo && this.data.deviceInfo.picurl
@@ -410,7 +419,16 @@ Page({
       const lorastr = attr.lorastr || record.lorastr || '-'
       const rawTime = attr.time || record.time || '-'
       const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-      return { deviceId, upDateDevice, lorastr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._randomPastel() }
+
+      // 解析 lorastr 类型：格式为 type|deviceId|data
+      // 1=定位  2=对时  3=电量
+      let msgType = '-'
+      if (lorastr && lorastr !== '-') {
+        const parts = lorastr.split('|')
+        msgType = parts[0] || '-'
+      }
+
+      return { deviceId, upDateDevice, lorastr, msgType, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._randomPastel() }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()
