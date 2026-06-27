@@ -3,64 +3,182 @@ page {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f5f5f5;
+  background: #f0f2f5;
 }
 .scrollarea {
   flex: 1;
   overflow-y: hidden;
 }
 
-/* 设备头部：左图右内容 */
+/* ========== 设备头部卡片：左图片 + 右基本信息 ========== */
 .detail-header {
   display: flex;
-  margin: 20rpx 20rpx 0;
-  background: #fff;
-  border-radius: 16rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  flex-direction: row;
+  align-items: flex-start;
+  margin: 24rpx 24rpx 0;
+  background: linear-gradient(135deg, #1a73e8 0%, #1565c0 100%);
+  border-radius: 20rpx;
+  padding: 32rpx 28rpx;
+  box-shadow: 0 8rpx 24rpx rgba(21, 101, 192, 0.25);
 }
 
-/* 左侧图片区域 */
+/* 左边：设备图片 */
 .pic-area {
-  width: 240rpx;
-  height: 240rpx;
-  background: #e8e8e8;
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.2);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  border: 4rpx solid rgba(255, 255, 255, 0.5);
+  overflow: hidden;
   flex-shrink: 0;
+  margin-right: 24rpx;
 }
 .detail-pic {
   width: 100%;
   height: 100%;
+  border-radius: 12rpx;
 }
 .detail-pic-placeholder {
-  font-size: 80rpx;
-  color: #bbb;
-}
-
-/* 右侧信息区域 */
-.info-area {
-  flex: 1;
-  padding: 16rpx 20rpx;
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
-  overflow: hidden;
+}
+.placeholder-icon {
+  font-size: 52rpx;
+  line-height: 1;
+}
+.placeholder-text {
+  font-size: 18rpx;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 4rpx;
 }
 
-.info-row {
+/* 右边：基本信息 */
+.header-info {
+  flex: 1;
   display: flex;
-  align-items: flex-start;
-  padding: 10rpx 0;
+  flex-direction: column;
+  min-width: 0;
 }
-.info-row:first-child {
-  padding-top: 0;
+.header-title {
+  font-size: 38rpx;
+  font-weight: 700;
+  color: #fff;
+  word-break: break-all;
+  line-height: 1.4;
+  margin-bottom: 2rpx;
+}
+.header-id {
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 14rpx;
+}
+
+.header-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+.hi-item {
+  display: flex;
+  align-items: center;
+}
+.hi-label {
+  width: 130rpx;
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.65);
+  flex-shrink: 0;
+}
+.hi-value {
+  flex: 1;
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.9);
+  word-break: break-all;
+  line-height: 1.5;
+}
+.hi-value-highlight {
+  color: #a7f0ba;
+  font-weight: 500;
+}
+
+/* ========== 操作按钮区 ========== */
+.action-bar {
+  display: flex;
+  margin: 24rpx 24rpx;
+  gap: 20rpx;
+}
+.action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
+  transition: all 0.2s;
+}
+.action-btn:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+.action-btn-edit {
+  background: #fff;
+  color: #1565c0;
+  border: 2rpx solid #1565c0;
+}
+.action-btn-bind {
+  background: linear-gradient(135deg, #07c160, #06ad56);
+  color: #fff;
+}
+.action-icon {
+  font-size: 32rpx;
+  margin-right: 8rpx;
+}
+.action-text {
+  font-size: 28rpx;
+}
+
+/* ========== 基本信息卡片 ========== */
+.info-card {
+  margin: 0 24rpx 20rpx;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 28rpx 28rpx 16rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+.card-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 20rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.info-grid {
+  display: flex;
+  flex-direction: column;
+}
+.info-item {
+  display: flex;
+  align-items: center;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #f8f8f8;
+}
+.info-item:last-child {
+  border-bottom: none;
+  padding-bottom: 8rpx;
 }
 
 .info-label {
-  width: 100rpx;
-  font-size: 24rpx;
+  width: 140rpx;
+  font-size: 28rpx;
   color: #999;
   flex-shrink: 0;
   line-height: 1.5;
@@ -68,31 +186,39 @@ page {
 
 .info-value {
   flex: 1;
-  font-size: 24rpx;
+  font-size: 28rpx;
   color: #333;
   word-break: break-all;
   line-height: 1.5;
+  text-align: right;
+}
+
+.info-value-highlight {
+  color: #07c160;
+  font-weight: 500;
 }
 
 .info-value-lora {
-  font-size: 22rpx;
+  font-size: 26rpx;
   color: #1565c0;
 }
 
-/* 查看记录按钮 */
+/* ========== 切换日期按钮 ========== */
 .record-btn {
-  margin: 24rpx 20rpx;
+  margin: 8rpx 24rpx 24rpx;
   height: 88rpx;
   line-height: 88rpx;
   text-align: center;
-  background: #1565c0;
+  background: linear-gradient(135deg, #667eea, #764ba2);
   color: #fff;
   font-size: 30rpx;
   font-weight: 600;
-  border-radius: 14rpx;
+  border-radius: 16rpx;
+  box-shadow: 0 6rpx 16rpx rgba(102, 126, 234, 0.3);
 }
 .record-btn:active {
-  opacity: 0.8;
+  opacity: 0.85;
+  transform: scale(0.98);
 }
 
 /* 空状态 */
@@ -140,14 +266,14 @@ page {
   margin-bottom: 24rpx;
 }
 .track-subtitle {
-  font-size: 26rpx;
+  font-size: 30rpx;
   color: #888;
   text-align: center;
   margin-bottom: 28rpx;
   word-break: break-all;
 }
 .track-date-label {
-  font-size: 26rpx;
+  font-size: 30rpx;
   color: #666;
   margin-bottom: 12rpx;
 }
@@ -157,7 +283,7 @@ page {
   text-align: center;
   background: #f5f5f5;
   border-radius: 12rpx;
-  font-size: 30rpx;
+  font-size: 34rpx;
   color: #333;
   margin-bottom: 32rpx;
 }
@@ -171,7 +297,7 @@ page {
   line-height: 80rpx;
   text-align: center;
   border-radius: 12rpx;
-  font-size: 28rpx;
+  font-size: 32rpx;
   font-weight: 600;
   padding: 0;
   border: none;
@@ -194,102 +320,69 @@ page {
   color: #fff;
 }
 
-/* ========== 轨迹数据表格 ========== */
+/* ========== 轨迹数据列表（卡片式，随机背景） ========== */
 .msg-panel {
-  margin: 0 20rpx 24rpx;
+  margin: 0 24rpx 24rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
 .track-date-bar {
-  font-size: 24rpx;
-  color: #666;
-  padding: 12rpx 16rpx;
-  background: #f5f5f5;
-  border-radius: 10rpx 10rpx 0 0;
+  font-size: 28rpx;
+  color: #555;
+  padding: 16rpx 20rpx;
+  background: #fff;
   text-align: center;
+  font-weight: 600;
+  border-bottom: 1rpx solid #f0f0f0;
 }
 
-.record-table {
-  border-radius: 10rpx;
+.record-list {
+  border-radius: 0;
   overflow: hidden;
-  border: 1rpx solid #e0e0e0;
 }
 
-.table-header {
+.record-item {
+  padding: 20rpx 24rpx;
+  font-size: 32rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
+  line-height: 1.6;
+}
+.record-item:last-child {
+  border-bottom: none;
+}
+
+.rec-row {
   display: flex;
-  background: #f0f6ff;
-  font-weight: bold;
-  font-size: 26rpx;
-  color: #1a6fb5;
+  align-items: flex-start;
+  padding: 4rpx 0;
 }
 
-.table-body {
-  font-size: 26rpx;
-  color: #333;
-}
-
-.table-row {
-  display: flex;
-  align-items: center;
-}
-.table-row:nth-child(even) {
-  background: #fafbfc;
-}
-
-.th, .td {
-  padding: 16rpx 12rpx;
-  word-break: break-all;
-  line-height: 1.4;
-  box-sizing: border-box;
-}
-.th {
-  border-bottom: 2rpx solid #d0ddf0;
-}
-.td {
-  border-bottom: 1rpx solid #eee;
-}
-
-.th-deviceId, .td-deviceId {
-  width: 16%;
-  text-align: center;
-}
-.th-lorastr, .td-lorastr {
-  width: 49%;
-  text-align: center;
-}
-.th-time, .td-time {
-  width: 35%;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.time-date {
-  font-size: 22rpx;
+.rec-label {
+  width: 160rpx;
+  font-size: 28rpx;
   color: #666;
-  line-height: 1.3;
-}
-.time-clock {
-  font-size: 22rpx;
-  color: #333;
-  font-weight: 500;
-  line-height: 1.3;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 详情页操作按钮 */
-.info-row-actions {
-  padding-top: 8rpx;
-}
-.detail-action-btn {
-  padding: 10rpx 20rpx;
-  border-radius: 8rpx;
-  font-size: 24rpx;
-  margin-right: 16rpx;
-  background: #f5f5f5;
+.rec-val {
+  flex: 1;
+  font-size: 30rpx;
   color: #333;
+  word-break: break-all;
 }
-.detail-action-btn:active {
-  opacity: 0.7;
+
+.rec-val-id {
+  color: #e74c3c;
+  font-weight: 700;
+}
+
+.rec-val-lora {
+  color: #1565c0;
 }
 
 /* ========== 弹窗（编辑/连接） ========== */
@@ -336,14 +429,14 @@ page {
   background: #f5f5f5;
 }
 .modal-title {
-  font-size: 34rpx;
+  font-size: 38rpx;
   font-weight: 700;
   color: #333;
   text-align: center;
   margin-bottom: 28rpx;
 }
 .modal-label {
-  font-size: 26rpx;
+  font-size: 30rpx;
   color: #666;
   margin-bottom: 12rpx;
 }
@@ -353,7 +446,7 @@ page {
   border: 2rpx solid #e0e0e0;
   border-radius: 12rpx;
   padding: 0 24rpx;
-  font-size: 30rpx;
+  font-size: 34rpx;
   box-sizing: border-box;
   margin-bottom: 28rpx;
 }
@@ -364,7 +457,7 @@ page {
   border: 2rpx solid #e0e0e0;
   border-radius: 12rpx;
   padding: 0 24rpx;
-  font-size: 30rpx;
+  font-size: 34rpx;
   color: #333;
   box-sizing: border-box;
   margin-bottom: 28rpx;
@@ -380,7 +473,7 @@ page {
   height: 80rpx;
   line-height: 80rpx;
   border-radius: 12rpx;
-  font-size: 28rpx;
+  font-size: 32rpx;
   font-weight: 500;
   padding: 0;
 }
@@ -414,7 +507,7 @@ page {
   height: 100%;
 }
 .edit-pic-placeholder {
-  font-size: 28rpx;
+  font-size: 32rpx;
   color: #999;
   text-align: center;
 }
@@ -423,7 +516,7 @@ page {
   min-height: 80rpx;
   line-height: 80rpx;
   padding: 0 24rpx;
-  font-size: 30rpx;
+  font-size: 34rpx;
   color: #888;
   background: #f5f5f5;
   border-radius: 12rpx;

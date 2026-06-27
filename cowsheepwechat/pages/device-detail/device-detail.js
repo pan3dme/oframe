@@ -31,6 +31,14 @@ Page({
     isAdmin: false
   },
 
+  // 生成随机浅色背景色（HSL 浅色调，饱和度低，亮度高）
+  _randomPastel() {
+    const h = Math.floor(Math.random() * 360)
+    const s = 30 + Math.floor(Math.random() * 20)
+    const l = 88 + Math.floor(Math.random() * 8)
+    return `hsl(${h}, ${s}%, ${l}%)`
+  },
+
   onLoad(options) {
     const deviceId = options.deviceId || ''
     const today = this.getTodayStr()
@@ -398,10 +406,11 @@ Page({
         })
       }
       const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
+      const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || '-'
       const lorastr = attr.lorastr || record.lorastr || '-'
       const rawTime = attr.time || record.time || '-'
       const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-      return { deviceId, lorastr, date: date || '-', time_part: time_part || '', rawTime }
+      return { deviceId, upDateDevice, lorastr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._randomPastel() }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()

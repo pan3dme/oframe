@@ -2,48 +2,51 @@
 <navigation-bar title="设备详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <scroll-view class="scrollarea" scroll-y type="list">
   <block wx:if="{{deviceInfo}}">
-    <!-- 设备头部区域：左图右内容 -->
+    <!-- 设备头部卡片：左图片 + 右基本信息 -->
     <view class="detail-header">
-      <!-- 左侧设备图片 -->
-      <view class="pic-area">
-        <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" bindtap="onPreviewImage" />
-        <view class="detail-pic-placeholder" wx:else>📡</view>
+      <!-- 左边：设备图片 -->
+      <view class="pic-area" bindtap="onPreviewImage">
+        <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" />
+        <view class="detail-pic-placeholder" wx:else>
+          <view class="placeholder-icon">📡</view>
+          <text class="placeholder-text">点击上传</text>
+        </view>
       </view>
 
-      <!-- 右侧设备信息 -->
-      <view class="info-area">
-        <view class="info-row">
-          <text class="info-label">deviceId</text>
-          <text class="info-value">{{deviceInfo.deviceId}}</text>
-        </view>
-        <view class="info-row info-row-actions" wx:if="{{isAdmin}}">
-          <view class="detail-action-btn" bindtap="onDetailEdit">
-            <text>✏️ 编辑</text>
+      <!-- 右边：基本信息 -->
+      <view class="header-info">
+        <text class="header-title">{{deviceInfo.rename || deviceInfo.deviceId}}</text>
+        <text class="header-id">ID: {{deviceInfo.deviceId}}</text>
+        <view class="header-info-grid">
+          <view class="hi-item">
+            <text class="hi-label">设备编码</text>
+            <text class="hi-value">{{deviceInfo.device_key || '-'}}</text>
           </view>
-          <view class="detail-action-btn" bindtap="onDetailBind">
-            <text>🔗 连接牛羊</text>
+          <view class="hi-item">
+            <text class="hi-label">绑定牛羊</text>
+            <text class="hi-value hi-value-highlight">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
+          </view>
+          <view class="hi-item">
+            <text class="hi-label">记录时间</text>
+            <text class="hi-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
+          </view>
+          <view class="hi-item">
+            <text class="hi-label">上次换电</text>
+            <text class="hi-value">{{deviceInfo.chargeTime || '-'}}</text>
           </view>
         </view>
-        <view class="info-row">
-          <text class="info-label">别名</text>
-          <text class="info-value">{{deviceInfo.rename || '-'}}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">编码</text>
-          <text class="info-value">{{deviceInfo.device_key || '-'}}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">绑定</text>
-          <text class="info-value">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">时间</text>
-          <text class="info-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
-        </view>
-        <view class="info-row">
-          <text class="info-label">上次换电</text>
-          <text class="info-value">{{deviceInfo.chargeTime || '-'}}</text>
-        </view>
+      </view>
+    </view>
+
+    <!-- 操作按钮区 -->
+    <view class="action-bar" wx:if="{{isAdmin}}">
+      <view class="action-btn action-btn-edit" bindtap="onDetailEdit">
+        <text class="action-icon">✏️</text>
+        <text class="action-text">编辑设备</text>
+      </view>
+      <view class="action-btn action-btn-bind" bindtap="onDetailBind">
+        <text class="action-icon">🔗</text>
+        <text class="action-text">连接牛羊</text>
       </view>
     </view>
 
@@ -52,23 +55,22 @@
       <text>切换日期 / 轨迹地图</text>
     </view>
 
-    <!-- 轨迹数据表格 -->
+    <!-- 轨迹数据列表（随机背景色，类似蓝牙接收数据） -->
     <view class="msg-panel" wx:if="{{showRecordTable}}">
       <view class="track-date-bar">{{trackDate}} 轨迹记录 ({{recordList.length}}条)</view>
-      <view class="record-table">
-        <view class="table-header">
-          <view class="th th-deviceId">deviceId</view>
-          <view class="th th-lorastr">lorastr</view>
-          <view class="th th-time">time</view>
-        </view>
-        <view class="table-body">
-          <view class="table-row" wx:for="{{recordList}}" wx:key="rawTime">
-            <view class="td td-deviceId">{{item.deviceId}}</view>
-            <view class="td td-lorastr">{{item.lorastr}}</view>
-            <view class="td td-time">
-              <view class="time-date">{{item.date}}</view>
-              <view class="time-clock">{{item.time_part}}</view>
-            </view>
+      <view class="record-list">
+        <view class="record-item" wx:for="{{recordList}}" wx:key="rawTime" style="background-color:{{item.bgColor}}">
+          <view class="rec-row">
+            <text class="rec-label">upDateDevice</text>
+            <text class="rec-val rec-val-id">{{item.upDateDevice}}</text>
+          </view>
+          <view class="rec-row">
+            <text class="rec-label">lorastr</text>
+            <text class="rec-val rec-val-lora">{{item.lorastr}}</text>
+          </view>
+          <view class="rec-row">
+            <text class="rec-label">time</text>
+            <text class="rec-val">{{item.date}} {{item.time_part}}</text>
           </view>
         </view>
       </view>
@@ -113,10 +115,6 @@
       <image class="edit-pic-img" wx:if="{{editPicurl}}" src="{{editPicurl}}" mode="aspectFill" />
       <view class="edit-pic-placeholder" wx:else>📡 点击选图</view>
     </view>
-
-    <!-- deviceId（不可编辑） -->
-    <view class="modal-label">deviceId</view>
-    <view class="edit-readonly">{{editOldDeviceKey}}</view>
 
     <!-- 设备编码 -->
     <view class="modal-label">设备编码</view>
