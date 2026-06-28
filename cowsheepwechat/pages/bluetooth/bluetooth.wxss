@@ -281,14 +281,15 @@ page {
 
 .cmd-quick-row {
   display: flex;
-  gap: 16rpx;
-  margin-bottom: 28rpx;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-bottom: 12rpx;
 }
 
 .cmd-quick-btn {
-  flex: 1;
+  flex: 0 0 calc((100% - 20rpx) / 3);
   height: 60rpx;
-  font-size: 24rpx;
+  font-size: 22rpx;
   color: #1989fa;
   background: #e8f4fd;
   border-radius: 10rpx;
@@ -298,8 +299,15 @@ page {
   justify-content: center;
   padding: 0;
   line-height: 1;
+  white-space: nowrap;
 }
 .cmd-quick-btn::after { border: none; }
+
+.cmd-quick-btn-active {
+  color: #fff !important;
+  background: #1989fa !important;
+  font-weight: bold;
+}
 
 .cmd-synctime-hint {
   text-align: center;

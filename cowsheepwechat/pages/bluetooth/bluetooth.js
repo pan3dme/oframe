@@ -29,7 +29,8 @@ Page({
     cmdMode: '',
     cmdDeviceList: [],
     cmdDeviceIndex: 0,
-    cmdText: ''
+    cmdText: '',
+    cmdQuickSelected: 0  // 当前选中的快捷按钮（value值），0=未选中
   },
 
   _lastCacheTapTime: 0,  // 双击清空缓存用
@@ -907,22 +908,37 @@ Page({
 
   // 快捷填充：高频 value=1
   onQuickFreq1() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 1 }) })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 1 }), cmdQuickSelected: 1 })
   },
 
   // 快捷填充：获取GPS value=2
   onQuickGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 2 }) })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 2 }), cmdQuickSelected: 2 })
   },
 
   // 快捷填充：获取电量 value=3
   onQuickBattery() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 3 }) })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 3 }), cmdQuickSelected: 3 })
   },
 
   // 快捷填充：重启设备 value=4
   onQuickReboot() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 4 }) })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 4 }), cmdQuickSelected: 4 })
+  },
+
+  // 快捷填充：开关OLED value=5
+  onQuickOLED() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5 }), cmdQuickSelected: 5 })
+  },
+
+  // 快捷填充：关闭GPS value=6
+  onQuickCloseGPS() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6 }), cmdQuickSelected: 6 })
+  },
+
+  // 快捷填充：开启GPS value=7
+  onQuickOpenGPS() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 7 }), cmdQuickSelected: 7 })
   },
 
   onCmdDeviceChange(e) {
@@ -930,7 +946,7 @@ Page({
   },
 
   onCmdInput(e) {
-    this.setData({ cmdText: e.detail.value })
+    this.setData({ cmdText: e.detail.value, cmdQuickSelected: 0 })
   },
 
   onCmdSend() {

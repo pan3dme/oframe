@@ -83,6 +83,8 @@ struct BLECallbacks
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, BLECharacteristicCallbacks *charCallbacks);
 bool initLibWifi();
 void disConnectWifi();
+void hideOLED();
+void showOLED();
 void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();

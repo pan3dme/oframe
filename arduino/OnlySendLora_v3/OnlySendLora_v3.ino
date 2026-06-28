@@ -41,7 +41,7 @@ bool inRxMode = false;           // 当前是否处于接收模式
 unsigned long rxStartTime = 0;   // RX窗口开始的millis()
 bool didSend = false;            // 本周期是否已发送（控制RX窗口和休眠）
 char rxBuffer[BUFFER_SIZE + 1];  // 接收数据缓存
-
+bool oledOpen = true;
 // ==================== 计算下次发送时间 ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   if (deviceIndex < 0 || totalDevices == 0) {
@@ -154,6 +154,7 @@ void setup() {
 }
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
+  packetCount++;
   String dataStr = String(packetType) + "|" + deviceName;
 
   if (packetType == MSG_TYPE_GPS) {
@@ -185,7 +186,7 @@ void buildAndSendPacket(int packetType) {
 void loop() {
   delay(1);
   gpsEncode();
- 
+
 
   unsigned long currentMs = millis();
   unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
@@ -213,11 +214,9 @@ void loop() {
           inRxMode = false;
         }
 
-        packetCount++;
-        const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
-        int packetType = typeList[packetCount % 3];
 
-        buildAndSendPacket(packetType);
+
+        buildAndSendPacket(MSG_TYPE_GPS);
 
         openLedByNum(10, 50);
         displayLines[3] = "Fast Mode";
@@ -248,7 +247,7 @@ void loop() {
     }
 
     didSend = true;
-    packetCount++;
+
 
     // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;MSG_TYPE_BATTERY
     const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
@@ -343,20 +342,34 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
             fastModeStartTime = millis();
             lastFastSendTime = 0;  // 重置快速发送计时
             Serial.println("🚀 启动快速发送模式：每5秒发送一次，持续" + String(FAST_MODE_DURATION / 1000) + "秒");
-          } else if (lastValue == 2) {
-            if (getGpsStatus() == true) {
-              setGpsEnable(false);
-              Serial.println("❌❌❌❌❌❌关闭GPS❌❌❌❌❌❌");
-            } else {
-              initPanGPS();
-              Serial.println("⚠️⚠️⚠️⚠️ 重新开启GPS⚠️⚠️⚠️⚠️");
-            }
 
 
           } else if (lastValue == 4) {
             Serial.println("⚠️⚠️⚠️⚠️ 收到重启指令，系统将在 1 秒后重启...");
             delay(1000);    // 强烈建议加一个短暂的延时，确保串口日志能发送出去
             ESP.restart();  // 执行重启
+
+          } else if (lastValue == 5) {
+            oledOpen = !oledOpen;
+            if (oledOpen) {
+              Serial.println("⚠️⚠️⚠️⚠️打开OLED⚠️⚠️⚠️⚠️");
+              showOLED();
+            } else {
+              Serial.println("⚠️⚠️⚠️⚠️关闭OLED⚠️⚠️⚠️⚠️");
+              hideOLED();
+            }
+          } else if (lastValue == 6) {
+            if (getGpsStatus() == true) {
+              setGpsEnable(false);
+              Serial.println("⚠️⚠️⚠️⚠️关闭GPS⚠️⚠️⚠️⚠️");
+            }
+          } else if (lastValue == 7) {
+            if (getGpsStatus() == false) {
+              initPanGPS();
+              Serial.println("⚠️⚠️⚠️⚠️ 重新开启GPS⚠️⚠️⚠️⚠️");
+            }
+
+
           } else {
             Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
           }

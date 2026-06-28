@@ -100,6 +100,14 @@ void initOLED()
 #endif
   }
 }
+void hideOLED(){
+    digitalWrite(Vext, HIGH);
+    digitalWrite(RST_OLED, LOW);
+}
+void showOLED(){
+    initFinish= false;
+    initOLED();
+}
 
 void initPanGPS()
 {

@@ -72,10 +72,13 @@
           <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令..." bindinput="onCmdInput" auto-height maxlength="-1" />
           <!-- 快捷填充按钮 -->
           <view class="cmd-quick-row">
-            <button class="cmd-quick-btn" bindtap="onQuickFreq1">⚡ 高频</button>
-            <button class="cmd-quick-btn" bindtap="onQuickGps">📍 获取GPS</button>
-            <button class="cmd-quick-btn" bindtap="onQuickBattery">🔋 获取电量</button>
-            <button class="cmd-quick-btn" bindtap="onQuickReboot">🔄 重启设备</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 1 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickFreq1">⚡ 高频</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 2 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickGps">📍 获取GPS</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 3 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickBattery">🔋 获取电量</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 4 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReboot">🔄 重启设备</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 5 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickOLED">📺 开关OLED</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 6 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickCloseGPS">🛑 关闭GPS</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 7 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickOpenGPS">📍 开启GPS</button>
           </view>
         </block>
         <view class="cmd-synctime-hint" wx:else>
