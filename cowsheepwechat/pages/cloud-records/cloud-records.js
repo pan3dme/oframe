@@ -5,12 +5,18 @@ Page({
   data: {
     loading: true,
     errorMsg: '',
+    refreshing: false,
     // 全部原始记录
     allRecords: [],
     // 当前筛选类型：''=全部, '1'=GPS, '2'=对时, '3'=电量
     filterType: '',
     // 筛选后显示的记录
-    filteredRecords: []
+    filteredRecords: [],
+    // 分页相关
+    currentPage: 0,
+    pageSize: 10,
+    hasMore: true,
+    loadingMore: false
   },
 
   onLoad() {
@@ -18,8 +24,16 @@ Page({
   },
 
   // ========== 数据获取 ==========
-  fetchRecords() {
-    this.setData({ loading: true, errorMsg: '' })
+  // silent=true 用于下拉刷新：不显示全屏 loading，避免顶部筛选栏闪动
+  // page: 指定页码，不传时默认第1页
+  // append: true=追加到已有列表（加载更多），false/不传=替换列表
+  fetchRecords(silent = false, page = 0, append = false) {
+    if (!silent && !append) {
+      this.setData({ loading: true, errorMsg: '' })
+    }
+    if (append) {
+      this.setData({ loadingMore: true })
+    }
 
     wx.request({
       url: API_URL,
@@ -27,33 +41,77 @@ Page({
       data: {
         action: 'getlastlog',
         info: {
-          limit: 100
+          page: page,
+          limit: this.data.pageSize
         },
         time: getApp().formatTime()
       },
       success: (res) => {
-        console.log('云端记录返回:', JSON.stringify(res.data))
+        console.log('云端记录返回(page=' + page + '):', JSON.stringify(res.data))
         const records = this.parseRecordList(res.data)
-        if (records.length === 0) {
+        const hasMore = records.length >= this.data.pageSize
+
+        if (append) {
+          // 加载更多：合并去重
+          const existing = this.data.allRecords
+          const existKeys = new Set(existing.map(r => r.rawTime + '|' + r.lorastr))
+          const newRecords = records.filter(r => !existKeys.has(r.rawTime + '|' + r.lorastr))
+
+          if (newRecords.length === 0) {
+            this.setData({ loadingMore: false, hasMore: false })
+            return
+          }
+          const merged = [...existing, ...newRecords]
           this.setData({
-            loading: false,
-            errorMsg: '暂无记录'
+            allRecords: merged,
+            currentPage: page,
+            hasMore: hasMore,
+            loadingMore: false
+          }, () => {
+            this.applyFilter()
           })
-          return
+        } else {
+          // 首次加载或刷新
+          if (records.length === 0) {
+            this.setData({
+              loading: false,
+              refreshing: false,
+              allRecords: [],
+              filteredRecords: [],
+              currentPage: page,
+              hasMore: false,
+              loadingMore: false,
+              errorMsg: silent ? '' : '暂无记录'
+            })
+            return
+          }
+          this.setData({
+            allRecords: records,
+            loading: false,
+            errorMsg: '',
+            refreshing: false,
+            currentPage: page,
+            hasMore: hasMore,
+            loadingMore: false
+          }, () => {
+            this.applyFilter()
+          })
         }
-        this.setData({
-          allRecords: records,
-          loading: false
-        }, () => {
-          this.applyFilter()
-        })
       },
       fail: (err) => {
         console.error('获取云端记录失败:', err)
         this.setData({
           loading: false,
-          errorMsg: '网络请求失败，请下拉重试'
+          refreshing: false,
+          loadingMore: false
         })
+        if (silent) {
+          wx.showToast({ title: '刷新失败', icon: 'none' })
+        } else if (append) {
+          wx.showToast({ title: '加载失败', icon: 'none' })
+        } else {
+          this.setData({ errorMsg: '网络请求失败，请下拉重试' })
+        }
       }
     })
   },
@@ -131,6 +189,7 @@ Page({
 
     const isGps = typeStr === '1'
     const isTimeSync = typeStr === '2'
+    const isBattery = typeStr === '3'
     const blackColor = '#333'
     const redColor = '#e74c3c'
 
@@ -147,13 +206,14 @@ Page({
       displayParts.push({ text: '|', color: '#999' })
       displayParts.push({ text: parts[6], color: redColor, bold: true })
 
-      return { msgType: 'ionization', displayParts }
+      return { msgType: typeStr, displayParts }
     }
 
-    // === 4段GPS/对时格式: type|tag|val1|val2 → 黑|红|黑|红 ===
+    // === 4段GPS/对时/电量格式: type|tag|val1|val2 → 黑|红|黑|红 ===
     // 1|device|lat,lng|value  （GPS）
     // 2|v3-12|2000/1/1 09:19:21|80 （对时）
-    if ((isGps || isTimeSync) && parts.length === 4) {
+    // 3|device|voltage|percent （电量）
+    if ((isGps || isTimeSync || isBattery) && parts.length === 4) {
       displayParts.push({ text: parts[0], color: blackColor, bold: true })
       displayParts.push({ text: '|', color: '#999' })
       displayParts.push({ text: parts[1], color: redColor, bold: true })
@@ -212,22 +272,34 @@ Page({
 
   onFilterTap(e) {
     const type = e.currentTarget.dataset.type
-    if (type === this.data.filterType) return
+    // 点同一个按钮时切换回全部
+    if (type === this.data.filterType) {
+      this.setData({ filterType: '' }, () => {
+        this.applyFilter()
+      })
+      return
+    }
     this.setData({ filterType: type }, () => {
       this.applyFilter()
     })
   },
 
-  // ========== 下拉刷新 ==========
-  onPullDownRefresh() {
-    this.fetchRecords()
-    setTimeout(() => {
-      wx.stopPullDownRefresh()
-    }, 1500)
+  // ========== 下拉刷新（scroll-view 内置） ==========
+  onScrollRefresh() {
+    this.setData({ refreshing: true, currentPage: 0, hasMore: true })
+    this.fetchRecords(true, 0, false)
+  },
+
+  // ========== 触底加载下一页 ==========
+  onScrollToLower() {
+    if (this.data.loadingMore || !this.data.hasMore) return
+    const nextPage = this.data.currentPage + 1
+    this.fetchRecords(true, nextPage, true)
   },
 
   // ========== 重试按钮 ==========
   onRetry() {
-    this.fetchRecords()
+    this.setData({ currentPage: 0, hasMore: true })
+    this.fetchRecords(false, 0, false)
   }
 })

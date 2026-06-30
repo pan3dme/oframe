@@ -1,8 +1,8 @@
 <!--cloud-records.wxml-->
 <navigation-bar title="云端记录" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <view class="page-body">
-  <!-- 加载中 -->
-  <view class="loading-box" wx:if="{{loading}}">
+  <!-- 加载中：仅在首次无数据时显示全屏加载，避免刷新时顶部筛选栏闪动 -->
+  <view class="loading-box" wx:if="{{loading && allRecords.length === 0}}">
     <text class="loading-text">⏳ 加载中...</text>
   </view>
 
@@ -20,7 +20,6 @@
         <text class="recv-icon">☁️</text>
         <text class="recv-label">云端记录</text>
         <view class="recv-filters">
-          <text class="recv-filter-btn {{filterType === '' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="">全部</text>
           <text class="recv-filter-btn {{filterType === '1' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="1">📍 GPS</text>
           <text class="recv-filter-btn {{filterType === '2' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="2">🕐 对时</text>
           <text class="recv-filter-btn {{filterType === '3' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="3">🔋 电量</text>
@@ -28,21 +27,36 @@
         <text class="recv-count">{{filteredRecords.length}} 条</text>
       </view>
 
-      <scroll-view class="recv-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-        <view class="recv-item" wx:for="{{filteredRecords}}" wx:key="index" style="background-color:{{item.bgColor}}">
-          <view class="recv-main">
-            <text wx:for="{{item.displayParts}}" wx:for-item="part" wx:key="index" style="color:{{part.color}};{{part.bold ? 'font-weight:900;' : ''}}">{{part.text}}</text>
-          </view>
-          <view class="recv-sub">
-            {{item.date}} {{item.time_part}}
-            <text class="recv-source" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">({{item.upDateDevice}})</text>
-          </view>
-          <view class="recv-meta" wx:if="{{item.rssi || item.snr}}">
-            <text wx:if="{{item.rssi}}" class="recv-rssi">rssi:{{item.rssi}}</text>
-            <text wx:if="{{item.snr}}" class="recv-snr">snr:{{item.snr}}</text>
+      <scroll-view class="recv-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onScrollRefresh" refresher-threshold="60" bindscrolltolower="onScrollToLower" lower-threshold="80">
+        <view class="recv-item" wx:for="{{filteredRecords}}" wx:for-index="idx" wx:key="index" style="background-color:{{item.bgColor}}">
+          <view class="recv-seq">{{idx + 1}}</view>
+          <view class="recv-body">
+            <view class="recv-main">
+              <text wx:for="{{item.displayParts}}" wx:for-item="part" wx:key="index" style="color:{{part.color}};{{part.bold ? 'font-weight:900;' : ''}}">{{part.text}}</text>
+            </view>
+            <view class="recv-sub">
+              {{item.date}} {{item.time_part}}
+              <text class="recv-source" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">({{item.upDateDevice}})</text>
+            </view>
+            <view class="recv-meta" wx:if="{{item.rssi || item.snr}}">
+              <text wx:if="{{item.rssi}}" class="recv-rssi">rssi:{{item.rssi}}</text>
+              <text wx:if="{{item.snr}}" class="recv-snr">snr:{{item.snr}}</text>
+            </view>
           </view>
         </view>
         <view class="empty-tip" wx:if="{{filteredRecords.length === 0}}">暂无记录</view>
+        <!-- 加载更多提示 -->
+        <view class="load-more" wx:if="{{filteredRecords.length > 0}}">
+          <block wx:if="{{loadingMore}}">
+            <text class="load-more-text">⏳ 加载中...</text>
+          </block>
+          <block wx:elif="{{!hasMore}}">
+            <text class="load-more-text load-more-end">— 没有更多了 —</text>
+          </block>
+          <block wx:else>
+            <text class="load-more-text load-more-hint">上拉加载更多</text>
+          </block>
+        </view>
       </scroll-view>
     </view>
   </block>
