@@ -408,11 +408,11 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   delay(1000);
 
-#if defined(WIFI_LORA_32_V3)
+ 
   //特殊处理，发送DTU信息
   Serial2.begin(115200, SERIAL_8N1, 45, 46);
   delay(1000);
-#endif
+ 
 
 
 
@@ -427,7 +427,7 @@ void setup() {
   Serial.println("✅ 系统启动完成");
 }
 void sendLoraInfoUseDtu() {
-#if defined(WIFI_LORA_32_V3)
+ 
   //  String gpsStr = "1|v3-8|0.00000,0.00000|99"  ;
   String json = "{"
                 "\"id\":"
@@ -442,7 +442,7 @@ void sendLoraInfoUseDtu() {
   Serial.println("上报报文：" + json);
   Serial2.println(json);
 
-#endif
+ 
 }
 // 主循环
 unsigned long lastDisplayUpdate = 0;

@@ -42,45 +42,54 @@ unsigned long rxStartTime = 0;   // RX窗口开始的millis()
 bool didSend = false;            // 本周期是否已发送（控制RX窗口和休眠）
 char rxBuffer[BUFFER_SIZE + 1];  // 接收数据缓存
 bool oledOpen = true;
-// ==================== 计算下次发送时间 ====================
+ 
+// ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   if (deviceIndex < 0 || totalDevices == 0) {
     deviceIndex = getDevicesIdx();
     totalDevices = getTotalDevices();
     Serial.printf("设备索引: %d, 总设备数: %d\n", deviceIndex, totalDevices);
   }
-
   if (deviceIndex < 0 || totalDevices <= 0) {
     Serial.println("⚠️ 设备未认证，使用默认间隔");
     return millis() + intervalSeconds * 1000;
   }
-
-  // 通过getCurrentTime()获取当前时间（已统一所有时间源优先级）
+  
+  // 1. 获取当前时间
   String timeStr = getCurrentTime();
   int hour = 0, minute = 0, second = 0;
   sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
-
-  // 基于当前时间计算时隙
   unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
+
+  // 2. 计算基础参数
   float slotDuration = (float)intervalSeconds / totalDevices;
-  float targetSecondInCycle = deviceIndex * slotDuration;
-  unsigned long cycleCount = currentSeconds / intervalSeconds;
-  unsigned long targetSeconds = cycleCount * intervalSeconds + (unsigned long)targetSecondInCycle;
+  unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration); // 我在周期内的偏移量
 
-  if (targetSeconds <= currentSeconds) {
-    targetSeconds = (cycleCount + 1) * intervalSeconds + (unsigned long)targetSecondInCycle;
+  // 3. 核心修复逻辑：计算到下一个时隙的等待时间
+  // 计算从当天0点开始，已经经历了多少个完整的周期
+  unsigned long cyclesPassed = currentSeconds / intervalSeconds;
+  
+  // 计算“上一个”属于我的发送时隙的绝对时间点
+  unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + mySlotOffset;
+  
+  long secondsDiff = 0;
+
+  // 判断“上一个”时隙是否已经过去
+  if (lastTargetSeconds < currentSeconds) {
+      // 如果已过，那么下一个时隙就是再等一个完整的周期
+      secondsDiff = intervalSeconds - (currentSeconds - lastTargetSeconds);
+  } else {
+      // 如果还没到（说明当前时间正好在周期的最开始部分），下一个时隙就是它
+      secondsDiff = lastTargetSeconds - currentSeconds;
   }
 
-  if (targetSeconds >= 86400) {
-    targetSeconds -= 86400;
+  // 确保等待时间不为负数
+  if (secondsDiff < 0) {
+      secondsDiff += intervalSeconds;
   }
 
-  long secondsDiff = (long)targetSeconds - (long)currentSeconds;
   unsigned long delayMillis = secondsDiff * 1000;
-
-  Serial.printf("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu ms\n",
-                timeStr.c_str(), deviceIndex, slotDuration, delayMillis);
-
+  Serial.printf("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu ms\n", timeStr.c_str(), deviceIndex, slotDuration, delayMillis);
   return millis() + delayMillis;
 }
 
@@ -298,7 +307,7 @@ void loop() {
 // ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
   Radio.Sleep();
-  Serial.println("✅ 发送完成");
+  // Serial.println("✅ 发送完成");
 }
 
 // ==================== LoRa发送超时回调 ====================
