@@ -1,5 +1,6 @@
 // bluetooth.js
 const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
+const dataCache = require('../../config/data-cache')
 
 Page({
   data: {
@@ -27,7 +28,8 @@ Page({
     showCmdPanel: false,
     showCmdModal: false,
     cmdMode: '',
-    cmdDeviceList: [],
+    cmdDeviceRawList: [],      // 设备原始名称列表（发送时使用）
+    cmdDeviceList: [],         // 显示用设备列表（带 RENAME 后缀）
     cmdDeviceIndex: 0,
     cmdText: '',
     cmdQuickSelected: 0  // 当前选中的快捷按钮（value值），0=未选中
@@ -42,6 +44,36 @@ Page({
     const s = 30 + Math.floor(Math.random() * 20)       // 饱和度 30-50%（低饱和=柔和）
     const l = 88 + Math.floor(Math.random() * 8)        // 亮度 88-96%（很高=浅色）
     return `hsl(${h}, ${s}%, ${l}%)`
+  },
+
+  /**
+   * 从云端设备缓存表取 rename，生成显示用设备列表
+   * rawList: 蓝牙返回的原始设备名（即 deviceId）
+   * callback(displayList): 显示列表 [ "deviceId (rename)", ... ]
+   */
+  _resolveDeviceDisplayNames(rawList, callback) {
+    const that = this
+    // 优先用内存缓存，没有则拉取
+    dataCache.getDeviceList((cacheData) => {
+      const recordList = (cacheData && cacheData.recordList) ? cacheData.recordList : []
+      // 构建 deviceId → rename 映射
+      const renameMap = {}
+      recordList.forEach(r => {
+        if (r.deviceId && r.rename) {
+          renameMap[r.deviceId] = r.rename
+        }
+      })
+      // 生成显示列表
+      const displayList = rawList.map(name => {
+        const rename = renameMap[name]
+        if (rename && rename !== '-' && rename !== name) {
+          return name + ' (' + rename + ')'
+        }
+        return name
+      })
+      console.log('[蓝牙] 设备显示列表（含云端RENAME）:', displayList)
+      callback(displayList)
+    }, false) // false = 不强制刷新，优先用缓存
   },
 
   // 播放蓝牙接收提示音（开关在设置页面控制）
@@ -380,9 +412,14 @@ Page({
             } catch (e) {
               console.warn('[蓝牙] getDeviceList info 解析失败:', e)
             }
-            that.setData({
-              cmdDeviceList: deviceList.length > 0 ? deviceList : [that.data.connectedDeviceName || '未知设备'],
-              cmdDeviceIndex: 0
+            const rawList = deviceList.length > 0 ? deviceList : [that.data.connectedDeviceName || '未知设备']
+            // 从云端设备缓存表取 RENAME，代替硬编码的 (RENAME) 后缀
+            that._resolveDeviceDisplayNames(rawList, (displayList) => {
+              that.setData({
+                cmdDeviceRawList: rawList,
+                cmdDeviceList: displayList,
+                cmdDeviceIndex: 0
+              })
             })
             return
           }
@@ -852,6 +889,7 @@ Page({
     // 先打开弹窗，显示加载中
     this.setData({
       showCmdModal: true,
+      cmdDeviceRawList: ['正在获取设备列表...'],
       cmdDeviceList: ['正在获取设备列表...'],
       cmdDeviceIndex: 0,
       cmdText: presetText || '',
@@ -862,8 +900,12 @@ Page({
     const info = this.data.writeDeviceInfo
     if (!info) {
       console.warn('[蓝牙] 无写入特征值，使用当前设备作为默认')
-      this.setData({
-        cmdDeviceList: [this.data.connectedDeviceName || '未知设备']
+      const rawList = [this.data.connectedDeviceName || '未知设备']
+      this._resolveDeviceDisplayNames(rawList, (displayList) => {
+        this.setData({
+          cmdDeviceRawList: rawList,
+          cmdDeviceList: displayList
+        })
       })
       return
     }
@@ -880,8 +922,12 @@ Page({
       },
       fail(err) {
         console.error('[蓝牙] getDeviceList 发送失败:', err)
-        that.setData({
-          cmdDeviceList: [that.data.connectedDeviceName || '未知设备']
+        const rawList = [that.data.connectedDeviceName || '未知设备']
+        that._resolveDeviceDisplayNames(rawList, (displayList) => {
+          that.setData({
+            cmdDeviceRawList: rawList,
+            cmdDeviceList: displayList
+          })
         })
       }
     })
@@ -950,7 +996,7 @@ Page({
   },
 
   onCmdSend() {
-    const deviceId = this.data.cmdDeviceList[this.data.cmdDeviceIndex]
+    const deviceId = this.data.cmdDeviceRawList[this.data.cmdDeviceIndex]
     let cmdText = this.data.cmdText.trim()
 
     // 同步时间模式：以点击确定时的即时时间为准
