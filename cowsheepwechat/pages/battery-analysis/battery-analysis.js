@@ -7,6 +7,8 @@ Page({
     deviceIdOptions: [],
     selectedDeviceIndex: 0,
     selectedDeviceId: '',
+    limitOptions: [10, 20, 50, 100],
+    selectedLimitIndex: 0,
     records: [],
     chartRecords: [],
     loading: false,
@@ -60,6 +62,12 @@ Page({
     })
   },
 
+  // 记录数量下拉选择
+  onLimitPickerChange(e) {
+    const idx = parseInt(e.detail.value)
+    this.setData({ selectedLimitIndex: idx })
+  },
+
   // 查询该设备最近电量 LOG 记录
   onFetchLogs() {
     const deviceId = this.data.selectedDeviceId
@@ -67,6 +75,7 @@ Page({
       wx.showToast({ title: '请先选择设备', icon: 'none' })
       return
     }
+    const limit = this.data.limitOptions[this.data.selectedLimitIndex] || 20
     this.setData({ loading: true })
     const that = this
     wx.request({
@@ -75,7 +84,7 @@ Page({
       data: {
         action: 'getDeviceBatteryLogbyId',
         info: {
-          limit: 50,
+          limit: limit,
           deviceId: deviceId
         }
       },
@@ -193,7 +202,7 @@ Page({
 
         const values = records.map(r => Number(r.batteryVal))
         const minVal = 0
-        const maxVal = Math.min(1.0, Math.ceil(Math.max(...values) * 10) / 10)
+        const maxVal = 1.0
         const valRange = maxVal - minVal || 1
 
         // 坐标转换

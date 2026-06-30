@@ -29,6 +29,9 @@ page {
   color: #666;
   margin-bottom: 16rpx;
 }
+.limit-label {
+  margin-top: 20rpx;
+}
 .select-picker {
   flex: 1;
   display: flex;

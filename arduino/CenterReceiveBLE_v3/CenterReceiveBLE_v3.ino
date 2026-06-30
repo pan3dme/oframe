@@ -104,7 +104,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
           // infoArray.add("v1-2");
           // infoArray.add("v1-3");
           for (int i = 0; i < deviceCacheCount; i++) {
-             infoArray.add(deviceCacheId[i]);
+            infoArray.add(deviceCacheId[i]);
           }
           String str;
           serializeJson(doc, str);
@@ -279,10 +279,7 @@ unsigned long calcRxWindowStartMs(String msgJson) {
   return millis() + (unsigned long)waitSec * 1000UL;
 }
 
-// 处理固件更新指令
-void handleFirmwareUpdate(String loraData) {
-  Serial.println("📦 开始处理固件更新...");
-}
+
 
 // 初始化BLE服务
 void initBLE() {
@@ -411,13 +408,41 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   delay(1000);
 
+#if defined(WIFI_LORA_32_V3)
+  //特殊处理，发送DTU信息
+  Serial2.begin(115200, SERIAL_8N1, 45, 46);
+  delay(1000);
+#endif
+
+
+
   deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
 
   initRadio();
   initBLE();
 
+
+
   Serial.println("✅ 系统启动完成");
+}
+void sendLoraInfoUseDtu() {
+#if defined(WIFI_LORA_32_V3)
+  //  String gpsStr = "1|v3-8|0.00000,0.00000|99"  ;
+  String json = "{"
+                "\"id\":"
+                + String(millis()) + ","
+                                     "\"version\":\"1.0\","
+                                     "\"method\":\"thing.event.property.post\","
+                                     "\"params\":{"
+                                     "\"lorainfo\":\""
+                + String(loraStr) + "\""
+                                    "}"
+                                    "}";
+  Serial.println("上报报文：" + json);
+  Serial2.println(json);
+
+#endif
 }
 // 主循环
 unsigned long lastDisplayUpdate = 0;
@@ -481,7 +506,7 @@ void loop() {
     Serial.print(lastRssi);
     Serial.print("  Snr");
     Serial.println(lastSnr);
-
+    sendLoraInfoUseDtu();
 
     displayBuf[2] = "Rssi" + String(lastRssi) + " Snr" + String(lastSnr);
     Serial.print("Received LoRa: ");
@@ -525,9 +550,9 @@ void loop() {
       }
       // 类型10: 固件更新指令
       else if (messageType == MSG_TYPE_FIRMWARE) {
-        Serial.println("🔄 收到固件更新指令");
+        Serial.println("🔄 收到固件更新指令  还没有处理❌❌❌❌❌❌");
         // TODO: 在此添加固件更新逻辑
-        handleFirmwareUpdate(loraStr);
+
       }
       // 其他类型，直接显示
       else {

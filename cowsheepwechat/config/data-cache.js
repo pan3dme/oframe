@@ -50,7 +50,7 @@ function getDeviceList(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDeviceTaleAll' },
+      data: { action: 'getDeviceTaleAll',info:{limit:20} },
       timeout: 8000,
       success: (res) => {
         const recordList = _parseDeviceRecords(res.data)
@@ -200,7 +200,9 @@ function getDeviceLotRefresh(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDeviceLotRefreshAll' },
+      data: { action: 'getDeviceLotRefreshAll' , info: {
+        limit: 20
+      }},
       timeout: 8000,
       success: (res) => {
         const lotList = _parseDeviceLotRecords(res.data)
@@ -272,7 +274,9 @@ function getDeviceBatteryAll(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDeviceBatteryAll' },
+      data: { action: 'getDeviceBatteryAll' , info: {
+        limit: 20
+      }},
       timeout: 8000,
       success: (res) => {
         const batteryMap = _parseBatteryRecords(res.data)

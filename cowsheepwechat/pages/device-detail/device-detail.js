@@ -421,7 +421,7 @@ Page({
       data: {
         action: 'getDeviceLogbyId',
         info: {
-          limit:20,
+          limit:30,
           deviceId: deviceId,
           curdate: this.data.trackDate
         },

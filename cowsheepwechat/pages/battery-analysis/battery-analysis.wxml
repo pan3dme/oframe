@@ -14,6 +14,15 @@
       </picker>
       <button class="fetch-btn" bindtap="onFetchLogs" loading="{{loading}}">查询</button>
     </view>
+    <view class="select-label limit-label">记录数量</view>
+    <view class="select-row">
+      <picker mode="selector" range="{{limitOptions}}" value="{{selectedLimitIndex}}" bindchange="onLimitPickerChange">
+        <view class="select-picker limit-picker">
+          <text>{{limitOptions[selectedLimitIndex]}} 条</text>
+          <text class="picker-arrow">▼</text>
+        </view>
+      </picker>
+    </view>
   </view>
 
   <!-- 电量趋势图表 -->
