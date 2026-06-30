@@ -17,7 +17,8 @@
     "pages/places/detail/detail",
     "pages/places/picker/picker",
     "pages/battery-analysis/battery-analysis",
-    "pages/road-optimize/road-optimize"
+    "pages/road-optimize/road-optimize",
+    "pages/cloud-records/cloud-records"
   ],
   "window": {
     "navigationBarTextStyle": "black",

@@ -1,0 +1,169 @@
+/**cloud-records.wxss**/
+page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+  overflow: hidden;
+}
+
+.page-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ========== 加载 / 错误 ========== */
+.loading-box,
+.error-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24rpx;
+}
+
+.loading-text {
+  font-size: 30rpx;
+  color: #999;
+}
+
+.error-icon {
+  font-size: 80rpx;
+}
+
+.error-text {
+  font-size: 28rpx;
+  color: #999;
+}
+
+.retry-btn {
+  margin-top: 20rpx;
+  padding: 16rpx 48rpx;
+  font-size: 28rpx;
+  background: #07c160;
+  color: #fff;
+  border-radius: 40rpx;
+  border: none;
+}
+
+/* ========== 记录列表面板 ========== */
+.recv-panel {
+  flex: 1;
+  margin: 16rpx 24rpx 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  min-height: 200rpx;
+}
+
+.recv-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 18rpx 24rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+  background: #fff;
+}
+
+.recv-icon {
+  font-size: 28rpx;
+  margin-right: 6rpx;
+}
+
+.recv-label {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.recv-filters {
+  display: flex;
+  gap: 10rpx;
+  margin-left: 16rpx;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.recv-filter-btn {
+  font-size: 22rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid #ddd;
+  color: #999;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.recv-filter-on {
+  color: #fff;
+  background: #1989fa;
+  border-color: #1989fa;
+}
+
+.recv-count {
+  margin-left: auto;
+  font-size: 26rpx;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.recv-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ========== 单条记录卡片 ========== */
+.recv-item {
+  padding: 18rpx 24rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
+  line-height: 1.55;
+}
+
+.recv-item:last-child {
+  border-bottom: none;
+}
+
+.recv-main {
+  font-size: 32rpx;
+  word-break: break-all;
+}
+
+.recv-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #666;
+  word-break: break-all;
+}
+
+.recv-source {
+  margin-left: 8rpx;
+  color: #999;
+}
+
+.recv-meta {
+  margin-top: 8rpx;
+  display: flex;
+  gap: 24rpx;
+  font-size: 24rpx;
+  color: #07c160;
+}
+
+.recv-rssi,
+.recv-snr {
+  font-weight: 500;
+}
+
+/* 空状态 */
+.empty-tip {
+  text-align: center;
+  font-size: 28rpx;
+  color: #bbb;
+  padding: 100rpx 0;
+}

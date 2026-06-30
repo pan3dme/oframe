@@ -5,12 +5,9 @@ const dataCache = require('../../config/data-cache.js')
 Page({
   data: {
     receivedMsg: '',
-    recordList: [],
-    showRecordTable: false,
     showInsertModal: false,
     insertDeviceId: '',
     insertLorastr: '',
-    deviceIdList: [],
     deviceIdOptions: ['v4-1'],
     selectedDeviceIndex: 0,
     featureBtns: [{
@@ -56,51 +53,6 @@ Page({
     ]
   },
 
-  // 统一解析接口返回数据，提取 deviceId / lorastr / time
-  parseRecordList(data) {
-    let rawList = []
-    if (data && data.data && Array.isArray(data.data)) {
-      rawList = data.data
-    } else if (Array.isArray(data)) {
-      rawList = data
-    }
-    const records = rawList.map(record => {
-      const attr = {}
-      if (record.attributes) {
-        record.attributes.forEach(item => {
-          attr[item.columnName] = item.columnValue
-        })
-      }
-      if (record.primaryKey) {
-        record.primaryKey.forEach(item => {
-          attr[item.name] = item.value
-        })
-      }
-      const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
-      const lorastr = attr.lorastr || record.lorastr || '-'
-      const rawTime = attr.time || record.time || '-'
-      // 拆分日期和时间，用于两行显示
-      const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-      return {
-        deviceId,
-        lorastr,
-        date: date || '-',
-        time_part: time_part || '',
-        rawTime
-      }
-    })
-    // 按时间降序排列，最新的在最上面
-    records.sort((a, b) => {
-      const ta = new Date(a.rawTime).getTime()
-      const tb = new Date(b.rawTime).getTime()
-      if (isNaN(ta) && isNaN(tb)) return 0
-      if (isNaN(ta)) return 1
-      if (isNaN(tb)) return -1
-      return tb - ta
-    })
-    return records
-  },
-
   onLoad() {
   },
 
@@ -110,44 +62,8 @@ Page({
     console.log('功能按钮 ' + id + ' 被点击')
 
     if (id === 1) {
-      // 最近10条记录
-      wx.request({
-        url: API_URL,
-        method: 'POST',
-        data: {
-          action: 'getlastlog',
-          info: {
-            limit: 10
-          },
-          time: getApp().formatTime()
-        },
-        success: (res) => {
-          console.log('最近10条返回:', JSON.stringify(res.data))
-          wx.showToast({
-            title: '获取成功',
-            icon: 'success',
-            duration: 1500
-          })
-          const recordList = this.parseRecordList(res.data)
-          // 提取去重设备编号列表
-          const idSet = new Set()
-          recordList.forEach(r => { if (r.deviceId && r.deviceId !== '-') idSet.add(r.deviceId) })
-          const deviceIdList = Array.from(idSet).sort()
-          this.setData({
-            recordList,
-            deviceIdList,
-            showRecordTable: recordList.length > 0
-          })
-        },
-        fail: (err) => {
-          console.error('获取失败:', err)
-          wx.showToast({
-            title: '获取失败',
-            icon: 'error',
-            duration: 2000
-          })
-        }
-      })
+      // 最近10条记录 — 跳转到云端记录页
+      wx.navigateTo({ url: '/pages/cloud-records/cloud-records' })
     } else if (id === 2) {
       // 插入一条记录 — 先从缓存获取设备列表，再弹出选择框
       dataCache.getDeviceList((deviceData) => {
@@ -244,8 +160,7 @@ Page({
         console.log(JSON.stringify(res.data))
         wx.showToast({ title: '插入成功', icon: 'success', duration: 1500 })
         this.setData({
-          receivedMsg: JSON.stringify(res.data),
-          showRecordTable: false
+          receivedMsg: JSON.stringify(res.data)
         })
       },
       fail: (err) => {

@@ -12,29 +12,8 @@
     </view>
   </view>
 
-  <!-- 表格显示 -->
-  <view class="msg-panel" wx:if="{{showRecordTable}}">
-    <view class="record-table">
-      <view class="table-header">
-        <view class="th th-deviceId">deviceId</view>
-        <view class="th th-lorastr">lorastr</view>
-        <view class="th th-time">time</view>
-      </view>
-      <view class="table-body">
-        <view class="table-row" wx:for="{{recordList}}" wx:key="date">
-          <view class="td td-deviceId">{{item.deviceId}}</view>
-          <view class="td td-lorastr">{{item.lorastr}}</view>
-          <view class="td td-time">
-            <view class="time-date">{{item.date}}</view>
-            <view class="time-clock">{{item.time_part}}</view>
-          </view>
-        </view>
-      </view>
-    </view>
-  </view>
-
   <!-- 接收到的消息 -->
-  <view class="msg-panel" wx:if="{{receivedMsg && !showRecordTable}}">
+  <view class="msg-panel" wx:if="{{receivedMsg}}">
     <view class="msg-label">📩 收到消息：</view>
     <view class="msg-content">{{receivedMsg}}</view>
   </view>
