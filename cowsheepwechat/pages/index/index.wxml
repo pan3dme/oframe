@@ -1,16 +1,6 @@
 <!--index.wxml-->
 <navigation-bar title="牛羊显示" back="{{false}}" color="black" background="#FFF"></navigation-bar>
 
-<!-- IoT 新数据飘窗通知 -->
-<view class="iot-notify {{showIotNotify ? 'iot-notify-show' : ''}}" bindtap="onIotNotifyTap">
-  <text class="iot-notify-icon">📡</text>
-  <view class="iot-notify-body">
-    <text class="iot-notify-line1">{{iotNotifyLine1}}</text>
-    <text class="iot-notify-line2" wx:if="{{iotNotifyLine2}}">{{iotNotifyLine2}}</text>
-    <text class="iot-notify-line3" wx:if="{{iotNotifyLine3}}">{{iotNotifyLine3}}</text>
-  </view>
-</view>
-
 <scroll-view class="scrollarea" scroll-y type="list">
   <!-- 设备摘要 -->
   <view class="summary-card" bindtap="goToDevice">
