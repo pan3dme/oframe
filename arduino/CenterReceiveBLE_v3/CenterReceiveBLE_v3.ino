@@ -410,7 +410,8 @@ void setup() {
 
  
   //特殊处理，发送DTU信息
-  Serial2.begin(115200, SERIAL_8N1, 45, 46);
+  // Serial2.begin(115200, SERIAL_8N1, 45, 46);
+  Serial2.begin(115200, SERIAL_8N1, 17, 18); 
   delay(1000);
  
 
@@ -429,16 +430,33 @@ void setup() {
 void sendLoraInfoUseDtu() {
  
   //  String gpsStr = "1|v3-8|0.00000,0.00000|99"  ;
+  // String json = "{"
+  //               "\"id\":"
+  //               + String(millis()) + ","
+  //                                    "\"version\":\"1.0\","
+  //                                    "\"method\":\"thing.event.property.post\","
+  //                                    "\"params\":{"
+  //                                    "\"lorainfo\":\""
+  //               + String(loraStr) + "\""
+  //                                   "}"
+  //                                   "}";
+
+
+  // 2. 构建 JSON 报文 (已彻底修复拼接语法)
   String json = "{"
-                "\"id\":"
-                + String(millis()) + ","
-                                     "\"version\":\"1.0\","
-                                     "\"method\":\"thing.event.property.post\","
-                                     "\"params\":{"
-                                     "\"lorainfo\":\""
-                + String(loraStr) + "\""
-                                    "}"
-                                    "}";
+                "\"id\":" + String(millis()) + "," 
+                "\"version\":\"1.0\","
+                "\"method\":\"thing.event.property.post\","
+                "\"params\":{"
+                "\"lorainfo\":\"" + String(loraStr) + "\"," 
+                "\"upDateDevice\":\"" + deviceName + "\"," 
+                "\"rssi\":" + String(lastRssi) + ","
+                "\"snr\":" + String(lastSnr) +
+                "}"
+                "}";
+
+
+
   Serial.println("上报报文：" + json);
   Serial2.println(json);
 
