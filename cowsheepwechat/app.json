@@ -18,7 +18,8 @@
     "pages/places/picker/picker",
     "pages/battery-analysis/battery-analysis",
     "pages/road-optimize/road-optimize",
-    "pages/cloud-records/cloud-records"
+    "pages/cloud-records/cloud-records",
+    "pages/dtu-device/dtu-device"
   ],
   "window": {
     "navigationBarTextStyle": "black",

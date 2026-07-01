@@ -75,8 +75,8 @@ void sendLoraInfoUseDtu() {
                 "}";
 
   // 3. 打印并发送
-  Serial.println("📤 上报报文：" + json);
-  Serial2.println(json);
+  // Serial.println("📤 上报报文：" + json);
+  // Serial2.println(json);
 }
 
 void loop() {

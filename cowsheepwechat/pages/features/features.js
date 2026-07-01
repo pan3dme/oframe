@@ -50,6 +50,10 @@ Page({
         id: 10,
         label: '道路优化'
       },
+      {
+        id: 11,
+        label: '查看DTU设备'
+      },
     ]
   },
 
@@ -112,6 +116,9 @@ Page({
     } else if (id === 10) {
       // 道路优化
       wx.navigateTo({ url: '/pages/road-optimize/road-optimize' })
+    } else if (id === 11) {
+      // 查看DTU设备
+      wx.navigateTo({ url: '/pages/dtu-device/dtu-device' })
     }
   },
 
