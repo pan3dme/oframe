@@ -395,19 +395,90 @@ void sendLoraInfoUseDtu() {
   Serial.println("上报报文：" + json);
   Serial2.println(json);
 }
+
+// cominfo缓存数组（最多存10条）
+#define COMINFO_MAX 10
+String cominfoArray[COMINFO_MAX];
+int cominfoCount = 0;
+
+/**
+ * 接收 Serial2 (DTU) 数据，拆分多个拼接JSON并提取cominfo
+ */
 void receiveDtuData() {
-  if (Serial2.available() > 0) {
-    while (Serial2.available() > 0) {
-      byte incomingByte = Serial2.read();
-      if (incomingByte >= 32 && incomingByte <= 126) {
-        Serial.print((char)incomingByte);
+  if (Serial2.available() <= 0) {
+    return;
+  }
+
+  // 1. 读取本次全部数据
+  String raw = "";
+  while (Serial2.available() > 0) {
+    raw += (char)Serial2.read();
+    delay(2);  // 等待下一个字节
+  }
+  Serial2.flush();
+
+  Serial.print("原始数据: ");
+  Serial.println(raw);
+
+  // 2. 用大括号计数法拆分多个拼接的JSON对象
+  cominfoCount = 0;
+  int depth = 0;
+  int start = -1;
+
+  for (int i = 0; i < raw.length(); i++) {
+    char c = raw[i];
+    if (c == '{') {
+      if (depth == 0) {
+        start = i;  // 记录JSON起始位置
+      }
+      depth++;
+    } else if (c == '}') {
+      depth--;
+      if (depth == 0 && start >= 0) {
+        // 提取一个完整JSON对象
+        String jsonStr = raw.substring(start, i + 1);
+        Serial.print("拆分JSON: ");
+        Serial.println(jsonStr);
+
+        // 3. 解析并提取cominfo
+        StaticJsonDocument<512> doc;
+        DeserializationError err = deserializeJson(doc, jsonStr);
+        if (err) {
+          Serial.print("解析失败: ");
+          Serial.println(err.c_str());
+        } else {
+          const char *cominfo = doc["params"]["cominfo"];
+          if (cominfo != nullptr) {
+            Serial.print("cominfo: ");
+            Serial.println(cominfo);
+            // 存入数组
+            if (cominfoCount < COMINFO_MAX) {
+              cominfoArray[cominfoCount] = String(cominfo);
+              cominfoCount++;
+            }
+          } else {
+            Serial.println("未找到cominfo字段");
+          }
+        }
+        start = -1;
       }
     }
-    Serial.println();
-    Serial2.flush();  // 【新增】强制清空串口接收缓冲区，防止残留垃圾数据
+  }
+  if (cominfoCount > 0) {
+    // 4. 打印汇总结果
+    Serial.println("---- cominfo汇总 ----");
+    for (int i = 0; i < cominfoCount; i++) {
+      Serial.print("[");
+      Serial.print(i);
+      Serial.print("] ");
+      Serial.println(cominfoArray[i]);
+    }
+    Serial.print("共 ");
+    Serial.print(cominfoCount);
+    Serial.println(" 条");
+    Serial.println("--------------------");
   }
 }
-
 // ========================= 系统初始化 =========================
 
 void setup() {
@@ -602,5 +673,5 @@ void loop() {
     lastDisplayUpdate = now;
   }
 
-  delay(1000);
+  delay(100);
 }
