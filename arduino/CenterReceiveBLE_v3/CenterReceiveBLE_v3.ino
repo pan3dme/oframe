@@ -74,82 +74,87 @@ class MyServerCallbacks : public BLEServerCallbacks {
     pServer->startAdvertising();
   }
 };
+void meshCmdInfomsg(String rxValue) {
+  //    {"cmd":"setfreq","value":5,"deviceId":"v4-4"}
+  //      {"deviceId":"v4-4","cmd":"setfreq","value":5}
+  Serial.println(rxValue);
+  DeserializationError error = deserializeJson(docCom, rxValue);
+  if (error) {
+    return;
+  }
+
+  // 数据同步开关
+  if (docCom.containsKey("syncing")) {
+    needSync = docCom["syncing"].as<bool>();
+    Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
+    return;
+  }
+
+  // 指令处理
+  if (!docCom.containsKey("cmd")) {
+    return;
+  }
+  String cmd = docCom["cmd"].as<String>();
+
+  // 获取设备列表
+  if (cmd == "getDeviceList") {
+    Serial.println("获取设备列表");
+    StaticJsonDocument<256> doc;
+    doc["cmd"] = "getDeviceList";
+    JsonArray infoArray = doc.createNestedArray("info");
+    for (int i = 0; i < deviceCacheCount; i++) {
+      infoArray.add(deviceCacheId[i]);
+    }
+    String str;
+    serializeJson(doc, str);
+    Serial.println(str);
+    pCharacteristic->setValue(str.c_str());
+    pCharacteristic->notify();
+    return;
+  }
+
+  // 对时指令：同步本地时间
+  if (cmd == "synctime" && docCom.containsKey("time")) {
+    String timeStr = docCom["time"].as<String>();
+    Serial.print("⏰ 收到对时发送指令: ");
+    Serial.println(timeStr);
+    setTimeFromLora(timeStr);
+  }
+
+  // 携带deviceId时，计算接收窗口并定时发送对时
+  if (docCom.containsKey("deviceId")) {
+    String targetId = docCom["deviceId"].as<String>();
+    String lastMsg = findLastMessageByDevice(targetId);
+    if (lastMsg.length() > 0) {
+      Serial.print("📋 ");
+      Serial.print(targetId);
+      Serial.print(" 最后一条消息: ");
+      Serial.println(lastMsg);
+      unsigned long rxStartMs = calcRxWindowStartMs(lastMsg);
+      if (rxStartMs > 0) {
+        unsigned long nowMs = millis();
+        if (rxStartMs > nowMs) {
+          scheduledSendMs = rxStartMs;
+          needSendTimeSync = true;
+          unsigned long waitSec = (rxStartMs - nowMs) / 1000;
+          Serial.printf("⏳ 将在 %lu 秒后（接收窗口开启时）发送对时\n", waitSec);
+        }
+      }
+    } else {
+      String str = "{\"cmd\":\"tip\", \"info\":\"⚠️ 队列中没有" + targetId + "的记录\"}";
+      Serial.println(str);
+      pCharacteristic->setValue(str.c_str());
+      pCharacteristic->notify();
+    }
+  }
+}
 
 // BLE特征值写入回调（解析JSON指令）
 class MyCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     String rxValue = pCharacteristic->getValue();
     Serial.print("📥 收到蓝牙指令：");
-    Serial.println(rxValue);
-    DeserializationError error = deserializeJson(docCom, rxValue);
-    if (error) {
-      return;
-    }
-
-    // 数据同步开关
-    if (docCom.containsKey("syncing")) {
-      needSync = docCom["syncing"].as<bool>();
-      Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
-      return;
-    }
-
-    // 指令处理
-    if (!docCom.containsKey("cmd")) {
-      return;
-    }
-    String cmd = docCom["cmd"].as<String>();
-
-    // 获取设备列表
-    if (cmd == "getDeviceList") {
-      Serial.println("获取设备列表");
-      StaticJsonDocument<256> doc;
-      doc["cmd"] = "getDeviceList";
-      JsonArray infoArray = doc.createNestedArray("info");
-      for (int i = 0; i < deviceCacheCount; i++) {
-        infoArray.add(deviceCacheId[i]);
-      }
-      String str;
-      serializeJson(doc, str);
-      Serial.println(str);
-      pCharacteristic->setValue(str.c_str());
-      pCharacteristic->notify();
-      return;
-    }
-
-    // 对时指令：同步本地时间
-    if (cmd == "synctime" && docCom.containsKey("time")) {
-      String timeStr = docCom["time"].as<String>();
-      Serial.print("⏰ 收到对时发送指令: ");
-      Serial.println(timeStr);
-      setTimeFromLora(timeStr);
-    }
-
-    // 携带deviceId时，计算接收窗口并定时发送对时
-    if (docCom.containsKey("deviceId")) {
-      String targetId = docCom["deviceId"].as<String>();
-      String lastMsg = findLastMessageByDevice(targetId);
-      if (lastMsg.length() > 0) {
-        Serial.print("📋 ");
-        Serial.print(targetId);
-        Serial.print(" 最后一条消息: ");
-        Serial.println(lastMsg);
-        unsigned long rxStartMs = calcRxWindowStartMs(lastMsg);
-        if (rxStartMs > 0) {
-          unsigned long nowMs = millis();
-          if (rxStartMs > nowMs) {
-            scheduledSendMs = rxStartMs;
-            needSendTimeSync = true;
-            unsigned long waitSec = (rxStartMs - nowMs) / 1000;
-            Serial.printf("⏳ 将在 %lu 秒后（接收窗口开启时）发送对时\n", waitSec);
-          }
-        }
-      } else {
-        String str = "{\"cmd\":\"tip\", \"info\":\"⚠️ 队列中没有" + targetId + "的记录\"}";
-        Serial.println(str);
-        pCharacteristic->setValue(str.c_str());
-        pCharacteristic->notify();
-      }
-    }
+    meshCmdInfomsg(rxValue);
   }
 };
 
@@ -471,7 +476,9 @@ void receiveDtuData() {
       Serial.print("[");
       Serial.print(i);
       Serial.print("] ");
-      Serial.println(cominfoArray[i]);
+      // Serial.println(cominfoArray[i]);
+
+      meshCmdInfomsg(cominfoArray[i]);
     }
     Serial.print("共 ");
     Serial.print(cominfoCount);

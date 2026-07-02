@@ -320,6 +320,7 @@ Page({
   onSendCmd() {
 
     const FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
+
     const payload = {
       action: 'com',
       deviceName: DTU_CONFIG.deviceName,
@@ -327,7 +328,7 @@ Page({
       msg:JSON.stringify({deviceId: 'v4-4', cmd: 'setfreq', value: 5 }),
       timestamp: Date.now()
     }
-    
+
 
     this.addLog('info', '发送指令: ' + JSON.stringify(payload))
     console.log('[DTU指令] 发送:', payload)
