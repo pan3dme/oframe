@@ -111,9 +111,12 @@ function _parseDeviceRecords(data) {
     const lorastr = attr.lorastr || record.lorastr || '-'
     const link_cowsheep_id = attr.link_cowsheep_id || record.link_cowsheep_id || ''
     const picurl = attr.picurl || record.picurl || ''
+    const ProductKey = attr.ProductKey || record.ProductKey || ''
+    const DeviceName = attr.DeviceName || record.DeviceName || ''
+    const DeviceSecret = attr.DeviceSecret || record.DeviceSecret || ''
     const rawTime = attr.time || record.time || '-'
     const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-    return { deviceId, device_key, rename, lorastr, link_cowsheep_id, picurl, date: date || '-', time_part: time_part || '', rawTime }
+    return { deviceId, device_key, rename, lorastr, link_cowsheep_id, picurl, ProductKey, DeviceName, DeviceSecret, date: date || '-', time_part: time_part || '', rawTime }
   })
   records.sort((a, b) => {
     const ta = new Date(a.rawTime).getTime()

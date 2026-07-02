@@ -26,6 +26,14 @@
             <text class="hi-value hi-value-highlight">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
           </view>
           <view class="hi-item">
+            <text class="hi-label">ProductKey</text>
+            <text class="hi-value">{{deviceInfo.ProductKey || '-'}}</text>
+          </view>
+          <view class="hi-item">
+            <text class="hi-label">DeviceName</text>
+            <text class="hi-value">{{deviceInfo.DeviceName || '-'}}</text>
+          </view>
+          <view class="hi-item">
             <text class="hi-label">记录时间</text>
             <text class="hi-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
           </view>
@@ -125,6 +133,27 @@
       value="{{editRename}}"
       placeholder="请输入别名"
       bindinput="onEditRenameInput" />
+
+    <!-- ProductKey -->
+    <view class="modal-label">ProductKey</view>
+    <input class="modal-input"
+      value="{{editProductKey}}"
+      placeholder="请输入ProductKey"
+      bindinput="onEditProductKeyInput" />
+
+    <!-- DeviceName -->
+    <view class="modal-label">DeviceName</view>
+    <input class="modal-input"
+      value="{{editDeviceName}}"
+      placeholder="请输入DeviceName"
+      bindinput="onEditDeviceNameInput" />
+
+    <!-- DeviceSecret -->
+    <view class="modal-label">DeviceSecret</view>
+    <input class="modal-input"
+      value="{{editDeviceSecret}}"
+      placeholder="请输入DeviceSecret"
+      bindinput="onEditDeviceSecretInput" />
 
     <view class="modal-btns">
       <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
