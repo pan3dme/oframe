@@ -265,7 +265,7 @@ unsigned long calcRxWindowStartMs(String msgJson) {
   float slotTime = deviceIdx * slotDuration;
 
   // 从收到消息到设备RX窗口中心的延迟
-  unsigned long delaySec = (unsigned long)(intervalSec - slotTime - rxWinSec / 2.0);
+  unsigned long delaySec = (unsigned long)(intervalSec - slotTime - rxWinSec / 1.50);
 
   // 扣除BLE指令到达前已流逝的时间
   unsigned long elapsedSec = 0;
@@ -422,8 +422,8 @@ void receiveDtuData() {
   }
   Serial2.flush();
 
-  Serial.print("原始数据: ");
-  Serial.println(raw);
+  // Serial.print("原始数据: ");
+  // Serial.println(raw);
 
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   cominfoCount = 0;
@@ -442,8 +442,8 @@ void receiveDtuData() {
       if (depth == 0 && start >= 0) {
         // 提取一个完整JSON对象
         String jsonStr = raw.substring(start, i + 1);
-        Serial.print("拆分JSON: ");
-        Serial.println(jsonStr);
+        // Serial.print("拆分JSON: ");
+        // Serial.println(jsonStr);
 
         // 3. 解析并提取cominfo
         StaticJsonDocument<512> doc;
@@ -462,7 +462,7 @@ void receiveDtuData() {
               cominfoCount++;
             }
           } else {
-            Serial.println("未找到cominfo字段");
+            // Serial.println("未找到cominfo字段");
           }
         }
         start = -1;
@@ -494,6 +494,7 @@ void setup() {
   delay(1000);
 
   Serial2.begin(115200, SERIAL_8N1, 17, 18);
+  // Serial2.begin(115200, SERIAL_8N1, 45, 46);
   delay(1000);
 
   deviceName = makeDivceName();
@@ -570,16 +571,16 @@ void loop() {
     int firstPipeIndex = String(loraStr).indexOf('|');
     if (firstPipeIndex > 0) {
       int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
-      Serial.print("📋 消息类型: ");
-      Serial.println(messageType);
+      // Serial.print("📋 消息类型: ");
+      // Serial.println(messageType);
 
       if (messageType == MSG_TYPE_TIME) {
         // 对时信息：2|设备名|时间字符串
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
           String timeStr = String(loraStr).substring(secondPipeIndex + 1);
-          Serial.print("⏰ 收到对时信息: ");
-          Serial.println(timeStr);
+          // Serial.print("⏰ 收到对时信息: ");
+          // Serial.println(timeStr);
           setTimeFromLora(timeStr);
         }
       } else if (messageType == MSG_TYPE_BATTERY) {
@@ -587,8 +588,8 @@ void loop() {
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
           float batteryLevel = String(loraStr).substring(secondPipeIndex + 1).toFloat();
-          Serial.print("🔋 收到电量信息: ");
-          Serial.println(batteryLevel, 2);
+          // Serial.print("🔋 收到电量信息: ");
+          // Serial.println(batteryLevel, 2);
           displayBuf[3] = "Bat:" + String(batteryLevel, 2) + "V";
         }
       } else if (messageType == MSG_TYPE_GPS) {

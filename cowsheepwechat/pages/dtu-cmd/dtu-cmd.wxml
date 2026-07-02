@@ -1,0 +1,49 @@
+<!--dtu-cmd.wxml-->
+<navigation-bar title="DTU发送指令" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<scroll-view class="scrollarea" scroll-y type="list">
+
+  <!-- 设备选择 -->
+  <view class="section-card">
+    <view class="section-title">📡 目标设备</view>
+    <picker mode="selector" range="{{deviceDisplayList}}" value="{{deviceIndex}}" bindchange="onDeviceChange">
+      <view class="cmd-picker">{{deviceDisplayList[deviceIndex] || '请选择设备'}}</view>
+    </picker>
+  </view>
+
+  <!-- 指令输入 -->
+  <view class="section-card">
+    <view class="section-title">⚡ 指令内容</view>
+    <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令JSON或文本..." bindinput="onCmdInput" auto-height maxlength="-1" />
+    
+    <!-- 快捷按钮 -->
+    <view class="quick-label">快捷指令</view>
+    <view class="quick-row">
+      <button class="quick-btn {{quickSelected === 1 ? 'quick-active' : ''}}" bindtap="onQuickFreq1">⚡ 高频</button>
+      <button class="quick-btn {{quickSelected === 2 ? 'quick-active' : ''}}" bindtap="onQuickGps">📍 获取GPS</button>
+      <button class="quick-btn {{quickSelected === 3 ? 'quick-active' : ''}}" bindtap="onQuickBattery">🔋 获取电量</button>
+      <button class="quick-btn {{quickSelected === 4 ? 'quick-active' : ''}}" bindtap="onQuickReboot">🔄 重启设备</button>
+      <button class="quick-btn {{quickSelected === 5 ? 'quick-active' : ''}}" bindtap="onQuickOLED">📺 开关OLED</button>
+      <button class="quick-btn {{quickSelected === 6 ? 'quick-active' : ''}}" bindtap="onQuickCloseGPS">🛑 关闭GPS</button>
+      <button class="quick-btn {{quickSelected === 7 ? 'quick-active' : ''}}" bindtap="onQuickOpenGPS">📍 开启GPS</button>
+    </view>
+  </view>
+
+  <!-- 发送按钮 -->
+  <view class="send-section">
+    <button class="send-btn" bindtap="onSend">发送指令</button>
+  </view>
+
+  <!-- 发送日志 -->
+  <view class="log-card" wx:if="{{sendLog.length > 0}}">
+    <view class="log-title">📋 发送日志</view>
+    <view class="log-list">
+      <view class="log-item" wx:for="{{sendLog}}" wx:key="index">
+        <text class="log-time">[{{item.time}}]</text>
+        <text class="log-type log-type-{{item.type}}">{{item.type === 'success' ? '✓' : item.type === 'error' ? '✗' : '→'}}</text>
+        <text class="log-text">{{item.text}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-placeholder"></view>
+</scroll-view>
