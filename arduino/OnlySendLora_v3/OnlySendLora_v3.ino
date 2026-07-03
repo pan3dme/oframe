@@ -11,7 +11,7 @@
 // ==================== 电池检测引脚 ====================
 
 // ==================== 常量定义 ====================
-const char* DEVICE_NAME_PREFIX = "v4-x";
+ 
 const unsigned long RX_WINDOW_SECONDS = 5;  // 接收窗口秒数（周期最后N秒用于接收）
 
 
@@ -21,7 +21,8 @@ String gpsCoordinates;       // GPS坐标信息
 char sendData[BUFFER_SIZE];  // 发送数据缓存
 RadioEvents_t radioEvents;   // LoRa事件回调
 int packetCount = 0;         // 数据包计数器
-String displayLines[4];      // OLED显示内容
+ 
+String displayBuf[4] = { "", "", "", "" };
 
 // LoRa发射时间管理
 int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
@@ -96,7 +97,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 // ==================== 读取GPS信息 ======================================
 void updateGpsInfo() {
   gpsCoordinates = getGpsInfoStr();
-  displayLines[2] = gpsCoordinates;
+  displayBuf[2] = gpsCoordinates;
 }
 // ==================== LoRa模块初始化 ====================
 void initLora() {
@@ -152,10 +153,10 @@ void setup() {
 
   // 生成设备名称并初始化显示
   deviceName = makeDivceName();
-  displayLines[0] = "Device: " + deviceName;
-  displayLines[1] = "";
-  displayLines[2] = "Waiting GPS...";
-  displayLines[3] = "LoRa Ready";
+  displayBuf[0] = "Device: " + deviceName;
+  displayBuf[1] = "";
+  displayBuf[2] = "Waiting GPS...";
+  displayBuf[3] = "LoRa Ready";
 
   // 初始化LoRa模块
   initLora();
@@ -228,10 +229,10 @@ void loop() {
         buildAndSendPacket(MSG_TYPE_GPS);
 
         openLedByNum(10, 50);
-        displayLines[3] = "Fast Mode";
-        displayLines[0] = "id:  " + deviceName + "  " + packetCount;
-        displayLines[1] = getCurrentTime();
-        showDisplayBy4Area(displayLines[0], displayLines[1], displayLines[2], displayLines[3]);
+        displayBuf[3] = "Fast Mode";
+        displayBuf[0] = "id:  " + deviceName + "  " + packetCount;
+        displayBuf[1] = getCurrentTime();
+        showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
 
         lastFastSendTime = currentMs;
         return;
@@ -265,10 +266,10 @@ void loop() {
     buildAndSendPacket(packetType);
 
     openLedByNum(10, 50);
-    displayLines[3] = "Sending...";
-    displayLines[0] = "id:  " + deviceName + "  " + packetCount;
-    displayLines[1] = getCurrentTime();
-    showDisplayBy4Area(displayLines[0], displayLines[1], displayLines[2], displayLines[3]);
+    displayBuf[3] = "Sending...";
+    displayBuf[0] = "id:  " + deviceName + "  " + packetCount;
+    displayBuf[1] = getCurrentTime();
+    showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
 
     // 计算下一次发送时间
     nextSendTime = calculateNextSendTime(intervalSec);
@@ -292,16 +293,16 @@ void loop() {
   // ====== 阶段3：非发送、非接收时间，休眠等待 ======
   if (didSend && !inRxMode) {
     unsigned long remaining = (nextSendTime - currentMs) / 1000;
-    displayLines[3] = "Sleep " + String(remaining) + "s";
+    displayBuf[3] = "Sleep " + String(remaining) + "s";
   }
 
   // 处理LoRa中断
   Radio.IrqProcess();
 
   // 更新OLED显示
-  displayLines[0] = "id:  " + deviceName + "  " + packetCount;
-  displayLines[1] = getCurrentTime();
-  showDisplayBy4Area(displayLines[0], displayLines[1], displayLines[2], displayLines[3]);
+  displayBuf[0] = "id:  " + deviceName + "  " + packetCount;
+  displayBuf[1] = getCurrentTime();
+  showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
 }
 
 // ==================== LoRa发送完成回调 ====================
@@ -386,7 +387,7 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
       }
     }
   }
-  displayLines[3] = "RX:" + String(copyLen) + "B";
+  displayBuf[3] = "RX:" + String(copyLen) + "B";
 }
 
 // ==================== LoRa接收超时回调 ====================
@@ -401,6 +402,6 @@ void startRxWindow() {
   inRxMode = true;
   rxStartTime = millis();
   Serial.println("📡 进入接收窗口... " + getCurrentTime());
-  displayLines[3] = "RX Listening";
+  displayBuf[3] = "RX Listening";
   Radio.Rx(0);  // 连续接收模式
 }

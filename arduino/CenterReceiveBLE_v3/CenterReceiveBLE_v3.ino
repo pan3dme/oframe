@@ -492,14 +492,11 @@ void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   delay(1000);
-
   Serial2.begin(115200, SERIAL_8N1, 17, 18);
   // Serial2.begin(115200, SERIAL_8N1, 45, 46);
   delay(1000);
-
   deviceName = makeDivceName();
   displayBuf[0] = "id:" + deviceName + " rec";
-
   initRadio();
   initBLE();
 
@@ -515,7 +512,7 @@ void loop() {
   Radio.IrqProcess();
   receiveDtuData();
 
-  if (lastUpSelfTm < (millis() - SEND_INTERVAL_MS)) {
+  if ((lastUpSelfTm+SEND_INTERVAL_MS) < millis()) {
     lastUpSelfTm = millis();
     sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
   }
@@ -639,10 +636,7 @@ void loop() {
     }
   }
 
-  // GPS数据解析
-  if (Serial1.available() > 0) {
-    gpsEncode();
-  }
+ 
 
   // LED闪烁提示
   if (needPlaLed) {
