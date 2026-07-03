@@ -8,10 +8,9 @@
 #include <pan3dme.h>
 #include "HT_TinyGPS++.h"
 
-// ==================== 电池检测引脚 ====================
 
 // ==================== 常量定义 ====================
- 
+
 const unsigned long RX_WINDOW_SECONDS = 5;  // 接收窗口秒数（周期最后N秒用于接收）
 
 
@@ -21,7 +20,7 @@ String gpsCoordinates;       // GPS坐标信息
 char sendData[BUFFER_SIZE];  // 发送数据缓存
 RadioEvents_t radioEvents;   // LoRa事件回调
 int packetCount = 0;         // 数据包计数器
- 
+
 String displayBuf[4] = { "", "", "", "" };
 
 // LoRa发射时间管理
@@ -30,8 +29,7 @@ int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 
-// 快速发送模式控制
-bool fastModeEnabled = false;                               // 是否启用快速发送模式
+
 unsigned long fastModeStartTime = 0;                        // 快速模式启动时间
 const unsigned long FAST_MODE_DURATION = SEND_INTERVAL_MS;  // 快速模式持续时间（等于正常周期）
 const unsigned long FAST_SEND_INTERVAL = 5000;              // 快速模式下发送间隔（5秒）
@@ -43,7 +41,7 @@ unsigned long rxStartTime = 0;   // RX窗口开始的millis()
 bool didSend = false;            // 本周期是否已发送（控制RX窗口和休眠）
 char rxBuffer[BUFFER_SIZE + 1];  // 接收数据缓存
 bool oledOpen = true;
- 
+
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   if (deviceIndex < 0 || totalDevices == 0) {
@@ -55,7 +53,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
     Serial.println("⚠️ 设备未认证，使用默认间隔");
     return millis() + intervalSeconds * 1000;
   }
-  
+
   // 1. 获取当前时间
   String timeStr = getCurrentTime();
   int hour = 0, minute = 0, second = 0;
@@ -64,29 +62,29 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 
   // 2. 计算基础参数
   float slotDuration = (float)intervalSeconds / totalDevices;
-  unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration); // 我在周期内的偏移量
+  unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
   // 计算从当天0点开始，已经经历了多少个完整的周期
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
-  
+
   // 计算“上一个”属于我的发送时隙的绝对时间点
   unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + mySlotOffset;
-  
+
   long secondsDiff = 0;
 
   // 判断“上一个”时隙是否已经过去
   if (lastTargetSeconds < currentSeconds) {
-      // 如果已过，那么下一个时隙就是再等一个完整的周期
-      secondsDiff = intervalSeconds - (currentSeconds - lastTargetSeconds);
+    // 如果已过，那么下一个时隙就是再等一个完整的周期
+    secondsDiff = intervalSeconds - (currentSeconds - lastTargetSeconds);
   } else {
-      // 如果还没到（说明当前时间正好在周期的最开始部分），下一个时隙就是它
-      secondsDiff = lastTargetSeconds - currentSeconds;
+    // 如果还没到（说明当前时间正好在周期的最开始部分），下一个时隙就是它
+    secondsDiff = lastTargetSeconds - currentSeconds;
   }
 
   // 确保等待时间不为负数
   if (secondsDiff < 0) {
-      secondsDiff += intervalSeconds;
+    secondsDiff += intervalSeconds;
   }
 
   unsigned long delayMillis = secondsDiff * 1000;
@@ -141,27 +139,6 @@ String readBatteryLevel() {
   return String(socRatio, 2) + "|" + String((int)rawAvg) + "|" + String((int)mvAvg) + "|" + String(batteryVoltage, 2);
 }
 
-// ==================== 系统初始化 ====================
-void setup() {
-  delay(1000);
-  Serial.begin(115200);
-  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-
-  analogReadResolution(12);
-  pinMode(VBAT_CTRL_PIN, OUTPUT);
-  digitalWrite(VBAT_CTRL_PIN, HIGH);
-
-  // 生成设备名称并初始化显示
-  deviceName = makeDivceName();
-  displayBuf[0] = "Device: " + deviceName;
-  displayBuf[1] = "";
-  displayBuf[2] = "Waiting GPS...";
-  displayBuf[3] = "LoRa Ready";
-
-  // 初始化LoRa模块
-  initLora();
-  initPanGPS();
-}
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
   packetCount++;
@@ -192,13 +169,31 @@ void buildAndSendPacket(int packetType) {
   // 执行LoRa发送
   Radio.Send((uint8_t*)sendData, strlen(sendData));
 }
+// ==================== 系统初始化 ====================
+void setup() {
+  delay(1000);
+  Serial.begin(115200);
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+
+  analogReadResolution(12);
+  pinMode(VBAT_CTRL_PIN, OUTPUT);
+  digitalWrite(VBAT_CTRL_PIN, HIGH);
+
+  // 生成设备名称并初始化显示
+  deviceName = makeDivceName();
+  displayBuf[0] = "Device: " + deviceName;
+  displayBuf[1] = "";
+  displayBuf[2] = "Waiting GPS...";
+  displayBuf[3] = "LoRa Ready";
+
+  // 初始化LoRa模块
+  initLora();
+  initPanGPS();
+}
 // ==================== 主循环 ====================
 void loop() {
-  delay(1);
+  delay(10);
   gpsEncode();
-
-
-  unsigned long currentMs = millis();
   unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
   bool canRx = (intervalSec > RX_WINDOW_SECONDS + 1);
   unsigned long rxWindowMs = canRx ? RX_WINDOW_SECONDS * 1000 : 0;
@@ -208,47 +203,16 @@ void loop() {
     nextSendTime = calculateNextSendTime(intervalSec);
   }
 
-  // ====== 快速发送模式处理 ======
-  if (fastModeEnabled) {
-    // 检查快速模式是否超时
-    if (currentMs - fastModeStartTime >= FAST_MODE_DURATION) {
-      fastModeEnabled = false;
-      nextSendTime = calculateNextSendTime(intervalSec);  // 重新计算下次正常发送时间
-      Serial.println("⏹ 快速发送模式结束，恢复正常周期发送");
-    } else {
-      // 在快速模式下，每5秒发送一次
-      if (lastFastSendTime == 0 || (currentMs - lastFastSendTime >= FAST_SEND_INTERVAL)) {
-        // 如果正在接收，先退出RX模式
-        if (inRxMode) {
-          Radio.Sleep();
-          inRxMode = false;
-        }
-
-
-
-        buildAndSendPacket(MSG_TYPE_GPS);
-
-        openLedByNum(10, 50);
-        displayBuf[3] = "Fast Mode";
-        displayBuf[0] = "id:  " + deviceName + "  " + packetCount;
-        displayBuf[1] = getCurrentTime();
-        showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
-
-        lastFastSendTime = currentMs;
-        return;
-      }
-    }
-  }
 
   // ====== 正常模式：RX窗口5秒超时检查 ======
-  if (inRxMode && (currentMs - rxStartTime >= rxWindowMs)) {
+  if (inRxMode && (millis() - rxStartTime >= rxWindowMs)) {
     Radio.Sleep();
     inRxMode = false;
     Serial.println("⏹ 结束接收窗口... " + getCurrentTime());
   }
 
   // ====== 阶段1：到达发送时间，执行发送 ======
-  if (currentMs >= nextSendTime) {
+  if (millis() >= nextSendTime) {
     // 如果正在接收，先退出RX模式
     if (inRxMode) {
       Radio.Sleep();
@@ -283,16 +247,16 @@ void loop() {
     int h, m, s;
     sscanf(timeNow.c_str(), "%*d/%*d/%*d %d:%d:%d", &h, &m, &s);
     unsigned long timeOfDaySec = h * 3600UL + m * 60UL + s;
-    unsigned long nextCycleBoundaryMs = currentMs + (intervalSec - timeOfDaySec % intervalSec) * 1000UL;
+    unsigned long nextCycleBoundaryMs = millis() + (intervalSec - timeOfDaySec % intervalSec) * 1000UL;
     unsigned long rxStartMs = nextCycleBoundaryMs - rxWindowMs;
-    if (currentMs >= rxStartMs && currentMs < nextCycleBoundaryMs) {
+    if (millis() >= rxStartMs && millis() < nextCycleBoundaryMs) {
       startRxWindow();
     }
   }
 
   // ====== 阶段3：非发送、非接收时间，休眠等待 ======
   if (didSend && !inRxMode) {
-    unsigned long remaining = (nextSendTime - currentMs) / 1000;
+    unsigned long remaining = (nextSendTime - millis()) / 1000;
     displayBuf[3] = "Sleep " + String(remaining) + "s";
   }
 
@@ -321,7 +285,6 @@ void onSendTimeout(void) {
 void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
   Radio.Sleep();
   inRxMode = false;
-
   int copyLen = (size < BUFFER_SIZE) ? size : BUFFER_SIZE;
   memcpy(rxBuffer, payload, copyLen);
   rxBuffer[copyLen] = '\0';
@@ -348,10 +311,6 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
           Serial.println(lastValue);
           // 如果lastValue为1，启动快速发送模式
           if (lastValue == 1) {
-            fastModeEnabled = true;
-            fastModeStartTime = millis();
-            lastFastSendTime = 0;  // 重置快速发送计时
-            Serial.println("🚀 启动快速发送模式：每5秒发送一次，持续" + String(FAST_MODE_DURATION / 1000) + "秒");
 
 
           } else if (lastValue == 4) {
@@ -360,23 +319,28 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
             ESP.restart();  // 执行重启
 
           } else if (lastValue == 5) {
-            oledOpen = !oledOpen;
-            if (oledOpen) {
-              Serial.println("⚠️⚠️⚠️⚠️打开OLED⚠️⚠️⚠️⚠️");
-              showOLED();
-            } else {
-              Serial.println("⚠️⚠️⚠️⚠️关闭OLED⚠️⚠️⚠️⚠️");
-              hideOLED();
+            //只有GPS打开时才可以使用led
+            if (getGpsStatus() == true) {
+              oledOpen = !oledOpen;
+              if (oledOpen) {
+                Serial.println("⚠️⚠️⚠️⚠️打开OLED⚠️⚠️⚠️⚠️");
+                showOLED();
+              } else {
+                Serial.println("⚠️⚠️⚠️⚠️关闭OLED⚠️⚠️⚠️⚠️");
+                hideOLED();
+              }
             }
           } else if (lastValue == 6) {
             if (getGpsStatus() == true) {
               setGpsEnable(false);
               Serial.println("⚠️⚠️⚠️⚠️关闭GPS⚠️⚠️⚠️⚠️");
+              hideOLED();
             }
           } else if (lastValue == 7) {
             if (getGpsStatus() == false) {
               initPanGPS();
               Serial.println("⚠️⚠️⚠️⚠️ 重新开启GPS⚠️⚠️⚠️⚠️");
+              showOLED();
             }
 
 
