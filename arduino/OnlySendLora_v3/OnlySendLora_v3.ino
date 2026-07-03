@@ -39,6 +39,7 @@ unsigned long lastFastSendTime = 0;                         // 上次快速发�
 bool inRxMode = false;           // 当前是否处于接收模式
 unsigned long rxStartTime = 0;   // RX窗口开始的millis()
 bool didSend = false;            // 本周期是否已发送（控制RX窗口和休眠）
+bool rxWindowDone = false;       // 本周期RX窗口是否已结束（防止收到消息后重新进入）
 char rxBuffer[BUFFER_SIZE + 1];  // 接收数据缓存
 bool oledOpen = true;
 
@@ -92,11 +93,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   return millis() + delayMillis;
 }
 
-// ==================== 读取GPS信息 ======================================
-void updateGpsInfo() {
-  gpsCoordinates = getGpsInfoStr();
-  displayBuf[2] = gpsCoordinates;
-}
+
 // ==================== LoRa模块初始化 ====================
 void initLora() {
   radioEvents.TxDone = onSendDone;
@@ -145,7 +142,8 @@ void buildAndSendPacket(int packetType) {
   String dataStr = String(packetType) + "|" + deviceName;
 
   if (packetType == MSG_TYPE_GPS) {
-    updateGpsInfo();
+    gpsCoordinates = getGpsInfoStr();
+    displayBuf[2] = gpsCoordinates;
     dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
   } else if (packetType == MSG_TYPE_TIME) {
     dataStr += "|" + getCurrentTime() + "|" + String(packetCount);
@@ -221,6 +219,7 @@ void loop() {
     }
 
     didSend = true;
+    rxWindowDone = false;  // 新周期重置RX窗口标记
 
 
     // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;MSG_TYPE_BATTERY
@@ -241,7 +240,7 @@ void loop() {
   }
 
   // ====== 阶段2：接收窗口（周期最后RX_WINDOW_SECONDS秒开启接收） ======
-  if (didSend && canRx && !inRxMode) {
+  if (didSend && canRx && !inRxMode && !rxWindowDone) {
     // 基于当前时间计算周期边界，RX窗口对齐到周期最后5秒
     String timeNow = getCurrentTime();
     int h, m, s;
@@ -284,7 +283,7 @@ void onSendTimeout(void) {
 // ==================== LoRa接收完成回调 ====================
 void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
   Radio.Sleep();
-  inRxMode = false;
+  // 不设inRxMode=false，由loop()超时检查统一处理退出和打印
   int copyLen = (size < BUFFER_SIZE) ? size : BUFFER_SIZE;
   memcpy(rxBuffer, payload, copyLen);
   rxBuffer[copyLen] = '\0';
@@ -364,6 +363,7 @@ void onRxTimeout(void) {
 // ==================== 进入接收窗口 ====================
 void startRxWindow() {
   inRxMode = true;
+  rxWindowDone = true;
   rxStartTime = millis();
   Serial.println("📡 进入接收窗口... " + getCurrentTime());
   displayBuf[3] = "RX Listening";

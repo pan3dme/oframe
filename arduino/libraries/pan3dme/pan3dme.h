@@ -29,7 +29,6 @@ class SSD1306Wire;
 
 // 全局共享变量（在 pan3dme.cpp 中定义）
 extern TinyGPSPlus gps;
-extern bool wifiTimeSynced;
 extern time_t syncedEpoch;
 extern unsigned long syncedMillis;
 
