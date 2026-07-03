@@ -29,7 +29,7 @@ int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 
- 
+
 
 // LoRa接收窗口状态
 bool inRxMode = false;           // 当前是否处于接收模式
@@ -58,7 +58,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
 
   // 2. 计算基础参数
-  float slotDuration = 2.0;
+ 
   unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
@@ -163,6 +163,47 @@ void buildAndSendPacket(int packetType) {
   // 执行LoRa发送
   Radio.Send((uint8_t*)sendData, strlen(sendData));
 }
+unsigned long starQuickSendTime = 0;  // 下次发送时间点（millis）
+bool isQuickModel = false;
+void testQuick(unsigned long intervalSec) {
+  if (millis() > (starQuickSendTime + SEND_INTERVAL_MS)) {
+    isQuickModel = false;
+    return;
+  }
+ 
+  // 1. 获取当前时间
+  String timeStr = getCurrentTime();
+  int hour = 0, minute = 0, second = 0;
+  sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
+  unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
+
+  unsigned long cyclesPassed = currentSeconds / intervalSec;
+  unsigned long passtm = currentSeconds - (cyclesPassed * intervalSec);
+  unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);  // 我在周期内的偏移量
+  unsigned long idx = passtm / (totalDevices * slotDuration);
+  if (idx < 1) {
+    idx = 1;
+  }
+  unsigned long nextTm = (idx * (totalDevices * slotDuration)) + mySlotOffset;
+  if (nextTm < passtm) {
+    nextTm += (totalDevices * slotDuration);
+  }
+
+  Serial.print(passtm);
+  Serial.print(" ");
+  Serial.print(mySlotOffset);
+  Serial.print(" ");
+  Serial.print(nextTm);
+  Serial.print(" ");
+  Serial.println(idx);
+  if (nextTm == passtm) {
+    Serial.println("快速发关一条消息 ");
+
+    buildAndSendPacket(MSG_TYPE_TIME);
+  }
+
+  delay(1000);
+}
 // ==================== 系统初始化 ====================
 void setup() {
   delay(1000);
@@ -198,6 +239,11 @@ void loop() {
   }
 
 
+  if (isQuickModel) {
+    testQuick(intervalSec);
+  }
+
+
   // ====== 正常模式：RX窗口5秒超时检查 ======
   if (inRxMode && (millis() - rxStartTime >= rxWindowMs)) {
     Radio.Sleep();
@@ -219,7 +265,7 @@ void loop() {
 
 
     // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;MSG_TYPE_BATTERY
-    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
+    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_GPS, MSG_TYPE_GPS };
     int packetType = typeList[packetCount % 3];
 
     buildAndSendPacket(packetType);
@@ -306,7 +352,8 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
           Serial.println(lastValue);
           // 如果lastValue为1，启动快速发送模式
           if (lastValue == 1) {
-
+            starQuickSendTime = millis();  // 下次发送时间点（millis）
+            isQuickModel = true;
 
           } else if (lastValue == 4) {
             Serial.println("⚠️⚠️⚠️⚠️ 收到重启指令，系统将在 1 秒后重启...");

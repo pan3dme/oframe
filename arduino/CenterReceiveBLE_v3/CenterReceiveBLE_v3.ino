@@ -258,10 +258,10 @@ unsigned long calcRxWindowStartMs(String msgJson) {
 
   int totalDevices = getTotalDevices();
   const unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
- 
+
 
   // 设备时隙 = deviceIdx * (周期 / 总设备数)
-  float slotDuration = (float)intervalSec / totalDevices;
+
   float slotTime = deviceIdx * slotDuration;
 
   // 从收到消息到设备RX窗口中心的延迟
@@ -282,7 +282,7 @@ unsigned long calcRxWindowStartMs(String msgJson) {
       }
     }
   }
-
+  Serial.println(recvTimeCstr);
   long waitSec = (long)delaySec - (long)elapsedSec;
   if (waitSec < 0) {
     waitSec += intervalSec;  // 窗口已过，推迟到下一周期
@@ -508,11 +508,11 @@ unsigned long lastDisplayUpdate = 0;
 unsigned long lastrecdLoraTm = 0;
 unsigned long lastUpSelfTm = 0;
 void loop() {
- 
+
   Radio.IrqProcess();
   receiveDtuData();
 
-  if ((lastUpSelfTm+SEND_INTERVAL_MS) < millis()) {
+  if ((lastUpSelfTm + SEND_INTERVAL_MS) < millis()) {
     lastUpSelfTm = millis();
     sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
   }
@@ -617,11 +617,7 @@ void loop() {
       doc["snr"] = (int)lastSnr;
       doc["info"] = loraStr;
       doc["upDateDevice"] = deviceName;
-      if (hasValidTime()) {
-        doc["time"] = getCurrentTime();
-      } else {
-        doc["ms"] = millis();
-      }
+      doc["time"] = getCurrentTime();
 
       String jsonData;
       serializeJson(doc, jsonData);
@@ -636,17 +632,17 @@ void loop() {
     }
   }
 
- 
+
 
   // LED闪烁提示
   if (needPlaLed) {
     needPlaLed = false;
     openLedByNum(1, 50);
-    lastrecdLoraTm =  millis();
+    lastrecdLoraTm = millis();
   }
 
   // 超时检测：超过2个周期未收到数据则强制重置Radio
-  unsigned long timeSinceLastRecv =  millis() - lastrecdLoraTm;
+  unsigned long timeSinceLastRecv = millis() - lastrecdLoraTm;
   if (timeSinceLastRecv > SEND_INTERVAL_MS * 2) {
     Serial.print("⚠️ 超过2个周期没有收到数据: ");
     Serial.println(timeSinceLastRecv);
@@ -655,7 +651,7 @@ void loop() {
     Serial.println(radioState);
     Serial.println("🔧 检测到Radio可能死锁,执行强制重置...");
     forceResetRadio();
-    lastrecdLoraTm =  millis();
+    lastrecdLoraTm = millis();
   }
 
   // 更新显示

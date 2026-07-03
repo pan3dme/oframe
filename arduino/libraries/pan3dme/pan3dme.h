@@ -71,9 +71,9 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 60000;  // 总周期10秒
+const unsigned long SEND_INTERVAL_MS = 150000;  // 总周期10秒
 const unsigned long RX_WINDOW_SECONDS = 10;  // 接收窗口秒数（周期最后N秒用于接收）
-
+const float slotDuration = 2.0;
 struct BLECallbacks
 {
   BLEServer *pServer;
