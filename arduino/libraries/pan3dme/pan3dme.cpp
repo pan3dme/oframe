@@ -48,9 +48,6 @@ uint64_t allowedDevices[] = {
     0x9875555,
     0x9875555,
     0x9875555,
-    0x9875555,
-    0x9875555,
-    0x9875555,
     0x9875555       // 等待添加
 };
 const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);

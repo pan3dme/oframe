@@ -11,7 +11,7 @@
 
 // ==================== 常量定义 ====================
 
-const unsigned long RX_WINDOW_SECONDS = 5;  // 接收窗口秒数（周期最后N秒用于接收）
+
 
 
 // ==================== 全局变量 ====================
@@ -29,11 +29,7 @@ int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 
-
-unsigned long fastModeStartTime = 0;                        // 快速模式启动时间
-const unsigned long FAST_MODE_DURATION = SEND_INTERVAL_MS;  // 快速模式持续时间（等于正常周期）
-const unsigned long FAST_SEND_INTERVAL = 5000;              // 快速模式下发送间隔（5秒）
-unsigned long lastFastSendTime = 0;                         // 上次快速发送的时间
+ 
 
 // LoRa接收窗口状态
 bool inRxMode = false;           // 当前是否处于接收模式
@@ -62,7 +58,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
 
   // 2. 计算基础参数
-  float slotDuration = (float)intervalSeconds / totalDevices;
+  float slotDuration = 2.0;
   unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
