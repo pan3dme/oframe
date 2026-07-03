@@ -381,7 +381,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 // ========================= DTU上报 =========================
 
 // 通过串口2将LoRa数据上报给DTU
-void sendLoraInfoUseDtu() {
+void sendLoraInfoUseDtu(String str, String rssi, String snr) {
   String json = "{"
                 "\"id\":"
                 + String(millis()) + ","
@@ -389,14 +389,14 @@ void sendLoraInfoUseDtu() {
                                      "\"method\":\"thing.event.property.post\","
                                      "\"params\":{"
                                      "\"lorainfo\":\""
-                + String(loraStr) + "\","
-                                    "\"upDateDevice\":\""
+                + str + "\","
+                        "\"upDateDevice\":\""
                 + deviceName + "\","
                                "\"rssi\":"
-                + String(lastRssi) + ","
-                                     "\"snr\":"
-                + String(lastSnr) + "}"
-                                    "}";
+                + rssi + ","
+                         "\"snr\":"
+                + snr + "}"
+                        "}";
   Serial.println("上报报文：" + json);
   Serial2.println(json);
 }
@@ -509,11 +509,16 @@ void setup() {
 // ========================= 主循环 =========================
 unsigned long lastDisplayUpdate = 0;
 unsigned long lastrecdLoraTm = 0;
-
+unsigned long lastUpSelfTm = 0;
 void loop() {
-  unsigned long startm = millis();
+ 
   Radio.IrqProcess();
   receiveDtuData();
+
+  if (lastUpSelfTm < (millis() - SEND_INTERVAL_MS)) {
+    lastUpSelfTm = millis();
+    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
+  }
 
   // 处理BLE触发的定时LoRa发送（等待接收窗口到达）
   if (needSendTimeSync) {
@@ -603,7 +608,7 @@ void loop() {
         displayBuf[3] = String(loraStr).substring(0, 15);
       }
 
-      sendLoraInfoUseDtu();
+      sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
     } else {
       displayBuf[3] = String(loraStr).substring(0, 15);
     }
@@ -643,11 +648,11 @@ void loop() {
   if (needPlaLed) {
     needPlaLed = false;
     openLedByNum(1, 50);
-    lastrecdLoraTm = startm;
+    lastrecdLoraTm =  millis();
   }
 
   // 超时检测：超过2个周期未收到数据则强制重置Radio
-  unsigned long timeSinceLastRecv = startm - lastrecdLoraTm;
+  unsigned long timeSinceLastRecv =  millis() - lastrecdLoraTm;
   if (timeSinceLastRecv > SEND_INTERVAL_MS * 2) {
     Serial.print("⚠️ 超过2个周期没有收到数据: ");
     Serial.println(timeSinceLastRecv);
@@ -656,7 +661,7 @@ void loop() {
     Serial.println(radioState);
     Serial.println("🔧 检测到Radio可能死锁,执行强制重置...");
     forceResetRadio();
-    lastrecdLoraTm = startm;
+    lastrecdLoraTm =  millis();
   }
 
   // 更新显示

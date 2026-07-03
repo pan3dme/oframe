@@ -52,10 +52,6 @@ Page({
       },
       {
         id: 11,
-        label: '查看DTU设备'
-      },
-      {
-        id: 12,
         label: 'DTU发送指令'
       },
     ]
@@ -121,9 +117,6 @@ Page({
       // 道路优化
       wx.navigateTo({ url: '/pages/road-optimize/road-optimize' })
     } else if (id === 11) {
-      // 查看DTU设备
-      wx.navigateTo({ url: '/pages/dtu-device/dtu-device' })
-    } else if (id === 12) {
       // DTU发送指令
       wx.navigateTo({ url: '/pages/dtu-cmd/dtu-cmd' })
     }

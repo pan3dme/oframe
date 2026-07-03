@@ -127,7 +127,7 @@ Page({
     }
   },
 
-  // 通过 getDeviceLogbyId 查询目标设备的最新记录，找到上传设备以获取密钥
+  // 通过 getDeviceLogbyId 查询目标设备的最新N条记录，找到信号最佳的上传设备以获取密钥
   _queryUploadDevice(targetDeviceId, cmdText) {
     const that = this
     const today = this._getTodayStr()
@@ -137,7 +137,7 @@ Page({
       data: {
         action: 'getDeviceLogbyId',
         info: {
-          limit: 1,
+          limit: 2,
           deviceId: targetDeviceId,
           curdate: today
         },
@@ -160,39 +160,81 @@ Page({
           return
         }
 
-        const record = rawList[0]
-        const attr = {}
-        if (record.attributes) {
-          record.attributes.forEach(item => {
-            attr[item.columnName] = item.columnValue
-          })
-        }
-        if (record.primaryKey) {
-          record.primaryKey.forEach(item => {
-            attr[item.name] = item.value
-          })
-        }
+        // 解析所有记录，提取 upDateDevice 和 RSSI
+        const parsedRecords = rawList.map(record => {
+          const attr = {}
+          if (record.attributes) {
+            record.attributes.forEach(item => {
+              attr[item.columnName] = item.columnValue
+            })
+          }
+          if (record.primaryKey) {
+            record.primaryKey.forEach(item => {
+              attr[item.name] = item.value
+            })
+          }
+          const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
+          const rssi = this._parseRssi(attr.rssi || attr.RSSI || record.rssi || record.RSSI)
+          return { upDateDevice, rssi }
+        }).filter(r => r.upDateDevice && r.upDateDevice !== '-')
 
-        const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
-
-        if (!upDateDevice || upDateDevice === '-') {
-          wx.showToast({ title: '记录中未找到上传设备', icon: 'none', duration: 2500 })
+        if (parsedRecords.length === 0) {
+          wx.showToast({ title: '记录中未找到有效上传设备', icon: 'none', duration: 2500 })
           return
         }
 
+        // 按设备聚合，取每个设备的最佳 RSSI（最大值=信号最好）
+        const deviceBestRssi = {}
+        const deviceCount = {}
+        parsedRecords.forEach(r => {
+          if (!deviceBestRssi[r.upDateDevice] || r.rssi > deviceBestRssi[r.upDateDevice]) {
+            deviceBestRssi[r.upDateDevice] = r.rssi
+          }
+          deviceCount[r.upDateDevice] = (deviceCount[r.upDateDevice] || 0) + 1
+        })
+
+        // 选信号最好的设备：RSSI 越小越好（绝对值越小，信号越强），其次出现次数多
+        let bestDevice = null
+        let bestRssi = 999
+        let bestCount = 0
+        Object.keys(deviceBestRssi).forEach(devId => {
+          const r = deviceBestRssi[devId]
+          const c = deviceCount[devId]
+          // 有 RSSI 数据时按 RSSI 越小排序，否则按出现次数
+          const hasRssi = r < 999
+          if (hasRssi) {
+            if (r < bestRssi || (r === bestRssi && c > bestCount)) {
+              bestRssi = r
+              bestCount = c
+              bestDevice = devId
+            }
+          } else if (bestRssi >= 999) {
+            // 都没有 RSSI 时，按出现次数选
+            if (c > bestCount) {
+              bestCount = c
+              bestDevice = devId
+            }
+          }
+        })
+
+        console.log('[DTU指令] 候选上传设备:', JSON.stringify(deviceBestRssi),
+          '出现次数:', JSON.stringify(deviceCount),
+          '最佳设备:', bestDevice, 'RSSI:', bestRssi)
+
         // 在设备列表中查找上传设备
-        const uploadDevice = that.data.deviceList.find(d => d.deviceId === upDateDevice)
+        const uploadDevice = that.data.deviceList.find(d => d.deviceId === bestDevice)
         if (!uploadDevice) {
-          wx.showToast({ title: '上传设备 ' + upDateDevice + ' 不在设备列表中', icon: 'none', duration: 2500 })
+          wx.showToast({ title: '上传设备 ' + bestDevice + ' 不在设备列表中', icon: 'none', duration: 2500 })
           return
         }
 
         if (!uploadDevice.ProductKey || !uploadDevice.DeviceName) {
-          wx.showToast({ title: '上传设备 ' + upDateDevice + ' 也缺少密钥', icon: 'none', duration: 2500 })
+          wx.showToast({ title: '上传设备 ' + bestDevice + ' 也缺少密钥', icon: 'none', duration: 2500 })
           return
         }
 
-        that.addLog('info', '通过上传设备 ' + upDateDevice + ' 获取密钥')
+        const rssiInfo = bestRssi > -999 ? ' RSSI:' + bestRssi : ''
+        that.addLog('info', '通过上传设备 ' + bestDevice + rssiInfo + ' 获取密钥')
         that._doSend(uploadDevice, targetDeviceId, cmdText)
       },
       fail: (err) => {
@@ -201,6 +243,13 @@ Page({
         wx.showToast({ title: '查询上传设备失败', icon: 'error' })
       }
     })
+  },
+
+  // 解析 RSSI：字符串/数字转整数，无效返回 -999（表示无数据）
+  _parseRssi(val) {
+    if (val === undefined || val === null || val === '' || val === '-') return -999
+    const n = parseInt(val, 10)
+    return isNaN(n) ? -999 : n
   },
 
   // 获取今天日期字符串 yyyy-MM-dd

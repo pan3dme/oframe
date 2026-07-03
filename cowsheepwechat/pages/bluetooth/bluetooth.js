@@ -805,7 +805,9 @@ Page({
           deviceId: deviceId,
           lorastr: lorastr,
           upDateDevice: gpsData.upDateDevice,
-          time: gpsData.time
+          time: gpsData.time,
+          rssi: gpsData.rssi !== undefined ? String(gpsData.rssi) : '',
+          snr: gpsData.snr !== undefined ? String(gpsData.snr) : ''
         }
       }
       console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '队列剩余:', queue.length)
