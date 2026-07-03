@@ -258,14 +258,14 @@ unsigned long calcRxWindowStartMs(String msgJson) {
 
   int totalDevices = getTotalDevices();
   const unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
-  const unsigned long rxWinSec = 5;
+ 
 
   // 设备时隙 = deviceIdx * (周期 / 总设备数)
   float slotDuration = (float)intervalSec / totalDevices;
   float slotTime = deviceIdx * slotDuration;
 
   // 从收到消息到设备RX窗口中心的延迟
-  unsigned long delaySec = (unsigned long)(intervalSec - slotTime - rxWinSec / 1.50);
+  unsigned long delaySec = (unsigned long)(intervalSec - slotTime - RX_WINDOW_SECONDS / 2.00);
 
   // 扣除BLE指令到达前已流逝的时间
   unsigned long elapsedSec = 0;
