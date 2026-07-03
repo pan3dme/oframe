@@ -72,6 +72,7 @@ extern unsigned long syncedMillis;
 
 
 const unsigned long SEND_INTERVAL_MS = 60000;  // 总周期10秒
+const unsigned long GAP_INTERVAL_SEC = 60;      // 静默间隔120秒（所有设备不发送不接收）
 
 struct BLECallbacks
 {

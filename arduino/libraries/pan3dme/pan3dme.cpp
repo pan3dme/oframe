@@ -136,7 +136,7 @@ void updateSyncedTime(time_t newEpoch, const char* source)
   if (syncedEpoch > 0) {
     time_t currentEstimate = syncedEpoch + (millis() - syncedMillis) / 1000;
     if (newEpoch <= currentEstimate) {
-      Serial.printf("%s时间较旧，跳过: new=%ld <= cur=%ld\n", source, (long)newEpoch, (long)currentEstimate);
+//      Serial.printf("%s时间较旧，跳过: new=%ld <= cur=%ld\n", source, (long)newEpoch, (long)currentEstimate);
       return;
     }
   }
