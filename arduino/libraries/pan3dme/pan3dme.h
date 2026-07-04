@@ -47,7 +47,7 @@ extern unsigned long syncedMillis;
 #define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 863000000 // 433MHz 国内通用863 863  928
+#define LORA_FREQ 928000000 // 433MHz 国内通用863 863  928
 #define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 10          // 扩频因子
@@ -71,7 +71,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 150000;  // 总周期10秒
+const unsigned long SEND_INTERVAL_MS = 60000*5;  // 总周期10秒
 const unsigned long RX_WINDOW_SECONDS = 10;  // 接收窗口秒数（周期最后N秒用于接收）
 const float slotDuration = 2.0;
 struct BLECallbacks
