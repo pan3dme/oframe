@@ -118,7 +118,8 @@ void meshCmdInfomsg(String rxValue) {
     String timeStr = docCom["time"].as<String>();
     Serial.print("⏰ 收到对时发送指令: ");
     Serial.println(timeStr);
-    setTimeFromLora(timeStr);
+    
+    // setTimeFromLora(timeStr);不再需要手机同步进来的时间。ROLA收到就可以
   }
 
   // 携带deviceId时，计算接收窗口并定时发送对时
@@ -141,7 +142,7 @@ void meshCmdInfomsg(String rxValue) {
         }
       }
     } else {
-      String str = "{\"cmd\":\"tip\", \"info\":\"⚠️ 队列中没有" + targetId + "的记录\"}";
+      String str = "{\"cmd\":\"tip\", \"info\":\"❌❌❌❌❌❌ 队列中没有❌❌❌❌❌❌" + targetId + "❌❌❌❌❌❌的记录❌❌❌❌❌❌\"}";
       Serial.println(str);
       pCharacteristic->setValue(str.c_str());
       pCharacteristic->notify();
@@ -532,7 +533,7 @@ void loop() {
       if (docCom.containsKey("cmd")) {
         String msg;
         String cmd = docCom["cmd"].as<String>();
-        if (cmd == "synctime" && docCom.containsKey("time")) {
+        if (cmd == "synctime") {
           String currentTimeStr = getCurrentTime();
           msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + currentTimeStr;
           Serial.print("📡 发送对时LoRa消息: ");

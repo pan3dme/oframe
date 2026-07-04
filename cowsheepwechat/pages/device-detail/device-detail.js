@@ -390,6 +390,15 @@ Page({
   },
 
   // 查看设备轨迹 — 弹日期选择 → 查GPS数据 → 跳转地图页
+  // 点击发送指令图标 → 跳转DTU发送指令页
+  onSendCmdTap() {
+    const deviceId = this.data.deviceId
+    if (!deviceId) return
+    wx.navigateTo({
+      url: '/pages/dtu-cmd/dtu-cmd?deviceId=' + encodeURIComponent(deviceId)
+    })
+  },
+
   // 点击电池图标 → 跳转电量分析页
   onBatteryAnalysisTap() {
     const deviceId = this.data.deviceId

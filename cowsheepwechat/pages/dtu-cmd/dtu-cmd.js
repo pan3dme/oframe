@@ -22,7 +22,8 @@ Page({
     sendLog: []
   },
 
-  onLoad() {
+  onLoad(options) {
+    const preselectDeviceId = options.deviceId || ''
     // 从缓存获取设备列表
     dataCache.getDeviceList((deviceData) => {
       if (deviceData && deviceData.recordList && deviceData.recordList.length > 0) {
@@ -50,10 +51,17 @@ Page({
             return label
           })
 
+          // 如果传入了 deviceId，自动选中对应设备
+          let selectedIndex = 0
+          if (preselectDeviceId) {
+            const foundIdx = uniqueDevices.findIndex(d => d.deviceId === preselectDeviceId)
+            if (foundIdx >= 0) selectedIndex = foundIdx
+          }
+
           this.setData({
             deviceList: uniqueDevices,
             deviceDisplayList: displayList,
-            deviceIndex: 0
+            deviceIndex: selectedIndex
           })
         } else {
           this.setData({
@@ -87,8 +95,8 @@ Page({
   onQuickGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 2 }), quickSelected: 2 })
   },
-  onQuickBattery() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 3 }), quickSelected: 3 })
+  onQuickSyncTime() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'synctime', time: getApp().formatTime() }), quickSelected: 3 })
   },
   onQuickReboot() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 4 }), quickSelected: 4 })

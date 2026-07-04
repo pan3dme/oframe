@@ -40,6 +40,9 @@
           <view class="hi-item">
             <text class="hi-label">上次换电</text>
             <text class="hi-value">{{deviceInfo.chargeTime || '-'}}</text>
+            <view class="send-cmd-link" bindtap="onSendCmdTap">
+              <text class="send-cmd-icon">📤</text>
+            </view>
             <view class="battery-link" bindtap="onBatteryAnalysisTap">
               <text class="battery-icon">🔋</text>
             </view>
