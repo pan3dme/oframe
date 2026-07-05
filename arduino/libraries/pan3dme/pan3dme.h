@@ -37,8 +37,8 @@ extern unsigned long syncedMillis;
 // GPS模块引脚
 #define VGNSS_CTRL 34 // GPS电源控制 (低电平开启)
 #if defined(WIFI_LORA_32_V3)
-#define GPS_RX_PIN 45
-#define GPS_TX_PIN 46
+#define GPS_RX_PIN 17
+#define GPS_TX_PIN 18
 #endif
 #if defined(WIFI_LORA_32_V4)
 #define GPS_RX_PIN 39 // GPS TX -> ESP32 RX
