@@ -58,7 +58,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
 
   // 2. 计算基础参数
- 
+
   unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
@@ -170,7 +170,7 @@ void testQuick(unsigned long intervalSec) {
     isQuickModel = false;
     return;
   }
- 
+
   // 1. 获取当前时间
   String timeStr = getCurrentTime();
   int hour = 0, minute = 0, second = 0;
@@ -266,20 +266,7 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
                 hideOLED();
               }
             }
-          } else if (lastValue == 6) {
-            if (getGpsStatus() == true) {
-              setGpsEnable(false);
-              Serial.println("⚠️⚠️⚠️⚠️关闭GPS⚠️⚠️⚠️⚠️");
-              hideOLED();
-            }
-          } else if (lastValue == 7) {
-            if (getGpsStatus() == false) {
-              initPanGPS();
-              Serial.println("⚠️⚠️⚠️⚠️ 重新开启GPS⚠️⚠️⚠️⚠️");
-              showOLED();
-            }
-
-
+   
           } else {
             Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
           }
@@ -299,7 +286,7 @@ void onRxTimeout(void) {
 
 // ==================== 进入接收窗口 ====================
 void startRxWindow() {
-  isQuickModel=false;
+  isQuickModel = false;
   inRxMode = true;
   rxWindowDone = true;
   rxStartTime = millis();
@@ -354,7 +341,12 @@ void loop() {
     Serial.println("⏹ 结束接收窗口... " + getCurrentTime());
   }
 
-  // ====== 阶段1：到达发送时间，执行发送 ======
+   //提前开启GPS先设定60秒
+  if ((millis() >= (nextSendTime - 60000)) && millis() < nextSendTime) {
+    // Serial.println("开起GPS窗口");
+    setGpsEnable(true);
+  }
+   // ====== 阶段1：到达发送时间，执行发送 ======
   if (millis() >= nextSendTime) {
     // 如果正在接收，先退出RX模式
     if (inRxMode) {
@@ -368,10 +360,11 @@ void loop() {
 
 
     // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;MSG_TYPE_BATTERY
-    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
+    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_GPS, MSG_TYPE_BATTERY };
     int packetType = typeList[packetCount % 3];
 
     buildAndSendPacket(packetType);
+    setGpsEnable(false);
 
     openLedByNum(10, 50);
     displayBuf[3] = "Sending...";

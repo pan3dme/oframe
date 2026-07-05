@@ -421,6 +421,22 @@ page {
   font-size: 32rpx;
 }
 
+/* RSSI / SNR 行 */
+.rec-row-rssi {
+  padding-top: 4rpx;
+}
+.rec-val-rssi {
+  color: #e74c3c;
+  font-size: 24rpx;
+  flex-shrink: 0;
+  margin-right: 20rpx;
+}
+.rec-val-snr {
+  color: #07c160;
+  font-size: 24rpx;
+  flex-shrink: 0;
+}
+
 .rec-icon-lora {
   display: inline-block;
   padding: 2rpx 10rpx;

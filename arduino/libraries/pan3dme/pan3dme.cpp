@@ -101,11 +101,8 @@ void initPanGPS()
 {
     pinMode(VGNSS_CTRL, OUTPUT);
     pinMode(GPS_ANT_EN, OUTPUT);
-    setGpsEnable(false);
-    delay(500);
     setGpsEnable(true);
-    delay(500);
-    Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+
 
 }
 bool getGpsStatus() {
@@ -115,14 +112,19 @@ void  setGpsEnable(bool  value){
     if (value == isGpsOn) return; // 【优化】如果状态没变，直接返回，避免重复操作
 
     if (value) {
+
         digitalWrite(VGNSS_CTRL, LOW);
         digitalWrite(GPS_ANT_EN, HIGH);
+        Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
         Serial.println("GPS 已开启");
+
     } else {
         Serial2.end();
         digitalWrite(VGNSS_CTRL, HIGH);
         digitalWrite(GPS_ANT_EN, LOW);
         Serial.println("GPS 已关闭");
+        //只是测试不必要重新创建
+       gps =   TinyGPSPlus();
     }
 
     isGpsOn = value; // 更新状态记录
@@ -144,16 +146,22 @@ void updateSyncedTime(time_t newEpoch, const char* source)
 
 void gpsEncode()
 {
-    if(!isGpsOn){
-        return;
-    }
+//  int num=0;
+//    if(!isGpsOn){
+//        return;
+//    }
   if (Serial2.available() > 0)
   {
     while (Serial2.available())
     {
       gps.encode(Serial2.read());
+//      num++;
     }
   }
+//  if(num>1){
+//    Serial.print("gps red len  ");
+//    Serial.println(num);
+//  }
 
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
   if ((syncedEpoch == 0 || millis() - syncedMillis >= SEND_INTERVAL_MS)

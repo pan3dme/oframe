@@ -499,6 +499,8 @@ Page({
       const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || '-'
       const lorastr = attr.lorastr || record.lorastr || '-'
       const rawTime = attr.time || record.time || '-'
+      const rssi = attr.rssi || record.rssi || ''
+      const snr = attr.snr || record.snr || ''
       const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
 
       // 解析 lorastr 类型：格式为 type|deviceId|data
@@ -509,7 +511,7 @@ Page({
         msgType = parts[0] || '-'
       }
 
-      return { deviceId, upDateDevice, lorastr, msgType, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._randomPastel() }
+      return { deviceId, upDateDevice, lorastr, msgType, rssi, snr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._randomPastel() }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()
