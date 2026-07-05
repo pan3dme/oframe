@@ -426,13 +426,11 @@ page {
   padding-top: 4rpx;
 }
 .rec-val-rssi {
-  color: #e74c3c;
   font-size: 24rpx;
   flex-shrink: 0;
   margin-right: 20rpx;
 }
 .rec-val-snr {
-  color: #07c160;
   font-size: 24rpx;
   flex-shrink: 0;
 }

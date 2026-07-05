@@ -34,11 +34,15 @@ Page({
     isAdmin: false
   },
 
-  // 生成随机浅色背景色（HSL 浅色调，饱和度低，亮度高）
-  _randomPastel() {
-    const h = Math.floor(Math.random() * 360)
-    const s = 30 + Math.floor(Math.random() * 20)
-    const l = 88 + Math.floor(Math.random() * 8)
+  // 按设备名生成稳定的浅色背景色：同一设备始终同色，不同设备不同色
+  _devicePastel(deviceName) {
+    if (!deviceName || deviceName === '-') return 'hsl(0, 0%, 95%)'
+    let h = 0
+    for (let i = 0; i < deviceName.length; i++) {
+      h = (h * 31 + deviceName.charCodeAt(i)) % 360
+    }
+    const s = 35 + (h % 15)
+    const l = 86 + (h % 10)
     return `hsl(${h}, ${s}%, ${l}%)`
   },
 
@@ -499,9 +503,26 @@ Page({
       const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || '-'
       const lorastr = attr.lorastr || record.lorastr || '-'
       const rawTime = attr.time || record.time || '-'
-      const rssi = attr.rssi || record.rssi || ''
-      const snr = attr.snr || record.snr || ''
+      const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : '')
+      const snr = attr.snr != null ? attr.snr : (record.snr != null ? record.snr : '')
       const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
+
+      // 如果 rssi/snr 为空，尝试从 lorastr 末尾段提取
+      let finalRssi = rssi
+      let finalSnr = snr
+      if (lorastr && lorastr !== '-') {
+        const parts = lorastr.split('|')
+        if (parts.length >= 2) {
+          const lastPart = parts[parts.length - 1]
+          const secLastPart = parts[parts.length - 2]
+          if (finalRssi === '' && /^-?\d+$/.test(lastPart)) {
+            finalRssi = lastPart
+          }
+          if (finalSnr === '' && /^-?\d+(\.\d+)?$/.test(secLastPart)) {
+            finalSnr = secLastPart
+          }
+        }
+      }
 
       // 解析 lorastr 类型：格式为 type|deviceId|data
       // 1=定位  2=对时  3=电量
@@ -511,7 +532,7 @@ Page({
         msgType = parts[0] || '-'
       }
 
-      return { deviceId, upDateDevice, lorastr, msgType, rssi, snr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._randomPastel() }
+      return { deviceId, upDateDevice, lorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice) }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()

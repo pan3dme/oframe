@@ -141,8 +141,8 @@ Page({
       const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || '-'
       const rawTime = attr.time || record.time || '-'
       const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-      const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : '')
-      const snr = attr.snr != null ? attr.snr : (record.snr != null ? record.snr : '')
+      const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : 0)
+      const snr = attr.snr != null ? attr.snr : (record.snr != null ? record.snr : 0)
 
       const display = this._buildDisplayParts(lorastr)
 
@@ -157,7 +157,7 @@ Page({
         snr,
         msgType: display.msgType,
         displayParts: display.displayParts,
-        bgColor: this._hashPastel(rawTime + '|' + lorastr)
+        bgColor: this._hashPastel(upDateDevice !== '-' ? upDateDevice : rawTime + '|' + lorastr)
       }
     })
     // 按时间降序排列，最新的在最上面
