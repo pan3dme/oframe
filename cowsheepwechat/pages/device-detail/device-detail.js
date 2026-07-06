@@ -46,6 +46,31 @@ Page({
     return `hsl(${h}, ${s}%, ${l}%)`
   },
 
+  // 按 upDateDevice 生成稳定文字颜色：同一设备始终同色，不同设备分配鲜艳颜色
+  _deviceColor(deviceName) {
+    if (!deviceName || deviceName === '-') return '#999'
+    // 预定义 12 个鲜艳且对比度高的颜色，确保浅色背景上清晰可见
+    const vividColors = [
+      '#E53935', // 鲜红
+      '#1E88E5', // 亮蓝
+      '#43A047', // 鲜绿
+      '#FB8C00', // 橙色
+      '#8E24AA', // 紫色
+      '#00ACC1', // 青色
+      '#F4511E', // 深橙
+      '#D81B60', // 玫红
+      '#5E35B1', // 深紫
+      '#039BE5', // 天蓝
+      '#2E7D32', // 深绿
+      '#C0CA33', // 黄绿
+    ]
+    let idx = 0
+    for (let i = 0; i < deviceName.length; i++) {
+      idx = (idx * 31 + deviceName.charCodeAt(i)) % vividColors.length
+    }
+    return vividColors[idx]
+  },
+
   onLoad(options) {
     const deviceId = options.deviceId || ''
     const today = this.getTodayStr()
@@ -532,7 +557,7 @@ Page({
         msgType = parts[0] || '-'
       }
 
-      return { deviceId, upDateDevice, lorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice) }
+      return { deviceId, upDateDevice, lorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()

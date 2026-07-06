@@ -157,7 +157,8 @@ Page({
         snr,
         msgType: display.msgType,
         displayParts: display.displayParts,
-        bgColor: this._hashPastel(upDateDevice !== '-' ? upDateDevice : rawTime + '|' + lorastr)
+        bgColor: this._hashPastel(upDateDevice !== '-' ? upDateDevice : rawTime + '|' + lorastr),
+        deviceColor: this._deviceColor(upDateDevice)
       }
     })
     // 按时间降序排列，最新的在最上面
@@ -259,6 +260,21 @@ Page({
     const s = 30 + (h % 20)
     const l = 88 + (h % 8)
     return `hsl(${h}, ${s}%, ${l}%)`
+  },
+
+  // 按 upDateDevice 生成稳定文字颜色：同一设备始终同色，不同设备分配鲜艳颜色
+  _deviceColor(deviceName) {
+    if (!deviceName || deviceName === '-') return '#999'
+    const vividColors = [
+      '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA',
+      '#00ACC1', '#F4511E', '#D81B60', '#5E35B1', '#039BE5',
+      '#2E7D32', '#C0CA33',
+    ]
+    let idx = 0
+    for (let i = 0; i < deviceName.length; i++) {
+      idx = (idx * 31 + deviceName.charCodeAt(i)) % vividColors.length
+    }
+    return vividColors[idx]
   },
 
   // ========== 筛选 ==========

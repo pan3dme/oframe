@@ -36,7 +36,7 @@
             </view>
             <view class="recv-sub">
               {{item.date}} {{item.time_part}}
-              <text class="recv-source" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">({{item.upDateDevice}})</text>
+              <text class="recv-source" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">({{item.upDateDevice}})</text>
             </view>
             <view class="recv-meta" wx:if="{{item.rssi != null || item.snr != null}}">
               <text wx:if="{{item.rssi != null && item.rssi !== ''}}" class="recv-rssi">rssi:{{item.rssi}}</text>
