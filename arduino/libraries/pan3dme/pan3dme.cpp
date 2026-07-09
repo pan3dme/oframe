@@ -21,7 +21,7 @@ bool isGpsOn = false;
 uint64_t allowedDevices[] = {
     0x9875555,
     0x9875555,
-    0x9875555,
+    0xC0CBBE1B5BF8, // v4    no oled
     0x9875555,
     0x248B9C697090, // v4    4
     0x9875555,

@@ -335,6 +335,72 @@ function refreshDeviceBatteryAll(callback) {
   getDeviceBatteryAll(callback, true)
 }
 
+// ==================== 设备同步时间缓存 ====================
+
+/**
+ * 获取设备同步时间表 device_sync
+ * @param {function} callback - 回调 (cachedData)，cachedData 为 { syncMap }
+ * @param {boolean} forceRefresh - 是否强制刷新
+ */
+function getDeviceSyncAll(callback, forceRefresh) {
+  _loadWithDedup('deviceSync', 'deviceSyncCache', (done) => {
+    wx.request({
+      url: API_DEVICE_URL,
+      method: 'POST',
+      data: { action: 'getDevicesyncAll', info: { limit: 20 } },
+      timeout: 8000,
+      success: (res) => {
+        const syncMap = _parseDeviceSyncRecords(res.data)
+        const cachedData = { syncMap }
+        app.globalData.deviceSyncCache = cachedData
+        done(cachedData)
+      },
+      fail: (err) => {
+        console.error('获取设备同步时间失败:', err)
+        done(app.globalData.deviceSyncCache || { syncMap: {} })
+      }
+    })
+  }, callback, forceRefresh)
+}
+
+function _parseDeviceSyncRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) {
+    rawList = data.data
+  } else if (Array.isArray(data)) {
+    rawList = data
+  }
+  const map = {}
+  rawList.forEach(record => {
+    const attr = {}
+    if (record.attributes) {
+      record.attributes.forEach(item => {
+        attr[item.columnName] = item.columnValue
+      })
+    }
+    if (record.primaryKey) {
+      record.primaryKey.forEach(item => {
+        attr[item.name] = item.value
+      })
+    }
+    const deviceId = attr.deviceId || attr.deviceid || ''
+    const rawTime = attr.time || record.time || '-'
+    if (deviceId && rawTime && rawTime !== '-') {
+      const existing = map[deviceId]
+      const newTime = new Date(rawTime).getTime()
+      if (!existing || (newTime > new Date(existing.rawTime || '').getTime())) {
+        const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
+        map[deviceId] = { rawTime, date: date || '-', time_part: time_part || '' }
+      }
+    }
+  })
+  return map
+}
+
+function refreshDeviceSyncAll(callback) {
+  getDeviceSyncAll(callback, true)
+}
+
 // ==================== 道路列表缓存（按天：一天只请求一次网络） ====================
 
 /**
@@ -513,6 +579,8 @@ function clearCache() {
   app.globalData.deviceCache = null
   app.globalData.livestockCache = null
   app.globalData.deviceLotCache = null
+  app.globalData.deviceBatteryCache = null
+  app.globalData.deviceSyncCache = null
   app.globalData.roadCache = null
   app.globalData.roadCacheTime = null
   app.globalData.placeCache = null
@@ -528,6 +596,8 @@ module.exports = {
   refreshDeviceLotRefresh,
   getDeviceBatteryAll,
   refreshDeviceBatteryAll,
+  getDeviceSyncAll,
+  refreshDeviceSyncAll,
   getRoadListFromCache,
   refreshRoadList,
   clearRoadCache,

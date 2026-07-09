@@ -40,11 +40,11 @@ Page({
 
   // ========== 获取设备列表 ==========
   fetchDeviceList(forceRefresh, onComplete) {
-    let deviceData, livestockData, lotData, batteryData
+    let deviceData, livestockData, lotData, batteryData, syncData
     let done = 0
     const merge = () => {
       done++
-      if (done < 4) return
+      if (done < 5) return
 
       const nameMap = {}
       if (livestockData && livestockData.livestockList) {
@@ -63,12 +63,14 @@ Page({
       }
 
       const batteryMap = (batteryData && batteryData.batteryMap) || {}
+      const syncMap = (syncData && syncData.syncMap) || {}
 
       const deviceList = (deviceData.recordList || []).map(item => {
         const lotRec = lotMap[item.deviceId]
         const batInfo = batteryMap[item.deviceId]
+        const syncInfo = syncMap[item.deviceId]
 
-        // 对比设备表、LOT表、电量表三者的时间，取最新的显示
+        // 对比设备表、LOT表(最后定位)、电量表、同步时间表四者的时间，取最新的显示
         let displayTime = item.rawTime
         let displayDate = item.date
         let displayTimePart = item.time_part
@@ -76,6 +78,7 @@ Page({
         const deviceTime = new Date(item.rawTime || '').getTime()
         const lotTime = (lotRec && lotRec.rawTime) ? new Date(lotRec.rawTime).getTime() : NaN
         const batTime = (batInfo && batInfo.rawTime) ? new Date(batInfo.rawTime).getTime() : NaN
+        const syncTime = (syncInfo && syncInfo.rawTime) ? new Date(syncInfo.rawTime).getTime() : NaN
 
         let newestTime = isNaN(deviceTime) ? 0 : deviceTime
 
@@ -90,6 +93,12 @@ Page({
           displayTime = batInfo.rawTime
           displayDate = batInfo.date
           displayTimePart = batInfo.time_part
+        }
+        if (!isNaN(syncTime) && syncTime > newestTime) {
+          newestTime = syncTime
+          displayTime = syncInfo.rawTime
+          displayDate = syncInfo.date
+          displayTimePart = syncInfo.time_part
         }
 
         const timeInfo = this._calcRelativeTime(displayTime)
@@ -118,6 +127,7 @@ Page({
     dataCache.getLivestockList((data) => { livestockData = data; merge() }, forceRefresh)
     dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
     dataCache.getDeviceBatteryAll((data) => { batteryData = data; merge() }, forceRefresh)
+    dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, forceRefresh)
   },
 
   refreshDeviceList() {
