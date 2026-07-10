@@ -48,7 +48,7 @@ extern unsigned long syncedMillis;
 
 // ==================== LoRa 通信参数 ====================
 #define LORA_FREQ 928000000 // 433MHz 国内通用863 863  928
-#define TX_POWER 22         // 发射功率
+#define TX_POWER 20         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 10          // 扩频因子
 #define LORA_CR 1           // 纠错率
@@ -61,9 +61,9 @@ extern unsigned long syncedMillis;
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 //========================FEM总电源 LORA  强化========================
-#define LORA_PA_POWER  7
-#define LORA_PA_EN     2
-#define LORA_PA_TX_EN  46
+//#define LORA_PA_POWER  7
+//#define LORA_PA_EN     2
+//#define LORA_PA_TX_EN  46
 
 
 #define VBAT_CTRL_PIN 37  // ADC_Ctrl（控制检测电路开关）

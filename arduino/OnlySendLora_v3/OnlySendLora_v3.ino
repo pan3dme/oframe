@@ -162,6 +162,7 @@ void buildAndSendPacket(int packetType) {
 
   // 执行LoRa发送
   Radio.Send((uint8_t*)sendData, strlen(sendData));
+  delay(100);
 }
 unsigned long starQuickSendTime = 0;  // 下次发送时间点（millis）
 bool isQuickModel = false;
@@ -266,7 +267,7 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
                 hideOLED();
               }
             }
-   
+
           } else {
             Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
           }
@@ -341,12 +342,12 @@ void loop() {
     Serial.println("⏹ 结束接收窗口... " + getCurrentTime());
   }
 
-   //提前开启GPS先设定60秒
+  //提前开启GPS先设定60秒
   if ((millis() >= (nextSendTime - 60000)) && millis() < nextSendTime) {
     // Serial.println("开起GPS窗口");
     setGpsEnable(true);
   }
-   // ====== 阶段1：到达发送时间，执行发送 ======
+  // ====== 阶段1：到达发送时间，执行发送 ======
   if (millis() >= nextSendTime) {
     // 如果正在接收，先退出RX模式
     if (inRxMode) {
@@ -360,10 +361,12 @@ void loop() {
 
 
     // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;MSG_TYPE_BATTERY
-    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_GPS, MSG_TYPE_BATTERY };
+    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
     int packetType = typeList[packetCount % 3];
 
-    buildAndSendPacket(packetType);
+    unsigned long aaa = millis();
+    buildAndSendPacket(MSG_TYPE_BATTERY);
+ 
     setGpsEnable(false);
 
     openLedByNum(10, 50);

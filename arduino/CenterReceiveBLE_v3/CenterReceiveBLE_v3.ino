@@ -118,7 +118,7 @@ void meshCmdInfomsg(String rxValue) {
     String timeStr = docCom["time"].as<String>();
     Serial.print("⏰ 收到对时发送指令: ");
     Serial.println(timeStr);
-    
+
     // setTimeFromLora(timeStr);不再需要手机同步进来的时间。ROLA收到就可以
   }
 
@@ -425,6 +425,7 @@ void receiveDtuData() {
 
   // Serial.print("原始数据: ");
   // Serial.println(raw);
+ 
 
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   cominfoCount = 0;

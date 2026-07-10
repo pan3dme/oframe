@@ -39,8 +39,8 @@
               <text class="recv-source" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">({{item.upDateDevice}})</text>
             </view>
             <view class="recv-meta" wx:if="{{item.rssi != null || item.snr != null}}">
-              <text wx:if="{{item.rssi != null && item.rssi !== ''}}" class="recv-rssi">rssi:{{item.rssi}}</text>
-              <text wx:if="{{item.snr != null && item.snr !== ''}}" class="recv-snr">snr:{{item.snr}}</text>
+              <text wx:if="{{item.rssi != null && item.rssi !== ''}}" class="recv-rssi"><text class="recv-meta-label">rssi:</text><text class="recv-meta-val">{{item.rssi}}</text></text>
+              <text wx:if="{{item.snr != null && item.snr !== ''}}" class="recv-snr"><text class="recv-meta-label">snr:</text><text class="recv-meta-val">{{item.snr}}</text></text>
             </view>
           </view>
         </view>

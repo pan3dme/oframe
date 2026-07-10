@@ -178,13 +178,22 @@ page {
   margin-top: 8rpx;
   display: flex;
   gap: 24rpx;
-  font-size: 24rpx;
   color: #07c160;
 }
 
 .recv-rssi,
 .recv-snr {
   font-weight: 500;
+  font-size: 24rpx;
+}
+
+.recv-meta-label {
+  font-size: 24rpx;
+}
+
+.recv-meta-val {
+  font-size: 30rpx;
+  font-weight: 700;
 }
 
 /* 空状态 */
