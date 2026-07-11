@@ -71,7 +71,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 60000*5;  // 总周期10秒
+const unsigned long SEND_INTERVAL_MS = 60000*5*1;  // 现在设定30分一次
 const unsigned long RX_WINDOW_SECONDS = 10;  // 接收窗口秒数（周期最后N秒用于接收）
 const float slotDuration = 2.0;
 struct BLECallbacks
@@ -88,6 +88,7 @@ void showOLED();
 void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();
+bool isReliableGPS();
 void setGpsEnable(bool  value);
 bool getGpsStatus();
 void gpsEncode(); // GPS对象

@@ -28,7 +28,9 @@ int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
-
+bool needOpenGps = true;
+const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
+int needpacketType = 0;
 
 
 // LoRa接收窗口状态
@@ -85,7 +87,13 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   }
 
   unsigned long delayMillis = secondsDiff * 1000;
-  Serial.printf("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu ms\n", timeStr.c_str(), deviceIndex, slotDuration, delayMillis);
+  // Serial.printf("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu ms\n", timeStr.c_str(), deviceIndex, slotDuration, delayMillis);
+  unsigned long minutes = delayMillis / 60000;           // 取整分钟
+  unsigned long seconds = (delayMillis % 60000) / 1000;  // 取剩余秒数（去掉毫秒部分）
+
+  Serial.printf("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
+                timeStr.c_str(), deviceIndex, slotDuration, minutes, seconds);
+
   return millis() + delayMillis;
 }
 
@@ -255,18 +263,15 @@ void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
             delay(1000);    // 强烈建议加一个短暂的延时，确保串口日志能发送出去
             ESP.restart();  // 执行重启
 
-          } else if (lastValue == 5) {
-            //只有GPS打开时才可以使用led
-            if (getGpsStatus() == true) {
-              oledOpen = !oledOpen;
-              if (oledOpen) {
-                Serial.println("⚠️⚠️⚠️⚠️打开OLED⚠️⚠️⚠️⚠️");
-                showOLED();
-              } else {
-                Serial.println("⚠️⚠️⚠️⚠️关闭OLED⚠️⚠️⚠️⚠️");
-                hideOLED();
-              }
-            }
+          } else if (lastValue == 6) {
+            needpacketType = 0;
+            Serial.println("✅ 上报位置");
+          } else if (lastValue == 7) {
+            needpacketType = 1;
+            Serial.println("✅ 上报时间");
+          } else if (lastValue == 8) {
+            needpacketType = 2;
+            Serial.println("✅ 上报电量");
 
           } else {
             Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
@@ -315,8 +320,28 @@ void setup() {
   // 初始化LoRa模块
   initLora();
   initPanGPS();
+#if defined(WIFI_LORA_32_V4)
+  Serial.print("v4板子先获取GPS信息");
+  while (!(gps.location.isValid() && gps.time.isUpdated() && isReliableGPS())) {
+    delay(1000);
+    gpsEncode();
+    openLedByNum(1, 50);
+    Serial.print(".");
+    showDisplayBy4Area("gps...", "gps...", "gps...", "gps...");
+  }
+
+  delay(1000);
+  buildAndSendPacket(MSG_TYPE_GPS);
+  setGpsEnable(false);
+  delay(1000);
+  oledOpen = false;
+  hideOLED();
+
+#endif
 }
+
 // ==================== 主循环 ====================
+
 void loop() {
   delay(10);
   gpsEncode();
@@ -341,11 +366,17 @@ void loop() {
     inRxMode = false;
     Serial.println("⏹ 结束接收窗口... " + getCurrentTime());
   }
-
   //提前开启GPS先设定60秒
-  if ((millis() >= (nextSendTime - 60000)) && millis() < nextSendTime) {
-    // Serial.println("开起GPS窗口");
-    setGpsEnable(true);
+  if ((millis() >= (nextSendTime - 60000)) && millis() < nextSendTime && needOpenGps) {
+    Serial.println("开起GPS窗口");
+    if (isReliableGPS()) {
+      Serial.print("关闭GPS电源");
+      setGpsEnable(false);
+      needOpenGps = false;
+    } else {
+      setGpsEnable(true);
+      Serial.println("打开GPS电源");
+    }
   }
   // ====== 阶段1：到达发送时间，执行发送 ======
   if (millis() >= nextSendTime) {
@@ -360,14 +391,14 @@ void loop() {
     rxWindowDone = false;  // 新周期重置RX窗口标记
 
 
-    // int packetType = random(2) == 0 ? MSG_TYPE_GPS : MSG_TYPE_TIME;MSG_TYPE_BATTERY
-    const int typeList[] = { MSG_TYPE_GPS, MSG_TYPE_TIME, MSG_TYPE_BATTERY };
-    int packetType = typeList[packetCount % 3];
 
-    unsigned long aaa = millis();
-    buildAndSendPacket(MSG_TYPE_BATTERY);
- 
+
+    // int needpacketType = typeList[packetCount % 3];
+
+    buildAndSendPacket(typeList[needpacketType]);
+
     setGpsEnable(false);
+    needOpenGps = true;
 
     openLedByNum(10, 50);
     displayBuf[3] = "Sending...";

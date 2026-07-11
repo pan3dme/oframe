@@ -101,14 +101,14 @@ Page({
   onQuickReboot() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 4 }), quickSelected: 4 })
   },
-  onQuickOLED() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5 }), quickSelected: 5 })
-  },
-  onQuickCloseGPS() {
+  onQuickReportGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6 }), quickSelected: 6 })
   },
-  onQuickOpenGPS() {
+  onQuickReportTime() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 7 }), quickSelected: 7 })
+  },
+  onQuickReportBattery() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 8 }), quickSelected: 8 })
   },
 
   // ========== 发送指令 ==========

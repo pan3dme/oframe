@@ -84,7 +84,7 @@ page {
 }
 
 .quick-btn {
-  flex: 0 0 calc((100% - 12rpx) / 2);
+  flex: 0 0 calc((100% - 24rpx) / 3);
   height: 60rpx;
   line-height: 60rpx;
   font-size: 22rpx;
@@ -97,6 +97,7 @@ page {
   text-align: center;
   overflow: hidden;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .quick-btn.quick-active {
