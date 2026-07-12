@@ -163,20 +163,17 @@ Page({
     else if (day < 365) text = Math.floor(day / 30) + '个月前'
     else text = Math.floor(day / 365) + '年前'
 
-    // 颜色规则：超过1天灰色，超过5分钟红色，小于1分钟绿色，否则默认蓝色
+    // 颜色规则：超过2小时灰色，30分钟~2小时红色，小于30分钟绿色
     let color, bgColor
-    if (day >= 1) {
+    if (hour >= 2) {
       color = '#999'
       bgColor = '#f5f5f5'
-    } else if (min > 5) {
+    } else if (min >= 30) {
       color = '#f44336'
       bgColor = '#ffebee'
-    } else if (sec < 60) {
+    } else {
       color = '#4caf50'
       bgColor = '#e8f5e9'
-    } else {
-      color = '#1565c0'
-      bgColor = '#e3f2fd'
     }
 
     return { text, color, bgColor }

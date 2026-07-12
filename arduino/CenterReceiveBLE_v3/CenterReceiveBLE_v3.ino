@@ -425,7 +425,7 @@ void receiveDtuData() {
 
   // Serial.print("原始数据: ");
   // Serial.println(raw);
- 
+
 
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   cominfoCount = 0;
@@ -501,6 +501,19 @@ void setup() {
   displayBuf[0] = "id:" + deviceName + " rec";
   initRadio();
   initBLE();
+
+#if defined(WIFI_LORA_32_V4)
+  initPanGPS();
+  Serial.print("v4板子先获取GPS信息");
+  while (!(gps.location.isValid() && gps.time.isUpdated() && isReliableGPS())) {
+    delay(100);
+    gpsEncode();
+    openLedByNum(1, 50);
+    Serial.print(".");
+    showDisplayBy4Area("gps...", "gps...", "gps...", "gps...");
+  }
+  setGpsEnable(false);
+#endif
 
   Serial.println("✅ 系统启动完成");
 }

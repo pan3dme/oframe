@@ -320,9 +320,10 @@ void setup() {
   // 初始化LoRa模块
   initLora();
   initPanGPS();
-#if defined(WIFI_LORA_32_V4)
-  Serial.print("v4板子先获取GPS信息");
-  while (!(gps.location.isValid() && gps.time.isUpdated() && isReliableGPS())) {
+
+  unsigned long startAttemptTime = millis();
+  Serial.print("有gps模块 设置2分钟跳出");
+  while (!(gps.location.isValid() && gps.time.isUpdated() && isReliableGPS()) && millis() - startAttemptTime < 120000) {
     delay(1000);
     gpsEncode();
     openLedByNum(1, 50);
@@ -336,8 +337,6 @@ void setup() {
   delay(1000);
   oledOpen = false;
   hideOLED();
-
-#endif
 }
 
 // ==================== 主循环 ====================
@@ -366,8 +365,8 @@ void loop() {
     inRxMode = false;
     Serial.println("⏹ 结束接收窗口... " + getCurrentTime());
   }
-  //提前开启GPS先设定60秒
-  if ((millis() >= (nextSendTime - 60000)) && millis() < nextSendTime && needOpenGps) {
+  //提前开启GPS先设定60秒 留出2分钟GPS窗口
+  if ((millis() >= (nextSendTime - 120000)) && millis() < nextSendTime && needOpenGps) {
     Serial.println("开起GPS窗口");
     if (isReliableGPS()) {
       Serial.print("关闭GPS电源");
@@ -391,11 +390,8 @@ void loop() {
     rxWindowDone = false;  // 新周期重置RX窗口标记
 
 
-
-
-    // int needpacketType = typeList[packetCount % 3];
-
     buildAndSendPacket(typeList[needpacketType]);
+
 
     setGpsEnable(false);
     needOpenGps = true;

@@ -54,7 +54,7 @@ extern unsigned long syncedMillis;
 #define LORA_CR 1           // 纠错率
 #define PREAMBLE_LENGTH 8   // 前导码
 #define BUFFER_SIZE 36      // 数据缓冲区
-#define LORA_SYMBOL_TIMEOUT 0
+#define LORA_SYMBOL_TIMEOUT 1000
 
 // ======================== BLE 配置 =======================
 #define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
@@ -71,7 +71,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 60000*5*1;  // 现在设定30分一次
+const unsigned long SEND_INTERVAL_MS = 60000*5*6;  // 现在设定30分一次
 const unsigned long RX_WINDOW_SECONDS = 10;  // 接收窗口秒数（周期最后N秒用于接收）
 const float slotDuration = 2.0;
 struct BLECallbacks
