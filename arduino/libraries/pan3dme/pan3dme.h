@@ -54,7 +54,7 @@ extern unsigned long syncedMillis;
 #define LORA_CR 1           // 纠错率
 #define PREAMBLE_LENGTH 8   // 前导码
 #define BUFFER_SIZE 36      // 数据缓冲区
-#define LORA_SYMBOL_TIMEOUT 1000
+#define LORA_SYMBOL_TIMEOUT 0
 
 // ======================== BLE 配置 =======================
 #define SERVICE_UUID "0000ffe0-0000-1000-8000-00805f9b34fb"
