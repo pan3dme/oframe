@@ -56,6 +56,19 @@ page {
   color: #999;
 }
 
+/* 中继转发下拉特殊样式 */
+.relay-picker {
+  border-color: #ff9500;
+  background: #fffaf5;
+}
+
+.relay-hint {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #999;
+  padding-left: 4rpx;
+}
+
 /* ===== 指令输入 ===== */
 .cmd-input {
   width: 100%;

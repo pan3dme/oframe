@@ -9,10 +9,15 @@ const API_URL = getApp().globalData.api_device_Url
 
 Page({
   data: {
-    // 设备列表
+    // 目标设备列表
     deviceList: [],         // 完整设备记录 [{deviceId, ProductKey, DeviceName, rename}, ...]
     deviceDisplayList: [],  // 下拉显示用 ["deviceId (rename)", ...]
     deviceIndex: 0,
+
+    // 中继转发设备列表（手动选择用哪个设备来转发）
+    relayDisplayList: ['自动'],   // 下拉显示用 ["自动", "deviceId (rename)", ...]
+    relayDeviceList: [null],      // 对应设备对象，null=自动模式
+    relayIndex: 0,                // 默认"自动"
 
     // 指令内容
     cmdText: '',
@@ -58,10 +63,21 @@ Page({
             if (foundIdx >= 0) selectedIndex = foundIdx
           }
 
+          // 构建中继转发设备列表：只列出有密钥的设备
+          const keyDevices = uniqueDevices.filter(d => d.ProductKey && d.DeviceName)
+          const relayDisplay = ['自动'].concat(keyDevices.map(d => {
+            return d.rename && d.rename !== '-' && d.rename !== d.deviceId
+              ? d.deviceId + ' (' + d.rename + ')'
+              : d.deviceId
+          }))
+          const relayDevices = [null].concat(keyDevices)
+
           this.setData({
             deviceList: uniqueDevices,
             deviceDisplayList: displayList,
-            deviceIndex: selectedIndex
+            deviceIndex: selectedIndex,
+            relayDisplayList: relayDisplay,
+            relayDeviceList: relayDevices
           })
         } else {
           this.setData({
@@ -81,6 +97,11 @@ Page({
   // ========== 设备选择 ==========
   onDeviceChange(e) {
     this.setData({ deviceIndex: parseInt(e.detail.value) })
+  },
+
+  // 中继转发设备选择
+  onRelayChange(e) {
+    this.setData({ relayIndex: parseInt(e.detail.value) })
   },
 
   // ========== 指令输入 ==========
@@ -125,7 +146,17 @@ Page({
       return
     }
 
-    // 设备已有密钥，直接发送
+    // 获取手动选择的中继转发设备
+    const relayDevice = this.data.relayDeviceList[this.data.relayIndex]  // null=自动
+
+    // 手动指定了中继设备，直接用它的密钥发送
+    if (relayDevice) {
+      this.addLog('info', '中继: ' + relayDevice.deviceId)
+      this._doSend(relayDevice, device.deviceId, cmdText)
+      return
+    }
+
+    // 自动模式：设备已有密钥，直接发送
     if (device.ProductKey && device.DeviceName) {
       this._doSend(device, device.deviceId, cmdText)
     } else {
