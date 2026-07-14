@@ -125,7 +125,7 @@ void updateSyncedTime(time_t newEpoch, const char *source) {
   if (syncedEpoch > 0) {
     time_t currentEstimate = syncedEpoch + (millis() - syncedMillis) / 1000;
     if (newEpoch <= currentEstimate) {
-      //      Serial.printf("%s时间较旧，跳过: new=%ld <= cur=%ld\n", source, (long)newEpoch, (long)currentEstimate);
+//            Serial.printf("%s时间较旧，跳过: new=%ld <= cur=%ld\n", source, (long)newEpoch, (long)currentEstimate);
       return;
     }
   }
@@ -139,42 +139,21 @@ void gpsEncode() {
   if (!isGpsOn) {
     return;
   }
-  //  int num=0;
   if (Serial2.available() > 0) {
     while (Serial2.available()) {
       gps.encode(Serial2.read());
-      //      num++;
+
     }
   }
-  //  if(num>1){
-  //    Serial.print("gps red len  ");
-  //    Serial.println(num);
-  //  }
-
 
   if (gps.location.isValid()) {
     int satCount = gps.satellites.value();
     Serial.print("当前卫星数: ");
     Serial.println(satCount);
     Serial.println(getGpsInfoStr());
-
-    // 如果你还想看定位状态
-    if (gps.location.isValid()) {
-      Serial.println("定位有效");
-    } else {
-      Serial.println("定位无效，仍在搜星");
-    }
-
-
-    if (gps.time.isUpdated()) {
-      Serial.println("time 已有 ");
-    }
   }
-
-
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
-  if ((syncedEpoch == 0 || millis() - syncedMillis >= SEND_INTERVAL_MS)
-      && gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025) {
+  if ( gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025) {
     struct tm tmGps;
     memset(&tmGps, 0, sizeof(tmGps));
     tmGps.tm_year = gps.date.year() - 1900;

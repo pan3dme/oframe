@@ -40,7 +40,7 @@ unsigned long rxStartTime = 0;   // RX窗口开始的millis()
 bool didSend = false;            // 本周期是否已发送（控制RX窗口和休眠）
 bool rxWindowDone = false;       // 本周期RX窗口是否已结束（防止收到消息后重新进入）
 char rxBuffer[BUFFER_SIZE + 1];  // 接收数据缓存
-
+String batterystr = "";
 
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
@@ -107,8 +107,7 @@ void initLora() {
   radioEvents.RxTimeout = onRxTimeout;
   initPanRadio(&radioEvents);
 }
-// ==================== 读取电池电量 ====================
-String readBatteryLevel() {
+String readBatteryEndStr() {
   // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
   bool isV4 = deviceName.startsWith("v4-");
   digitalWrite(VBAT_CTRL_PIN, isV4 ? HIGH : LOW);
@@ -138,23 +137,17 @@ String readBatteryLevel() {
   float socRatio = soc / 100.0;
 
   // 格式: soc|adc_raw|adc_mV|voltage
-  return String(socRatio, 2) + "|" + String((int)rawAvg) + "|" + String((int)mvAvg) + "|" + String(batteryVoltage, 2);
+
+  return String(socRatio, 1) + "|" + String(batteryVoltage, 1);
 }
 
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
-  packetCount++;
+
   String dataStr = String(packetType) + "|" + deviceName;
 
-  if (packetType == MSG_TYPE_GPS) {
-    gpsCoordinates = getGpsInfoStr();
-    displayBuf[2] = gpsCoordinates;
-    dataStr += "|" + gpsCoordinates + "|" + String(packetCount);
-  } else if (packetType == MSG_TYPE_TIME) {
-    dataStr += "|" + getCurrentTime() + "|" + String(packetCount);
-  } else if (packetType == MSG_TYPE_BATTERY) {
-    dataStr += "|" + readBatteryLevel() + "|" + String(packetCount);
-  }
+  dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
+
 
   // 安全拷贝到发送缓冲区
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
@@ -173,51 +166,10 @@ void buildAndSendPacket(int packetType) {
   Radio.Send((uint8_t*)sendData, strlen(sendData));
   delay(100);
 }
-unsigned long starQuickSendTime = 0;  // 下次发送时间点（millis）
-bool isQuickModel = false;
-void testQuick(unsigned long intervalSec) {
-  if (millis() > (starQuickSendTime + SEND_INTERVAL_MS)) {
-    isQuickModel = false;
-    return;
-  }
-
-  // 1. 获取当前时间
-  String timeStr = getCurrentTime();
-  int hour = 0, minute = 0, second = 0;
-  sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
-  unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
-
-  unsigned long cyclesPassed = currentSeconds / intervalSec;
-  unsigned long passtm = currentSeconds - (cyclesPassed * intervalSec);
-  unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);  // 我在周期内的偏移量
-  unsigned long idx = passtm / (totalDevices * slotDuration);
-  if (idx < 1) {
-    idx = 1;
-  }
-  unsigned long nextTm = (idx * (totalDevices * slotDuration)) + mySlotOffset;
-  if (nextTm < passtm) {
-    nextTm += (totalDevices * slotDuration);
-  }
-
-  Serial.print(passtm);
-  Serial.print(" ");
-  Serial.print(mySlotOffset);
-  Serial.print(" ");
-  Serial.print(nextTm);
-  Serial.print(" ");
-  Serial.println(idx);
-  if (nextTm == passtm) {
-    Serial.println("快速发关一条消息 ");
-    buildAndSendPacket(MSG_TYPE_BATTERY);
-  }
-
-  delay(1000);
-}
-
 // ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
   Radio.Sleep();
-  // Serial.println("✅ 发送完成");
+  Serial.println("✅ 发送完成");
 }
 
 // ==================== LoRa发送超时回调 ====================
@@ -229,59 +181,6 @@ void onSendTimeout(void) {
 // ==================== LoRa接收完成回调 ====================
 void onRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
   Radio.Sleep();
-  // 不设inRxMode=false，由loop()超时检查统一处理退出和打印
-  int copyLen = (size < BUFFER_SIZE) ? size : BUFFER_SIZE;
-  memcpy(rxBuffer, payload, copyLen);
-  rxBuffer[copyLen] = '\0';
-
-  Serial.printf("📨 收到LoRa数据 [%d字节] RSSI:%d SNR:%d\n", size, rssi, snr);
-  Serial.printf("   内容: %s\n", rxBuffer);
-
-  // 解析消息类型，处理对时消息
-  String rxStr = String(rxBuffer);
-  int typeEnd = rxStr.indexOf('|');
-  if (typeEnd > 0) {
-    int secondPipe = rxStr.indexOf('|', typeEnd + 1);
-    int msgType = rxStr.substring(0, typeEnd).toInt();
-    if (secondPipe > 0) {
-      if (msgType == MSG_TYPE_TIME) {
-        String timeStr = rxStr.substring(secondPipe + 1);
-        setTimeFromLora(timeStr);
-      } else if (msgType == MSG_TYPE_COM) {
-        String result = rxStr.substring(typeEnd + 1, secondPipe);
-        if (result == deviceName) {
-          int lastValue = rxStr.substring(secondPipe + 1).toInt();
-          // 打印验证一下
-          Serial.print("提取到的最后整数是: ");
-          Serial.println(lastValue);
-          // 如果lastValue为1，启动快速发送模式
-          if (lastValue == 1) {
-            starQuickSendTime = millis();  // 下次发送时间点（millis）
-            isQuickModel = true;
-
-          } else if (lastValue == 4) {
-            Serial.println("⚠️⚠️⚠️⚠️ 收到重启指令，系统将在 1 秒后重启...");
-            delay(1000);    // 强烈建议加一个短暂的延时，确保串口日志能发送出去
-            ESP.restart();  // 执行重启
-
-          } else if (lastValue == 6) {
-            needpacketType = 0;
-            Serial.println("✅ 上报位置");
-          } else if (lastValue == 7) {
-            needpacketType = 1;
-            Serial.println("✅ 上报时间");
-          } else if (lastValue == 8) {
-            needpacketType = 2;
-            Serial.println("✅ 上报电量");
-
-          } else {
-            Serial.println("❌❌❌❌❌❌这是专门为这对设备下发的指令，请及时补充功能❌❌❌❌❌❌， ");
-          }
-        }
-      }
-    }
-  }
-  displayBuf[3] = "RX:" + String(copyLen) + "B";
 }
 
 // ==================== LoRa接收超时回调 ====================
@@ -291,20 +190,14 @@ void onRxTimeout(void) {
   Serial.println("⏹ RX超时，结束接收... " + getCurrentTime());
 }
 
-// ==================== 进入接收窗口 ====================
-void startRxWindow() {
-  isQuickModel = false;
-  inRxMode = true;
-  rxWindowDone = true;
-  rxStartTime = millis();
-  Serial.println("📡 进入接收窗口... " + getCurrentTime());
-  displayBuf[3] = "RX Listening";
-  Radio.Rx(0);  // 连续接收模式
-}
+
 // ==================== 系统初始化 ====================
+
 void setup() {
-  delay(1000);
+
   Serial.begin(115200);
+  delay(1000);
+  Serial.print("setup");
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   deviceName = makeDivceName();
@@ -312,51 +205,89 @@ void setup() {
   unsigned long startAttemptTime = millis();
   Serial.print("有gps模块 设置2分钟跳出");
   int skipnum = 0;
-  while (!(gps.location.isValid() && gps.time.isUpdated() && gps.date.year() > 2025 && isReliableGPS()) && millis() - startAttemptTime < 120000) {
+  while (true) {
     delay(1000);
     gpsEncode();
-    openLedByNum(1, 50);
+    // 逐个计算条件
+    bool hasLocValid = gps.location.isValid();
+    bool yearOk = (gps.date.year() > 2025);
+    bool gpsReliable = isReliableGPS();
+    bool timeoutOk = (millis() - startAttemptTime < 120000);
+
+    // 全部打印出来
+    Serial.print("定位有效:");
+    Serial.print(hasLocValid ? "Y" : "N");
+    Serial.print(" 年份>2025:");
+    Serial.print(yearOk ? "Y" : "N");
+    Serial.print(" GPS可靠:");
+    Serial.print(gpsReliable ? "Y" : "N");
+    Serial.print(" 未超时:");
+    Serial.println(timeoutOk ? "Y" : "N");
+
+    // 原始总条件
+    bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
+    if (allPass) {
+      Serial.println("==== GPS全部条件满足，退出搜星循环 ====");
+      break;
+    }
+
+    // 超时直接跳出
+    if (!timeoutOk) {
+      Serial.println("==== 搜星120秒超时，强制退出 ====");
+      break;
+    }
+
     Serial.print(".");
     Serial.println(getCurrentTime());
-    showDisplayBy4Area("count" , String(skipnum++), gps.time.isUpdated() ? getCurrentTime() : "notime", "gps...");
+    showDisplayBy4Area("count", String(skipnum++), getCurrentTime(), "gps...");
   }
   int i = 0;
-  while (i++ < 5) {
-    delay(1000);
+  while (i++ < 10) {
+    delay(500);
     gpsEncode();
+    Serial.print("延时：");
     Serial.println(getCurrentTime());
   }
   setGpsEnable(false);
+  delay(1000);
 
 
+  unsigned long num60000 = 120000;  //设定1分钟
   unsigned long nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
-  Serial.println(nextSendTime);
-  printTimeToString("到上报时间还有 ", nextSendTime);
-  if (nextSendTime > 60000) {
-    Serial.println("超过60秒 就重新开机");
-    uint64_t sleepTime = (uint64_t)(nextSendTime - 60000) * 1000ULL;
+  unsigned long waittm = nextSendTime - millis();
+  if (waittm > num60000) {
+    Serial.println("超过60秒 在发送前1分钟 就重新开机");
+    printTimeToString("到上报时间还有 ", nextSendTime - millis());
+    uint64_t sleepTime = (uint64_t)(waittm - num60000) * 1000ULL;
     esp_deep_sleep(sleepTime);
 
   } else {
+    Serial.println("小于60秒 那就延时到发射时间准备发送消息");
     delay(10);
     analogReadResolution(12);
     delay(10);
     pinMode(VBAT_CTRL_PIN, OUTPUT);
     delay(10);
     digitalWrite(VBAT_CTRL_PIN, HIGH);
-    delay(1000);
+    delay(10);
+
+    batterystr = readBatteryEndStr();
+    Serial.print("batterystr");
+    Serial.println(batterystr);
+
+
     initLora();
     delay(1000);
     //再算一次发送时间
-    nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
-    Serial.println("小于60秒 那就延时到发射时间准备发送消息");
-    delay(nextSendTime);
+    printTimeToString("到上报时间还有 ", nextSendTime - millis());
+    delay(nextSendTime - millis());
     Serial.println(getCurrentTime());
+    // buildAndSendPacket(typeList[random(3)]);
     buildAndSendPacket(MSG_TYPE_GPS);
-    delay(100);
     hideOLED();
-
-    uint64_t sleepTime = (uint64_t)(SEND_INTERVAL_MS - 60000) * 1000ULL;
+    digitalWrite(VBAT_CTRL_PIN, LOW);
+    Serial.println("已上报信息 下次发送前1分钟开机");
+    uint64_t sleepTime = (uint64_t)(SEND_INTERVAL_MS - num60000) * 1000ULL;
     esp_deep_sleep(sleepTime);
   }
 }
