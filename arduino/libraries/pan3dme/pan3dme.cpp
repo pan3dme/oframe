@@ -320,66 +320,8 @@ String getCurrentTime() {
   if (s.length() > 0) return s;
   return "2000/1/1 08:00:00";
 }
-bool initLibWifi() {
-  const char *ssid = "yangchang";
-  const char *password = "13787501167";
 
-  Serial.print("正在连接 WiFi");
-  WiFi.begin(ssid, password);
-  unsigned long startAttemptTime = millis();
 
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-    delay(100);
-    openLedByNum(1, 50);
-    Serial.print(".");
-  }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n⚠️ WiFi 连接失败，跳过网络时间同步");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return false;
-  }
-
-  Serial.println("\n✅ WiFi 连接成功，开始同步网络时间");
-  configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");
-
-  int retry = 0;
-  while (!getLocalTime(&timeinfo) && retry < 50) {
-    delay(100);
-    retry++;
-  }
-
-  if (retry >= 50) {
-    Serial.println("❌ 网络时间获取失败");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return false;
-  }
-
-  // 成功获取到网络当前时间
-  syncedEpoch = mktime(&timeinfo);
-  syncedMillis = millis();
-  Serial.println("✅ 网络时间同步成功");
-  Serial.print("同步时间：");
-  Serial.print(timeinfo.tm_year + 1900);
-  Serial.print("/");
-  Serial.print(timeinfo.tm_mon + 1);
-  Serial.print("/");
-  Serial.print(timeinfo.tm_mday);
-  Serial.print(" ");
-  Serial.print(timeinfo.tm_hour);
-  Serial.print(":");
-  Serial.print(timeinfo.tm_min);
-  Serial.print(":");
-  Serial.println(timeinfo.tm_sec);
-  return true;
-}
-void disConnectWifi() {
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  Serial.println("📶 WiFi 已关闭，后续时间使用本地时钟增量");
-}
 
 // 从LoRa对时信息设置时间（仅当新时间比本地时间更新时才覆盖）
 void setTimeFromLora(String timeStr) {
@@ -437,18 +379,9 @@ void initPanRadio(RadioEvents_t *radioEvents) {
   // 发送参数配置
   Radio.SetTxConfig(MODEM_LORA, TX_POWER, 0, LORA_BW,
                     LORA_SF, LORA_CR, PREAMBLE_LENGTH, false,
-                    true, 0, 0, false, 1500);
+                    true, 0, 0, false, 1000);
 
   Serial.println("✅ LoRa 初始化完成");
 
-#if defined(WIFI_LORA_32_V4)
-  // 上电初始化功放 - 开启高功率模式
-//  pinMode(LORA_PA_POWER, OUTPUT);
-//  digitalWrite(LORA_PA_POWER, HIGH);
-//  pinMode(LORA_PA_EN, OUTPUT);
-//  digitalWrite(LORA_PA_EN, HIGH);
-//  pinMode(LORA_PA_TX_EN, OUTPUT);
-//  digitalWrite(LORA_PA_TX_EN, HIGH);
-//  Serial.println("✅ 已开启高功率模式");
-#endif
+
 }
