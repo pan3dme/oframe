@@ -147,6 +147,7 @@ void setup() {
   unsigned long startAttemptTime = millis();
   Serial.print("有gps模块 设置2分钟跳出");
   int skipnum = 0;
+  bool aotuSendNoGps = false;
   while (true) {
     delay(1000);
     gpsEncode();
@@ -171,60 +172,72 @@ void setup() {
     }
     if (!timeoutOk) {
       Serial.println("==== 搜星120秒超时，强制退出 ====");
+      aotuSendNoGps = true;
       break;
     }
 
     Serial.print(".");
     Serial.println(getCurrentTime());
-    showDisplayBy4Area("count", String(skipnum++), getCurrentTime(), "gps...");
+    showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(), String(skipnum++));
   }
-  int i = 0;
-  while (i++ < 10) {
-    delay(500);
-    gpsEncode();
-    Serial.print("延时：");
-    Serial.println(getCurrentTime());
-  }
+
   setGpsEnable(false);
+  hideOLED();
   delay(1000);
 
+  //测试电量
+  analogReadResolution(12);
+  delay(10);
+  pinMode(VBAT_CTRL_PIN, OUTPUT);
+  delay(10);
+  digitalWrite(VBAT_CTRL_PIN, HIGH);
+  delay(10);
+  batterystr = readBatteryEndStr();
+  digitalWrite(VBAT_CTRL_PIN, LOW);
+  pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
+  Serial.print("batterystr");
+  Serial.println(batterystr);
+
   unsigned long num60000 = 120000;  // 2分钟（原值120000）
-  unsigned long nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
-  unsigned long waittm = nextSendTime - millis();
-  if (waittm > num60000) {
-    Serial.println("超过60秒 在发送前2分钟 就重新开机");
-    printTimeToString("到上报时间还有 ", nextSendTime - millis());
-    delay(1000);
-    uint64_t sleepTime = (uint64_t)(waittm - num60000) * 1000ULL;
-    esp_deep_sleep(sleepTime);
-  } else {
-    Serial.println("小于60秒 那就延时到发射时间准备发送消息");
-    delay(10);
-    analogReadResolution(12);
-    delay(10);
-    pinMode(VBAT_CTRL_PIN, OUTPUT);
-    delay(10);
-    digitalWrite(VBAT_CTRL_PIN, HIGH);
-    delay(10);
-
-    batterystr = readBatteryEndStr();
-    Serial.print("batterystr");
-    Serial.println(batterystr);
-
+  if (aotuSendNoGps) {
     initLora();
-    delay(1000);
-    printTimeToString("到上报时间还有 ", nextSendTime - millis());
-    delay(nextSendTime - millis());
     Serial.println(getCurrentTime());
+    delay(1000);
+    Serial.println("没有得到GPS时间 自动上报一条记录 ");
     buildAndSendPacket(MSG_TYPE_GPS);
-    hideOLED();
-    digitalWrite(VBAT_CTRL_PIN, LOW);
-    Serial.println("已上报信息 下次发送前1分钟开机");
-      delay(1000);
+    delay(1000);
     uint64_t sleepTime = (uint64_t)(SEND_INTERVAL_MS - num60000) * 1000ULL;
     esp_deep_sleep(sleepTime);
+
+  } else {
+
+    unsigned long nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
+    unsigned long waittm = nextSendTime - millis();
+    if (waittm > num60000) {
+      Serial.println("超过60秒 在发送前2分钟 就重新开机");
+      printTimeToString("到上报时间还有 ", nextSendTime - millis());
+      delay(1000);
+      uint64_t sleepTime = (uint64_t)(waittm - num60000) * 1000ULL;
+      esp_deep_sleep(sleepTime);
+    } else {
+      Serial.println("小于60秒 那就延时到发射时间准备发送消息");
+
+      initLora();
+      delay(1000);
+      printTimeToString("到上报时间还有 ", nextSendTime - millis());
+      delay(nextSendTime - millis());
+      Serial.println(getCurrentTime());
+      buildAndSendPacket(MSG_TYPE_GPS);
+
+      digitalWrite(VBAT_CTRL_PIN, LOW);
+      Serial.println("已上报信息 下次发送前1分钟开机");
+      delay(1000);
+      uint64_t sleepTime = (uint64_t)(SEND_INTERVAL_MS - num60000) * 1000ULL;
+      esp_deep_sleep(sleepTime);
+    }
   }
 }
+
 
 void printTimeToString(String str, unsigned long ms) {
   int totalSec = ms / 1000;
