@@ -142,15 +142,13 @@ void gpsEncode() {
   if (Serial2.available() > 0) {
     while (Serial2.available()) {
       gps.encode(Serial2.read());
-
     }
   }
-
   if (gps.location.isValid()) {
     int satCount = gps.satellites.value();
-    Serial.print("当前卫星数: ");
-    Serial.println(satCount);
-    Serial.println(getGpsInfoStr());
+//    Serial.print("当前卫星数: ");
+//    Serial.println(satCount);
+//    Serial.println(getGpsInfoStr());
   }
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
   if ( gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025) {
@@ -163,7 +161,7 @@ void gpsEncode() {
     tmGps.tm_min = gps.time.minute();
     tmGps.tm_sec = gps.time.second();
     time_t newEpoch = mktime(&tmGps);
-    updateSyncedTime(newEpoch, "GPS");
+//    updateSyncedTime(newEpoch, "GPS");
     setCSTTime(gps.date.year() , gps.date.month() , gps.date.day(), gps.time.hour(), gps.time.minute(),  gps.time.second());
   }
 }
@@ -339,20 +337,26 @@ String printNowTime() {
 
 
 }
+bool  haveRightTime()
+{
+  time_t now;
+  struct tm t;
+  time(&now);
+  gmtime_r(&now, &t);          // 使用 gmtime_r 得到 UTC，再手动加 8 小时
+
+  return (t.tm_year + 1900)>2025;
+
+}
 // 获取可用的时间字符串 (优先同步时间，最后默认运行时间)
 String getCurrentTime() {
-  if (syncedEpoch > 0) {
-    unsigned long elapsedMs = millis() - syncedMillis;
-    time_t currentEpoch = syncedEpoch + elapsedMs / 1000;
-    String s = epochToBeijingStr(currentEpoch);
-    if (s.length() > 0) return s;
-  }
+//  if (syncedEpoch > 0) {
+//    unsigned long elapsedMs = millis() - syncedMillis;
+//    time_t currentEpoch = syncedEpoch + elapsedMs / 1000;
+//    String s = epochToBeijingStr(currentEpoch);
+//    if (s.length() > 0) return s;
+//  }
 
-  // 兜底：开机时间 + 运行时间
-//  time_t bootEpoch = 946684800;  // 2000/1/1 00:00:00 UTC
-//  time_t currentEpoch = bootEpoch + millis() / 1000;
-//  String s = epochToBeijingStr(currentEpoch);
-//  if (s.length() > 0) return s;
+
   return printNowTime();
 }
 
