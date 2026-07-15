@@ -43,7 +43,8 @@ String deviceName = "x-x";
 
 // ========================= LoRa全局变量 =========================
 char loraStr[BUFFER_SIZE];
-char timeSyncSendBuf[BUFFER_SIZE];
+char sendData[BUFFER_SIZE];  // 发送数据缓存
+
 bool needSendTimeSync = false;
 unsigned long scheduledSendMs = 0;  // 定时发送时间点(millis)
 
@@ -502,22 +503,82 @@ void setup() {
   initRadio();
   initBLE();
 
-#if defined(WIFI_LORA_32_V4)
-  initPanGPS();
-  Serial.print("v4板子先获取GPS信息");
-  while (!(gps.location.isValid() && gps.time.isUpdated() && isReliableGPS())) {
-    delay(100);
-    gpsEncode();
-    openLedByNum(1, 50);
-    Serial.print(".");
-    showDisplayBy4Area("gps...", "gps...", "gps...", "gps...");
+
+  if (haveRightTime()) {
+    Serial.print("✅ 系统有正确时间");
+    printCurrentTime();
+  } else {
+    Serial.print("❌ 系统时间不正确");
+    printCurrentTime();
   }
-  setGpsEnable(false);
-#endif
+
+
 
   Serial.println("✅ 系统启动完成");
 }
+String lastPrintTime = "";
+void printCurrentTime() {
+  if (lastPrintTime != getCurrentTime()) {
+    Serial.println(getCurrentTime());
+    lastPrintTime = getCurrentTime();
+  }
+  if (!haveRightTime()) {
+    Serial.println("当前时间还没对时成功");
+  }
+}
+void printTimeToString(String str, unsigned long ms) {
+  int totalSec = ms / 1000;
+  int min = totalSec / 60;
+  int sec = totalSec % 60;
+  int remMs = ms % 1000;
+  Serial.print(str);
+  Serial.print(min);
+  Serial.print("分");
+  Serial.print(sec);
+  Serial.print("秒");
+  Serial.print(remMs);
+  Serial.println("毫秒");
+}
+//判断是不是接收窗口
+void isRxWindowTime() {
 
+  unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
+  bool canRx = (intervalSec > RX_WINDOW_SECONDS + 1);
+  unsigned long rxWindowMs = canRx ? RX_WINDOW_SECONDS * 1000 : 0;
+  String timeNow = getCurrentTime();
+  int h, m, s;
+  sscanf(timeNow.c_str(), "%*d/%*d/%*d %d:%d:%d", &h, &m, &s);
+  unsigned long timeOfDaySec = h * 3600UL + m * 60UL + s;
+  unsigned long nextCycleBoundaryMs = millis() + (intervalSec - timeOfDaySec % intervalSec) * 1000UL;
+  unsigned long rxStartMs = nextCycleBoundaryMs - rxWindowMs;
+  if (millis() >= rxStartMs && millis() < nextCycleBoundaryMs) {
+    printCurrentTime();
+    Radio.Sleep();
+    unsigned long ds = (nextCycleBoundaryMs - millis());
+    Serial.print("中继下发数据时间");
+    printTimeToString("下发接收窗口 ", ds);
+    delay(ds / 2);
+
+    String dataStr = "1|" + deviceName;
+    dataStr += "|" + getCurrentTime();
+    int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
+    if (len < 0 || len >= BUFFER_SIZE) {
+      Serial.println("⚠️ 数据过长，已截断");
+      sendData[BUFFER_SIZE - 1] = '\0';
+    }
+    Serial.print(getCurrentTime());
+    Serial.print("发送：");
+    Serial.print(sendData);
+    Serial.print("len:");
+    Serial.println(strlen(sendData));
+    Radio.Send((uint8_t *)sendData, strlen(sendData));
+
+    delay(nextCycleBoundaryMs - millis());
+    Radio.Rx(0);
+    Serial.print("中继下发时间结束：");
+    printCurrentTime();
+  }
+}
 // ========================= 主循环 =========================
 unsigned long lastDisplayUpdate = 0;
 unsigned long lastrecdLoraTm = 0;
@@ -526,54 +587,12 @@ void loop() {
 
   Radio.IrqProcess();
   receiveDtuData();
-
-  if ((lastUpSelfTm ) < millis()) {
-    lastUpSelfTm = millis()+SEND_INTERVAL_MS;
-    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
+  if ((lastUpSelfTm) < millis()) {
+    lastUpSelfTm = millis() + SEND_INTERVAL_MS;
+    // sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
   }
-
-  // 处理BLE触发的定时LoRa发送（等待接收窗口到达）
-  if (needSendTimeSync) {
-    unsigned long nowMs = millis();
-    if (scheduledSendMs > 0 && nowMs < scheduledSendMs) {
-      // 窗口未到，每秒打印倒计时
-      static unsigned long lastPrint = 0;
-      if (nowMs - lastPrint >= 1000) {
-        lastPrint = nowMs;
-        Serial.printf("⏳ 等待接收窗口... 还剩 %lu 秒\n", (scheduledSendMs - nowMs) / 1000);
-      }
-    } else {
-      // 窗口已到达，构建并发送消息
-      if (docCom.containsKey("cmd")) {
-        String msg;
-        String cmd = docCom["cmd"].as<String>();
-        if (cmd == "synctime") {
-          String currentTimeStr = getCurrentTime();
-          msg = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + currentTimeStr;
-          Serial.print("📡 发送对时LoRa消息: ");
-        } else if (cmd == "setfreq") {
-          String targetId = docCom["deviceId"].as<String>();
-          msg = String(MSG_TYPE_COM) + "|" + targetId;
-          if (docCom.containsKey("value")) {
-            msg += "|" + docCom["value"].as<String>();
-          } else {
-            msg += "|value=null";
-          }
-          Serial.print("📡 下达指令: ");
-        } else {
-          msg = "no cmd:" + cmd;
-          Serial.print("📡 没有对应的cmd: ");
-          Serial.println(cmd);
-        }
-        snprintf(timeSyncSendBuf, BUFFER_SIZE, "%s", msg.c_str());
-        timeSyncSendBuf[BUFFER_SIZE - 1] = '\0';
-        Serial.println(timeSyncSendBuf);
-        displayBuf[1] = "TX TimeSync";
-        Radio.Send((uint8_t *)timeSyncSendBuf, strlen(timeSyncSendBuf));
-      }
-      needSendTimeSync = false;
-      scheduledSendMs = 0;
-    }
+  if (haveRightTime()) {
+    isRxWindowTime();
   }
 
   // 处理LoRa接收数据
@@ -596,100 +615,20 @@ void loop() {
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
           String timeStr = String(loraStr).substring(secondPipeIndex + 1);
-          // Serial.print("⏰ 收到对时信息: ");
-          // Serial.println(timeStr);
+          Serial.print("⏰ 收到对时信息: ");
+          Serial.println(timeStr);
           setTimeFromLora(timeStr);
+          printCurrentTime();
         }
-      } else if (messageType == MSG_TYPE_BATTERY) {
-        // 电量信息：3|设备名|电量值
-        int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
-        if (secondPipeIndex > 0) {
-          float batteryLevel = String(loraStr).substring(secondPipeIndex + 1).toFloat();
-          // Serial.print("🔋 收到电量信息: ");
-          // Serial.println(batteryLevel, 2);
-          displayBuf[3] = "Bat:" + String(batteryLevel, 2) + "V";
-        }
-      } else if (messageType == MSG_TYPE_GPS) {
-        // GPS定位信息
-        displayBuf[3] = String(loraStr).substring(0, 15);
-      } else if (messageType == MSG_TYPE_FIRMWARE) {
-        // 固件更新指令（待实现）
-        Serial.println("🔄 收到固件更新指令（未处理）");
-      } else {
-        // 其他类型，直接显示
-        displayBuf[3] = String(loraStr).substring(0, 15);
       }
 
       sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
     } else {
       displayBuf[3] = String(loraStr).substring(0, 15);
     }
-
-    // 存入队列并更新设备缓存
-    if (lastPayloadSize > 0) {
-      StaticJsonDocument<256> doc;
-      doc["rssi"] = (int)lastRssi;
-      doc["snr"] = (int)lastSnr;
-      doc["info"] = loraStr;
-      doc["upDateDevice"] = deviceName;
-      doc["time"] = getCurrentTime();
-
-      String jsonData;
-      serializeJson(doc, jsonData);
-      addDataToQueue(jsonData);
-
-      const char *infoRaw = doc["info"];
-      if (infoRaw != nullptr) {
-        String devId = extractDeviceIdFromInfo(String(infoRaw));
-        updateDeviceCache(devId, jsonData);
-      }
-      lastPayloadSize = 0;
-    }
   }
 
 
-
-  // LED闪烁提示
-  if (needPlaLed) {
-    needPlaLed = false;
-    openLedByNum(1, 50);
-    lastrecdLoraTm = millis();
-  }
-
-  // 超时检测：超过2个周期未收到数据则强制重置Radio
-  unsigned long timeSinceLastRecv = millis() - lastrecdLoraTm;
-  if (timeSinceLastRecv > SEND_INTERVAL_MS * 2) {
-    Serial.print("⚠️ 超过2个周期没有收到数据: ");
-    Serial.println(timeSinceLastRecv);
-    RadioState_t radioState = Radio.GetStatus();
-    Serial.print("📻 Radio当前状态: ");
-    Serial.println(radioState);
-    Serial.println("🔧 检测到Radio可能死锁,执行强制重置...");
-    forceResetRadio();
-    lastrecdLoraTm = millis();
-  }
-
-  // 更新显示
-  displayBuf[0] = "id:" + deviceName + " rec" + String(receiveCount);
-
-  // BLE数据同步发送
-  if (deviceConnected && needSync && dataCount > 0) {
-    delay(50);
-    String data = getAndRemoveFirstData();
-    pCharacteristic->setValue(data.c_str());
-    pCharacteristic->notify();
-    Serial.print("✅ 同步发送：");
-    Serial.println(data);
-    Serial.print("📊 剩余：");
-    Serial.println(dataCount);
-  }
-
-  // OLED刷新（每500ms一次）
-  unsigned long now = millis();
-  if (now - lastDisplayUpdate >= 500) {
-    showDisplayBy4Area(displayBuf[0], displayBuf[1], displayBuf[2], displayBuf[3]);
-    lastDisplayUpdate = now;
-  }
 
   delay(100);
 }

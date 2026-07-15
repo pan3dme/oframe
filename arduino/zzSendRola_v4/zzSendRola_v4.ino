@@ -12,7 +12,7 @@
 String deviceName;           // 设备名称
 char sendData[BUFFER_SIZE];  // 发送数据缓存
 RadioEvents_t radioEvents;   // LoRa事件回调
-
+char loraStr[BUFFER_SIZE];
 // LoRa发射时间管理
 int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
@@ -69,8 +69,28 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 void initLora() {
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
+  radioEvents.RxDone = OnRxDone;
+  radioEvents.RxTimeout = OnRxTimeout;
+  radioEvents.RxError = OnRxError;
   // 删除了 RxDone 和 RxTimeout 回调（未使用）
   initPanRadio(&radioEvents);
+}
+void OnRxTimeout(void) {
+  Serial.println("⚠️ Radio接收超时!");
+}
+
+void OnRxError(void) {
+  Serial.println("❌ Radio接收错误!");
+}
+// LoRa接收回调（仅拷贝数据，耗时操作在主循环处理）
+void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+  if (size < BUFFER_SIZE) {
+    memcpy(loraStr, payload, size);
+    loraStr[size] = '\0';
+    Serial.println("");
+    Serial.print(" ROLA -：");
+    Serial.println(loraStr);
+  }
 }
 
 String readBatteryEndStr() {
@@ -106,7 +126,13 @@ String readBatteryEndStr() {
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
   String dataStr = String(packetType) + "|" + deviceName;
-  dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
+  if (packetType == MSG_TYPE_TIME) {
+    dataStr += "|" + getCurrentTime() + "|" + batterystr;
+  } else {
+    dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
+  }
+
+
 
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
@@ -119,7 +145,7 @@ void buildAndSendPacket(int packetType) {
   Serial.print("  len:");
   Serial.println(strlen(sendData));
 
-  Radio.Send((uint8_t*)sendData, strlen(sendData));
+  Radio.Send((uint8_t *)sendData, strlen(sendData));
   delay(100);
 }
 
@@ -134,7 +160,7 @@ void onSendTimeout(void) {
   Radio.Sleep();
   Serial.println("❌ 发送超时");
 }
-bool mustOpenGps = false;
+bool mustOpenGps = true;
 void printTimeToString(String str, unsigned long ms) {
   int totalSec = ms / 1000;
   int min = totalSec / 60;
@@ -234,20 +260,37 @@ void setup() {
 }
 //判断是不是接收窗口
 void isRxWindowTime() {
+
+  unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
+  bool canRx = (intervalSec > RX_WINDOW_SECONDS + 1);
+  unsigned long rxWindowMs = canRx ? RX_WINDOW_SECONDS * 1000 : 0;
   String timeNow = getCurrentTime();
   int h, m, s;
   sscanf(timeNow.c_str(), "%*d/%*d/%*d %d:%d:%d", &h, &m, &s);
   unsigned long timeOfDaySec = h * 3600UL + m * 60UL + s;
   unsigned long nextCycleBoundaryMs = millis() + (intervalSec - timeOfDaySec % intervalSec) * 1000UL;
   unsigned long rxStartMs = nextCycleBoundaryMs - rxWindowMs;
-  
+  if (millis() >= rxStartMs && millis() < nextCycleBoundaryMs) {
+    Radio.Rx(0);
+    Serial.print("开始接收窗口");
+    printCurrentTime();
+    unsigned long ds = nextCycleBoundaryMs - millis();
+    printTimeToString("等待接收时间", ds);
+    while (millis() < nextCycleBoundaryMs) {
+      Radio.IrqProcess();
+      delay(1000);
+      Serial.print(".");
+    }
+    Radio.Sleep();
+    Serial.println("");
+    Serial.print("结束接收窗口");
+    printCurrentTime();
+  }
 }
 // ==================== 主循环 ====================
 void loop() {
 
-  unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
-  bool canRx = (intervalSec > RX_WINDOW_SECONDS + 1);
-  unsigned long rxWindowMs = canRx ? RX_WINDOW_SECONDS * 1000 : 0;
+  Radio.IrqProcess();
 
   if (nextSendTime == 0) {
     //第一次
@@ -257,8 +300,10 @@ void loop() {
   }
 
   isRxWindowTime();
+
   if (nextSendTime < millis()) {
-    buildAndSendPacket(MSG_TYPE_GPS);
+    // MSG_TYPE_TIME,MSG_TYPE_GPS
+    buildAndSendPacket(MSG_TYPE_TIME);
     delay(1000);
     nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
   }

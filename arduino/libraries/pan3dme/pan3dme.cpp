@@ -392,8 +392,9 @@ void setTimeFromLora(String timeStr) {
     tmLora.tm_min = minute;
     tmLora.tm_sec = second;
 
-    time_t newEpoch = mktime(&tmLora);
-    updateSyncedTime(newEpoch, "LoRa");
+//    time_t newEpoch = mktime(&tmLora);
+//    updateSyncedTime(newEpoch, "LoRa");
+    setCSTTime(year , month , day, hour, minute,  second);
   } else {
     Serial.print("❌ LoRa对时解析失败: ");
     Serial.println(timeStr);
