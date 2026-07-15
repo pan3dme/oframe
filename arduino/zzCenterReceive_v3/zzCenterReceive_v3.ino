@@ -76,78 +76,15 @@ class MyServerCallbacks : public BLEServerCallbacks {
   }
 };
 void meshCmdInfomsg(String rxValue) {
-  //    {"cmd":"setfreq","value":5,"deviceId":"v4-4"}
-  //      {"deviceId":"v4-4","cmd":"setfreq","value":5}
   Serial.println(rxValue);
   DeserializationError error = deserializeJson(docCom, rxValue);
   if (error) {
     return;
   }
-
-  // 数据同步开关
   if (docCom.containsKey("syncing")) {
     needSync = docCom["syncing"].as<bool>();
     Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
     return;
-  }
-
-  // 指令处理
-  if (!docCom.containsKey("cmd")) {
-    return;
-  }
-  String cmd = docCom["cmd"].as<String>();
-
-  // 获取设备列表
-  if (cmd == "getDeviceList") {
-    Serial.println("获取设备列表");
-    StaticJsonDocument<256> doc;
-    doc["cmd"] = "getDeviceList";
-    JsonArray infoArray = doc.createNestedArray("info");
-    for (int i = 0; i < deviceCacheCount; i++) {
-      infoArray.add(deviceCacheId[i]);
-    }
-    String str;
-    serializeJson(doc, str);
-    Serial.println(str);
-    pCharacteristic->setValue(str.c_str());
-    pCharacteristic->notify();
-    return;
-  }
-
-  // 对时指令：同步本地时间
-  if (cmd == "synctime" && docCom.containsKey("time")) {
-    String timeStr = docCom["time"].as<String>();
-    Serial.print("⏰ 收到对时发送指令: ");
-    Serial.println(timeStr);
-
-    // setTimeFromLora(timeStr);不再需要手机同步进来的时间。ROLA收到就可以
-  }
-
-  // 携带deviceId时，计算接收窗口并定时发送对时
-  if (docCom.containsKey("deviceId")) {
-    String targetId = docCom["deviceId"].as<String>();
-    String lastMsg = findLastMessageByDevice(targetId);
-    if (lastMsg.length() > 0) {
-      Serial.print("📋 ");
-      Serial.print(targetId);
-      Serial.print(" 最后一条消息: ");
-      Serial.println(lastMsg);
-      unsigned long rxStartMs = calcRxWindowStartMs(lastMsg);
-      if (rxStartMs > 0) {
-        unsigned long nowMs = millis();
-        if (rxStartMs > nowMs) {
-          scheduledSendMs = rxStartMs;
-          needSendTimeSync = true;
-          unsigned long waitSec = (rxStartMs - nowMs) / 1000;
-          Serial.printf("⏳ 将在 %lu 秒后（接收窗口开启时）发送对时\n", waitSec);
-        }
-      }
-    } else {
-      String str = "{\"cmd\":\"tip\", \"info\":\"❌❌❌❌❌❌ 队列中没有❌❌❌❌❌❌" + targetId + "❌❌❌❌❌❌的记录❌❌❌❌❌❌\"}";
-      Serial.println(str);
-      pCharacteristic->setValue(str.c_str());
-      pCharacteristic->notify();
-    }
   }
 }
 
@@ -236,7 +173,6 @@ unsigned long calcRxWindowStartMs(String msgJson) {
   if (deserializeJson(doc, msgJson) != DeserializationError::Ok) {
     return 0;
   }
-
   // 从info提取设备名，解析设备索引（info格式: "2|v3-8|2000/1/1 08:14:14|15"）
   const char *infoCstr = doc["info"];
   if (infoCstr == nullptr) {
@@ -326,7 +262,6 @@ void forceResetRadio() {
   initRadio();
   Serial.println("  ✅ Radio已重新初始化");
   delay(10);
-
   RadioState_t state = Radio.GetStatus();
   if (state == RF_RX_RUNNING) {
     Serial.println("✅ Radio强制重置成功,已进入接收状态");
@@ -335,33 +270,27 @@ void forceResetRadio() {
     Serial.println(state);
   }
 }
-
 // ========================= LoRa回调 =========================
-
 void OnTxDone(void) {
   Serial.println("✅ 对时发送完成，回到接收模式");
   needSendTimeSync = false;
   displayBuf[1] = "TX Done";
   Radio.Rx(0);
 }
-
 void OnTxTimeout(void) {
   Serial.println("❌ 对时发送超时，回到接收模式");
   needSendTimeSync = false;
   displayBuf[1] = "TX Timeout";
   Radio.Rx(0);
 }
-
 void OnRxTimeout(void) {
   Serial.println("⚠️ Radio接收超时!");
   Radio.Rx(0);
 }
-
 void OnRxError(void) {
   Serial.println("❌ Radio接收错误!");
   Radio.Rx(0);
 }
-
 // LoRa接收回调（仅拷贝数据，耗时操作在主循环处理）
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (size < BUFFER_SIZE) {
@@ -381,7 +310,6 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 }
 
 // ========================= DTU上报 =========================
-
 // 通过串口2将LoRa数据上报给DTU
 void sendLoraInfoUseDtu(String str, String rssi, String snr) {
   String json = "{"
@@ -402,7 +330,6 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
   Serial.println("上报报文：" + json);
   Serial2.println(json);
 }
-
 // cominfo缓存数组（最多存10条）
 #define COMINFO_MAX 10
 String cominfoArray[COMINFO_MAX];
@@ -480,7 +407,6 @@ void receiveDtuData() {
       Serial.print(i);
       Serial.print("] ");
       // Serial.println(cominfoArray[i]);
-
       meshCmdInfomsg(cominfoArray[i]);
     }
     Serial.print("共 ");
@@ -488,33 +414,6 @@ void receiveDtuData() {
     Serial.println(" 条");
     Serial.println("--------------------");
   }
-}
-// ========================= 系统初始化 =========================
-
-void setup() {
-  Serial.begin(115200);
-  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  delay(1000);
-  Serial2.begin(115200, SERIAL_8N1, 17, 18);
-  // Serial2.begin(115200, SERIAL_8N1, 45, 46);
-  delay(1000);
-  deviceName = makeDivceName();
-  displayBuf[0] = "id:" + deviceName + " rec";
-  initRadio();
-  initBLE();
-
-
-  if (haveRightTime()) {
-    Serial.print("✅ 系统有正确时间");
-    printCurrentTime();
-  } else {
-    Serial.print("❌ 系统时间不正确");
-    printCurrentTime();
-  }
-
-
-
-  Serial.println("✅ 系统启动完成");
 }
 String lastPrintTime = "";
 void printCurrentTime() {
@@ -584,6 +483,29 @@ void isRxWindowTime() {
 unsigned long lastDisplayUpdate = 0;
 unsigned long lastrecdLoraTm = 0;
 unsigned long lastUpSelfTm = 0;
+
+// ========================= 系统初始化 =========================
+
+void setup() {
+  Serial.begin(115200);
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  delay(1000);
+  Serial2.begin(115200, SERIAL_8N1, 17, 18);
+  delay(1000);
+  deviceName = makeDivceName();
+  displayBuf[0] = "id:" + deviceName + " rec";
+  initRadio();
+  initBLE();
+  if (haveRightTime()) {
+    Serial.print("✅ 系统有正确时间");
+    printCurrentTime();
+  } else {
+    Serial.print("❌ 系统时间不正确");
+    printCurrentTime();
+  }
+  Serial.println("✅ 系统启动完成   进入监听状态");
+  Radio.Rx(0);
+}
 void loop() {
 
   Radio.IrqProcess();
@@ -593,10 +515,8 @@ void loop() {
     // sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
   }
   if (haveRightTime()) {
-      // printCurrentTime();
     isRxWindowTime();
   }
-
   // 处理LoRa接收数据
   if (loraReceivedFlag) {
     loraReceivedFlag = false;
@@ -609,11 +529,7 @@ void loop() {
     int firstPipeIndex = String(loraStr).indexOf('|');
     if (firstPipeIndex > 0) {
       int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
-      // Serial.print("📋 消息类型: ");
-      // Serial.println(messageType);
-
       if (messageType == MSG_TYPE_TIME) {
-        // 对时信息：2|设备名|时间字符串
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
           String timeStr = String(loraStr).substring(secondPipeIndex + 1);
@@ -621,17 +537,12 @@ void loop() {
           Serial.print("⏰ 收到对时信息: ");
           Serial.println(timeStr);
           setTimeFromLora(timeStr);
-          printCurrentTime();
         }
       }
-
       sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
     } else {
       displayBuf[3] = String(loraStr).substring(0, 15);
     }
   }
-
-
-
-  delay(100);
+  delay(10);
 }

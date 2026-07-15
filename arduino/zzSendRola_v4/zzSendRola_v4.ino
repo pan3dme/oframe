@@ -275,14 +275,14 @@ void isRxWindowTime() {
     Serial.print("开始接收窗口");
     printCurrentTime();
     unsigned long ds = nextCycleBoundaryMs - millis();
-    printTimeToString("等待接收时间", ds);
+    // printTimeToString("等待接收时间", ds);
     while (millis() < nextCycleBoundaryMs) {
       Radio.IrqProcess();
       delay(1000);
       Serial.print(".");
     }
     Radio.Sleep();
-    Serial.println("");
+    // Serial.println("");
     Serial.print("结束接收窗口");
     printCurrentTime();
   }
