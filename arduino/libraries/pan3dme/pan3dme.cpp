@@ -164,6 +164,7 @@ void gpsEncode() {
     tmGps.tm_sec = gps.time.second();
     time_t newEpoch = mktime(&tmGps);
     updateSyncedTime(newEpoch, "GPS");
+    setCSTTime(gps.date.year() , gps.date.month() , gps.date.day(), gps.time.hour(), gps.time.minute(),  gps.time.second());
   }
 }
 String getGpsInfoStr() {
@@ -304,6 +305,40 @@ String epochToBeijingStr(time_t epoch) {
   return String(timeStr);
 }
 
+
+void setCSTTime(int year, int mon, int day, int h, int m, int s) {
+    struct tm t;
+    t.tm_year = year - 1900;
+    t.tm_mon  = mon - 1;
+    t.tm_mday = day;
+    t.tm_hour = h ;          // 转为 UTC（注意跨日处理）
+    t.tm_min  = m;
+    t.tm_sec  = s;
+    // 修正跨日：使用 mktime 自动规范化
+    time_t now = mktime(&t);    // 此时系统时区应为 UTC，若为 CST 则需另作处理
+    settimeofday((const timeval*)&now, NULL);
+}
+String printNowTime() {
+    time_t now;
+    struct tm t;
+    time(&now);
+    gmtime_r(&now, &t);          // 使用 gmtime_r 得到 UTC，再手动加 8 小时
+
+  char buf[64];
+  snprintf(buf, sizeof(buf),
+           "%4d/%d/%d %02d:%02d:%02d",
+           t.tm_year + 1900,
+           t.tm_mon + 1,
+           t.tm_mday,
+           (t.tm_hour + 8) % 24,             // 已经加过 8 小时，直接使用
+           t.tm_min,
+           t.tm_sec);
+
+  // 存入 String 对象
+  return  String(buf);
+
+
+}
 // 获取可用的时间字符串 (优先同步时间，最后默认运行时间)
 String getCurrentTime() {
   if (syncedEpoch > 0) {
@@ -314,11 +349,11 @@ String getCurrentTime() {
   }
 
   // 兜底：开机时间 + 运行时间
-  time_t bootEpoch = 946684800;  // 2000/1/1 00:00:00 UTC
-  time_t currentEpoch = bootEpoch + millis() / 1000;
-  String s = epochToBeijingStr(currentEpoch);
-  if (s.length() > 0) return s;
-  return "2000/1/1 08:00:00";
+//  time_t bootEpoch = 946684800;  // 2000/1/1 00:00:00 UTC
+//  time_t currentEpoch = bootEpoch + millis() / 1000;
+//  String s = epochToBeijingStr(currentEpoch);
+//  if (s.length() > 0) return s;
+  return printNowTime();
 }
 
 

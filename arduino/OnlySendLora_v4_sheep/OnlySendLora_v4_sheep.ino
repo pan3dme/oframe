@@ -156,14 +156,20 @@ void setup() {
     bool gpsReliable = isReliableGPS();
     bool timeoutOk = (millis() - startAttemptTime < 120000);
 
+ 
+    Serial.print(".");
+    Serial.println(getCurrentTime());
+    showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(), String(skipnum++));
+
+
     Serial.print("定位有效:");
-    Serial.print(hasLocValid ? "Y" : "N");
+    Serial.print(hasLocValid ? "✅" : "❌");
     Serial.print(" 年份>2025:");
-    Serial.print(yearOk ? "Y" : "N");
+    Serial.print(yearOk ? "✅" : "❌");
     Serial.print(" GPS可靠:");
-    Serial.print(gpsReliable ? "Y" : "N");
+    Serial.print(gpsReliable ? "✅" : "❌");
     Serial.print(" 未超时:");
-    Serial.println(timeoutOk ? "Y" : "N");
+    Serial.println(timeoutOk ? "✅" : "❌");
 
     bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
     if (allPass) {
@@ -175,15 +181,13 @@ void setup() {
       aotuSendNoGps = true;
       break;
     }
-
-    Serial.print(".");
-    Serial.println(getCurrentTime());
-    showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(), String(skipnum++));
   }
 
   setGpsEnable(false);
   hideOLED();
   delay(1000);
+
+
 
   //测试电量
   analogReadResolution(12);
