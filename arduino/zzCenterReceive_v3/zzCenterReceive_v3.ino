@@ -480,7 +480,7 @@ void isRxWindowTime() {
     String dataStr;
     if (cmdLoraInfoStr.length() > 0) {
       dataStr = cmdLoraInfoStr;
-      cmdLoraInfoStr="";
+      cmdLoraInfoStr = "";
     } else {
       dataStr = "1|" + deviceName;
       dataStr += "|" + getCurrentTime();
@@ -501,6 +501,11 @@ void isRxWindowTime() {
     Radio.Rx(0);
     Serial.print("结束中继下发时间：");
     printCurrentTime();
+  } else {
+    if (cmdLoraInfoStr.length() > 0) {
+      printTimeToString("有下发指令 需要等待", rxStartMs - millis());
+      delay(1000);
+    }
   }
 }
 // ========================= 主循环 =========================
