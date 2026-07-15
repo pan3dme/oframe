@@ -120,19 +120,7 @@ void setGpsEnable(bool value) {
 
   isGpsOn = value;  // 更新状态记录
 }
-// 统一时间更新：仅当新时间比已存储时间更新时才替换
-void updateSyncedTime(time_t newEpoch, const char *source) {
-  if (syncedEpoch > 0) {
-    time_t currentEstimate = syncedEpoch + (millis() - syncedMillis) / 1000;
-    if (newEpoch <= currentEstimate) {
-//            Serial.printf("%s时间较旧，跳过: new=%ld <= cur=%ld\n", source, (long)newEpoch, (long)currentEstimate);
-      return;
-    }
-  }
-  syncedEpoch = newEpoch;
-  syncedMillis = millis();
-  Serial.printf("✅ %s对时成功, epoch=%ld\n", source, (long)syncedEpoch);
-}
+
 
 void gpsEncode() {
 
@@ -152,19 +140,50 @@ void gpsEncode() {
   }
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
   if ( gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025) {
-    struct tm tmGps;
-    memset(&tmGps, 0, sizeof(tmGps));
-    tmGps.tm_year = gps.date.year() - 1900;
-    tmGps.tm_mon = gps.date.month() - 1;
-    tmGps.tm_mday = gps.date.day();
-    tmGps.tm_hour = gps.time.hour();  // 存UTC时间，不手动+8
-    tmGps.tm_min = gps.time.minute();
-    tmGps.tm_sec = gps.time.second();
-    time_t newEpoch = mktime(&tmGps);
-//    updateSyncedTime(newEpoch, "GPS");
-    setCSTTime(gps.date.year() , gps.date.month() , gps.date.day(), gps.time.hour(), gps.time.minute(),  gps.time.second());
+
+
+    int year   = gps.date.year();
+    int month  = gps.date.month();
+    int day    = gps.date.day();
+    int hour   = gps.time.hour();
+    int minute = gps.time.minute();
+    int second = gps.time.second();
+
+    // 2. 填入 struct tm（UTC）
+    struct tm utcTm = {0};
+    utcTm.tm_year = year - 1900;
+    utcTm.tm_mon  = month - 1;
+    utcTm.tm_mday = day;
+    utcTm.tm_hour = hour;
+    utcTm.tm_min  = minute;
+    utcTm.tm_sec  = second;
+
+    // 3. 利用 mktime 将 UTC 时间转为 time_t（注意：mktime 默认按本地时区，所以这里需要先设时区为 UTC）
+    //    ESP32 可以使用 timegm，这里用可移植的方法：
+    //    先设环境变量 TZ=UTC，然后 mktime，但可能影响全局。
+    //    更简便：手动加 8 小时到 tm_hour，然后调用 mktime 自动修正。
+    //    方法：直接给 tm_hour + 8，然后 mktime 会修正所有字段。
+    utcTm.tm_hour += 8;   // 变成北京时间的小时数（可能 >=24）
+
+    // 调用 mktime 自动修正日期（注意：mktime 会修改 tm 结构体，并返回 time_t）
+    time_t beijingTime = mktime(&utcTm);  // 修正后，utcTm 就是正确的北京时间
+
+    // 4. 此时 utcTm 已被修正，取出年月日时分秒
+    int bj_year   = utcTm.tm_year + 1900;
+    int bj_month  = utcTm.tm_mon + 1;
+    int bj_day    = utcTm.tm_mday;
+    int bj_hour   = utcTm.tm_hour;
+    int bj_minute = utcTm.tm_min;
+    int bj_second = utcTm.tm_sec;
+
+    // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
+    setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
+
+
+
   }
 }
+
 String getGpsInfoStr() {
   // int hour = gps.time.hour();
   // int minute = gps.time.minute();
@@ -276,67 +295,27 @@ void showDisplayBy4Area(String a, String b, String c, String d) {
 #endif
 }
 
-// 初始化WiFi并同步网络时间
-// 初始化WiFi并同步网络时间 (获取后自动断开以省电)
 
-// 从UTC epoch输出北京时间字符串 (UTC+8)
-String epochToBeijingStr(time_t epoch) {
-  struct tm *tmUtc = gmtime(&epoch);
-  if (tmUtc == NULL) return "";
-  int hour = tmUtc->tm_hour + 8;
-  int day = tmUtc->tm_mday;
-  int month = tmUtc->tm_mon + 1;
-  int year = tmUtc->tm_year + 1900;
-  if (hour >= 24) {
-    hour -= 24;
-    // 简化进位：仅+1天（跨月/跨年交给mktime精确计算）
-    time_t nextDay = epoch + 86400;
-    struct tm *tmNext = gmtime(&nextDay);
-    if (tmNext) {
-      day = tmNext->tm_mday;
-      month = tmNext->tm_mon + 1;
-      year = tmNext->tm_year + 1900;
-    }
-  }
-  char timeStr[30];
-  snprintf(timeStr, sizeof(timeStr), "%04d/%d/%d %02d:%02d:%02d", year, month, day, hour, tmUtc->tm_min, tmUtc->tm_sec);
-  return String(timeStr);
+
+void setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
+  struct tm t = {0};
+  t.tm_year = year - 1900;
+  t.tm_mon  = mon - 1;
+  t.tm_mday = day;
+  t.tm_hour = h;
+  t.tm_min  = m;
+  t.tm_sec  = s;
+  t.tm_isdst = 0;   // 不考虑夏令时
+
+  // 因为系统时区已设为东八区，mktime 将北京时间（本地时间）正确转换为 UTC 时间戳
+  time_t utc_seconds = mktime(&t);
+
+  struct timeval tv;
+  tv.tv_sec = utc_seconds;
+  tv.tv_usec = ms * 1000;   // 毫秒 → 微秒
+  settimeofday(&tv, NULL);
 }
 
-
-void setCSTTime(int year, int mon, int day, int h, int m, int s) {
-    struct tm t;
-    t.tm_year = year - 1900;
-    t.tm_mon  = mon - 1;
-    t.tm_mday = day;
-    t.tm_hour = h ;          // 转为 UTC（注意跨日处理）
-    t.tm_min  = m;
-    t.tm_sec  = s;
-    // 修正跨日：使用 mktime 自动规范化
-    time_t now = mktime(&t);    // 此时系统时区应为 UTC，若为 CST 则需另作处理
-    settimeofday((const timeval*)&now, NULL);
-}
-String printNowTime() {
-    time_t now;
-    struct tm t;
-    time(&now);
-    gmtime_r(&now, &t);          // 使用 gmtime_r 得到 UTC，再手动加 8 小时
-
-  char buf[64];
-  snprintf(buf, sizeof(buf),
-           "%4d/%d/%d %02d:%02d:%02d",
-           t.tm_year + 1900,
-           t.tm_mon + 1,
-           t.tm_mday,
-           (t.tm_hour + 8) % 24,             // 已经加过 8 小时，直接使用
-           t.tm_min,
-           t.tm_sec);
-
-  // 存入 String 对象
-  return  String(buf);
-
-
-}
 bool  haveRightTime()
 {
   time_t now;
@@ -349,56 +328,42 @@ bool  haveRightTime()
 }
 // 获取可用的时间字符串 (优先同步时间，最后默认运行时间)
 String getCurrentTime() {
-//  if (syncedEpoch > 0) {
-//    unsigned long elapsedMs = millis() - syncedMillis;
-//    time_t currentEpoch = syncedEpoch + elapsedMs / 1000;
-//    String s = epochToBeijingStr(currentEpoch);
-//    if (s.length() > 0) return s;
-//  }
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);          // 获取秒 + 微秒
+  time_t now = tv.tv_sec;
+  struct tm t;
+  localtime_r(&now, &t);               // 自动使用系统时区（如东八区）
 
+  char buf[64];
+  snprintf(buf, sizeof(buf),
+           "%4d/%02d/%02d %02d:%02d:%02d.%03d",
+           t.tm_year + 1900,
+           t.tm_mon + 1,
+           t.tm_mday,
+           t.tm_hour,
+           t.tm_min,
+           t.tm_sec,
+           (int)(tv.tv_usec / 1000));   // 微秒 → 毫秒
 
-  return printNowTime();
+  return String(buf);
 }
 
 
 
-// 从LoRa对时信息设置时间（仅当新时间比本地时间更新时才覆盖）
+// 从LoRa对时信息设置时间2026/07/14 23:23:10.513
 void setTimeFromLora(String timeStr) {
-  struct tm tmLora;
-  memset(&tmLora, 0, sizeof(tmLora));
-
-  int year, month, day, hour, minute, second;
-  if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d",
-             &year, &month, &day, &hour, &minute, &second)
-      == 6) {
-    // LoRa时间是北京时间，先转UTC再存epoch
-    hour -= 8;
-    if (hour < 0) {
-      hour += 24;
-      day -= 1;
-      if (day < 1) {
-        day = 28;
-        month -= 1;
-        if (month < 1) {
-          month = 12;
-          year -= 1;
-        }
-      }
-    }
-    tmLora.tm_year = year - 1900;
-    tmLora.tm_mon = month - 1;
-    tmLora.tm_mday = day;
-    tmLora.tm_hour = hour;
-    tmLora.tm_min = minute;
-    tmLora.tm_sec = second;
-
-//    time_t newEpoch = mktime(&tmLora);
-//    updateSyncedTime(newEpoch, "LoRa");
-    setCSTTime(year , month , day, hour, minute,  second);
+  int year, month, day, hour, minute, second, millis = 0;
+  // 尝试解析带毫秒
+  if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d.%d", &year, &month, &day, &hour, &minute, &second, &millis) == 7) {
+    // 解析成功，millis已赋值
+  } else if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second) == 6) {
+    millis = 0; // 无毫秒
   } else {
     Serial.print("❌ LoRa对时解析失败: ");
     Serial.println(timeStr);
+    return;
   }
+  setCSTTime(year, month, day, hour, minute, second, millis);
 }
 
 // 判断是否有有效时间

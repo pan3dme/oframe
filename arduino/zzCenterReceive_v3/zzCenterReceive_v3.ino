@@ -555,7 +555,8 @@ void isRxWindowTime() {
     printCurrentTime();
     Radio.Sleep();
     unsigned long ds = (nextCycleBoundaryMs - millis());
-    Serial.print("中继下发数据时间");
+    Serial.print("开始中继下发数据时间");
+    Serial.println(getCurrentTime());
     printTimeToString("下发接收窗口 ", ds);
     delay(ds / 2);
 
@@ -575,7 +576,7 @@ void isRxWindowTime() {
 
     delay(nextCycleBoundaryMs - millis());
     Radio.Rx(0);
-    Serial.print("中继下发时间结束：");
+    Serial.print("结束中继下发时间：");
     printCurrentTime();
   }
 }
@@ -592,6 +593,7 @@ void loop() {
     // sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
   }
   if (haveRightTime()) {
+      // printCurrentTime();
     isRxWindowTime();
   }
 
@@ -615,6 +617,7 @@ void loop() {
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
           String timeStr = String(loraStr).substring(secondPipeIndex + 1);
+          timeStr = timeStr.substring(0, timeStr.indexOf('|'));
           Serial.print("⏰ 收到对时信息: ");
           Serial.println(timeStr);
           setTimeFromLora(timeStr);

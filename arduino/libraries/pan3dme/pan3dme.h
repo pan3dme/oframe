@@ -53,7 +53,7 @@ extern unsigned long syncedMillis;
 #define LORA_SF 10          // 扩频因子
 #define LORA_CR 1           // 纠错率
 #define PREAMBLE_LENGTH 8   // 前导码
-#define BUFFER_SIZE 36      // 数据缓冲区
+#define BUFFER_SIZE 48      // 数据缓冲区
 #define LORA_SYMBOL_TIMEOUT 0
 
 // ======================== BLE 配置 =======================
@@ -83,7 +83,7 @@ struct BLECallbacks
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, BLECharacteristicCallbacks *charCallbacks);
 
 
-void setCSTTime(int year, int mon, int day, int h, int m, int s) ;
+void setCSTTime(int year, int mon, int day, int h, int m, int s,int ms) ;
 bool haveRightTime();
 void hideOLED();
 void showOLED();
