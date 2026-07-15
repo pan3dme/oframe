@@ -512,7 +512,7 @@ void loop() {
   receiveDtuData();
   if ((lastUpSelfTm) < millis()) {
     lastUpSelfTm = millis() + SEND_INTERVAL_MS;
-    // sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
+    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
   }
   if (haveRightTime()) {
     isRxWindowTime();

@@ -190,14 +190,14 @@ bool meshGpsInfoFun() {
     // Serial.println(getCurrentTime());
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(), String(skipnum++));
 
-    // Serial.print("定位有效:");
-    // Serial.print(hasLocValid ? "✅" : "❌");
-    // Serial.print(" 年份>2025:");
-    // Serial.print(yearOk ? "✅" : "❌");
-    // Serial.print(" GPS可靠:");
-    // Serial.print(gpsReliable ? "✅" : "❌");
-    // Serial.print(" 未超时:");
-    // Serial.println(timeoutOk ? "✅" : "❌");
+    Serial.print("定位有效:");
+    Serial.print(hasLocValid ? "✅" : "❌");
+    Serial.print(" 年份>2025:");
+    Serial.print(yearOk ? "✅" : "❌");
+    Serial.print(" GPS可靠:");
+    Serial.print(gpsReliable ? "✅" : "❌");
+    Serial.print(" 未超时:");
+    Serial.println(timeoutOk ? "✅" : "❌");
 
     bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
     if (allPass) {
