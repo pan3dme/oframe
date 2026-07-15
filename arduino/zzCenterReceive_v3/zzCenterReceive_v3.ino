@@ -75,10 +75,12 @@ class MyServerCallbacks : public BLEServerCallbacks {
     pServer->startAdvertising();
   }
 };
+String cmdLoraInfoStr = "";
 void meshCmdInfomsg(String rxValue) {
   Serial.println(rxValue);
   DeserializationError error = deserializeJson(docCom, rxValue);
   if (error) {
+    Serial.print(" error ");
     return;
   }
   if (docCom.containsKey("syncing")) {
@@ -86,6 +88,22 @@ void meshCmdInfomsg(String rxValue) {
     Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
     return;
   }
+  if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
+    int type = docCom["value"].as<int>();
+    String targetId = docCom["deviceId"].as<String>();
+
+    if (type == 1) {
+      if (cmdLoraInfoStr.length() == 0) {
+        cmdLoraInfoStr = "5|" + targetId;  //5用来标记高频
+      } else {
+        cmdLoraInfoStr += ",";
+        cmdLoraInfoStr += targetId;
+      }
+    }
+    Serial.print("组装下发命令 ");
+    Serial.println(cmdLoraInfoStr);
+  }
+  // {"cmd":"setfreq","value":1,"deviceId":"v4-10"}
 }
 
 // BLE特征值写入回调（解析JSON指令）
@@ -459,8 +477,14 @@ void isRxWindowTime() {
     printTimeToString("下发接收窗口 ", ds);
     delay(ds / 2);
 
-    String dataStr = "1|" + deviceName;
-    dataStr += "|" + getCurrentTime();
+    String dataStr;
+    if (cmdLoraInfoStr.length() > 0) {
+      dataStr = cmdLoraInfoStr;
+      cmdLoraInfoStr="";
+    } else {
+      dataStr = "1|" + deviceName;
+      dataStr += "|" + getCurrentTime();
+    }
     int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
     if (len < 0 || len >= BUFFER_SIZE) {
       Serial.println("⚠️ 数据过长，已截断");

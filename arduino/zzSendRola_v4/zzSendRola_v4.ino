@@ -90,6 +90,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     Serial.println("");
     Serial.print(" ROLA -：");
     Serial.println(loraStr);
+    
   }
 }
 
@@ -209,7 +210,7 @@ bool meshGpsInfoFun() {
       return false;
       break;
     }
-    delay(10);
+    delay(1000);
   }
 
   return true;
