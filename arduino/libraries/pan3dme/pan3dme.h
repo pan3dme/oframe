@@ -17,7 +17,8 @@ typedef enum {
   MSG_TYPE_GPS = 1,        // GPS定位信息
   MSG_TYPE_TIME = 2,       // 对时信息
   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
-  MSG_TYPE_FIRMWARE = 10,   // 固件更新指令
+  MSG_TYPE_SYNSTIME = 4,       // 对时信息
+  MSG_TYPE_upgps = 5,   // 固件更新指令
   MSG_TYPE_COM = 11   // 下载指令到设备
 } MessageType_t;
 

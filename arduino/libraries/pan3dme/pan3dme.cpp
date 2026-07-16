@@ -321,32 +321,56 @@ void setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
 
 // 安全更新（您自己调用）
 bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) {
-    // 与之前相同的判断逻辑
-    struct tm t = {0};
-    t.tm_year = year - 1900;
-    t.tm_mon  = mon - 1;
-    t.tm_mday = day;
-    t.tm_hour = h;
-    t.tm_min  = m;
-    t.tm_sec  = s;
-    t.tm_isdst = 0;
-    time_t new_sec = mktime(&t);
-    if (new_sec == (time_t)-1) return false;
+  struct tm t = {0};
+  t.tm_year = year - 1900;
+  t.tm_mon  = mon - 1;
+  t.tm_mday = day;
+  t.tm_hour = h;
+  t.tm_min  = m;
+  t.tm_sec  = s;
+  t.tm_isdst = 0;
+  time_t new_sec = mktime(&t);
+  if (new_sec == (time_t)-1) {
 
-    struct timeval now_tv;
-    gettimeofday(&now_tv, NULL);
-    time_t now_sec = now_tv.tv_sec;
-    long now_usec = now_tv.tv_usec;
+    return false;
+  }
 
-    if (new_sec < now_sec) return false;
-    if (new_sec == now_sec) {
-        long now_ms = now_usec / 1000;
-        if ((long)ms <= now_ms) return false;
+  struct timeval now_tv;
+  gettimeofday(&now_tv, NULL);
+  time_t now_sec = now_tv.tv_sec;
+  long now_usec = now_tv.tv_usec;
+  long now_ms = now_usec / 1000;
+
+  // 计算偏差（毫秒）
+  long long new_ms_total = (long long)new_sec * 1000LL + ms;
+  long long now_ms_total = (long long)now_sec * 1000LL + now_ms;
+  long long diff_ms = new_ms_total - now_ms_total;
+
+  Serial.print("Time deviation (new - current): ");
+  if (diff_ms >= 0) {
+    Serial.print("+");
+  }
+  Serial.print(diff_ms / 1000);
+  Serial.print("s ");
+  Serial.print(diff_ms % 1000);
+  Serial.println("ms");
+
+  // 原有逻辑
+  if (new_sec < now_sec) {
+
+    return false;
+  }
+  if (new_sec == now_sec) {
+    if ((long)ms <= now_ms) {
+
+      return false;
     }
+  }
 
-    // 调用强制设置
-    setCSTTime(year, mon, day, h, m, s, ms);
-    return true;
+  // 强制设置
+  setCSTTime(year, mon, day, h, m, s, ms);
+
+  return true;
 }
 
 bool  haveRightTime()

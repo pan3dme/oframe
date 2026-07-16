@@ -86,8 +86,32 @@ void OnRxTimeout(void) {
 void OnRxError(void) {
   Serial.println("❌ Radio接收错误!");
 }
+bool isMyDeviceInList(const String& received, const String& myDevice) {
+  int pipePos = received.indexOf('|');
+  if (pipePos == -1) {
+    Serial.println("[Parse] 未找到 '|' 分隔符");
+    return false;
+  }
+  String list = received.substring(pipePos + 1);
+  if (list.length() == 0) {
+    Serial.println("[Parse] 设备列表为空");
+    return false;
+  }
+
+  // 在列表首尾添加逗号，然后查找 ",设备名,"
+  String padded = "," + list + ",";
+  String target = "," + myDevice + ",";
+
+  bool found = padded.indexOf(target) != -1;
+  if (found) {
+    Serial.printf("[Parse] ✅ 设备 %s 在列表中\n", myDevice.c_str());
+  } else {
+    Serial.printf("[Parse] ❌ 设备 %s 不在列表中\n", myDevice.c_str());
+  }
+  return found;
+}
 // LoRa接收回调（仅拷贝数据，耗时操作在主循环处理）
-void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+void OnRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (size < BUFFER_SIZE) {
     memcpy(loraStr, payload, size);
     loraStr[size] = '\0';
@@ -99,7 +123,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     int firstPipeIndex = String(loraStr).indexOf('|');
     if (firstPipeIndex > 0) {
       int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
-      if (messageType == MSG_TYPE_TIME) {
+      if (messageType == MSG_TYPE_SYNSTIME) {
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
           String timeStr = String(loraStr).substring(secondPipeIndex + 1);
@@ -107,6 +131,14 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
           Serial.print("⏰ 收到对时信息: ");
           Serial.println(timeStr);
           setTimeFromLora(timeStr);
+        }
+      }
+      //5|v4-6,v4-6
+      if (messageType == MSG_TYPE_upgps) {
+        bool inList = isMyDeviceInList(String(loraStr), deviceName);
+        if (inList) {
+          Serial.println("当前设备在列表中，执行对应操作");
+          mustOpenGps = true;
         }
       }
     } else {
@@ -164,7 +196,7 @@ void buildAndSendPacket(int packetType) {
   Serial.print("  len:");
   Serial.println(strlen(sendData));
 
-  Radio.Send((uint8_t *)sendData, strlen(sendData));
+  Radio.Send((uint8_t*)sendData, strlen(sendData));
   delay(100);
 }
 
@@ -321,35 +353,33 @@ void loop() {
     nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
     unsigned long waittm = nextSendTime - millis();
     printTimeToString("到上报时间还有 ", nextSendTime - millis());
-    if (waittm > (60000 * 2)) {
-      Radio.Sleep();
-      Serial.print("进入睡眠");
-      delay(100);
-      uint64_t sleepTime = (uint64_t)(waittm - 60000) * 1000ULL;
-      esp_deep_sleep(sleepTime);
-      // esp_sleep_enable_timer_wakeup(sleepTime);  // 微秒单位
-      // esp_deep_sleep_start();                    // 进入睡眠，此函数不返回
-    }
   }
 
   isRxWindowTime();
 
   if (nextSendTime < millis()) {
+    unsigned long restSheepTm = millis() + SEND_INTERVAL_MS - (deviceIndex * slotDuration * 1000);  // 下次发送时间点（millis）
     // MSG_TYPE_TIME,MSG_TYPE_GPS
     buildAndSendPacket(MSG_TYPE_TIME);
     delay(1000);
     Radio.Sleep();
     Serial.print("进入睡眠");
-    delay(100);
-
     // nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
-    uint64_t sleepTime = (uint64_t)(SEND_INTERVAL_MS - 60000) * 1000ULL;
+    if (mustOpenGps) {
+      restSheepTm = restSheepTm - 60000;
+    } else {
+      restSheepTm = restSheepTm - 15000;  //窗口是10秒 多加5秒预留开机
+    }
+    printTimeToString("距离下次启动有", restSheepTm - millis());
+    delay(100);
+    uint64_t sleepTime = (uint64_t)(restSheepTm - millis()) * 1000ULL;
     esp_deep_sleep(sleepTime);
+
     // esp_sleep_enable_timer_wakeup(sleepTime);  // 微秒单位
     // esp_deep_sleep_start();                    // 进入睡眠，此函数不返回
     // delay(sleepTime / 1000ULL);
   }
 
-  // printCurrentTime();
+  printCurrentTime();
   delay(1000);
 }

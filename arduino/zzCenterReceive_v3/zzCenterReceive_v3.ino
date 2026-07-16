@@ -459,7 +459,7 @@ void printCurrentTime() {
     lastPrintTime = getCurrentTime();
   }
   if (!haveRightTime()) {
-    Serial.println("当前时间还没对时成功");
+    Serial.println("❌当前时间还没对时成功");
   }
 }
 void printTimeToString(String str, unsigned long ms) {
@@ -523,6 +523,7 @@ void isRxWindowTime() {
   } else {
     if (cmdLoraInfoStr.length() > 0) {
       printTimeToString("有下发指令 需要等待", rxStartMs - millis());
+      Serial.println(getCurrentTime());
       delay(1000);
     }
   }
