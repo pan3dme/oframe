@@ -71,7 +71,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 60000*5*1;  // 现在设定30分一次
+const unsigned long SEND_INTERVAL_MS = 60000*2*1;  // 现在设定30分一次
 const unsigned long RX_WINDOW_SECONDS = 10;  // 接收窗口秒数（周期最后N秒用于接收）
 const float slotDuration = 2.0;
 struct BLECallbacks
@@ -83,7 +83,8 @@ struct BLECallbacks
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, BLECharacteristicCallbacks *charCallbacks);
 
 
-void setCSTTime(int year, int mon, int day, int h, int m, int s,int ms) ;
+
+bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) ;
 bool haveRightTime();
 void hideOLED();
 void showOLED();

@@ -20,6 +20,10 @@ unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 String batterystr = "";
 
+
+RTC_DATA_ATTR unsigned long rtcSendCount = 0;
+RTC_DATA_ATTR bool mustOpenGps = true;
+
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   if (deviceIndex < 0 || totalDevices == 0) {
@@ -90,7 +94,23 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     Serial.println("");
     Serial.print(" ROLA -：");
     Serial.println(loraStr);
-    
+    // 1|v3-18|2026/07/16 12:35:55.007
+
+    int firstPipeIndex = String(loraStr).indexOf('|');
+    if (firstPipeIndex > 0) {
+      int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
+      if (messageType == MSG_TYPE_TIME) {
+        int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
+        if (secondPipeIndex > 0) {
+          String timeStr = String(loraStr).substring(secondPipeIndex + 1);
+          timeStr = timeStr.substring(0, timeStr.indexOf('|'));
+          Serial.print("⏰ 收到对时信息: ");
+          Serial.println(timeStr);
+          setTimeFromLora(timeStr);
+        }
+      }
+    } else {
+    }
   }
 }
 
@@ -132,9 +152,7 @@ void buildAndSendPacket(int packetType) {
   } else {
     dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
   }
-
-
-
+  dataStr += "|" + String(rtcSendCount++);
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
     Serial.println("⚠️ 数据过长，已截断");
@@ -161,7 +179,7 @@ void onSendTimeout(void) {
   Radio.Sleep();
   Serial.println("❌ 发送超时");
 }
-bool mustOpenGps = true;
+
 void printTimeToString(String str, unsigned long ms) {
   int totalSec = ms / 1000;
   int min = totalSec / 60;
@@ -175,7 +193,7 @@ void printTimeToString(String str, unsigned long ms) {
   Serial.print(remMs);
   Serial.println("毫秒");
 }
-bool meshGpsInfoFun() {
+void meshGpsInfoFun() {
   initPanGPS();
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
@@ -191,29 +209,34 @@ bool meshGpsInfoFun() {
     // Serial.println(getCurrentTime());
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(), String(skipnum++));
 
-    Serial.print("定位有效:");
+
     Serial.print(hasLocValid ? "✅" : "❌");
-    Serial.print(" 年份>2025:");
+    Serial.print("定位有效:");
+    if (hasLocValid) {
+      Serial.print(getGpsInfoStr());
+    }
     Serial.print(yearOk ? "✅" : "❌");
-    Serial.print(" GPS可靠:");
+    Serial.print(" 年份>2025:");
     Serial.print(gpsReliable ? "✅" : "❌");
+    Serial.print(" GPS可靠:");
+    Serial.print(timeoutOk ? "✅" : "❌");
     Serial.print(" 未超时:");
-    Serial.println(timeoutOk ? "✅" : "❌");
+    Serial.println(getCurrentTime());
 
     bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
     if (allPass) {
       Serial.println("==== GPS全部条件满足，退出搜星循环 ====");
+      mustOpenGps = false;
       break;
     }
     if (!timeoutOk) {
       Serial.println("==== 搜星120秒超时，强制退出 ====");
-      return false;
       break;
     }
     delay(1000);
   }
-
-  return true;
+  Serial.println(getGpsInfoStr());
+  setGpsEnable(false);
 }
 String lastPrintTime = "";
 void printCurrentTime() {
@@ -298,6 +321,15 @@ void loop() {
     nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
     unsigned long waittm = nextSendTime - millis();
     printTimeToString("到上报时间还有 ", nextSendTime - millis());
+    if (waittm > (60000 * 2)) {
+      Radio.Sleep();
+      Serial.print("进入睡眠");
+      delay(100);
+      uint64_t sleepTime = (uint64_t)(waittm - 60000) * 1000ULL;
+      esp_deep_sleep(sleepTime);
+      // esp_sleep_enable_timer_wakeup(sleepTime);  // 微秒单位
+      // esp_deep_sleep_start();                    // 进入睡眠，此函数不返回
+    }
   }
 
   isRxWindowTime();
@@ -306,9 +338,18 @@ void loop() {
     // MSG_TYPE_TIME,MSG_TYPE_GPS
     buildAndSendPacket(MSG_TYPE_TIME);
     delay(1000);
-    nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
+    Radio.Sleep();
+    Serial.print("进入睡眠");
+    delay(100);
+
+    // nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
+    uint64_t sleepTime = (uint64_t)(SEND_INTERVAL_MS - 60000) * 1000ULL;
+    esp_deep_sleep(sleepTime);
+    // esp_sleep_enable_timer_wakeup(sleepTime);  // 微秒单位
+    // esp_deep_sleep_start();                    // 进入睡眠，此函数不返回
+    // delay(sleepTime / 1000ULL);
   }
 
-
+  // printCurrentTime();
   delay(1000);
 }

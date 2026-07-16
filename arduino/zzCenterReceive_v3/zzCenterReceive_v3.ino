@@ -320,6 +320,25 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     loraReceivedFlag = true;
     needPlaLed = true;
     receiveCount++;
+
+
+    //LORA对时
+    int firstPipeIndex = String(loraStr).indexOf('|');
+    if (firstPipeIndex > 0) {
+      int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
+      if (messageType == MSG_TYPE_TIME) {
+        int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
+        if (secondPipeIndex > 0) {
+          String timeStr = String(loraStr).substring(secondPipeIndex + 1);
+          timeStr = timeStr.substring(0, timeStr.indexOf('|'));
+          Serial.print("⏰ 收到对时信息: ");
+          Serial.println(timeStr);
+          setTimeFromLora(timeStr);
+        }
+      }
+    }
+
+
   } else {
     loraStr[0] = '\0';
     lastPayloadSize = 0;
@@ -482,7 +501,7 @@ void isRxWindowTime() {
       dataStr = cmdLoraInfoStr;
       cmdLoraInfoStr = "";
     } else {
-      dataStr = "1|" + deviceName;
+      dataStr = "2|" + deviceName;
       dataStr += "|" + getCurrentTime();
     }
     int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
@@ -541,7 +560,7 @@ void loop() {
   receiveDtuData();
   if ((lastUpSelfTm) < millis()) {
     lastUpSelfTm = millis() + SEND_INTERVAL_MS;
-    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
+    // sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
   }
   if (haveRightTime()) {
     isRxWindowTime();
@@ -557,17 +576,6 @@ void loop() {
     // 解析消息类型并处理
     int firstPipeIndex = String(loraStr).indexOf('|');
     if (firstPipeIndex > 0) {
-      int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
-      if (messageType == MSG_TYPE_TIME) {
-        int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
-        if (secondPipeIndex > 0) {
-          String timeStr = String(loraStr).substring(secondPipeIndex + 1);
-          timeStr = timeStr.substring(0, timeStr.indexOf('|'));
-          Serial.print("⏰ 收到对时信息: ");
-          Serial.println(timeStr);
-          setTimeFromLora(timeStr);
-        }
-      }
       sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
     } else {
       displayBuf[3] = String(loraStr).substring(0, 15);

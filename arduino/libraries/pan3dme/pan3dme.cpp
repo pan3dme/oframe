@@ -177,8 +177,12 @@ void gpsEncode() {
     int bj_second = utcTm.tm_sec;
 
     // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
-    setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
 
+      if(      setCSTTimeIfNewer(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0)){
+          Serial.println("✅ Gps对时更新成功: ");
+      }else{
+          Serial.println("❌ Gps对时不是最新: ");
+      }
 
 
   }
@@ -213,7 +217,6 @@ bool isReliableGPS() {
   // 可选：也检查日期有效性
   if (!gps.date.isValid()) return false;
   Serial.println("3 ");
-
   // 可选：检查时间数据是否也新鲜（通常与位置同步）
   if (gps.time.age() > 2000) return false;
   Serial.println("4 ");
@@ -316,6 +319,36 @@ void setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
   settimeofday(&tv, NULL);
 }
 
+// 安全更新（您自己调用）
+bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) {
+    // 与之前相同的判断逻辑
+    struct tm t = {0};
+    t.tm_year = year - 1900;
+    t.tm_mon  = mon - 1;
+    t.tm_mday = day;
+    t.tm_hour = h;
+    t.tm_min  = m;
+    t.tm_sec  = s;
+    t.tm_isdst = 0;
+    time_t new_sec = mktime(&t);
+    if (new_sec == (time_t)-1) return false;
+
+    struct timeval now_tv;
+    gettimeofday(&now_tv, NULL);
+    time_t now_sec = now_tv.tv_sec;
+    long now_usec = now_tv.tv_usec;
+
+    if (new_sec < now_sec) return false;
+    if (new_sec == now_sec) {
+        long now_ms = now_usec / 1000;
+        if ((long)ms <= now_ms) return false;
+    }
+
+    // 调用强制设置
+    setCSTTime(year, mon, day, h, m, s, ms);
+    return true;
+}
+
 bool  haveRightTime()
 {
   time_t now;
@@ -363,7 +396,25 @@ void setTimeFromLora(String timeStr) {
     Serial.println(timeStr);
     return;
   }
-  setCSTTime(year, month, day, hour, minute, second, millis);
+  //优化偏移 这个代码还要验证LORA互相传输延时暂定200毫秒
+//  if(millis<800){
+//    millis+=200;
+//  }else{
+//    if(second<59){
+//      second+=1;
+//      millis-=800;
+//    }else{
+//      Serial.println("不做LORA对时偏移");
+//    }
+//  }
+
+  if(  setCSTTimeIfNewer(year, month, day, hour, minute, second, millis)){
+      Serial.println("✅ LoRa对时更新成功: ");
+  }else{
+
+      Serial.print("❌ LoRa对时不是最新:   本机时间");
+      Serial.println(getCurrentTime());
+  }
 }
 
 // 判断是否有有效时间
