@@ -121,6 +121,24 @@ void setGpsEnable(bool value) {
   isGpsOn = value;  // 更新状态记录
 }
 
+void setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
+  struct tm t = {0};
+  t.tm_year = year - 1900;
+  t.tm_mon  = mon - 1;
+  t.tm_mday = day;
+  t.tm_hour = h;
+  t.tm_min  = m;
+  t.tm_sec  = s;
+  t.tm_isdst = 0;   // 不考虑夏令时
+
+  // 因为系统时区已设为东八区，mktime 将北京时间（本地时间）正确转换为 UTC 时间戳
+  time_t utc_seconds = mktime(&t);
+
+  struct timeval tv;
+  tv.tv_sec = utc_seconds;
+  tv.tv_usec = ms * 1000;   // 毫秒 → 微秒
+  settimeofday(&tv, NULL);
+}
 
 void gpsEncode() {
 
@@ -177,13 +195,9 @@ void gpsEncode() {
     int bj_second = utcTm.tm_sec;
 
     // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
+    setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
 
-      if(      setCSTTimeIfNewer(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0)){
-          Serial.println("✅ Gps对时更新成功: ");
-      }else{
-          Serial.println("❌ Gps对时不是最新: ");
-      }
-
+ 
 
   }
 }
@@ -300,24 +314,6 @@ void showDisplayBy4Area(String a, String b, String c, String d) {
 
 
 
-void setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
-  struct tm t = {0};
-  t.tm_year = year - 1900;
-  t.tm_mon  = mon - 1;
-  t.tm_mday = day;
-  t.tm_hour = h;
-  t.tm_min  = m;
-  t.tm_sec  = s;
-  t.tm_isdst = 0;   // 不考虑夏令时
-
-  // 因为系统时区已设为东八区，mktime 将北京时间（本地时间）正确转换为 UTC 时间戳
-  time_t utc_seconds = mktime(&t);
-
-  struct timeval tv;
-  tv.tv_sec = utc_seconds;
-  tv.tv_usec = ms * 1000;   // 毫秒 → 微秒
-  settimeofday(&tv, NULL);
-}
 
 // 安全更新（您自己调用）
 bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) {
@@ -432,13 +428,8 @@ void setTimeFromLora(String timeStr) {
 //    }
 //  }
 
-  if(  setCSTTimeIfNewer(year, month, day, hour, minute, second, millis)){
-      Serial.println("✅ LoRa对时更新成功: ");
-  }else{
+   setCSTTime(year, month, day, hour, minute, second, millis);
 
-      Serial.print("❌ LoRa对时不是最新:   本机时间");
-      Serial.println(getCurrentTime());
-  }
 }
 
 // 判断是否有有效时间
