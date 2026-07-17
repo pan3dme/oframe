@@ -19,6 +19,7 @@ typedef enum {
   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
   MSG_TYPE_SYNSTIME = 4,       // 对时信息
   MSG_TYPE_upgps = 5,   // 固件更新指令
+
   MSG_TYPE_COM = 11   // 下载指令到设备
 } MessageType_t;
 
@@ -54,7 +55,7 @@ extern unsigned long syncedMillis;
 #define LORA_SF 10          // 扩频因子
 #define LORA_CR 1           // 纠错率
 #define PREAMBLE_LENGTH 8   // 前导码
-#define BUFFER_SIZE 48      // 数据缓冲区
+#define BUFFER_SIZE 60      // 数据缓冲区
 #define LORA_SYMBOL_TIMEOUT 0
 
 // ======================== BLE 配置 =======================

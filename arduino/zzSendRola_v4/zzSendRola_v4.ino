@@ -23,6 +23,7 @@ String batterystr = "";
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool mustOpenGps = true;
+RTC_DATA_ATTR bool isRightGpsinfo = false;
 
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
@@ -130,7 +131,7 @@ void OnRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
           timeStr = timeStr.substring(0, timeStr.indexOf('|'));
           Serial.print("⏰ 收到对时信息: ");
           Serial.println(timeStr);
-          setTimeFromLora(timeStr);
+          // setTimeFromLora(timeStr);
         }
       }
       //5|v4-6,v4-6
@@ -179,11 +180,12 @@ String readBatteryEndStr() {
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
   String dataStr = String(packetType) + "|" + deviceName;
-  if (packetType == MSG_TYPE_TIME) {
+  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYNSTIME) {
     dataStr += "|" + getCurrentTime() + "|" + batterystr;
-  } else {
+  } else if (packetType == MSG_TYPE_TIME) {
     dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
   }
+
   dataStr += "|" + String(rtcSendCount++);
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
@@ -230,18 +232,14 @@ void meshGpsInfoFun() {
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
   while (true) {
-
     gpsEncode();
     bool hasLocValid = gps.location.isValid();
     bool yearOk = (gps.date.year() > 2025);
     bool gpsReliable = isReliableGPS();
     bool timeoutOk = (millis() - startAttemptTime < 120000);
-
     // Serial.print(".");
     // Serial.println(getCurrentTime());
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(), String(skipnum++));
-
-
     Serial.print(hasLocValid ? "✅" : "❌");
     Serial.print("定位有效:");
     if (hasLocValid) {
@@ -256,6 +254,7 @@ void meshGpsInfoFun() {
     Serial.println(getCurrentTime());
 
     bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
+    isRightGpsinfo = gpsReliable;
     if (allPass) {
       Serial.println("==== GPS全部条件满足，退出搜星循环 ====");
       mustOpenGps = false;
@@ -267,6 +266,7 @@ void meshGpsInfoFun() {
     }
     delay(1000);
   }
+
   Serial.println(getGpsInfoStr());
   setGpsEnable(false);
 }
@@ -316,68 +316,48 @@ void setup() {
 }
 //判断是不是接收窗口
 void isRxWindowTime() {
-
-  unsigned long intervalSec = SEND_INTERVAL_MS / 1000;
-  bool canRx = (intervalSec > RX_WINDOW_SECONDS + 1);
-  unsigned long rxWindowMs = canRx ? RX_WINDOW_SECONDS * 1000 : 0;
-  String timeNow = getCurrentTime();
-  int h, m, s;
-  sscanf(timeNow.c_str(), "%*d/%*d/%*d %d:%d:%d", &h, &m, &s);
-  unsigned long timeOfDaySec = h * 3600UL + m * 60UL + s;
-  unsigned long nextCycleBoundaryMs = millis() + (intervalSec - timeOfDaySec % intervalSec) * 1000UL;
-  unsigned long rxStartMs = nextCycleBoundaryMs - rxWindowMs;
-  if (millis() >= rxStartMs && millis() < nextCycleBoundaryMs) {
-    Radio.Rx(0);
-    Serial.print("开始接收窗口");
-    printCurrentTime();
-    unsigned long ds = nextCycleBoundaryMs - millis();
-    // printTimeToString("等待接收时间", ds);
-    while (millis() < nextCycleBoundaryMs) {
-      Radio.IrqProcess();
-      delay(1000);
-      Serial.print(".");
-    }
-    Radio.Sleep();
-    // Serial.println("");
-    Serial.print("结束接收窗口");
-    printCurrentTime();
+  Radio.IrqProcess();
+  Radio.Rx(0);
+  Serial.print("开始接收窗口");
+  printCurrentTime();
+  unsigned long ds = millis() + 10000;
+  // printTimeToString("等待接收时间", ds);
+  while (millis() < ds) {
+    Radio.IrqProcess();
+    delay(1000);
+    Serial.print(".");
   }
+
+  Serial.println("");
+  Serial.print("结束接收窗口");
+  printCurrentTime();
 }
 // ==================== 主循环 ====================
 void loop() {
 
   Radio.IrqProcess();
-
   if (nextSendTime == 0) {
     //第一次
     nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
     unsigned long waittm = nextSendTime - millis();
     printTimeToString("到上报时间还有 ", nextSendTime - millis());
+    if (waittm > 10000) {
+      Serial.print("距离上报时间超过10秒进入睡眠");
+      delay(100);
+      uint64_t sleepTime = (uint64_t)(waittm - 10000) * 1000ULL;
+      esp_deep_sleep(sleepTime);
+    }
   }
-
-  isRxWindowTime();
-
   if (nextSendTime < millis()) {
-    unsigned long restSheepTm = millis() + SEND_INTERVAL_MS - (deviceIndex * slotDuration * 1000);  // 下次发送时间点（millis）
-    // MSG_TYPE_TIME,MSG_TYPE_GPS
+    nextSendTime = 0;
     buildAndSendPacket(MSG_TYPE_TIME);
+    delay(3000);
+    isRxWindowTime();
     delay(1000);
     Radio.Sleep();
-    Serial.print("进入睡眠");
-    // nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
-    if (mustOpenGps) {
-      restSheepTm = restSheepTm - 60000;
-    } else {
-      restSheepTm = restSheepTm - 15000;  //窗口是10秒 多加5秒预留开机
-    }
+    unsigned long restSheepTm = millis() + SEND_INTERVAL_MS - (10000);  // 提前10秒开机
     printTimeToString("距离下次启动有", restSheepTm - millis());
     delay(100);
-    uint64_t sleepTime = (uint64_t)(restSheepTm - millis()) * 1000ULL;
-    esp_deep_sleep(sleepTime);
-
-    // esp_sleep_enable_timer_wakeup(sleepTime);  // 微秒单位
-    // esp_deep_sleep_start();                    // 进入睡眠，此函数不返回
-    // delay(sleepTime / 1000ULL);
   }
 
   printCurrentTime();

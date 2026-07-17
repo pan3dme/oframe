@@ -121,23 +121,29 @@ void setGpsEnable(bool value) {
   isGpsOn = value;  // 更新状态记录
 }
 
-void setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
-  struct tm t = {0};
-  t.tm_year = year - 1900;
-  t.tm_mon  = mon - 1;
-  t.tm_mday = day;
-  t.tm_hour = h;
-  t.tm_min  = m;
-  t.tm_sec  = s;
-  t.tm_isdst = 0;   // 不考虑夏令时
+long long setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
+    struct timeval old_tv, new_tv;
+    gettimeofday(&old_tv, NULL); // 获取当前系统时间（旧）
 
-  // 因为系统时区已设为东八区，mktime 将北京时间（本地时间）正确转换为 UTC 时间戳
-  time_t utc_seconds = mktime(&t);
+    struct tm t = {0};
+    t.tm_year = year - 1900;
+    t.tm_mon  = mon - 1;
+    t.tm_mday = day;
+    t.tm_hour = h;
+    t.tm_min  = m;
+    t.tm_sec  = s;
+    t.tm_isdst = 0;
 
-  struct timeval tv;
-  tv.tv_sec = utc_seconds;
-  tv.tv_usec = ms * 1000;   // 毫秒 → 微秒
-  settimeofday(&tv, NULL);
+    time_t utc_seconds = mktime(&t);
+    new_tv.tv_sec = utc_seconds;
+    new_tv.tv_usec = ms * 1000;
+
+    // 计算偏差（微秒）
+    long long diff = (new_tv.tv_sec - old_tv.tv_sec) * 1000000LL + (new_tv.tv_usec - old_tv.tv_usec);
+
+    settimeofday(&new_tv, NULL);
+
+    return diff; // 微秒
 }
 
 void gpsEncode() {
@@ -194,11 +200,24 @@ void gpsEncode() {
     int bj_minute = utcTm.tm_min;
     int bj_second = utcTm.tm_sec;
 
+
+
     // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
-    setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
-
- 
-
+    long long diff = setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
+    Serial.print("✅GPS成功设置一次时间");
+    if (diff >= 0) {
+       Serial.print("，时间调快了 ");
+    } else {
+        Serial.print("，时间调慢了 ");
+        diff = -diff; // 取绝对值
+    }
+    long long diff_sec = diff / 1000000;
+    long long minutes = diff_sec / 60;
+    long long seconds = diff_sec % 60;
+    Serial.print(minutes);
+    Serial.print("分");
+    Serial.print(seconds);
+    Serial.println("秒");
   }
 }
 
@@ -316,7 +335,7 @@ void showDisplayBy4Area(String a, String b, String c, String d) {
 
 
 // 安全更新（您自己调用）
-bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) {
+bool setCSNewerTTimeIf(int year, int mon, int day, int h, int m, int s, int ms) {
   struct tm t = {0};
   t.tm_year = year - 1900;
   t.tm_mon  = mon - 1;
@@ -336,13 +355,12 @@ bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) 
   time_t now_sec = now_tv.tv_sec;
   long now_usec = now_tv.tv_usec;
   long now_ms = now_usec / 1000;
-
   // 计算偏差（毫秒）
   long long new_ms_total = (long long)new_sec * 1000LL + ms;
   long long now_ms_total = (long long)now_sec * 1000LL + now_ms;
   long long diff_ms = new_ms_total - now_ms_total;
 
-  Serial.print("Time deviation (new - current): ");
+  Serial.print("时间偏差 (new - current): ");
   if (diff_ms >= 0) {
     Serial.print("+");
   }
@@ -351,17 +369,7 @@ bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) 
   Serial.print(diff_ms % 1000);
   Serial.println("ms");
 
-  // 原有逻辑
-  if (new_sec < now_sec) {
 
-    return false;
-  }
-  if (new_sec == now_sec) {
-    if ((long)ms <= now_ms) {
-
-      return false;
-    }
-  }
 
   // 强制设置
   setCSTTime(year, mon, day, h, m, s, ms);
