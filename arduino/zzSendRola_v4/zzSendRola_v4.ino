@@ -20,6 +20,8 @@ unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 String batterystr = "";
 
+bool inRxWindow = false;
+int typeindex = 0;  //0普通 1发送 2接收
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool mustOpenGps = true;
@@ -201,17 +203,22 @@ void buildAndSendPacket(int packetType) {
   Radio.Send((uint8_t*)sendData, strlen(sendData));
   delay(100);
 }
-
+unsigned long finishTime = 0;
 // ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
-  Radio.Sleep();
+  // Radio.Sleep();
   Serial.println("✅ 发送完成");
+  finishTime = millis() + 2000;
+  typeindex = 2;
+  Radio.Rx(0);
 }
 
 // ==================== LoRa发送超时回调 ====================
 void onSendTimeout(void) {
   Radio.Sleep();
   Serial.println("❌ 发送超时");
+  typeindex = 0;
+ 
 }
 
 void printTimeToString(String str, unsigned long ms) {
@@ -270,22 +277,31 @@ void meshGpsInfoFun() {
   Serial.println(getGpsInfoStr());
   setGpsEnable(false);
 }
-String lastPrintTime = "";
+String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
+
 void printCurrentTime() {
-  if (lastPrintTime != getCurrentTime()) {
-    Serial.println(getCurrentTime());
-    lastPrintTime = getCurrentTime();
+  String nowStr = getCurrentTime();  // 完整时间字符串 "1970/01/01 00:00:48.679"
+  // 提取秒级字符串：去掉毫秒部分（取第一个空格后的前8个字符？实际是日期+时间，要忽略毫秒）
+  // 假设格式固定为 "YYYY/MM/DD HH:MM:SS.mmm"，我们需要取到秒
+  int dotIndex = nowStr.indexOf('.');
+  String nowSecStr = (dotIndex != -1) ? nowStr.substring(0, dotIndex) : nowStr;  // 去掉毫秒
+  if (lastPrintTimeStr != nowSecStr) {
+    Serial.println(nowStr);  // 或者只打印秒级字符串
+    lastPrintTimeStr = nowSecStr;
+  }
+  if (!haveRightTime()) {
+    // Serial.println("❌当前时间还没对时成功");
   }
 }
+
 
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(100);
   Serial.print("setup");
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
-
   if (haveRightTime()) {
     Serial.print("✅已有GPS时间");
     Serial.println(getCurrentTime());
@@ -314,52 +330,46 @@ void setup() {
   Serial.print("batterystr");
   Serial.println(batterystr);
 }
-//判断是不是接收窗口
-void isRxWindowTime() {
-  Radio.IrqProcess();
-  Radio.Rx(0);
-  Serial.print("开始接收窗口");
-  printCurrentTime();
-  unsigned long ds = millis() + 10000;
-  // printTimeToString("等待接收时间", ds);
-  while (millis() < ds) {
-    Radio.IrqProcess();
-    delay(1000);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.print("结束接收窗口");
-  printCurrentTime();
-}
+ 
 // ==================== 主循环 ====================
 void loop() {
-
   Radio.IrqProcess();
-  if (nextSendTime == 0) {
-    //第一次
-    nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
-    unsigned long waittm = nextSendTime - millis();
-    printTimeToString("到上报时间还有 ", nextSendTime - millis());
-    if (waittm > 10000) {
-      Serial.print("距离上报时间超过10秒进入睡眠");
-      delay(100);
-      uint64_t sleepTime = (uint64_t)(waittm - 10000) * 1000ULL;
-      esp_deep_sleep(sleepTime);
+  if (typeindex == 2) {
+    delay(10);
+    Serial.print(".");
+
+
+    
+    if (finishTime < millis()) {
+      //回到普通模式，准备可以休眠
+      nextSendTime=0;
+      typeindex = 0;
+    }
+    return;
+  }
+  if (typeindex == 1) {
+    delay(10);
+    return;
+  }
+  if (typeindex == 0) {
+    if (nextSendTime == 0) {
+      //第一次
+      nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
+      unsigned long waittm = nextSendTime - millis();
+      printTimeToString("到上报时间还有 ", nextSendTime - millis());
+      if (waittm > 30000) {
+        Serial.print("距离上报时间超过10秒进入睡眠");
+        delay(1000);
+        uint64_t sleepTime = (uint64_t)(waittm - 30000) * 1000ULL;
+        esp_deep_sleep(sleepTime);
+      }
+    }
+    if (nextSendTime < millis()) {
+      typeindex = 1;
+      buildAndSendPacket(MSG_TYPE_TIME);
+ 
     }
   }
-  if (nextSendTime < millis()) {
-    nextSendTime = 0;
-    buildAndSendPacket(MSG_TYPE_TIME);
-    delay(3000);
-    isRxWindowTime();
-    delay(1000);
-    Radio.Sleep();
-    unsigned long restSheepTm = millis() + SEND_INTERVAL_MS - (10000);  // 提前10秒开机
-    printTimeToString("距离下次启动有", restSheepTm - millis());
-    delay(100);
-  }
-
   printCurrentTime();
-  delay(1000);
+  delay(10);
 }

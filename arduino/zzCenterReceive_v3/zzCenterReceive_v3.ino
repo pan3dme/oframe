@@ -223,7 +223,7 @@ void forceResetRadio() {
 }
 // ========================= LoRa回调 =========================
 void OnTxDone(void) {
-  Serial.println("✅ 对时发送完成，回到接收模式");
+  Serial.println("✅下发LORA完成，回到接收模式");
   needSendTimeSync = false;
   displayBuf[1] = "TX Done";
   Radio.Rx(0);
@@ -503,14 +503,12 @@ void loop() {
   if (!needReadJson.isNull()) {
     Serial.println("需要处理当前信息");
     Serial.println(needReadJson["info"].as<String>());
+    Serial.println(needReadJson["rssi"].as<String>());
+    Serial.println(needReadJson["snr"].as<String>());
+    // sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
+    sendLoraInfoUseDtu(needReadJson["info"].as<String>(), needReadJson["rssi"].as<String>(), needReadJson["snr"].as<String>());
     needReadJson.clear();
-    delay(1000);
-    Radio.Sleep();
-    delay(3000);
     sendDownInfo();
- 
- 
   }
-
-  delay(1000);
+  delay(100);
 }
