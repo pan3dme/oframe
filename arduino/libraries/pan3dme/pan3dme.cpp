@@ -392,25 +392,37 @@ bool  haveRightTime()
 
 }
 // 获取可用的时间字符串 (优先同步时间，最后默认运行时间)
-String getCurrentTime() {
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);          // 获取秒 + 微秒
-  time_t now = tv.tv_sec;
-  struct tm t;
-  localtime_r(&now, &t);               // 自动使用系统时区（如东八区）
+String getCurrentTime(bool includeMillis) {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);          // 获取秒 + 微秒
+    time_t now = tv.tv_sec;
+    struct tm t;
+    localtime_r(&now, &t);               // 自动使用系统时区
 
-  char buf[64];
-  snprintf(buf, sizeof(buf),
-           "%4d/%02d/%02d %02d:%02d:%02d.%03d",
-           t.tm_year + 1900,
-           t.tm_mon + 1,
-           t.tm_mday,
-           t.tm_hour,
-           t.tm_min,
-           t.tm_sec,
-           (int)(tv.tv_usec / 1000));   // 微秒 → 毫秒
-
-  return String(buf);
+    char buf[64];
+    if (includeMillis) {
+        // 包含毫秒（格式：YYYY/MM/DD HH:MM:SS.mmm）
+        snprintf(buf, sizeof(buf),
+                 "%4d/%02d/%02d %02d:%02d:%02d.%03d",
+                 t.tm_year + 1900,
+                 t.tm_mon + 1,
+                 t.tm_mday,
+                 t.tm_hour,
+                 t.tm_min,
+                 t.tm_sec,
+                 (int)(tv.tv_usec / 1000));   // 微秒 → 毫秒
+    } else {
+        // 不包含毫秒（格式：YYYY/MM/DD HH:MM:SS）
+        snprintf(buf, sizeof(buf),
+                 "%4d/%02d/%02d %02d:%02d:%02d",
+                 t.tm_year + 1900,
+                 t.tm_mon + 1,
+                 t.tm_mday,
+                 t.tm_hour,
+                 t.tm_min,
+                 t.tm_sec);
+    }
+    return String(buf);
 }
 
 

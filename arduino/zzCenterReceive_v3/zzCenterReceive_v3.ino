@@ -5,17 +5,17 @@
 
 #include "Arduino.h"
 #include "LoRaWan_APP.h"
+#include <ArduinoJson.h>
+#include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
-#include <BLE2902.h>
-#include <time.h>
-#include <ArduinoJson.h>
 #include <pan3dme.h>
+#include <time.h>
 
 // ========================= BLE全局对象 =========================
 bool needSync = false;
-
+BLECharacteristic *pCharacteristic = NULL;
 static RadioEvents_t RadioEvents;
 
 // ========================= 数据缓存 =========================
@@ -63,14 +63,16 @@ int targetIdCount = 0;
 // 检查 targetId 是否已存在
 bool isTargetIdExist(String id) {
   for (int i = 0; i < targetIdCount; i++) {
-    if (targetIdList[i] == id) return true;
+    if (targetIdList[i] == id)
+      return true;
   }
   return false;
 }
 
 // 添加 targetId（若已存在则忽略）
 void addTargetId(String id) {
-  if (id.length() == 0) return;
+  if (id.length() == 0)
+    return;
   if (isTargetIdExist(id)) {
     Serial.println("⚠️ targetId 已存在，忽略添加");
     return;
@@ -152,6 +154,18 @@ void addDataToQueue(String data) {
     dataArray[DATA_MAX_COUNT - 1] = data;
   }
 }
+// 取出并删除队列头部（FIFO）
+String getAndRemoveFirstData() {
+  if (dataCount == 0) {
+    return "";
+  }
+  String first = dataArray[0];
+  for (int i = 0; i < dataCount - 1; i++) {
+    dataArray[i] = dataArray[i + 1];
+  }
+  dataArray[--dataCount] = "";
+  return first;
+}
 
 // ========================= 设备缓存操作 =========================
 
@@ -189,7 +203,10 @@ void updateDeviceCache(String deviceId, String msgJson) {
 void initBLE() {
   static MyServerCallbacks serverCallbacks;
   static MyCallbacks charCallbacks;
-  initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
+ 
+  BLECallbacks bleCallbacks = initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
+  // pServer = bleCallbacks.pServer;
+  pCharacteristic = bleCallbacks.pCharacteristic;
 }
 
 // 初始化LoRa Radio
@@ -340,7 +357,7 @@ void sendDownInfo(String loraStr) {
         dataStr = String(MSG_TYPE_UP_GPS) + "|" + deviceId + "|3000";
       } else {
         dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceName;
-        dataStr += "|" + getCurrentTime();
+        dataStr += "|" + getCurrentTime(true);
       }
 
       int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
@@ -348,7 +365,7 @@ void sendDownInfo(String loraStr) {
         Serial.println("⚠️ 数据过长，已截断");
         sendData[BUFFER_SIZE - 1] = '\0';
       }
-      Serial.print(getCurrentTime());
+      Serial.print(getCurrentTime(true));
       Serial.print("下发到设备：");
       Serial.print(sendData);
       Serial.print("len:");
@@ -375,7 +392,7 @@ void processLoraData() {
   doc["snr"] = (int)lastSnr;
   doc["info"] = loraStr;
   doc["upDateDevice"] = deviceName;
-  doc["time"] = getCurrentTime();
+  doc["time"] = getCurrentTime(false );
 
   String jsonData;
   serializeJson(doc, jsonData);
@@ -428,14 +445,28 @@ void setup() {
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-unsigned long lastUpSelfTm = SEND_INTERVAL_MS/2;
+unsigned long lastUpSelfTm = SEND_INTERVAL_MS / 2;
 void loop() {
 
-  //超过10分钟的周期才上报，不要流量溢出
-  if ((lastUpSelfTm) < millis()&&SEND_INTERVAL_MS>(1000*60*10)) {
+  // 超过10分钟的周期才上报，不要流量溢出
+  if ((lastUpSelfTm) < millis() && SEND_INTERVAL_MS > (1000 * 60 * 10)) {
     lastUpSelfTm = millis() + SEND_INTERVAL_MS;
-    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|900|800|5.0|1", "0", "0");
+    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|900|800|5.0|1",
+                       "0", "0");
   }
+
+  // BLE数据同步发送
+  if (needSync && dataCount > 0) {
+    delay(50);
+    String data = getAndRemoveFirstData();
+    pCharacteristic->setValue(data.c_str());
+    pCharacteristic->notify();
+    Serial.print("✅ 同步发送：");
+    Serial.println(data);
+    Serial.print("📊 剩余：");
+    Serial.println(dataCount);
+  }
+
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();
