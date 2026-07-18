@@ -195,7 +195,7 @@ Page({
   loadTodayRecords(callback) {
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const info = { limit: 20, deviceId: deviceId }
+    const info = { limit: 10, deviceId: deviceId }
     if (this.data.trackDate) {
       info.curdate = this.data.trackDate
     }
