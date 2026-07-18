@@ -40,11 +40,11 @@ Page({
 
   // ========== 获取设备列表 ==========
   fetchDeviceList(forceRefresh, onComplete) {
-    let deviceData, livestockData, lotData, batteryData, syncData
+    let deviceData, livestockData, lotData, syncData
     let done = 0
     const merge = () => {
       done++
-      if (done < 5) return
+      if (done < 4) return
 
       const nameMap = {}
       if (livestockData && livestockData.livestockList) {
@@ -62,22 +62,19 @@ Page({
         })
       }
 
-      const batteryMap = (batteryData && batteryData.batteryMap) || {}
       const syncMap = (syncData && syncData.syncMap) || {}
 
       const deviceList = (deviceData.recordList || []).map(item => {
         const lotRec = lotMap[item.deviceId]
-        const batInfo = batteryMap[item.deviceId]
         const syncInfo = syncMap[item.deviceId]
 
-        // 对比设备表、LOT表(最后定位)、电量表、同步时间表四者的时间，取最新的显示
+        // 对比设备表、LOT表(最后定位)、同步时间表三者的时间，取最新的显示
         let displayTime = item.rawTime
         let displayDate = item.date
         let displayTimePart = item.time_part
 
         const deviceTime = new Date(item.rawTime || '').getTime()
         const lotTime = (lotRec && lotRec.rawTime) ? new Date(lotRec.rawTime).getTime() : NaN
-        const batTime = (batInfo && batInfo.rawTime) ? new Date(batInfo.rawTime).getTime() : NaN
         const syncTime = (syncInfo && syncInfo.rawTime) ? new Date(syncInfo.rawTime).getTime() : NaN
 
         let newestTime = isNaN(deviceTime) ? 0 : deviceTime
@@ -87,12 +84,6 @@ Page({
           displayTime = lotRec.rawTime
           displayDate = lotRec.date
           displayTimePart = lotRec.time_part
-        }
-        if (!isNaN(batTime) && batTime > newestTime) {
-          newestTime = batTime
-          displayTime = batInfo.rawTime
-          displayDate = batInfo.date
-          displayTimePart = batInfo.time_part
         }
         if (!isNaN(syncTime) && syncTime > newestTime) {
           newestTime = syncTime
@@ -111,9 +102,18 @@ Page({
           bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
           relativeTime: timeInfo.text,
           timeColor: timeInfo.color,
-          timeBgColor: timeInfo.bgColor,
-          battery: (batInfo && batInfo.battery) || ''
+          timeBgColor: timeInfo.bgColor
         }
+      })
+
+      // 按设备ID中"-"后面的序号数字排序（忽略V3/V4等类型前缀）
+      deviceList.sort((a, b) => {
+        const getSeq = (id) => {
+          if (!id) return 0
+          const match = id.match(/-(\d+)$/)
+          return match ? parseInt(match[1], 10) : 0
+        }
+        return getSeq(a.deviceId) - getSeq(b.deviceId)
       })
 
       this.setData({ deviceList })
@@ -126,7 +126,6 @@ Page({
     dataCache.getDeviceList((data) => { deviceData = data; merge() }, forceRefresh)
     dataCache.getLivestockList((data) => { livestockData = data; merge() }, forceRefresh)
     dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
-    dataCache.getDeviceBatteryAll((data) => { batteryData = data; merge() }, forceRefresh)
     dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, forceRefresh)
   },
 

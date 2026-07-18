@@ -73,14 +73,13 @@ Page({
 
   onLoad(options) {
     const deviceId = options.deviceId || ''
-    const today = this.getTodayStr()
     // 读取管理员设置
     let isAdmin = false
     try {
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)
     } catch (e) { /* ignore */ }
-    this.setData({ deviceId, trackDate: today, isAdmin })
+    this.setData({ deviceId, trackDate: '', isAdmin })
     if (deviceId) {
       this.loadDeviceInfo(deviceId)
     }
@@ -89,11 +88,10 @@ Page({
   loadDeviceInfo(deviceId) {
     let deviceItem = null
     let lotDataRes = null
-    let batteryDataRes = null
     let done = 0
     const merge = () => {
       done++
-      if (done < 3) return
+      if (done < 2) return
 
       if (!deviceItem) {
         wx.showToast({ title: '未找到设备', icon: 'none' })
@@ -107,10 +105,16 @@ Page({
         lotRec = lotDataRes.lotList.find(v => v.deviceId === deviceId)
       }
 
-      // 从电量表取最新记录
+      // 从 lotRec 的 lorastr 中提取电量: 格式 "1|v4-22|26.52968,109.39078|1.0|5.1" 第4段(index 3)是电量
       let batInfo = null
-      if (batteryDataRes && batteryDataRes.batteryMap) {
-        batInfo = batteryDataRes.batteryMap[deviceId]
+      if (lotRec && lotRec.lorastr) {
+        const parts = lotRec.lorastr.split('|')
+        if (parts.length >= 4) {
+          const batVal = parts[3]
+          if (batVal) {
+            batInfo = { battery: batVal, rawTime: lotRec.rawTime }
+          }
+        }
       }
 
       const enriched = { ...deviceItem }
@@ -120,7 +124,7 @@ Page({
       const devTime = deviceItem.time_part && deviceItem.time_part !== '-' ? deviceItem.time_part : ''
       enriched.chargeTime = devDate || devTime ? (devDate + ' ' + devTime).trim() : ''
 
-      // 对比设备表、LOT表、电量表三者时间，取最新的
+      // 对比设备表、LOT表（含电量）时间，取最新的
       let bestRawTime = deviceItem.rawTime
       let bestDate = deviceItem.date
       let bestTimePart = deviceItem.time_part
@@ -161,7 +165,7 @@ Page({
       this._loadBindName(enriched)
     }
 
-    // 并行拉取三表数据
+    // 并行拉取两表数据
     dataCache.getDeviceList((deviceData) => {
       if (deviceData && deviceData.recordList) {
         deviceItem = deviceData.recordList.find(v => v.deviceId === deviceId) || null
@@ -169,7 +173,6 @@ Page({
       merge()
     })
     dataCache.getDeviceLotRefresh((data) => { lotDataRes = data; merge() })
-    dataCache.getDeviceBatteryAll((data) => { batteryDataRes = data; merge() })
   },
 
   _loadBindName(item) {
@@ -188,20 +191,20 @@ Page({
     })
   },
 
-  // 自动加载当天轨迹记录
+  // 自动加载轨迹记录（首入时不传日期=查全部，选择日期后传 curdate 查对应日期）
   loadTodayRecords(callback) {
     const deviceId = this.data.deviceId
     if (!deviceId) return
+    const info = { limit: 20, deviceId: deviceId }
+    if (this.data.trackDate) {
+      info.curdate = this.data.trackDate
+    }
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
         action: 'getDeviceLogbyId',
-        info: {
-          limit:30,
-          deviceId: deviceId,
-          curdate: this.data.trackDate
-        },
+        info: info,
         time: getApp().formatTime()
       },
       success: (res) => {
@@ -474,16 +477,16 @@ Page({
     const deviceId = this.data.deviceId
     this.setData({ showTrackModal: false })
     wx.showLoading({ title: '查询中...' })
+    const info = { limit: 30, deviceId: deviceId }
+    if (this.data.trackDate) {
+      info.curdate = this.data.trackDate
+    }
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
         action: 'getDeviceLogbyId',
-        info: {
-          limit:30,
-          deviceId: deviceId,
-          curdate: this.data.trackDate
-        },
+        info: info,
         time: getApp().formatTime()
       },
       success: (res) => {

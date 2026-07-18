@@ -68,7 +68,7 @@
 
     <!-- 轨迹数据列表（随机背景色，类似蓝牙接收数据） -->
     <view class="msg-panel" wx:if="{{showRecordTable}}">
-      <view class="track-date-bar">{{trackDate}} 轨迹记录 ({{recordList.length}}条)</view>
+      <view class="track-date-bar">{{trackDate || '全部'}} 轨迹记录 ({{recordList.length}}条)</view>
       <view class="record-list">
         <view class="record-item" wx:for="{{recordList}}" wx:key="rawTime" style="background-color:{{item.bgColor}}">
           <view class="rec-row rec-row-time">

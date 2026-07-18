@@ -16,7 +16,7 @@
       <view class="item-icon-compact">📡</view>
       <view class="item-info">
         <view class="item-line-one">
-          <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}{{item.battery ? ' 🔋' + item.battery : ''}}</text>
+          <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}</text>
           <text class="item-time-compact" wx:if="{{item.relativeTime}}" style="color:{{item.timeColor}};background:{{item.timeBgColor}}">{{item.relativeTime}}</text>
           <text class="item-time-compact" wx:else style="color:#999;background:#f5f5f5">{{item.date && item.date !== '-' ? item.date + ' ' + item.time_part : '暂无数据'}}</text>
         </view>
@@ -31,7 +31,7 @@
       <image class="item-device-pic" wx:if="{{item.picurl}}" src="{{item.picurl}}" mode="aspectFill" />
       <view class="item-avatar-placeholder" wx:else>📡</view>
       <view class="item-info">
-        <view class="item-name">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}{{item.battery ? ' 🔋' + item.battery : ''}}</view>
+        <view class="item-name">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}</view>
         <view class="item-meta" wx:if="{{!item.device_key}}">
           <text class="item-time" style="color:#ff9800;">请输入唯一编码</text>
         </view>
