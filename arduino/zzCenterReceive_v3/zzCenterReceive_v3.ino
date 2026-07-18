@@ -337,7 +337,7 @@ void sendDownInfo(String loraStr) {
       if (isTargetIdExist(deviceId)) {
         removeTargetId(deviceId);
         Serial.println("✅标记了下发数据");
-        dataStr = String(MSG_TYPE_UP_GPS) + "|" + deviceId + "|3000" ;
+        dataStr = String(MSG_TYPE_UP_GPS) + "|" + deviceId + "|3000";
       } else {
         dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceName;
         dataStr += "|" + getCurrentTime();
@@ -428,8 +428,14 @@ void setup() {
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-
+unsigned long lastUpSelfTm = SEND_INTERVAL_MS/2;
 void loop() {
+
+  //超过10分钟的周期才上报，不要流量溢出
+  if ((lastUpSelfTm) < millis()&&SEND_INTERVAL_MS>(1000*60*10)) {
+    lastUpSelfTm = millis() + SEND_INTERVAL_MS;
+    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|900|800|5.0|1", "0", "0");
+  }
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();

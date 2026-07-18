@@ -74,7 +74,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 1000*60*30;  // 现在设定30分钟一次
+const unsigned long SEND_INTERVAL_MS = 1000*60*2;  // 现在设定30分钟一次
 const float slotDuration = 4.0;  //每台设备初始设定5秒，这个会有偏差，但可以通过中继来查看延时状态
 struct BLECallbacks
 {

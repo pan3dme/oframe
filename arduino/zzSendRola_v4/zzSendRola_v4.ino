@@ -364,9 +364,11 @@ void loop() {
       unsigned long waittm = nextSendTime - millis();
       printTimeToString("到上报时间还有 ", nextSendTime - millis());
       //测试阶段多给一点时间用于烧入程序  num6000 = 10000;
-      unsigned long num6000 = 10000;
+      unsigned long num6000 = 60000;
       if (waittm > num6000) {
-        Serial.print("距离上报时间超过10秒进入睡眠");
+        Serial.print("距离上报时间超过 ");
+        Serial.print(num6000 / 1000);
+        Serial.print("秒进入睡眠");
         delay(1000);
         uint64_t sleepTime = (uint64_t)(waittm - num6000) * 1000ULL;
         esp_deep_sleep(sleepTime);
