@@ -17,8 +17,8 @@ typedef enum {
   MSG_TYPE_GPS = 1,        // GPS定位信息
   MSG_TYPE_TIME = 2,       // 对时信息
   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
-  MSG_TYPE_SYNSTIME = 4,       // 对时信息
-  MSG_TYPE_upgps = 5,   // 固件更新指令
+  MSG_TYPE_SYN_TIME = 4,       // 对时信息
+  MSG_TYPE_UP_GPS = 5,   //
 
   MSG_TYPE_COM = 11   // 下载指令到设备
 } MessageType_t;
@@ -49,10 +49,10 @@ extern unsigned long syncedMillis;
 #define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 433000000 // 433MHz 国内通用863 863   923  928   433000000
+#define LORA_FREQ 923000000 // 433MHz 国内通用863 863   923  928   433000000
 #define TX_POWER 20         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
-#define LORA_SF 10          // 扩频因子
+#define LORA_SF 12          // 扩频因子
 #define LORA_CR 1           // 纠错率
 #define PREAMBLE_LENGTH 8   // 前导码
 #define BUFFER_SIZE 60      // 数据缓冲区
@@ -73,10 +73,9 @@ extern unsigned long syncedMillis;
 
 
 
-//const unsigned long SEND_INTERVAL_MS = 60000*5*6;  // 现在设定30分一次
-const unsigned long SEND_INTERVAL_MS = 1000*60*2;  // 现在设定3分钟一次
-const unsigned long RX_WINDOW_SECONDS = 10;  // 接收窗口秒数（周期最后N秒用于接收）
-const float slotDuration = 2.0;
+
+const unsigned long SEND_INTERVAL_MS = 1000*60*30;  // 现在设定30分钟一次
+const float slotDuration = 4.0;  //每台设备初始设定5秒，这个会有偏差，但可以通过中继来查看延时状态
 struct BLECallbacks
 {
   BLEServer *pServer;

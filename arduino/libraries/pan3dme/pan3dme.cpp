@@ -204,20 +204,24 @@ void gpsEncode() {
 
     // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
     long long diff = setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
-    Serial.print("✅GPS成功设置一次时间");
-    if (diff >= 0) {
-       Serial.print("，时间调快了 ");
-    } else {
-        Serial.print("，时间调慢了 ");
-        diff = -diff; // 取绝对值
-    }
-    long long diff_sec = diff / 1000000;
-    long long minutes = diff_sec / 60;
-    long long seconds = diff_sec % 60;
-    Serial.print(minutes);
-    Serial.print("分");
-    Serial.print(seconds);
-    Serial.println("秒");
+      Serial.print("✅GPS成功设置一次时间");
+      if (diff >= 0) {
+          Serial.print("，时间调快了 ");
+      } else {
+          Serial.print("，时间调慢了 ");
+          diff = -diff;
+      }
+      long long diff_sec = diff / 1000000;
+      long long minutes = diff_sec / 60;
+      long long seconds = diff_sec % 60;
+      long long millis = (diff % 1000000) / 1000;
+
+      Serial.print(minutes);
+      Serial.print("分");
+      Serial.print(seconds);
+      Serial.print("秒");
+      Serial.print(millis);
+      Serial.println("毫秒");
   }
 }
 

@@ -89,29 +89,16 @@ void OnRxTimeout(void) {
 void OnRxError(void) {
   Serial.println("❌ Radio接收错误!");
 }
-bool isMyDeviceInList(const String& received, const String& myDevice) {
-  int pipePos = received.indexOf('|');
-  if (pipePos == -1) {
-    Serial.println("[Parse] 未找到 '|' 分隔符");
-    return false;
-  }
-  String list = received.substring(pipePos + 1);
-  if (list.length() == 0) {
-    Serial.println("[Parse] 设备列表为空");
-    return false;
-  }
-
-  // 在列表首尾添加逗号，然后查找 ",设备名,"
-  String padded = "," + list + ",";
-  String target = "," + myDevice + ",";
-
-  bool found = padded.indexOf(target) != -1;
-  if (found) {
-    Serial.printf("[Parse] ✅ 设备 %s 在列表中\n", myDevice.c_str());
-  } else {
-    Serial.printf("[Parse] ❌ 设备 %s 不在列表中\n", myDevice.c_str());
-  }
-  return found;
+String extractDeviceIdFromInfo(String infoStr) {
+  int first = infoStr.indexOf('|');
+  if (first == -1) return "";
+  int second = infoStr.indexOf('|', first + 1);
+  if (second == -1) return infoStr.substring(first + 1);
+  return infoStr.substring(first + 1, second);
+}
+bool isMyDeviceInList(String infoStr, String targetDevice) {
+  String id = extractDeviceIdFromInfo(infoStr);
+  return id.equals(targetDevice);
 }
 // LoRa接收回调（仅拷贝数据，耗时操作在主循环处理）
 void OnRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
@@ -126,7 +113,7 @@ void OnRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
     int firstPipeIndex = String(loraStr).indexOf('|');
     if (firstPipeIndex > 0) {
       int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
-      if (messageType == MSG_TYPE_SYNSTIME) {
+      if (messageType == MSG_TYPE_SYN_TIME) {
         int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
         if (secondPipeIndex > 0) {
           String timeStr = String(loraStr).substring(secondPipeIndex + 1);
@@ -137,11 +124,12 @@ void OnRxDone(uint8_t* payload, uint16_t size, int16_t rssi, int8_t snr) {
         }
       }
       //5|v4-6,v4-6
-      if (messageType == MSG_TYPE_upgps) {
+      if (messageType == MSG_TYPE_UP_GPS) {
         bool inList = isMyDeviceInList(String(loraStr), deviceName);
         if (inList) {
-          Serial.println("当前设备在列表中，执行对应操作");
-          mustOpenGps = true;
+          Serial.println("✅是当前设备，执行更新GPS信息");
+          typeindex = 3;
+          Radio.Sleep();
         }
       }
     } else {
@@ -182,9 +170,9 @@ String readBatteryEndStr() {
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
   String dataStr = String(packetType) + "|" + deviceName;
-  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYNSTIME) {
+  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYN_TIME) {
     dataStr += "|" + getCurrentTime() + "|" + batterystr;
-  } else if (packetType == MSG_TYPE_TIME) {
+  } else if (packetType == MSG_TYPE_GPS) {
     dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
   }
 
@@ -207,10 +195,15 @@ unsigned long finishTime = 0;
 // ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
   // Radio.Sleep();
-  Serial.println("✅ 发送完成");
-  finishTime = millis() + 2000;
-  typeindex = 2;
-  Radio.Rx(0);
+  Serial.print("✅ 发送完成");
+  if (typeindex == 1) {
+    Serial.println("定时上报信息");
+    finishTime = millis() + 2000;
+    typeindex = 2;
+    Radio.Rx(0);
+  } else if (typeindex == 3) {
+    Serial.println("Gps上按了完成");
+  }
 }
 
 // ==================== LoRa发送超时回调 ====================
@@ -218,7 +211,6 @@ void onSendTimeout(void) {
   Radio.Sleep();
   Serial.println("❌ 发送超时");
   typeindex = 0;
- 
 }
 
 void printTimeToString(String str, unsigned long ms) {
@@ -243,7 +235,7 @@ void meshGpsInfoFun() {
     bool hasLocValid = gps.location.isValid();
     bool yearOk = (gps.date.year() > 2025);
     bool gpsReliable = isReliableGPS();
-    bool timeoutOk = (millis() - startAttemptTime < 120000);
+    bool timeoutOk = (millis() - startAttemptTime < 180000);
     // Serial.print(".");
     // Serial.println(getCurrentTime());
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(), String(skipnum++));
@@ -257,7 +249,10 @@ void meshGpsInfoFun() {
     Serial.print(gpsReliable ? "✅" : "❌");
     Serial.print(" GPS可靠:");
     Serial.print(timeoutOk ? "✅" : "❌");
-    Serial.print(" 未超时:");
+    Serial.print(" 未超时:(");
+    int sec = (millis() - startAttemptTime) / 1000;
+    Serial.print(sec);
+    Serial.print("秒)    ");
     Serial.println(getCurrentTime());
 
     bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
@@ -275,7 +270,9 @@ void meshGpsInfoFun() {
   }
 
   Serial.println(getGpsInfoStr());
+  delay(1000);
   setGpsEnable(false);
+  delay(1000);
 }
 String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
 
@@ -330,19 +327,28 @@ void setup() {
   Serial.print("batterystr");
   Serial.println(batterystr);
 }
- 
+
 // ==================== 主循环 ====================
 void loop() {
   Radio.IrqProcess();
+  if (typeindex == 3) {
+    delay(1000);
+    Serial.print("获取GPS");
+    printCurrentTime();
+    meshGpsInfoFun();
+    buildAndSendPacket(MSG_TYPE_GPS);
+    delay(2000);
+    Radio.Sleep();
+    nextSendTime = 0;
+    typeindex = 0;
+    return;
+  }
   if (typeindex == 2) {
     delay(10);
     Serial.print(".");
-
-
-    
     if (finishTime < millis()) {
       //回到普通模式，准备可以休眠
-      nextSendTime=0;
+      nextSendTime = 0;
       typeindex = 0;
     }
     return;
@@ -357,17 +363,18 @@ void loop() {
       nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
       unsigned long waittm = nextSendTime - millis();
       printTimeToString("到上报时间还有 ", nextSendTime - millis());
-      if (waittm > 30000) {
+      //测试阶段多给一点时间用于烧入程序  num6000 = 10000;
+      unsigned long num6000 = 10000;
+      if (waittm > num6000) {
         Serial.print("距离上报时间超过10秒进入睡眠");
         delay(1000);
-        uint64_t sleepTime = (uint64_t)(waittm - 30000) * 1000ULL;
+        uint64_t sleepTime = (uint64_t)(waittm - num6000) * 1000ULL;
         esp_deep_sleep(sleepTime);
       }
     }
     if (nextSendTime < millis()) {
       typeindex = 1;
       buildAndSendPacket(MSG_TYPE_TIME);
- 
     }
   }
   printCurrentTime();

@@ -5,33 +5,24 @@
 
 #include "Arduino.h"
 #include "LoRaWan_APP.h"
-#include "HT_TinyGPS++.h"
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
-#include <WiFi.h>
 #include <time.h>
 #include <ArduinoJson.h>
 #include <pan3dme.h>
 
 // ========================= BLE全局对象 =========================
-BLEServer *pServer = NULL;
-BLECharacteristic *pCharacteristic = NULL;
-bool deviceConnected = false;
 bool needSync = false;
 
 static RadioEvents_t RadioEvents;
 
 // ========================= 数据缓存 =========================
-// 显示缓冲区（4行OLED）
-String displayBuf[4] = { "", "", "", "" };
-
 // 数据队列（BLE同步用，满时覆盖最旧）
 #define DATA_MAX_COUNT 99
 String dataArray[DATA_MAX_COUNT];
 int dataCount = 0;
-int receiveCount = 0;
 
 // 设备最后消息缓存（每设备仅保留最新一条，不随队列清空）
 #define DEVICE_CACHE_MAX 50
@@ -45,18 +36,10 @@ String deviceName = "x-x";
 char loraStr[BUFFER_SIZE];
 char sendData[BUFFER_SIZE];  // 发送数据缓存
 
-bool needSendTimeSync = false;
-unsigned long scheduledSendMs = 0;  // 定时发送时间点(millis)
-
-bool needPlaLed = false;
+// 回调标记（主循环根据此标志处理数据）
 bool loraReceivedFlag = false;
-volatile int16_t lastRssi = 0;
-volatile int8_t lastSnr = 0;
-volatile uint16_t lastPayloadSize = 0;
-
-// ========================= 前向声明 =========================
-String findLastMessageByDevice(String deviceId);
-
+int16_t lastRssi = 0;
+int8_t lastSnr = 0;
 
 StaticJsonDocument<200> docCom;  // BLE指令解析用（全局复用）
 
@@ -65,17 +48,66 @@ StaticJsonDocument<200> docCom;  // BLE指令解析用（全局复用）
 // BLE服务器连接/断开回调
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
-    deviceConnected = true;
     Serial.println("✅ 小程序已连接");
   }
   void onDisconnect(BLEServer *pServer) {
-    deviceConnected = false;
     needSync = false;
     Serial.println("❌ 断开连接 | 同步已关闭");
     pServer->startAdvertising();
   }
 };
-String cmdLoraInfoStr = "";
+#define TARGET_ID_MAX 20
+String targetIdList[TARGET_ID_MAX];
+int targetIdCount = 0;
+
+// 检查 targetId 是否已存在
+bool isTargetIdExist(String id) {
+  for (int i = 0; i < targetIdCount; i++) {
+    if (targetIdList[i] == id) return true;
+  }
+  return false;
+}
+
+// 添加 targetId（若已存在则忽略）
+void addTargetId(String id) {
+  if (id.length() == 0) return;
+  if (isTargetIdExist(id)) {
+    Serial.println("⚠️ targetId 已存在，忽略添加");
+    return;
+  }
+  if (targetIdCount < TARGET_ID_MAX) {
+    targetIdList[targetIdCount++] = id;
+    Serial.print("✅ 已添加 targetId: ");
+    Serial.println(id);
+  } else {
+    Serial.println("❌ targetId 列表已满！");
+  }
+}
+
+// 删除指定的 targetId
+void removeTargetId(String id) {
+  for (int i = 0; i < targetIdCount; i++) {
+    if (targetIdList[i] == id) {
+      // 将后面的元素前移
+      for (int j = i; j < targetIdCount - 1; j++) {
+        targetIdList[j] = targetIdList[j + 1];
+      }
+      targetIdCount--;
+      Serial.print("✅ 已删除 targetId: ");
+      Serial.println(id);
+      return;
+    }
+  }
+  Serial.print("⚠️ 未找到 targetId: ");
+  Serial.println(id);
+}
+
+// 清空所有（可选）
+void clearTargetIdList() {
+  targetIdCount = 0;
+  Serial.println("🗑️ 已清空所有 targetId");
+}
+
 void meshCmdInfomsg(String rxValue) {
   Serial.println(rxValue);
   DeserializationError error = deserializeJson(docCom, rxValue);
@@ -91,17 +123,9 @@ void meshCmdInfomsg(String rxValue) {
   if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
     int type = docCom["value"].as<int>();
     String targetId = docCom["deviceId"].as<String>();
-
     if (type == 1) {
-      if (cmdLoraInfoStr.length() == 0) {
-        cmdLoraInfoStr = "5|" + targetId;  //5用来标记高频
-      } else {
-        cmdLoraInfoStr += ",";
-        cmdLoraInfoStr += targetId;
-      }
+      addTargetId(targetId);
     }
-    Serial.print("组装下发命令 ");
-    Serial.println(cmdLoraInfoStr);
   }
   // {"cmd":"setfreq","value":1,"deviceId":"v4-10"}
 }
@@ -127,19 +151,6 @@ void addDataToQueue(String data) {
     }
     dataArray[DATA_MAX_COUNT - 1] = data;
   }
-}
-
-// 取出并删除队列头部（FIFO）
-String getAndRemoveFirstData() {
-  if (dataCount == 0) {
-    return "";
-  }
-  String first = dataArray[0];
-  for (int i = 0; i < dataCount - 1; i++) {
-    dataArray[i] = dataArray[i + 1];
-  }
-  dataArray[--dataCount] = "";
-  return first;
 }
 
 // ========================= 设备缓存操作 =========================
@@ -172,26 +183,13 @@ void updateDeviceCache(String deviceId, String msgJson) {
   }
 }
 
-// 查找指定设备的最后一条消息
-String findLastMessageByDevice(String deviceId) {
-  for (int i = 0; i < deviceCacheCount; i++) {
-    if (deviceCacheId[i] == deviceId) {
-      return deviceCacheMsg[i];
-    }
-  }
-  return "";
-}
-
-
 // ========================= 初始化 =========================
 
 // 初始化BLE服务
 void initBLE() {
   static MyServerCallbacks serverCallbacks;
   static MyCallbacks charCallbacks;
-  BLECallbacks bleCallbacks = initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
-  pServer = bleCallbacks.pServer;
-  pCharacteristic = bleCallbacks.pCharacteristic;
+  initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
 }
 
 // 初始化LoRa Radio
@@ -205,33 +203,13 @@ void initRadio() {
   Radio.Rx(0);
 }
 
-// 强制重置Radio（睡眠+重新初始化）
-void forceResetRadio() {
-  Serial.println("🔄 开始强制重置Radio...");
-  Radio.Sleep();
-  delay(20);
-  initRadio();
-  Serial.println("  ✅ Radio已重新初始化");
-  delay(10);
-  RadioState_t state = Radio.GetStatus();
-  if (state == RF_RX_RUNNING) {
-    Serial.println("✅ Radio强制重置成功,已进入接收状态");
-  } else {
-    Serial.print("❌ Radio重置失败,当前状态: ");
-    Serial.println(state);
-  }
-}
 // ========================= LoRa回调 =========================
 void OnTxDone(void) {
   Serial.println("✅下发LORA完成，回到接收模式");
-  needSendTimeSync = false;
-  displayBuf[1] = "TX Done";
   Radio.Rx(0);
 }
 void OnTxTimeout(void) {
   Serial.println("❌ 对时发送超时，回到接收模式");
-  needSendTimeSync = false;
-  displayBuf[1] = "TX Timeout";
   Radio.Rx(0);
 }
 void OnRxTimeout(void) {
@@ -242,70 +220,14 @@ void OnRxError(void) {
   Serial.println("❌ Radio接收错误!");
   Radio.Rx(0);
 }
-StaticJsonDocument<256> needReadJson;
-// LoRa接收回调（仅拷贝数据，耗时操作在主循环处理）
+// LoRa接收回调（仅拷贝数据+设标记，耗时操作在主循环处理）
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
-  if (size < BUFFER_SIZE) {
+  if (size < BUFFER_SIZE && size > 0) {
     memcpy(loraStr, payload, size);
     loraStr[size] = '\0';
-    // lastRssi = rssi;
-    // lastSnr = snr;
-    // lastPayloadSize = size;
-    // loraReceivedFlag = true;
-    // needPlaLed = true;
-    // receiveCount++;
-
-
-    Serial.println(loraStr);
-    // 存入队列并更新设备缓存
-    if (size > 0) {
-      needReadJson["rssi"] = (int)rssi;
-      needReadJson["snr"] = (int)snr;
-      needReadJson["info"] = loraStr;
-      needReadJson["upDateDevice"] = deviceName;
-      needReadJson["time"] = getCurrentTime();
-
-      StaticJsonDocument<256> doc;
-      doc["rssi"] = (int)rssi;
-      doc["snr"] = (int)snr;
-      doc["info"] = loraStr;
-      doc["upDateDevice"] = deviceName;
-      doc["time"] = getCurrentTime();
-
-
-      String jsonData;
-      serializeJson(doc, jsonData);
-      addDataToQueue(jsonData);
-      const char *infoRaw = doc["info"];
-      if (infoRaw != nullptr) {
-        String devId = extractDeviceIdFromInfo(String(infoRaw));
-        updateDeviceCache(devId, jsonData);
-      }
-    }
-
-
-    //LORA对时
-    int firstPipeIndex = String(loraStr).indexOf('|');
-    if (firstPipeIndex > 0) {
-      int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
-      if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYNSTIME) {
-        int secondPipeIndex = String(loraStr).indexOf('|', firstPipeIndex + 1);
-        if (secondPipeIndex > 0) {
-          String timeStr = String(loraStr).substring(secondPipeIndex + 1);
-          timeStr = timeStr.substring(0, timeStr.indexOf('|'));
-          Serial.print("⏰ 收到对时信息: ");
-          Serial.println(timeStr);
-          if (!haveRightTime() || messageType == MSG_TYPE_SYNSTIME) {
-            Serial.println("✅ 系统更新LORA上报的时间可能有很大误差");
-            setTimeFromLora(timeStr);
-          } else {
-            Serial.println("⚠️中继已有时间，不接收普通上报时间");
-          }
-        }
-      }
-    }
-
-
+    lastRssi = rssi;
+    lastSnr = snr;
+    loraReceivedFlag = true;
   } else {
     loraStr[0] = '\0';
   }
@@ -333,14 +255,7 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
   Serial.println("上报报文：" + json);
   Serial2.println(json);
 }
-// cominfo缓存数组（最多存10条）
-#define COMINFO_MAX 10
-String cominfoArray[COMINFO_MAX];
-int cominfoCount = 0;
-
-/**
- * 接收 Serial2 (DTU) 数据，拆分多个拼接JSON并提取cominfo
- */
+// 接收 Serial2 (DTU) 数据，拆分多个拼接JSON并提取cominfo
 void receiveDtuData() {
   if (Serial2.available() <= 0) {
     return;
@@ -354,12 +269,9 @@ void receiveDtuData() {
   }
   Serial2.flush();
 
-  // Serial.print("原始数据: ");
-  // Serial.println(raw);
-
-
   // 2. 用大括号计数法拆分多个拼接的JSON对象
-  cominfoCount = 0;
+  String cominfoArray[10];
+  int cominfoCount = 0;
   int depth = 0;
   int start = -1;
 
@@ -375,10 +287,8 @@ void receiveDtuData() {
       if (depth == 0 && start >= 0) {
         // 提取一个完整JSON对象
         String jsonStr = raw.substring(start, i + 1);
-        // Serial.print("拆分JSON: ");
-        // Serial.println(jsonStr);
 
-        // 3. 解析并提取cominfo
+        // 解析并提取cominfo
         StaticJsonDocument<512> doc;
         DeserializationError err = deserializeJson(doc, jsonStr);
         if (err) {
@@ -389,13 +299,10 @@ void receiveDtuData() {
           if (cominfo != nullptr) {
             Serial.print("cominfo: ");
             Serial.println(cominfo);
-            // 存入数组
-            if (cominfoCount < COMINFO_MAX) {
+            if (cominfoCount < 10) {
               cominfoArray[cominfoCount] = String(cominfo);
               cominfoCount++;
             }
-          } else {
-            // Serial.println("未找到cominfo字段");
           }
         }
         start = -1;
@@ -403,13 +310,11 @@ void receiveDtuData() {
     }
   }
   if (cominfoCount > 0) {
-    // 4. 打印汇总结果
     Serial.println("---- cominfo汇总 ----");
     for (int i = 0; i < cominfoCount; i++) {
       Serial.print("[");
       Serial.print(i);
       Serial.print("] ");
-      // Serial.println(cominfoArray[i]);
       meshCmdInfomsg(cominfoArray[i]);
     }
     Serial.print("共 ");
@@ -419,57 +324,98 @@ void receiveDtuData() {
   }
 }
 
-String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
+// ========================= 下发指令 =========================
+void sendDownInfo(String loraStr) {
 
-void printCurrentTime() {
-  String nowStr = getCurrentTime();  // 完整时间字符串 "1970/01/01 00:00:48.679"
-  // 提取秒级字符串：去掉毫秒部分（取第一个空格后的前8个字符？实际是日期+时间，要忽略毫秒）
-  // 假设格式固定为 "YYYY/MM/DD HH:MM:SS.mmm"，我们需要取到秒
-  int dotIndex = nowStr.indexOf('.');
-  String nowSecStr = (dotIndex != -1) ? nowStr.substring(0, dotIndex) : nowStr;  // 去掉毫秒
-  if (lastPrintTimeStr != nowSecStr) {
-    Serial.println(nowStr);  // 或者只打印秒级字符串
-    lastPrintTimeStr = nowSecStr;
-  }
-  if (!haveRightTime()) {
-    // Serial.println("❌当前时间还没对时成功");
+  int firstPipeIndex = String(loraStr).indexOf('|');
+  if (firstPipeIndex > 0) {
+    int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
+    if (messageType == MSG_TYPE_TIME) {
+      String deviceId = extractDeviceIdFromInfo(loraStr);
+      Serial.println(deviceId);
+      String dataStr;
+      if (isTargetIdExist(deviceId)) {
+        removeTargetId(deviceId);
+        Serial.println("✅标记了下发数据");
+        dataStr = String(MSG_TYPE_UP_GPS) + "|" + deviceId + "|3000" ;
+      } else {
+        dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceName;
+        dataStr += "|" + getCurrentTime();
+      }
+
+      int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
+      if (len < 0 || len >= BUFFER_SIZE) {
+        Serial.println("⚠️ 数据过长，已截断");
+        sendData[BUFFER_SIZE - 1] = '\0';
+      }
+      Serial.print(getCurrentTime());
+      Serial.print("下发到设备：");
+      Serial.print(sendData);
+      Serial.print("len:");
+      Serial.println(strlen(sendData));
+      Radio.Send((uint8_t *)sendData, strlen(sendData));
+    }
   }
 }
 
-void printTimeToString(String str, unsigned long ms) {
-  int totalSec = ms / 1000;
-  int min = totalSec / 60;
-  int sec = totalSec % 60;
-  int remMs = ms % 1000;
-  Serial.print(str);
-  Serial.print(min);
-  Serial.print("分");
-  Serial.print(sec);
-  Serial.print("秒");
-  Serial.print(remMs);
-  Serial.println("毫秒");
+// ========================= 主循环处理LoRa数据 =========================
+
+// 处理LoRa接收数据（JSON序列化、队列缓存、设备缓存、对时）
+void processLoraData() {
+  if (!loraReceivedFlag) {
+    return;
+  }
+  loraReceivedFlag = false;
+
+  Serial.println(loraStr);
+
+  // 1. 构建JSON并存入队列/设备缓存
+  StaticJsonDocument<256> doc;
+  doc["rssi"] = (int)lastRssi;
+  doc["snr"] = (int)lastSnr;
+  doc["info"] = loraStr;
+  doc["upDateDevice"] = deviceName;
+  doc["time"] = getCurrentTime();
+
+  String jsonData;
+  serializeJson(doc, jsonData);
+  addDataToQueue(jsonData);
+
+  String devId = extractDeviceIdFromInfo(String(loraStr));
+  if (devId.length() > 0) {
+    updateDeviceCache(devId, jsonData);
+  }
+
+  // 2. DTU上报
+  sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
+
+  // 3. 下发回复
+  sendDownInfo(String(loraStr));
+
+  // 4. LORA对时
+  String infoStr(loraStr);
+  int firstPipeIndex = infoStr.indexOf('|');
+  if (firstPipeIndex > 0) {
+    int messageType = infoStr.substring(0, firstPipeIndex).toInt();
+    if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYN_TIME) {
+      int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
+      if (secondPipeIndex > 0) {
+        String timeStr = infoStr.substring(secondPipeIndex + 1);
+        timeStr = timeStr.substring(0, timeStr.indexOf('|'));
+        Serial.print("⏰ 收到对时信息: ");
+        Serial.println(timeStr);
+        if (!haveRightTime() || messageType == MSG_TYPE_SYN_TIME) {
+          Serial.println("✅ 系统更新LORA上报的时间可能有很大误差");
+          setTimeFromLora(timeStr);
+        } else {
+          Serial.println("⚠️中继已有时间，不接收普通上报时间");
+        }
+      }
+    }
+  }
 }
-// ========================= 主循环 =========================
-unsigned long lastDisplayUpdate = 0;
-unsigned long lastrecdLoraTm = 0;
-unsigned long lastUpSelfTm = 0;
 
 // ========================= 系统初始化 =========================
-void sendDownInfo() {
-  String dataStr = "2|" + deviceName;
-  dataStr += "|" + getCurrentTime();
-  int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
-  if (len < 0 || len >= BUFFER_SIZE) {
-    Serial.println("⚠️ 数据过长，已截断");
-    sendData[BUFFER_SIZE - 1] = '\0';
-  }
-  Serial.print(getCurrentTime());
-  Serial.print("下发到设备：");
-  Serial.print(sendData);
-  Serial.print("len:");
-  Serial.println(strlen(sendData));
-  Radio.Send((uint8_t *)sendData, strlen(sendData));
-}
 void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
@@ -477,38 +423,15 @@ void setup() {
   Serial2.begin(115200, SERIAL_8N1, 17, 18);
   delay(1000);
   deviceName = makeDivceName();
-  displayBuf[0] = "id:" + deviceName + " rec";
   initRadio();
-  delay(1000);
   initBLE();
-  if (haveRightTime()) {
-    Serial.print("✅ 系统有正确时间");
-    printCurrentTime();
-  } else {
-    Serial.print("❌ 系统时间不正确");
-    printCurrentTime();
-  }
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
 
 void loop() {
-
   Radio.IrqProcess();
+  processLoraData();
   receiveDtuData();
-  if ((lastUpSelfTm) < millis()) {
-    lastUpSelfTm = millis() + SEND_INTERVAL_MS;
-    // sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|1119|948|5.08|285", "0", "0");
-  }
-  if (!needReadJson.isNull()) {
-    Serial.println("需要处理当前信息");
-    Serial.println(needReadJson["info"].as<String>());
-    Serial.println(needReadJson["rssi"].as<String>());
-    Serial.println(needReadJson["snr"].as<String>());
-    // sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
-    sendLoraInfoUseDtu(needReadJson["info"].as<String>(), needReadJson["rssi"].as<String>(), needReadJson["snr"].as<String>());
-    needReadJson.clear();
-    sendDownInfo();
-  }
   delay(100);
 }
