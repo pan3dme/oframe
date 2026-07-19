@@ -226,11 +226,11 @@ void OnTxDone(void) {
   Radio.Rx(0);
 }
 void OnTxTimeout(void) {
-  Serial.println("❌ 对时发送超时，回到接收模式");
+  Serial.println("❌ 发送超时，回到接收模式");
   Radio.Rx(0);
 }
 void OnRxTimeout(void) {
-  Serial.println("⚠️ Radio接收超时!");
+  // Serial.println("⚠️ Radio接收超时!");
   Radio.Rx(0);
 }
 void OnRxError(void) {
@@ -451,12 +451,12 @@ void setup() {
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-unsigned long lastUpSelfTm = SEND_INTERVAL_MS / 2;
+unsigned long lastUpSelfTm = (30*60*1000) / 2;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
   if ((lastUpSelfTm) < millis()) {
-    lastUpSelfTm = millis() + SEND_INTERVAL_MS;
+    lastUpSelfTm = millis() + (30*60*1000);
 
     sendLoraInfoUseDtu(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|1.0|3.7",
                        "0", "0");
