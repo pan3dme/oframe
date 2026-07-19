@@ -196,7 +196,7 @@ void onSendDone(void) {
     Serial.print("✅ 发送完成");
     if (typeindex == 1) {
         Serial.println("定时上报信息");
-        finishTime = millis() + 2000;
+        finishTime = millis() + 5000;
         typeindex = 2;
         Radio.Rx(0);
     } else if (typeindex == 3) {
@@ -349,6 +349,7 @@ void loop() {
             // 回到普通模式，准备可以休眠
             nextSendTime = 0;
             typeindex = 0;
+            Serial.println("");
         }
         return;
     }

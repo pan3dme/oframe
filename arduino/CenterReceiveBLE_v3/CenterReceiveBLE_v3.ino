@@ -355,8 +355,11 @@ void sendDownInfo(String loraStr) {
         removeTargetId(deviceId);
         Serial.println("✅标记了下发数据");
         dataStr = String(MSG_TYPE_UP_GPS) + "|" + deviceId + "|3000";
+
       } else {
-        dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceName;
+        delay(2000);  //如果普通对时就延时2秒，优先指令下载
+
+        dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceId;
         dataStr += "|" + getCurrentTime(true);
       }
 
@@ -448,14 +451,14 @@ void setup() {
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-unsigned long lastUpSelfTm = SEND_INTERVAL_MS/2;
+unsigned long lastUpSelfTm = SEND_INTERVAL_MS / 2;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
-  if ((lastUpSelfTm) < millis()  ) {
+  if ((lastUpSelfTm) < millis()) {
     lastUpSelfTm = millis() + SEND_INTERVAL_MS;
- 
-    sendLoraInfoUseDtu(String(MSG_TYPE_TIME) + "|" + deviceName + "|"+getCurrentTime(false)+ "|1.0|3.7",
+
+    sendLoraInfoUseDtu(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|1.0|3.7",
                        "0", "0");
   }
 
