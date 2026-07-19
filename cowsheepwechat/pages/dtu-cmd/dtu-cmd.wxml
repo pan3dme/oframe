@@ -27,14 +27,9 @@
     <!-- 快捷按钮 -->
     <view class="quick-label">快捷指令</view>
     <view class="quick-row">
-      <button class="quick-btn {{quickSelected === 1 ? 'quick-active' : ''}}" bindtap="onQuickFreq1">⚡ 高频</button>
-      <button class="quick-btn {{quickSelected === 3 ? 'quick-active' : ''}}" bindtap="onQuickSyncTime">🕐 同步时间</button>
-      <button class="quick-btn {{quickSelected === 4 ? 'quick-active' : ''}}" bindtap="onQuickReboot">🔄 重启设备</button>
-    </view>
-    <view class="quick-row">
-      <button class="quick-btn {{quickSelected === 6 ? 'quick-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
-      <button class="quick-btn {{quickSelected === 7 ? 'quick-active' : ''}}" bindtap="onQuickReportTime">⏱️ 上报时间</button>
-      <button class="quick-btn {{quickSelected === 8 ? 'quick-active' : ''}}" bindtap="onQuickReportBattery">🔋 上报电量</button>
+      <button class="quick-btn {{quickSelected === 1 ? 'quick-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
+      <button class="quick-btn {{quickSelected === 2 ? 'quick-active' : ''}}" bindtap="onQuickReportTime">⏱️ 上报时间</button>
+      <button class="quick-btn {{quickSelected === 3 ? 'quick-active' : ''}}" bindtap="onQuickReportBattery">🔋 上报电量</button>
     </view>
   </view>
 

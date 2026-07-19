@@ -109,27 +109,15 @@ Page({
     this.setData({ cmdText: e.detail.value, quickSelected: 0 })
   },
 
-  // ========== 快捷按钮（参考蓝牙发送指令弹窗） ==========
-  onQuickFreq1() {
+  // ========== 快捷按钮 ==========
+  onQuickReportGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 1 }), quickSelected: 1 })
   },
-  onQuickGps() {
+  onQuickReportTime() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 2 }), quickSelected: 2 })
   },
-  onQuickSyncTime() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'synctime', time: getApp().formatTime() }), quickSelected: 3 })
-  },
-  onQuickReboot() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 4 }), quickSelected: 4 })
-  },
-  onQuickReportGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6 }), quickSelected: 6 })
-  },
-  onQuickReportTime() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 7 }), quickSelected: 7 })
-  },
   onQuickReportBattery() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 8 }), quickSelected: 8 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 3 }), quickSelected: 3 })
   },
 
   // ========== 发送指令 ==========

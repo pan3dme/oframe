@@ -448,13 +448,14 @@ void setup() {
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-unsigned long lastUpSelfTm = SEND_INTERVAL_MS / 2;
+unsigned long lastUpSelfTm = SEND_INTERVAL_MS/2;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
-  if ((lastUpSelfTm) < millis() && SEND_INTERVAL_MS > (1000 * 60 * 10)) {
+  if ((lastUpSelfTm) < millis()  ) {
     lastUpSelfTm = millis() + SEND_INTERVAL_MS;
-    sendLoraInfoUseDtu(String(MSG_TYPE_BATTERY) + "|" + deviceName + "|1.00|900|800|5.0|1",
+ 
+    sendLoraInfoUseDtu(String(MSG_TYPE_TIME) + "|" + deviceName + "|"+getCurrentTime(false)+ "|1.0|3.7",
                        "0", "0");
   }
 
