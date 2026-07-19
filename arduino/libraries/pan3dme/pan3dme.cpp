@@ -403,7 +403,7 @@ String getCurrentTime(bool includeMillis) {
     if (includeMillis) {
         // 包含毫秒（格式：YYYY/MM/DD HH:MM:SS.mmm）
         snprintf(buf, sizeof(buf),
-                 "%4d/%02d/%02d %02d:%02d:%02d.%03d",
+                 "%4d/%d/%d %02d:%02d:%02d.%03d",
                  t.tm_year + 1900,
                  t.tm_mon + 1,
                  t.tm_mday,
@@ -414,7 +414,7 @@ String getCurrentTime(bool includeMillis) {
     } else {
         // 不包含毫秒（格式：YYYY/MM/DD HH:MM:SS）
         snprintf(buf, sizeof(buf),
-                 "%4d/%02d/%02d %02d:%02d:%02d",
+                 "%4d/%d/%d %02d:%02d:%02d",
                  t.tm_year + 1900,
                  t.tm_mon + 1,
                  t.tm_mday,

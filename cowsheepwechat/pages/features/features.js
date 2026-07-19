@@ -84,7 +84,7 @@ Page({
           deviceIdOptions: options,
           selectedDeviceIndex: 0,
           insertDeviceId: defaultId,
-          insertLorastr: '1|v3-1|26.530033, 109.390391|wechat'
+          insertLorastr: '2|v4-6|2026/07/18 23:02:24.938|1.0|4.4|13'
         })
       })
 
@@ -157,8 +157,11 @@ Page({
         info: {
           deviceId: deviceId,
           lorastr: lorastr,
+          // lorastr: "2|v4-6|2026/07/18 23:02:24.938|1.0|4.4|13",
           upDateDevice:"wechat",
-          time: getApp().formatTime()
+          time: getApp().formatTime(),
+          rssi:  "0",
+          snr:  "0"
         }
 
       },

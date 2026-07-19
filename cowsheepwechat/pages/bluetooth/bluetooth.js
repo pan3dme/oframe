@@ -794,10 +794,12 @@ Page({
     //   MSG_TYPE_FIRMWARE = 10,   // 固件更新指令
     //   MSG_TYPE_COM = 11   // 下载指令到设备
     // } MessageType_t;
-    if (msgType == 1||msgType == 3) {
+    if (msgType == 1||msgType == 2||msgType == 3) {
       const deviceId = parts[1]
       const lorastr = infoStr
       const logTime = getApp().formatTime()
+      // 时间修正：若 gpsData.time 早于 2025 年，则用设备时间偏差重新计算
+      
       const postData = {
         time: logTime,
         action: "insertlog",
@@ -806,8 +808,8 @@ Page({
           lorastr: lorastr,
           upDateDevice: gpsData.upDateDevice,
           time: gpsData.time,
-          rssi: gpsData.rssi !== undefined ? String(gpsData.rssi) : '',
-          snr: gpsData.snr !== undefined ? String(gpsData.snr) : ''
+          rssi:   String(gpsData.rssi) ,
+          snr:   String(gpsData.snr) 
         }
       }
       console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '队列剩余:', queue.length)
