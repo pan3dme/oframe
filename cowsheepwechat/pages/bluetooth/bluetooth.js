@@ -431,10 +431,28 @@ Page({
             console.log('[蓝牙] 管道分隔，首段typeId:', typeId)
           }
           console.log('═════════════════════════════════')
+
+          // 时间修正：若 gpsData.time 早于 2025 年，则用设备时间偏差重新计算
+          let correctedMsg = msg
+          try {
+            const gpsObj = JSON.parse(msg)
+            if (gpsObj.time && gpsObj.now !== undefined && gpsObj.ms !== undefined) {
+              const year = parseInt(String(gpsObj.time).substring(0, 4))
+              if (year && year < 2025) {
+                const offset = Number(gpsObj.now) - Number(gpsObj.ms)
+                const refTimestamp = Date.now()
+                const correctedTimestamp = refTimestamp + offset
+                gpsObj.time = getApp().formatTime(new Date(correctedTimestamp))
+                correctedMsg = JSON.stringify(gpsObj)
+                console.log('[蓝牙] 时间修正, 原时间:', msg.substring(0, 80))
+              }
+            }
+          } catch (e) { /* 非 JSON，保持原样 */ }
+
           const now = getApp().formatTime()
-          const displayResult = that._parseDisplay(msg)
+          const displayResult = that._parseDisplay(correctedMsg)
           const newItem = {
-            text: msg,
+            text: correctedMsg,
             time: now.substring(11, 19),
             displayParts: displayResult,
             bgColor: that._randomPastel()  // 随机浅色背景
@@ -444,7 +462,7 @@ Page({
           const trimmedList = newList.length > 200 ? newList.slice(0, 200) : newList
           if (that.data.isCenterUploading) {
             // 上报模式：直接推入上传队列，不缓存
-            that.data.gpsQueue.push(msg)
+            that.data.gpsQueue.push(correctedMsg)
             that.setData({ gpsQueue: that.data.gpsQueue })
             that._setReceivedList(trimmedList)
             if (!that.data.uploading) {
@@ -452,7 +470,7 @@ Page({
             }
           } else {
             // 暂停模式：存入本地缓存
-            const newCache = that.data.cacheQueue.concat([msg])
+            const newCache = that.data.cacheQueue.concat([correctedMsg])
             that.setData({
               cacheQueue: newCache,
               cacheCount: newCache.length
@@ -798,8 +816,6 @@ Page({
       const deviceId = parts[1]
       const lorastr = infoStr
       const logTime = getApp().formatTime()
-      // 时间修正：若 gpsData.time 早于 2025 年，则用设备时间偏差重新计算
-      
       const postData = {
         time: logTime,
         action: "insertlog",
