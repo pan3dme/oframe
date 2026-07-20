@@ -127,9 +127,10 @@ void meshCmdInfomsg(String rxValue) {
   if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
     int type = docCom["value"].as<int>();
     String targetId = docCom["deviceId"].as<String>();
-    if (type == 1) {
-      addTargetId(targetId);
-    }
+    // if (type == 5) {
+    //   addTargetId(targetId);
+    // }
+    addTargetId(rxValue);
   }
   // {"cmd":"setfreq","value":1,"deviceId":"v4-10"}
 }
@@ -353,14 +354,24 @@ void sendDownInfo(String loraStr) {
       String deviceId = extractDeviceIdFromInfo(loraStr);
       Serial.println(deviceId);
       String dataStr;
-      if (isTargetIdExist(deviceId)) {
-        removeTargetId(deviceId);
-        Serial.println("✅标记了下发数据");
-        dataStr = String(MSG_TYPE_UP_GPS) + "|" + deviceId + "|3000";
 
+      String selectCmdStr;
+      for (int i = 0; i < targetIdCount; i++) {
+        deserializeJson(docCom, targetIdList[i]);
+        if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
+
+          String targetId = docCom["deviceId"].as<String>();
+          selectCmdStr = targetIdList[i];
+        }
+      }
+      if (selectCmdStr.length() > 0) {
+        Serial.print("✅标记了下发数据");
+        Serial.println(selectCmdStr);
+        removeTargetId(selectCmdStr);
+        int type = docCom["value"].as<int>();
+        dataStr = String(type) + "|" + deviceId + "|3000";
       } else {
         delay(2000);  //如果普通对时就延时2秒，优先指令下载
-
         dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceId;
         dataStr += "|" + getCurrentTime(true);
       }
@@ -460,14 +471,8 @@ void loop() {
   // 超过10分钟的周期才上报，不要流量溢出
   if ((lastUpSelfTm) < millis()) {
     lastUpSelfTm = millis() + (30 * 60 * 1000);
-
-
     // 测试电量
-  
     batterystr = readBatteryEndStr(deviceName);
- 
-
-
     String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, "0", "0");
