@@ -335,23 +335,12 @@ void setup() {
   Serial.println(batterystr);
 }
 unsigned long num6000 = 10000;  //暂时提前10秒开机
+bool sendFlagType=false;
 // ==================== 主循环 ====================
 void loop() {
+
   Radio.IrqProcess();
-  if (isFristOpenGps) {
-    //还没有打开完整的GPS就上传一条大线是无效的记录，标记设备在线，
-    if (haveRightTime()) {
-      buildAndSendPacket(MSG_TYPE_TIME);
-    } else {
-      buildAndSendPacket(MSG_TYPE_GPS);
-    }
-    delay(2000);
-    Radio.Sleep();  // IrqProcess已完成，安全Sleep
-    delay(1000);
-    uint64_t sleepTime = (uint64_t)(SEND_INTERVAL_MS - num6000) * 1000ULL;
-    esp_deep_sleep(sleepTime);
-    return;
-  }
+
   if (typeindex == 3) {
     Radio.Sleep();  // IrqProcess已完成，安全Sleep
     delay(1000);
@@ -383,7 +372,13 @@ void loop() {
   if (typeindex == 0) {
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
+      if (isFristOpenGps&&!sendFlagType) {
+        //没有GPS授时就设定一次开机上报，数据基本是错误的，只做为上报链路测试
+        sendFlagType=true;
+        nextSendTime = millis() + num6000;
+      }
       unsigned long waittm = nextSendTime - millis();
+
       printTimeToString("到上报时间还有 ", nextSendTime - millis());
       // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
       if (waittm > num6000) {
@@ -392,11 +387,18 @@ void loop() {
         Serial.print("秒进入睡眠");
         delay(1000);
         uint64_t sleepTime = (uint64_t)(waittm - num6000) * 1000ULL;
-        esp_deep_sleep(sleepTime);
+        // esp_deep_sleep(sleepTime);
+        esp_sleep_enable_timer_wakeup(sleepTime);
+        Serial.println("即将进入深度睡眠...");
+        Serial.flush();
+        esp_deep_sleep_start();
+        Serial.println("我已经睡着了...");
+     
       }
     }
     if (nextSendTime < millis()) {
       typeindex = 1;
+      
       buildAndSendPacket(MSG_TYPE_TIME);
     }
   }
