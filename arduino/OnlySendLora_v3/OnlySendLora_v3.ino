@@ -148,37 +148,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     Serial.println(timeStr);
   }
 }
-
-String readBatteryEndStr() {
-  // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
-  bool isV4 = deviceName.startsWith("v4-");
-  digitalWrite(VBAT_CTRL_PIN, isV4 ? HIGH : LOW);
-  delay(100);
-
-  const int samples = 10;
-  long rawSum = 0;
-  long mvSum = 0;
-  for (int i = 0; i < samples; i++) {
-    rawSum += analogRead(VBAT_READ_PIN);
-    mvSum += analogReadMilliVolts(VBAT_READ_PIN);
-    delay(1);
-  }
-  float rawAvg = (float)rawSum / samples;
-  float mvAvg = (float)mvSum / samples;
-
-  digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
-
-  float batteryVoltage = mvAvg * 5.35 / 1000.0;
-
-  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
-                batteryVoltage);
-
-  int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 100);
-  soc = constrain(soc, 0, 100);
-  float socRatio = soc / 100.0;
-
-  return String(socRatio, 1) + "|" + String(batteryVoltage, 1);
-}
+ 
 
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
@@ -328,18 +298,10 @@ void setup() {
     Serial.print("✅不打开GPS，也就是现在只有时间");
   }
   initLora();
-  // 测试电量
-  analogReadResolution(12);
-  delay(10);
-  pinMode(VBAT_CTRL_PIN, OUTPUT);
-  delay(10);
-  digitalWrite(VBAT_CTRL_PIN, HIGH);
-  delay(10);
-  batterystr = readBatteryEndStr();
-  digitalWrite(VBAT_CTRL_PIN, LOW);
-  pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
-  Serial.print("batterystr");
-  Serial.println(batterystr);
+   
+  batterystr = readBatteryEndStr(deviceName);
+ 
+
 }
 unsigned long num6000 = 10000;  //暂时提前10秒开机
 bool sendFlagType = false;

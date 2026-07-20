@@ -440,36 +440,6 @@ void processLoraData() {
   }
 }
 
-String readBatteryEndStr() {
-  // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
-  bool isV4 = deviceName.startsWith("v4-");
-  digitalWrite(VBAT_CTRL_PIN, isV4 ? HIGH : LOW);
-  delay(100);
-
-  const int samples = 10;
-  long rawSum = 0;
-  long mvSum = 0;
-  for (int i = 0; i < samples; i++) {
-    rawSum += analogRead(VBAT_READ_PIN);
-    mvSum += analogReadMilliVolts(VBAT_READ_PIN);
-    delay(1);
-  }
-  float rawAvg = (float)rawSum / samples;
-  float mvAvg = (float)mvSum / samples;
-
-  digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
-
-  float batteryVoltage = mvAvg * 5.35 / 1000.0;
-
-  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
-                batteryVoltage);
-
-  int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 100);
-  soc = constrain(soc, 0, 100);
-  float socRatio = soc / 100.0;
-
-  return String(socRatio, 1) + "|" + String(batteryVoltage, 1);
-}
 
 // ========================= 系统初始化 =========================
 void setup() {
@@ -493,12 +463,9 @@ void loop() {
 
 
     // 测试电量
-    analogReadResolution(12);
-    pinMode(VBAT_CTRL_PIN, OUTPUT);
-    digitalWrite(VBAT_CTRL_PIN, HIGH);
-    batterystr = readBatteryEndStr();
-    digitalWrite(VBAT_CTRL_PIN, LOW);
-    pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
+  
+    batterystr = readBatteryEndStr(deviceName);
+ 
 
 
     String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;

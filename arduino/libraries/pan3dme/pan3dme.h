@@ -105,6 +105,7 @@ void setTimeFromLora(String timeStr);
 int getDevicesIdx();
 int getTotalDevices();  // 获取设备总数
 String makeDivceName();
+String readBatteryEndStr(String deviceName);
 long long mathTimeDiffmstimeFromLora(String timeStr);
 
 #endif
