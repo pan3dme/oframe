@@ -353,17 +353,20 @@ void sendDownInfo(String loraStr) {
     if (messageType == MSG_TYPE_TIME) {
       String deviceId = extractDeviceIdFromInfo(loraStr);
       Serial.println(deviceId);
-      String dataStr;
-
-      String selectCmdStr;
+      String dataStr = "";
+      String selectCmdStr = "";
       for (int i = 0; i < targetIdCount; i++) {
+        StaticJsonDocument<200> doc;
         deserializeJson(docCom, targetIdList[i]);
         if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
-
           String targetId = docCom["deviceId"].as<String>();
-          selectCmdStr = targetIdList[i];
+          if (targetId == deviceId) {  // 只处理发给当前设备的指令
+            selectCmdStr = targetIdList[i];
+            break;  // 找到第一个即停止，或改为处理所有
+          }
         }
       }
+
       if (selectCmdStr.length() > 0) {
         Serial.print("✅标记了下发数据");
         Serial.println(selectCmdStr);
@@ -372,6 +375,7 @@ void sendDownInfo(String loraStr) {
         int tm = docCom["tm"].as<int>();
         dataStr = String(type) + "|" + deviceId + "|" + tm;
       } else {
+        // TODO: 此处 delay(2000) 用于协调多中继，但会阻塞系统，后期改为非阻塞方式（millis）
         delay(2000);  //如果普通对时就延时2秒，优先指令下载
         dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceId;
         dataStr += "|" + getCurrentTime(true);

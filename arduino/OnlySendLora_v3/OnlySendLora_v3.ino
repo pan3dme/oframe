@@ -33,6 +33,9 @@ unsigned long get_send_interval_ms() {
     return roundTime;
   }
 }
+float getSlotDuration(){
+  return get_send_interval_ms()/60/1000;
+}
 
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
@@ -54,7 +57,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 
   // 2. 计算基础参数
   unsigned long mySlotOffset =
-    (unsigned long)(deviceIndex * slotDuration);  // 我在周期内的偏移量
+    (unsigned long)(deviceIndex * getSlotDuration());  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
@@ -76,7 +79,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   unsigned long seconds = (delayMillis % 60000) / 1000;
 
   Serial.printf("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
-                timeStr.c_str(), deviceIndex, slotDuration, minutes, seconds);
+                timeStr.c_str(), deviceIndex, getSlotDuration(), minutes, seconds);
 
   return millis() + delayMillis;
 }

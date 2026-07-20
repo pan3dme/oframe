@@ -76,7 +76,7 @@ extern unsigned long syncedMillis;
 
 
 const unsigned long SEND_INTERVAL_MS = 1000*60*30;  // 现在设定30分钟一次
-const float slotDuration = SEND_INTERVAL_MS/60/1000;  //秒为单位，现在设定60台设备，
+
 struct BLECallbacks
 {
   BLEServer *pServer;
