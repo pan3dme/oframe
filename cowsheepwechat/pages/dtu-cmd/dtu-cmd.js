@@ -119,6 +119,15 @@ Page({
   onQuickReport30Min() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 30 }), quickSelected: 7 })
   },
+  onQuickReport1H() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 60 }), quickSelected: 8 })
+  },
+  onQuickReport2H() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 120 }), quickSelected: 9 })
+  },
+  onQuickTrack() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 7, tm: 30 }), quickSelected: 10 })
+  },
 
   // ========== 发送指令 ==========
   onSend() {
