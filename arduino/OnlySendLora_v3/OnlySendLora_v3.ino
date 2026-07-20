@@ -23,8 +23,16 @@ int typeindex = 0;  // 0空闲 1发送中 2接收等待 3GPS搜星
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true;  //标记是否还在第一次开启GPS
+RTC_DATA_ATTR int roundTime = 0;      //默认上报周末使用系统配置，如果有接收到就按数字算新的周末
+RadioEvents_t radioEvents;                 // LoRa事件回调
 
-RadioEvents_t radioEvents;  // LoRa事件回调
+unsigned long get_send_interval_ms() {
+  if (roundTime == 0) {
+    return SEND_INTERVAL_MS;
+  } else {
+    return roundTime;
+  }
+}
 
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
@@ -130,6 +138,17 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     typeindex = 3;
     // 不在回调内操作Radio，由主循环IrqProcess结束后处理Sleep
   }
+  if (messageType == MSG_TYPE_CHANGE_ROUND && isMyDeviceInList(infoStr, deviceName)) {
+    int lastPipe = infoStr.lastIndexOf('|');
+    if (lastPipe != -1) {
+      String lastPart = infoStr.substring(lastPipe + 1);
+      int value = lastPart.toInt();
+      roundTime = value * 60 * 1000;
+    }
+  }
+
+
+
   if (messageType == MSG_TYPE_SYN_TIME) {
     int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
     String timeStr = infoStr.substring(secondPipeIndex + 1);
@@ -338,11 +357,11 @@ void loop() {
   }
   if (typeindex == 0) {
     if (nextSendTime == 0) {
-      nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
+      nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
       if (timeSynFlage) {  //接收了同步时间
         if ((nextSendTime - millis()) < num6000) {
           Serial.print("❌接收了同步时间，由于时间偏差导致又进入了上报窗口所以要跳过这个窗口将时间后羿到下一个周末");
-          nextSendTime = nextSendTime + SEND_INTERVAL_MS;
+          nextSendTime = nextSendTime + get_send_interval_ms();
         }
       }
 

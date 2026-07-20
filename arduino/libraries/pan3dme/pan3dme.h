@@ -18,7 +18,8 @@ typedef enum {
   MSG_TYPE_TIME = 2,       // 对时信息
   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
   MSG_TYPE_SYN_TIME = 4,       // 对时信息
-  MSG_TYPE_UP_GPS = 5,   //
+  MSG_TYPE_UP_GPS = 5,   //   上报GPS坐标
+  MSG_TYPE_CHANGE_ROUND = 6,   // 修改上报周期
 
   MSG_TYPE_COM = 11   // 下载指令到设备
 } MessageType_t;
@@ -74,7 +75,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 1000*60*2;  // 现在设定30分钟一次
+const unsigned long SEND_INTERVAL_MS = 1000*60*30;  // 现在设定30分钟一次
 const float slotDuration = SEND_INTERVAL_MS/60/1000;  //秒为单位，现在设定60台设备，
 struct BLECallbacks
 {

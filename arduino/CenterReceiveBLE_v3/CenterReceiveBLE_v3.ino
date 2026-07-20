@@ -369,7 +369,8 @@ void sendDownInfo(String loraStr) {
         Serial.println(selectCmdStr);
         removeTargetId(selectCmdStr);
         int type = docCom["value"].as<int>();
-        dataStr = String(type) + "|" + deviceId + "|3000";
+        int tm = docCom["tm"].as<int>();
+        dataStr = String(type) + "|" + deviceId + "|" + tm;
       } else {
         delay(2000);  //如果普通对时就延时2秒，优先指令下载
         dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceId;

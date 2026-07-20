@@ -111,13 +111,13 @@ Page({
 
   // ========== 快捷按钮 ==========
   onQuickReportGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5 }), quickSelected: 5 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 }), quickSelected: 5 })
   },
   onQuickReport5Min() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6 }), quickSelected: 6 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 5 }), quickSelected: 6 })
   },
   onQuickReport30Min() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 7 }), quickSelected: 7 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 30 }), quickSelected: 7 })
   },
 
   // ========== 发送指令 ==========
