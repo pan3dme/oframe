@@ -335,7 +335,7 @@ void setup() {
   Serial.println(batterystr);
 }
 unsigned long num6000 = 10000;  //暂时提前10秒开机
-bool sendFlagType=false;
+bool sendFlagType = false;
 // ==================== 主循环 ====================
 void loop() {
 
@@ -372,9 +372,9 @@ void loop() {
   if (typeindex == 0) {
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
-      if (isFristOpenGps&&!sendFlagType) {
+      if (isFristOpenGps && !sendFlagType) {
         //没有GPS授时就设定一次开机上报，数据基本是错误的，只做为上报链路测试
-        sendFlagType=true;
+        sendFlagType = true;
         nextSendTime = millis() + num6000;
       }
       unsigned long waittm = nextSendTime - millis();
@@ -393,13 +393,17 @@ void loop() {
         Serial.flush();
         esp_deep_sleep_start();
         Serial.println("我已经睡着了...");
-     
       }
     }
     if (nextSendTime < millis()) {
       typeindex = 1;
-      
-      buildAndSendPacket(MSG_TYPE_TIME);
+
+      if (rtcSendCount == 0 && getGpsInfoStr() != "0.00000,0.00000") {
+        //第一次并有GPS时就发送GPS
+        buildAndSendPacket(MSG_TYPE_GPS);
+      } else {
+        buildAndSendPacket(MSG_TYPE_TIME);
+      }
     }
   }
   printCurrentTime();

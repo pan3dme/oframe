@@ -30,6 +30,8 @@ String deviceCacheId[DEVICE_CACHE_MAX];
 String deviceCacheMsg[DEVICE_CACHE_MAX];
 int deviceCacheCount = 0;
 
+int rtcSendCount = 0;
+String batterystr = "";
 String deviceName = "x-x";
 
 // ========================= LoRa全局变量 =========================
@@ -438,6 +440,37 @@ void processLoraData() {
   }
 }
 
+String readBatteryEndStr() {
+  // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
+  bool isV4 = deviceName.startsWith("v4-");
+  digitalWrite(VBAT_CTRL_PIN, isV4 ? HIGH : LOW);
+  delay(100);
+
+  const int samples = 10;
+  long rawSum = 0;
+  long mvSum = 0;
+  for (int i = 0; i < samples; i++) {
+    rawSum += analogRead(VBAT_READ_PIN);
+    mvSum += analogReadMilliVolts(VBAT_READ_PIN);
+    delay(1);
+  }
+  float rawAvg = (float)rawSum / samples;
+  float mvAvg = (float)mvSum / samples;
+
+  digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
+
+  float batteryVoltage = mvAvg * 5.35 / 1000.0;
+
+  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
+                batteryVoltage);
+
+  int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 100);
+  soc = constrain(soc, 0, 100);
+  float socRatio = soc / 100.0;
+
+  return String(socRatio, 1) + "|" + String(batteryVoltage, 1);
+}
+
 // ========================= 系统初始化 =========================
 void setup() {
   Serial.begin(115200);
@@ -451,15 +484,26 @@ void setup() {
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-unsigned long lastUpSelfTm = (30*60*1000) / 2;
+unsigned long lastUpSelfTm = (30 * 60 * 1000) / 2;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
   if ((lastUpSelfTm) < millis()) {
-    lastUpSelfTm = millis() + (30*60*1000);
+    lastUpSelfTm = millis() + (30 * 60 * 1000);
 
-    sendLoraInfoUseDtu(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|1.0|3.7",
-                       "0", "0");
+
+    // 测试电量
+    analogReadResolution(12);
+    pinMode(VBAT_CTRL_PIN, OUTPUT);
+    digitalWrite(VBAT_CTRL_PIN, HIGH);
+    batterystr = readBatteryEndStr();
+    digitalWrite(VBAT_CTRL_PIN, LOW);
+    pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
+
+
+    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
+    dataStr += "|" + String(rtcSendCount++);
+    sendLoraInfoUseDtu(dataStr, "0", "0");
   }
 
   // BLE数据同步发送
