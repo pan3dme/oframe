@@ -408,6 +408,7 @@ String readBatteryEndStr(String deviceName) {
     float socRatio = soc / 100.0;
 
     String outStr=String(socRatio, 1) + "|" + String(batteryVoltage, 1);
+    Serial.print("电量信息：");
     Serial.println(outStr);
 
     return outStr;

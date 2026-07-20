@@ -148,7 +148,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     Serial.println(timeStr);
   }
 }
- 
+
 
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
@@ -297,11 +297,9 @@ void setup() {
   } else {
     Serial.print("✅不打开GPS，也就是现在只有时间");
   }
-  initLora();
-   
   batterystr = readBatteryEndStr(deviceName);
- 
 
+  initLora();
 }
 unsigned long num6000 = 10000;  //暂时提前10秒开机
 bool sendFlagType = false;
@@ -365,7 +363,7 @@ void loop() {
         uint64_t sleepTime = (uint64_t)(waittm - num6000) * 1000ULL;
         // esp_deep_sleep(sleepTime);
         esp_sleep_enable_timer_wakeup(sleepTime);
-        Serial.println("即将进入深度睡眠...");
+        Serial.println("--->即将进入深度睡眠...");
         Serial.flush();
         esp_deep_sleep_start();
         Serial.println("我已经睡着了...");
