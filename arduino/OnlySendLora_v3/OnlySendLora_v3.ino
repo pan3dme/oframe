@@ -15,6 +15,8 @@ int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
+bool timeSynFlage = false;
+
 String batterystr = "";
 
 int typeindex = 0;  // 0空闲 1发送中 2接收等待 3GPS搜星
@@ -135,10 +137,14 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 
     if (!haveRightTime()) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
-      setTimeFromLora(timeStr);
     } else {
-      Serial.print("✅ 收到对时信息: ");
+      long long diff_ms = mathTimeDiffmstimeFromLora(timeStr);
+      Serial.print("✅ 收到对时信息: 和本机时间差 ");
+      Serial.print(diff_ms);
+      Serial.print("毫秒 ");
     }
+    timeSynFlage = true;
+    setTimeFromLora(timeStr);
     Serial.println(timeStr);
   }
 }
@@ -198,14 +204,15 @@ void buildAndSendPacket(int packetType) {
   Radio.Send((uint8_t *)sendData, strlen(sendData));
   delay(100);
 }
-unsigned long finishTime = 0;
+//结果接收窗口
+unsigned long inRxEndTime = 0;
 // ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
   // Radio.Sleep();
   Serial.print("✅ 发送完成");
   if (typeindex == 1) {
     Serial.println("定时上报信息");
-    finishTime = millis() + 5000;
+    inRxEndTime = millis() + 5000;  //5秒后结束接收窗口
     typeindex = 2;
     Radio.Rx(0);
   } else if (typeindex == 3) {
@@ -357,7 +364,7 @@ void loop() {
   if (typeindex == 2) {
     delay(100);
     Serial.print(".");
-    if (finishTime < millis()) {
+    if (inRxEndTime < millis()) {
       // 回到普通模式，准备可以休眠
       nextSendTime = 0;
       typeindex = 0;
@@ -372,6 +379,13 @@ void loop() {
   if (typeindex == 0) {
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(SEND_INTERVAL_MS / 1000);
+      if (timeSynFlage) {  //接收了同步时间
+        if ((nextSendTime - millis()) < num6000) {
+          Serial.print("❌接收了同步时间，由于时间偏差导致又进入了上报窗口所以要跳过这个窗口将时间后羿到下一个周末");
+          nextSendTime = nextSendTime + SEND_INTERVAL_MS;
+        }
+      }
+
       if (isFristOpenGps && !sendFlagType) {
         //没有GPS授时就设定一次开机上报，数据基本是错误的，只做为上报链路测试
         sendFlagType = true;
