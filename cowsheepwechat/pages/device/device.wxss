@@ -306,6 +306,31 @@ page {
   font-weight: 600;
   color: #333;
   margin-bottom: 8rpx;
+  display: flex;
+  align-items: center;
+}
+
+.item-type-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  margin-left: 8rpx;
+  flex-shrink: 0;
+}
+
+.item-type-dot-gps {
+  background: #07c160;
+  box-shadow: 0 0 8rpx rgba(7, 193, 96, 0.5);
+}
+
+.item-type-icon {
+  font-size: 24rpx;
+  margin-left: 6rpx;
+  align-self: center;
 }
 
 .item-meta {

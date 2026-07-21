@@ -72,24 +72,40 @@ Page({
         let displayTime = item.rawTime
         let displayDate = item.date
         let displayTimePart = item.time_part
+        let lastRecordType = ''  // 'gps' | 'time' | ''
 
         const deviceTime = new Date(item.rawTime || '').getTime()
         const lotTime = (lotRec && lotRec.rawTime) ? new Date(lotRec.rawTime).getTime() : NaN
         const syncTime = (syncInfo && syncInfo.rawTime) ? new Date(syncInfo.rawTime).getTime() : NaN
 
         let newestTime = isNaN(deviceTime) ? 0 : deviceTime
+        let newestSource = 'device'
 
         if (!isNaN(lotTime) && lotTime > newestTime) {
           newestTime = lotTime
           displayTime = lotRec.rawTime
           displayDate = lotRec.date
           displayTimePart = lotRec.time_part
+          newestSource = 'lot'
         }
         if (!isNaN(syncTime) && syncTime > newestTime) {
           newestTime = syncTime
           displayTime = syncInfo.rawTime
           displayDate = syncInfo.date
           displayTimePart = syncInfo.time_part
+          newestSource = 'sync'
+        }
+
+        // 根据最新数据来源判断最后记录类型
+        if (newestSource === 'lot' && lotRec) {
+          // LOT表的 lorastr 首段为类型编号：1=GPS, 2=对时
+          const lorastr = lotRec.lorastr || ''
+          const typePart = lorastr.split('|')[0]
+          if (typePart === '1') lastRecordType = 'gps'
+          else if (typePart === '2') lastRecordType = 'time'
+        } else if (newestSource === 'sync') {
+          // 同步时间表记录 = 对时
+          lastRecordType = 'time'
         }
 
         const timeInfo = this._calcRelativeTime(displayTime)
@@ -102,7 +118,8 @@ Page({
           bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
           relativeTime: timeInfo.text,
           timeColor: timeInfo.color,
-          timeBgColor: timeInfo.bgColor
+          timeBgColor: timeInfo.bgColor,
+          lastRecordType
         }
       })
 
