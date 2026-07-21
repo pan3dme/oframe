@@ -469,7 +469,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceLogbyId',
-        info: { limit: 2, deviceId: targetDeviceId, curdate: todayStr },
+        info: { limit: 2, deviceId: targetDeviceId },
         time: getApp().formatTime()
       },
       success: (res) => {

@@ -165,8 +165,8 @@ Page({
         action: 'getDeviceLogbyId',
         info: {
           limit: 2,
-          deviceId: targetDeviceId,
-          curdate: today
+          deviceId: targetDeviceId
+ 
         },
         time: getApp().formatTime()
       },

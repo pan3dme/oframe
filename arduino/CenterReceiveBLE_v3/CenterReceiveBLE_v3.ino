@@ -87,7 +87,18 @@ void addTargetId(String id) {
     Serial.println("❌ targetId 列表已满！");
   }
 }
-
+void removeTargetByDeviceId(String deviceId) {
+  for (int i = 0; i < targetIdCount; i++) {
+    StaticJsonDocument<200> doc;
+    deserializeJson(docCom, targetIdList[i]);
+    if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
+      String targetId = docCom["deviceId"].as<String>();
+      if (targetId == deviceId) {  // 只处理发给当前设备的指令
+        removeTargetId(targetIdList[i]);
+      }
+    }
+  }
+}
 // 删除指定的 targetId
 void removeTargetId(String id) {
   for (int i = 0; i < targetIdCount; i++) {
@@ -126,9 +137,10 @@ void meshCmdInfomsg(String rxValue) {
   }
   if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
     int type = docCom["value"].as<int>();
+    //先移除原来对应设备的
+    removeTargetByDeviceId(docCom["deviceId"].as<String>());
     addTargetId(rxValue);
   }
- 
 }
 
 // BLE特征值写入回调（解析JSON指令）
@@ -216,7 +228,7 @@ void initRadio() {
   RadioEvents.RxError = OnRxError;
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
-  initPanRadio(&RadioEvents,TX_POWER);
+  initPanRadio(&RadioEvents, TX_POWER);
   Radio.Rx(0);
 }
 
