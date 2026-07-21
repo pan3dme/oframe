@@ -126,13 +126,9 @@ void meshCmdInfomsg(String rxValue) {
   }
   if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
     int type = docCom["value"].as<int>();
-    String targetId = docCom["deviceId"].as<String>();
-    // if (type == 5) {
-    //   addTargetId(targetId);
-    // }
     addTargetId(rxValue);
   }
-  // {"cmd":"setfreq","value":1,"deviceId":"v4-10"}
+ 
 }
 
 // BLE特征值写入回调（解析JSON指令）
@@ -195,6 +191,7 @@ void updateDeviceCache(String deviceId, String msgJson) {
   }
   if (deviceCacheCount < DEVICE_CACHE_MAX) {
     deviceCacheId[deviceCacheCount] = deviceId;
+    deviceCacheId[deviceCacheCount] = deviceId;
     deviceCacheMsg[deviceCacheCount] = msgJson;
     deviceCacheCount++;
   }
@@ -219,7 +216,7 @@ void initRadio() {
   RadioEvents.RxError = OnRxError;
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
-  initPanRadio(&RadioEvents);
+  initPanRadio(&RadioEvents,TX_POWER);
   Radio.Rx(0);
 }
 

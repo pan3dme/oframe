@@ -113,17 +113,8 @@ Page({
   onQuickReportGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 }), quickSelected: 5 })
   },
-  onQuickReport5Min() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 5 }), quickSelected: 6 })
-  },
   onQuickReport30Min() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 30 }), quickSelected: 7 })
-  },
-  onQuickReport1H() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 60 }), quickSelected: 8 })
-  },
-  onQuickReport2H() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 120 }), quickSelected: 9 })
   },
   onQuickTrack() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 10 }), quickSelected: 10 })

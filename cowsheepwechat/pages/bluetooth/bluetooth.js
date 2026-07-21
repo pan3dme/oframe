@@ -954,21 +954,9 @@ Page({
   onQuickReportGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 }), cmdQuickSelected: 5 })
   },
-  // 快捷填充：5分钟上报
-  onQuickReport5Min() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 5 }), cmdQuickSelected: 6 })
-  },
   // 快捷填充：30分钟上报
   onQuickReport30Min() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 30 }), cmdQuickSelected: 7 })
-  },
-  // 快捷填充：1小时上报
-  onQuickReport1H() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 60 }), cmdQuickSelected: 8 })
-  },
-  // 快捷填充：2小时上报
-  onQuickReport2H() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 120 }), cmdQuickSelected: 9 })
   },
   // 快捷填充：持续跟踪
   onQuickTrack() {

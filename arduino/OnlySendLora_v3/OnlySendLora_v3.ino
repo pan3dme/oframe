@@ -93,7 +93,13 @@ void initLora() {
   radioEvents.RxDone = OnRxDone;
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
-  initPanRadio(&radioEvents);
+
+  bool isV4 = deviceName.startsWith("v4-");
+  if (isV4 && rtcSendCount % 2 == 0) {
+    initPanRadio(&radioEvents, 28);
+  } else {
+    initPanRadio(&radioEvents, TX_POWER);
+  }
 }
 void OnRxTimeout(void) {
   Serial.println("⚠️ Radio接收超时!");
@@ -344,12 +350,14 @@ void loop() {
     Serial.print("-");
     Serial.println(gpsWorkTime);
     Radio.Sleep();  // IrqProcess已完成，安全Sleep
+    showOLED();
     delay(1000);
     Serial.print("获取GPS");
     printCurrentTime();
     meshGpsInfoFun(false);
     buildAndSendPacket(MSG_TYPE_GPS);
     delay(2000);  //上报LORA需要2秒钟间隔
+    hideOLED();
     Radio.Sleep();
     if ((millis() - gpsWorkStat) > gpsWorkTime) {
       Serial.println("结束GPS上报");
@@ -403,6 +411,8 @@ void loop() {
         Serial.print("距离上报时间超过 ");
         Serial.print(num6000 / 1000);
         Serial.print("秒进入睡眠");
+
+        hideOLED();
         delay(1000);
         uint64_t sleepTime = (uint64_t)(waittm - num6000) * 1000ULL;
         // esp_deep_sleep(sleepTime);

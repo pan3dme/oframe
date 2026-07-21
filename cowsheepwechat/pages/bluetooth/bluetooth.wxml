@@ -58,12 +58,7 @@
           <view class="cmd-quick-label">快捷指令</view>
           <view class="cmd-quick-row">
             <button class="cmd-quick-btn {{cmdQuickSelected === 5 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 6 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport5Min">⏱️ 5分钟上报</button>
             <button class="cmd-quick-btn {{cmdQuickSelected === 7 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport30Min">⏱️ 30分钟上报</button>
-          </view>
-          <view class="cmd-quick-row">
-            <button class="cmd-quick-btn {{cmdQuickSelected === 8 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport1H">🕐 1小时上报</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 9 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport2H">🕑 2小时上报</button>
             <button class="cmd-quick-btn {{cmdQuickSelected === 10 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickTrack">🛰️ 持续跟踪</button>
           </view>
         </block>

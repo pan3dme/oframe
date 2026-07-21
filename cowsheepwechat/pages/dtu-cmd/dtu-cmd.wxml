@@ -28,12 +28,7 @@
     <view class="quick-label">快捷指令</view>
     <view class="quick-row">
       <button class="quick-btn {{quickSelected === 5 ? 'quick-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
-      <button class="quick-btn {{quickSelected === 6 ? 'quick-active' : ''}}" bindtap="onQuickReport5Min">⏱️ 5分钟上报</button>
       <button class="quick-btn {{quickSelected === 7 ? 'quick-active' : ''}}" bindtap="onQuickReport30Min">⏱️ 30分钟上报</button>
-    </view>
-    <view class="quick-row">
-      <button class="quick-btn {{quickSelected === 8 ? 'quick-active' : ''}}" bindtap="onQuickReport1H">🕐 1小时上报</button>
-      <button class="quick-btn {{quickSelected === 9 ? 'quick-active' : ''}}" bindtap="onQuickReport2H">🕑 2小时上报</button>
       <button class="quick-btn {{quickSelected === 10 ? 'quick-active' : ''}}" bindtap="onQuickTrack">🛰️ 持续跟踪</button>
     </view>
   </view>
