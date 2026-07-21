@@ -56,7 +56,7 @@ extern unsigned long syncedMillis;
 #define LORA_SF 12          // 扩频因子
 #define LORA_CR 1           // 纠错率
 #define PREAMBLE_LENGTH 8   // 前导码
-#define BUFFER_SIZE 60      // 数据缓冲区
+#define BUFFER_SIZE 48      // 数据缓冲区
 #define LORA_SYMBOL_TIMEOUT 0
 
 // ======================== BLE 配置 =======================
@@ -75,7 +75,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 1000*60*5;  // 现在设定30分钟一次
+const unsigned long SEND_INTERVAL_MS = 1000*60*30;  // 现在设定30分钟一次
 
 struct BLECallbacks
 {

@@ -91,6 +91,7 @@ void hideOLED() {
 void showOLED() {
   initFinish = false;
   initOLED();
+  initOLED();
 }
 
 void initPanGPS() {

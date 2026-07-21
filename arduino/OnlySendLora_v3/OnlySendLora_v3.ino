@@ -19,6 +19,8 @@ bool timeSynFlage = false;
 
 String batterystr = "";
 
+unsigned long gpsWorkTime = 0;
+unsigned long gpsWorkStat = 0;
 int typeindex = 0;  // 0空闲 1发送中 2接收等待 3GPS搜星
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
@@ -139,7 +141,13 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (messageType == MSG_TYPE_UP_GPS && isMyDeviceInList(infoStr, deviceName)) {
     Serial.println("✅是当前设备，标记GPS搜星");
     typeindex = 3;
-    // 不在回调内操作Radio，由主循环IrqProcess结束后处理Sleep
+    int lastPipe = infoStr.lastIndexOf('|');
+    if (lastPipe != -1) {
+      String lastPart = infoStr.substring(lastPipe + 1);
+      int value = lastPart.toInt();
+      gpsWorkStat = millis();
+      gpsWorkTime = value * 60 * 1000;
+    }
   }
   if (messageType == MSG_TYPE_CHANGE_ROUND && isMyDeviceInList(infoStr, deviceName)) {
     int lastPipe = infoStr.lastIndexOf('|');
@@ -230,8 +238,10 @@ void printTimeToString(String str, unsigned long ms) {
   Serial.print(remMs);
   Serial.println("毫秒");
 }
-void meshGpsInfoFun() {
-  initPanGPS();
+void meshGpsInfoFun(bool closeGps = true) {
+  if (!getGpsStatus()) {
+    initPanGPS();
+  }
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
   while (true) {
@@ -272,11 +282,11 @@ void meshGpsInfoFun() {
     }
     delay(1000);
   }
-
   Serial.println(getGpsInfoStr());
-  delay(1000);
-  setGpsEnable(false);
-  delay(1000);
+  if (closeGps) {
+    setGpsEnable(false);
+  }
+  delay(10);
 }
 String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
 
@@ -329,16 +339,30 @@ void loop() {
   Radio.IrqProcess();
 
   if (typeindex == 3) {
+    Serial.print("gps持续准备上报位置:");
+    Serial.print(millis() - gpsWorkStat);
+    Serial.print("-");
+    Serial.println(gpsWorkTime);
     Radio.Sleep();  // IrqProcess已完成，安全Sleep
     delay(1000);
     Serial.print("获取GPS");
     printCurrentTime();
-    meshGpsInfoFun();
+    meshGpsInfoFun(false);
     buildAndSendPacket(MSG_TYPE_GPS);
-    delay(2000);
+    delay(2000);  //上报LORA需要2秒钟间隔
     Radio.Sleep();
-    nextSendTime = 0;
-    typeindex = 0;
+    if ((millis() - gpsWorkStat) > gpsWorkTime) {
+      Serial.println("结束GPS上报");
+      if (getGpsStatus()) {
+        setGpsEnable(false);
+        delay(100);
+      }
+      nextSendTime = 0;
+      typeindex = 0;
+    } else {
+      printTimeToString("延时1分钟再上报GPS信息 还会持续", gpsWorkTime - (millis() - gpsWorkStat));
+      delay(60 * 1000);  //延时1分钟
+    }
     return;
   }
   if (typeindex == 2) {
