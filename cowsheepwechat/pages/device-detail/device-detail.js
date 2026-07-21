@@ -5,6 +5,9 @@ const dataCache = require('../../config/data-cache.js')
 const { compressImage } = require('../../utils/image-compress.js')
 const { uploadToOSS } = require('../../utils/oss-upload.js')
 
+// DTU 指令转发云函数地址
+const FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
+
 Page({
   data: {
     deviceId: '',
@@ -438,6 +441,175 @@ Page({
     wx.navigateTo({
       url: '/pages/battery-analysis/battery-analysis?deviceId=' + encodeURIComponent(deviceId)
     })
+  },
+
+  // ========== 获取定位（快捷DTU指令） ==========
+  onGetLocationTap() {
+    const deviceId = this.data.deviceId
+    if (!deviceId) return
+    const cmdText = JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 })
+    const deviceInfo = this.data.deviceInfo
+
+    // 设备已有密钥，直接发送
+    if (deviceInfo && deviceInfo.ProductKey && deviceInfo.DeviceName) {
+      this._doSendDTU(deviceInfo, deviceId, cmdText)
+    } else {
+      // 设备缺少密钥，通过 getDeviceLogbyId 查找上传设备获取密钥
+      wx.showLoading({ title: '查询上传设备...' })
+      this._queryUploadDevice(deviceId, cmdText)
+    }
+  },
+
+  // 通过 getDeviceLogbyId 查询目标设备的最新记录，找到信号最佳的上传设备以获取密钥
+  _queryUploadDevice(targetDeviceId, cmdText) {
+    const that = this
+    const todayStr = this._getTodayStr()
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'getDeviceLogbyId',
+        info: { limit: 2, deviceId: targetDeviceId, curdate: todayStr },
+        time: getApp().formatTime()
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('[获取定位] getDeviceLogbyId 返回:', JSON.stringify(res.data))
+
+        let rawList = []
+        if (res.data && res.data.data && Array.isArray(res.data.data)) {
+          rawList = res.data.data
+        } else if (Array.isArray(res.data)) {
+          rawList = res.data
+        }
+
+        if (rawList.length === 0) {
+          wx.showToast({ title: '该设备当天无记录，无法获取上传设备', icon: 'none', duration: 2500 })
+          return
+        }
+
+        const parsedRecords = rawList.map(record => {
+          const attr = {}
+          if (record.attributes) {
+            record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+          }
+          if (record.primaryKey) {
+            record.primaryKey.forEach(item => { attr[item.name] = item.value })
+          }
+          const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
+          const rssi = this._parseRssi(attr.rssi || attr.RSSI || record.rssi || record.RSSI)
+          return { upDateDevice, rssi }
+        }).filter(r => r.upDateDevice && r.upDateDevice !== '-')
+
+        if (parsedRecords.length === 0) {
+          wx.showToast({ title: '记录中未找到有效上传设备', icon: 'none', duration: 2500 })
+          return
+        }
+
+        const deviceBestRssi = {}
+        const deviceCount = {}
+        parsedRecords.forEach(r => {
+          if (!deviceBestRssi[r.upDateDevice] || r.rssi > deviceBestRssi[r.upDateDevice]) {
+            deviceBestRssi[r.upDateDevice] = r.rssi
+          }
+          deviceCount[r.upDateDevice] = (deviceCount[r.upDateDevice] || 0) + 1
+        })
+
+        let bestDevice = null
+        let bestRssi = 999
+        let bestCount = 0
+        Object.keys(deviceBestRssi).forEach(devId => {
+          const r = deviceBestRssi[devId]
+          const c = deviceCount[devId]
+          const hasRssi = r < 999
+          if (hasRssi) {
+            if (r < bestRssi || (r === bestRssi && c > bestCount)) {
+              bestRssi = r; bestCount = c; bestDevice = devId
+            }
+          } else if (bestRssi >= 999) {
+            if (c > bestCount) { bestCount = c; bestDevice = devId }
+          }
+        })
+
+        console.log('[获取定位] 候选上传设备:', JSON.stringify(deviceBestRssi),
+          '出现次数:', JSON.stringify(deviceCount),
+          '最佳设备:', bestDevice, 'RSSI:', bestRssi)
+
+        // 从设备缓存中查找上传设备
+        dataCache.getDeviceList((deviceData) => {
+          const allDevices = (deviceData && deviceData.recordList) ? deviceData.recordList : []
+          const uploadDevice = allDevices.find(d => d.deviceId === bestDevice)
+          if (!uploadDevice) {
+            wx.showToast({ title: '上传设备 ' + bestDevice + ' 不在设备列表中', icon: 'none', duration: 2500 })
+            return
+          }
+          if (!uploadDevice.ProductKey || !uploadDevice.DeviceName) {
+            wx.showToast({ title: '上传设备 ' + bestDevice + ' 也缺少密钥', icon: 'none', duration: 2500 })
+            return
+          }
+          const rssiInfo = bestRssi > -999 ? ' RSSI:' + bestRssi : ''
+          that._doSendDTU(uploadDevice, targetDeviceId, cmdText)
+        }, false)
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('[获取定位] getDeviceLogbyId 失败:', err)
+        wx.showToast({ title: '查询上传设备失败', icon: 'error' })
+      }
+    })
+  },
+
+  // 实际执行DTU发送
+  _doSendDTU(credDevice, targetDeviceId, cmdText) {
+    let msgObj
+    try {
+      msgObj = JSON.parse(cmdText)
+    } catch (e) {
+      msgObj = { text: cmdText }
+    }
+    msgObj.deviceId = targetDeviceId
+    const finalMsg = JSON.stringify(msgObj)
+
+    const payload = {
+      action: 'com',
+      deviceName: credDevice.DeviceName,
+      productKey: credDevice.ProductKey,
+      msg: finalMsg,
+      timestamp: Date.now()
+    }
+
+    console.log('[获取定位] 发送DTU:', JSON.stringify(payload))
+    wx.showLoading({ title: '发送定位指令...' })
+
+    wx.request({
+      url: FC_URL,
+      method: 'POST',
+      data: payload,
+      timeout: 10000,
+      success: (res) => {
+        wx.hideLoading()
+        console.log('[获取定位] DTU返回:', JSON.stringify(res.data))
+        wx.showToast({ title: '定位指令已发送 → ' + targetDeviceId, icon: 'success' })
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('[获取定位] DTU发送失败:', err)
+        wx.showToast({ title: '发送失败', icon: 'error' })
+      }
+    })
+  },
+
+  // 解析 RSSI
+  _parseRssi(val) {
+    if (val === undefined || val === null || val === '' || val === '-') return -999
+    const n = parseInt(val, 10)
+    return isNaN(n) ? -999 : n
+  },
+
+  // 获取今天日期字符串 yyyy-MM-dd
+  _getTodayStr() {
+    const d = new Date()
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
   },
 
   // 点击设备图片放大预览

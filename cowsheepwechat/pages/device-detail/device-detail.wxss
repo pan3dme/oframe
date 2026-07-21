@@ -117,6 +117,26 @@ page {
   font-size: 26rpx;
   line-height: 1;
 }
+.get-location-link {
+  flex-shrink: 0;
+  margin-left: 8rpx;
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.2s;
+}
+.get-location-link:active {
+  transform: scale(0.85);
+  background: rgba(255, 255, 255, 0.4);
+}
+.get-location-icon {
+  font-size: 26rpx;
+  line-height: 1;
+}
 .battery-link {
   flex-shrink: 0;
   margin-left: 8rpx;

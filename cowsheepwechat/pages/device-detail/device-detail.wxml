@@ -43,6 +43,9 @@
             <view class="send-cmd-link" bindtap="onSendCmdTap">
               <text class="send-cmd-icon">📤</text>
             </view>
+            <view class="get-location-link" bindtap="onGetLocationTap">
+              <text class="get-location-icon">📍</text>
+            </view>
             <view class="battery-link" bindtap="onBatteryAnalysisTap">
               <text class="battery-icon">🔋</text>
             </view>
