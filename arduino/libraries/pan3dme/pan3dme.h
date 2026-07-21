@@ -75,7 +75,7 @@ extern unsigned long syncedMillis;
 
 
 
-const unsigned long SEND_INTERVAL_MS = 1000*60*30;  // 现在设定30分钟一次
+const unsigned long SEND_INTERVAL_MS = 1000*60*5;  // 现在设定30分钟一次
 
 struct BLECallbacks
 {

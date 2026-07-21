@@ -23,7 +23,7 @@ int typeindex = 0;  // 0空闲 1发送中 2接收等待 3GPS搜星
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true;  //标记是否还在第一次开启GPS
-RTC_DATA_ATTR int roundTime = 0;      //默认上报周末使用系统配置，如果有接收到就按数字算新的周末
+RTC_DATA_ATTR int roundTime = 0;           //默认上报周末使用系统配置，如果有接收到就按数字算新的周末
 RadioEvents_t radioEvents;                 // LoRa事件回调
 
 unsigned long get_send_interval_ms() {
@@ -33,8 +33,8 @@ unsigned long get_send_interval_ms() {
     return roundTime;
   }
 }
-float getSlotDuration(){
-  return get_send_interval_ms()/60/1000;
+float getSlotDuration() {
+  return get_send_interval_ms() / 60 / 1000;
 }
 
 // ==================== 计算下次发送时间 (修正版) ====================
@@ -161,9 +161,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
     } else {
       long long diff_ms = mathTimeDiffmstimeFromLora(timeStr);
-      Serial.print("✅ 收到对时信息: 和本机时间差 ");
-      Serial.print(diff_ms);
-      Serial.print("毫秒 ");
+      printTimeToString("✅ 收到对时信息  : 和本机时间差", diff_ms);
     }
     timeSynFlage = true;
     setTimeFromLora(timeStr);
@@ -363,7 +361,7 @@ void loop() {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
       if (timeSynFlage) {  //接收了同步时间
         if ((nextSendTime - millis()) < num6000) {
-          Serial.print("❌接收了同步时间，由于时间偏差导致又进入了上报窗口所以要跳过这个窗口将时间后羿到下一个周末");
+          Serial.print("❌接收了同步时间，由于时间偏差导致又进入了上报窗口所以要跳过这个窗口将时间后移到下一个周末");
           nextSendTime = nextSendTime + get_send_interval_ms();
         }
       }

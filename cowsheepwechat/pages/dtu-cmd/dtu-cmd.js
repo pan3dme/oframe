@@ -126,7 +126,7 @@ Page({
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 120 }), quickSelected: 9 })
   },
   onQuickTrack() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 7, tm: 30 }), quickSelected: 10 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 30 }), quickSelected: 10 })
   },
 
   // ========== 发送指令 ==========
