@@ -25,7 +25,6 @@ Page({
     // 写入特征值信息（连接成功后缓存）
     writeDeviceInfo: null,
     // 发送指令弹窗
-    showCmdPanel: false,
     showCmdModal: false,
     cmdMode: '',
     cmdDeviceRawList: [],      // 设备原始名称列表（发送时使用）
@@ -899,58 +898,37 @@ Page({
     })
   },
 
-  // ========== 发送指令面板 + 弹窗 ==========
-  toggleCmdPanel() {
-    this.setData({ showCmdPanel: !this.data.showCmdPanel })
+  // ========== 发送指令弹窗 ==========
+  openCmdModalDirectly() {
+    this._openCmdModalWithPreset('', 'custom')
   },
 
-  // 打开指令弹窗，可选预填指令文本（通过BLE获取设备列表）
+  // 打开指令弹窗，以缓存中所有设备作为设备列表
   _openCmdModalWithPreset(presetText, mode) {
-    // 先打开弹窗，显示加载中
-    this.setData({
-      showCmdModal: true,
-      cmdDeviceRawList: ['正在获取设备列表...'],
-      cmdDeviceList: ['正在获取设备列表...'],
-      cmdDeviceIndex: 0,
-      cmdText: presetText || '',
-      cmdMode: mode || 'custom'
-    })
-
-    // 通过 BLE 发送 getDeviceList 指令获取可发送的设备列表
-    const info = this.data.writeDeviceInfo
-    if (!info) {
-      console.warn('[蓝牙] 无写入特征值，使用当前设备作为默认')
-      const rawList = [this.data.connectedDeviceName || '未知设备']
-      this._resolveDeviceDisplayNames(rawList, (displayList) => {
-        this.setData({
+    const that = this
+    dataCache.getDeviceList((cacheData) => {
+      const recordList = (cacheData && cacheData.recordList) ? cacheData.recordList : []
+      // 从缓存中提取所有设备 ID（去重）
+      const idSet = new Set()
+      recordList.forEach(r => {
+        if (r.deviceId && r.deviceId !== '-') idSet.add(r.deviceId)
+      })
+      let rawList = Array.from(idSet)
+      // 兜底：缓存为空时用当前连接设备
+      if (rawList.length === 0) {
+        rawList = [that.data.connectedDeviceName || '未知设备']
+      }
+      that._resolveDeviceDisplayNames(rawList, (displayList) => {
+        that.setData({
+          showCmdModal: true,
           cmdDeviceRawList: rawList,
-          cmdDeviceList: displayList
+          cmdDeviceList: displayList,
+          cmdDeviceIndex: 0,
+          cmdText: presetText || '',
+          cmdMode: mode || 'custom'
         })
       })
-      return
-    }
-
-    const that = this
-    const buffer = this.textToAb(JSON.stringify({ cmd: 'getDeviceList' }))
-    wx.writeBLECharacteristicValue({
-      deviceId: info.deviceId,
-      serviceId: info.serviceId,
-      characteristicId: info.characteristicId,
-      value: buffer,
-      success: () => {
-        console.log('[蓝牙] 已发送 getDeviceList 请求')
-      },
-      fail(err) {
-        console.error('[蓝牙] getDeviceList 发送失败:', err)
-        const rawList = [that.data.connectedDeviceName || '未知设备']
-        that._resolveDeviceDisplayNames(rawList, (displayList) => {
-          that.setData({
-            cmdDeviceRawList: rawList,
-            cmdDeviceList: displayList
-          })
-        })
-      }
-    })
+    }, false)
   },
 
   // 同步时间 — 只选设备，确定时以即时时间为准
@@ -972,39 +950,29 @@ Page({
     this.setData({ showCmdModal: false })
   },
 
-  // 快捷填充：高频 value=1
-  onQuickFreq1() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 1 }), cmdQuickSelected: 1 })
+  // 快捷填充：上报GPS
+  onQuickReportGps() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 }), cmdQuickSelected: 5 })
   },
-
-  // 快捷填充：获取GPS value=2
-  onQuickGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 2 }), cmdQuickSelected: 2 })
+  // 快捷填充：5分钟上报
+  onQuickReport5Min() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 5 }), cmdQuickSelected: 6 })
   },
-
-  // 快捷填充：获取电量 value=3
-  onQuickBattery() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 3 }), cmdQuickSelected: 3 })
+  // 快捷填充：30分钟上报
+  onQuickReport30Min() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 30 }), cmdQuickSelected: 7 })
   },
-
-  // 快捷填充：重启设备 value=4
-  onQuickReboot() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 4 }), cmdQuickSelected: 4 })
+  // 快捷填充：1小时上报
+  onQuickReport1H() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 60 }), cmdQuickSelected: 8 })
   },
-
-  // 快捷填充：开关OLED value=5
-  onQuickOLED() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5 }), cmdQuickSelected: 5 })
+  // 快捷填充：2小时上报
+  onQuickReport2H() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 120 }), cmdQuickSelected: 9 })
   },
-
-  // 快捷填充：关闭GPS value=6
-  onQuickCloseGPS() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6 }), cmdQuickSelected: 6 })
-  },
-
-  // 快捷填充：开启GPS value=7
-  onQuickOpenGPS() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 7 }), cmdQuickSelected: 7 })
+  // 快捷填充：持续跟踪
+  onQuickTrack() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 10 }), cmdQuickSelected: 10 })
   },
 
   onCmdDeviceChange(e) {

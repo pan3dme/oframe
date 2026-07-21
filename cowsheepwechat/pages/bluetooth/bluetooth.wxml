@@ -32,24 +32,8 @@
     <view class="device-card" wx:if="{{bluetoothConnected}}">
       <text class="device-bt">📡</text>
       <text class="device-name">{{connectedDeviceName}}</text>
-      <view class="device-cmd-btn" bindtap="toggleCmdPanel">
+      <view class="device-cmd-btn" bindtap="openCmdModalDirectly">
         <text>发送指令</text>
-        <text class="cmd-arrow">{{showCmdPanel ? '▼' : '▶'}}</text>
-      </view>
-    </view>
-
-    <!-- 发送指令预设面板 -->
-    <view class="cmd-panel" wx:if="{{bluetoothConnected && showCmdPanel}}">
-      <view class="cmd-card-title">📋 设备指令</view>
-      <view class="cmd-btns">
-        <button class="cmd-btn cmd-btn-time" bindtap="onPresetSyncTime">
-          <text class="cmd-btn-icon">🕐</text>
-          <text>同步时间</text>
-        </button>
-        <button class="cmd-btn cmd-btn-freq" bindtap="onPresetSetFreq">
-          <text class="cmd-btn-icon">⚡</text>
-          <text>发送指令</text>
-        </button>
       </view>
     </view>
 
@@ -70,15 +54,17 @@
         <block wx:if="{{cmdMode !== 'synctime'}}">
           <view class="cmd-label">指令内容</view>
           <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令..." bindinput="onCmdInput" auto-height maxlength="-1" />
-          <!-- 快捷填充按钮 -->
+          <!-- 快捷指令 -->
+          <view class="cmd-quick-label">快捷指令</view>
           <view class="cmd-quick-row">
-            <button class="cmd-quick-btn {{cmdQuickSelected === 1 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickFreq1">⚡ 高频</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 2 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickGps">📍 获取GPS</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 3 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickBattery">🔋 获取电量</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 4 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReboot">🔄 重启设备</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 5 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickOLED">📺 开关OLED</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 6 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickCloseGPS">🛑 关闭GPS</button>
-            <button class="cmd-quick-btn {{cmdQuickSelected === 7 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickOpenGPS">📍 开启GPS</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 5 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 6 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport5Min">⏱️ 5分钟上报</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 7 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport30Min">⏱️ 30分钟上报</button>
+          </view>
+          <view class="cmd-quick-row">
+            <button class="cmd-quick-btn {{cmdQuickSelected === 8 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport1H">🕐 1小时上报</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 9 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickReport2H">🕑 2小时上报</button>
+            <button class="cmd-quick-btn {{cmdQuickSelected === 10 ? 'cmd-quick-btn-active' : ''}}" bindtap="onQuickTrack">🛰️ 持续跟踪</button>
           </view>
         </block>
         <view class="cmd-synctime-hint" wx:else>
