@@ -95,8 +95,9 @@ void initLora() {
   radioEvents.RxError = OnRxError;
 
   bool isV4 = deviceName.startsWith("v4-");
-  if (isV4 && rtcSendCount % 2 == 0) {
+  if (isV4 && rtcSendCount % 5 == 0) {
     initPanRadio(&radioEvents, 28);
+    Serial.println("⚠️ 28dbm 发射功率");
   } else {
     initPanRadio(&radioEvents, TX_POWER);
   }
@@ -175,7 +176,9 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
     } else {
       long long diff_ms = mathTimeDiffmstimeFromLora(timeStr);
-      printTimeToString("✅ 收到对时信息  : 和本机时间差", diff_ms);
+      Serial.print("diff_ms =");
+      Serial.print(diff_ms);
+      printTimeToString("✅ 收到对时信息  : 和本机时间差",abs(diff_ms));
     }
     timeSynFlage = true;
     setTimeFromLora(timeStr);
@@ -187,7 +190,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
   String dataStr = String(packetType) + "|" + deviceName;
-  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYN_TIME) {
+  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYN_UP_TIME) {
     dataStr += "|" + getCurrentTime(true) + "|" + batterystr;
   } else if (packetType == MSG_TYPE_GPS) {
     dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
@@ -356,7 +359,13 @@ void loop() {
     printCurrentTime();
     meshGpsInfoFun(false);
     buildAndSendPacket(MSG_TYPE_GPS);
-    delay(2000);  //上报LORA需要2秒钟间隔
+    delay(2000);             //上报LORA需要2秒钟间隔
+    if (gpsWorkTime == 0) {  //如果只定位一次，那正好提交一次对时信息
+      Serial.println("上报一次必须对时信息");
+      buildAndSendPacket(MSG_TYPE_SYN_UP_TIME);
+      delay(2000);  //上报LORA需要2秒钟间隔
+    }
+
     hideOLED();
     Radio.Sleep();
     if ((millis() - gpsWorkStat) > gpsWorkTime) {

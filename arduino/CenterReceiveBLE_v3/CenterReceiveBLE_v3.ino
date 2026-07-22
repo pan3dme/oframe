@@ -356,53 +356,48 @@ void receiveDtuData() {
 // ========================= 下发指令 =========================
 void sendDownInfo(String loraStr) {
 
-  int firstPipeIndex = String(loraStr).indexOf('|');
-  if (firstPipeIndex > 0) {
-    int messageType = String(loraStr).substring(0, firstPipeIndex).toInt();
-    if (messageType == MSG_TYPE_TIME) {
-      String deviceId = extractDeviceIdFromInfo(loraStr);
-      Serial.println(deviceId);
-      String dataStr = "";
-      String selectCmdStr = "";
-      for (int i = 0; i < targetIdCount; i++) {
-        StaticJsonDocument<200> doc;
-        deserializeJson(docCom, targetIdList[i]);
-        if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
-          String targetId = docCom["deviceId"].as<String>();
-          if (targetId == deviceId) {  // 只处理发给当前设备的指令
-            selectCmdStr = targetIdList[i];
-            break;  // 找到第一个即停止，或改为处理所有
-          }
-        }
-      }
 
-      if (selectCmdStr.length() > 0) {
-        Serial.print("✅标记了下发数据");
-        Serial.println(selectCmdStr);
-        removeTargetId(selectCmdStr);
-        int type = docCom["value"].as<int>();
-        int tm = docCom["tm"].as<int>();
-        dataStr = String(type) + "|" + deviceId + "|" + tm;
-      } else {
-        // TODO: 此处 delay(2000) 用于协调多中继，但会阻塞系统，后期改为非阻塞方式（millis）
-        delay(2000);  //如果普通对时就延时2秒，优先指令下载
-        dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceId;
-        dataStr += "|" + getCurrentTime(true);
+  String deviceId = extractDeviceIdFromInfo(loraStr);
+  Serial.println(deviceId);
+  String dataStr = "";
+  String selectCmdStr = "";
+  for (int i = 0; i < targetIdCount; i++) {
+    StaticJsonDocument<200> doc;
+    deserializeJson(docCom, targetIdList[i]);
+    if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
+      String targetId = docCom["deviceId"].as<String>();
+      if (targetId == deviceId) {  // 只处理发给当前设备的指令
+        selectCmdStr = targetIdList[i];
+        break;  // 找到第一个即停止，或改为处理所有
       }
-
-      int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
-      if (len < 0 || len >= BUFFER_SIZE) {
-        Serial.println("⚠️ 数据过长，已截断");
-        sendData[BUFFER_SIZE - 1] = '\0';
-      }
-      Serial.print(getCurrentTime(true));
-      Serial.print("下发到设备：");
-      Serial.print(sendData);
-      Serial.print("len:");
-      Serial.println(strlen(sendData));
-      Radio.Send((uint8_t *)sendData, strlen(sendData));
     }
   }
+
+  if (selectCmdStr.length() > 0) {
+    Serial.print("✅标记了下发数据");
+    Serial.println(selectCmdStr);
+    removeTargetId(selectCmdStr);
+    int type = docCom["value"].as<int>();
+    int tm = docCom["tm"].as<int>();
+    dataStr = String(type) + "|" + deviceId + "|" + tm;
+  } else {
+    // TODO: 此处 delay(2000) 用于协调多中继，但会阻塞系统，后期改为非阻塞方式（millis）
+    delay(2000);  //如果普通对时就延时2秒，优先指令下载
+    dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceId;
+    dataStr += "|" + getCurrentTime(true);
+  }
+
+  int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
+  if (len < 0 || len >= BUFFER_SIZE) {
+    Serial.println("⚠️ 数据过长，已截断");
+    sendData[BUFFER_SIZE - 1] = '\0';
+  }
+  Serial.print(getCurrentTime(true));
+  Serial.print("下发到设备：");
+  Serial.print(sendData);
+  Serial.print("len:");
+  Serial.println(strlen(sendData));
+  Radio.Send((uint8_t *)sendData, strlen(sendData));
 }
 
 // ========================= 主循环处理LoRa数据 =========================
@@ -435,26 +430,25 @@ void processLoraData() {
   if (devId.length() > 0) {
     updateDeviceCache(devId, jsonData);
   }
-
-  // 2. DTU上报
-  sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
-
-  // 3. 下发回复
-  sendDownInfo(String(loraStr));
-
   // 4. LORA对时
   String infoStr(loraStr);
   int firstPipeIndex = infoStr.indexOf('|');
   if (firstPipeIndex > 0) {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
-    if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYN_TIME) {
+    // 2. DTU上报
+    sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
+    if (messageType == MSG_TYPE_TIME) {
+      sendDownInfo(String(loraStr));
+    }
+    // 3. 下发回复
+    if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYN_UP_TIME) {
       int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
       if (secondPipeIndex > 0) {
         String timeStr = infoStr.substring(secondPipeIndex + 1);
         timeStr = timeStr.substring(0, timeStr.indexOf('|'));
         Serial.print("⏰ 收到对时信息: ");
-        Serial.println(timeStr);
-        if (!haveRightTime() || messageType == MSG_TYPE_SYN_TIME) {
+        Serial.print(timeStr);
+        if (!haveRightTime() || messageType == MSG_TYPE_SYN_UP_TIME) {
           Serial.println("✅ 系统更新LORA上报的时间可能有很大误差");
           setTimeFromLora(timeStr);
         } else {

@@ -17,7 +17,9 @@ typedef enum {
   MSG_TYPE_GPS = 1,        // GPS定位信息
   MSG_TYPE_TIME = 2,       // 对时信息
   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
-  MSG_TYPE_SYN_TIME = 4,       // 对时信息
+  MSG_TYPE_SYN_TIME = 4,       // 下发对时信息
+  MSG_TYPE_SYN_UP_TIME = 7,   //   上报对时信息
+
   MSG_TYPE_UP_GPS = 5,   //   上报GPS坐标
   MSG_TYPE_CHANGE_ROUND = 6,   // 修改上报周期
 
