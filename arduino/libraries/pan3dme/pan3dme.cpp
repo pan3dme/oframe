@@ -499,7 +499,7 @@ void setTimeFromLora(String timeStr) {
 // 判断是否有有效时间
 bool hasValidTime() { return syncedEpoch > 0; }
 
-void initPanRadio(RadioEvents_t *radioEvents,int txPower) {
+void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
 
   Radio.Init(radioEvents);
   Radio.SetChannel(LORA_FREQ);

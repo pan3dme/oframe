@@ -6,24 +6,25 @@
 
 #include "HT_SSD1306Wire.h"
 #include "HT_TinyGPS++.h"
+#include "LoRaWan_APP.h"
+#include <BLE2902.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
-#include <BLE2902.h>
-#include "LoRaWan_APP.h"
-//AT+CDKEY=CF673628FFEB926BD918FBA16375615D
-// LoRa消息类型枚举
+
+// AT+CDKEY=CF673628FFEB926BD918FBA16375615D
+//  LoRa消息类型枚举
 typedef enum {
-  MSG_TYPE_GPS = 1,        // GPS定位信息
-  MSG_TYPE_TIME = 2,       // 对时信息
-  MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
-  MSG_TYPE_SYN_TIME = 4,       // 下发对时信息
-  MSG_TYPE_SYN_UP_TIME = 7,   //   上报对时信息
+  MSG_TYPE_GPS = 1,         // GPS定位信息
+  MSG_TYPE_TIME = 2,        // 对时信息
+  MSG_TYPE_BATTERY = 3,     // 电量信息（小数，如0.5、0.1）
+  MSG_TYPE_SYN_TIME = 4,    // 下发对时信息
+  MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
 
-  MSG_TYPE_UP_GPS = 5,   //   上报GPS坐标
-  MSG_TYPE_CHANGE_ROUND = 6,   // 修改上报周期
+  MSG_TYPE_UP_GPS = 5,       //   上报GPS坐标
+  MSG_TYPE_CHANGE_ROUND = 6, // 修改上报周期
 
-  MSG_TYPE_COM = 11   // 下载指令到设备
+  MSG_TYPE_COM = 11 // 下载指令到设备
 } MessageType_t;
 
 // 前向声明：在头文件中避免包含过多实现细节
@@ -37,9 +38,8 @@ extern TinyGPSPlus gps;
 extern time_t syncedEpoch;
 extern unsigned long syncedMillis;
 
-
-// ================================== 硬件引脚定义 ==================================
-// GPS模块引脚
+// ================================== 硬件引脚定义
+// ================================== GPS模块引脚
 #define VGNSS_CTRL 34 // GPS电源控制 (低电平开启)
 #if defined(WIFI_LORA_32_V3)
 #define GPS_RX_PIN 17
@@ -66,30 +66,24 @@ extern unsigned long syncedMillis;
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 //========================FEM总电源 LORA  强化========================
-//#define LORA_PA_POWER  7
-//#define LORA_PA_EN     2
-//#define LORA_PA_TX_EN  46
+// #define LORA_PA_POWER  7
+// #define LORA_PA_EN     2
+// #define LORA_PA_TX_EN  46
 
+#define VBAT_CTRL_PIN 37 // ADC_Ctrl（控制检测电路开关）
+#define VBAT_READ_PIN 1  // VBAT_Read（ADC1_CH0）
 
-#define VBAT_CTRL_PIN 37  // ADC_Ctrl（控制检测电路开关）
-#define VBAT_READ_PIN 1   // VBAT_Read（ADC1_CH0）
+const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 30; // 现在设定30分钟一次
 
-
-
-
-const unsigned long SEND_INTERVAL_MS = 1000*60*30;  // 现在设定30分钟一次
-
-struct BLECallbacks
-{
+struct BLECallbacks {
   BLEServer *pServer;
   BLECharacteristic *pCharacteristic;
 };
 
-BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks, BLECharacteristicCallbacks *charCallbacks);
+BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
+                        BLECharacteristicCallbacks *charCallbacks);
 
-
-
-bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms) ;
+bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms);
 bool haveRightTime();
 void hideOLED();
 void showOLED();
@@ -97,16 +91,16 @@ void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();
 bool isReliableGPS();
-void setGpsEnable(bool  value);
+void setGpsEnable(bool value);
 bool getGpsStatus();
 void gpsEncode(); // GPS对象
-void initPanRadio(RadioEvents_t* radioEvents,int txPower);
+void initPanRadio(RadioEvents_t *radioEvents, int txPower);
 String getGpsInfoStr();
-String getCurrentTime(bool includeMillis) ;
+String getCurrentTime(bool includeMillis);
 bool hasValidTime();
 void setTimeFromLora(String timeStr);
 int getDevicesIdx();
-int getTotalDevices();  // 获取设备总数
+int getTotalDevices(); // 获取设备总数
 String makeDivceName();
 String readBatteryEndStr(String deviceName);
 long long mathTimeDiffmstimeFromLora(String timeStr);
