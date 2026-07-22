@@ -234,7 +234,7 @@ void initRadio() {
 
 // ========================= LoRa回调 =========================
 void OnTxDone(void) {
-  Serial.println("✅下发LORA完成，回到接收模式");
+  Serial.println("下发LORA完成，回到接收模式");
   Radio.Rx(0);
 }
 void OnTxTimeout(void) {
@@ -281,7 +281,7 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
                          "\"snr\":"
                 + snr + "}"
                         "}";
-  Serial.println("上报报文：" + json);
+  // Serial.println("上报报文：" + json);
   Serial2.println(json);
 }
 // 接收 Serial2 (DTU) 数据，拆分多个拼接JSON并提取cominfo
@@ -355,10 +355,7 @@ void receiveDtuData() {
 
 // ========================= 下发指令 =========================
 void sendDownInfo(String loraStr) {
-
-
   String deviceId = extractDeviceIdFromInfo(loraStr);
-  Serial.println(deviceId);
   String dataStr = "";
   String selectCmdStr = "";
   for (int i = 0; i < targetIdCount; i++) {
@@ -393,10 +390,12 @@ void sendDownInfo(String loraStr) {
     sendData[BUFFER_SIZE - 1] = '\0';
   }
   Serial.print(getCurrentTime(true));
-  Serial.print("下发到设备：");
+  Serial.print("下发数据：");
   Serial.print(sendData);
   Serial.print("len:");
-  Serial.println(strlen(sendData));
+  Serial.print(strlen(sendData));
+  Serial.print("到");
+  Serial.println(deviceId);
   Radio.Send((uint8_t *)sendData, strlen(sendData));
 }
 
@@ -408,7 +407,7 @@ void processLoraData() {
     return;
   }
   loraReceivedFlag = false;
-
+  Serial.print("接收到的LORA ");
   Serial.println(loraStr);
 
   // 1. 构建JSON并存入队列/设备缓存
@@ -446,13 +445,13 @@ void processLoraData() {
       if (secondPipeIndex > 0) {
         String timeStr = infoStr.substring(secondPipeIndex + 1);
         timeStr = timeStr.substring(0, timeStr.indexOf('|'));
-        Serial.print("⏰ 收到对时信息: ");
-        Serial.print(timeStr);
+        // Serial.print("⏰ 收到对时信息: ");
+        // Serial.print(timeStr);
         if (!haveRightTime() || messageType == MSG_TYPE_SYN_UP_TIME) {
-          Serial.println("✅ 系统更新LORA上报的时间可能有很大误差");
+          // Serial.println("✅ 系统更新LORA上报的时间可能有很大误差");
           setTimeFromLora(timeStr);
         } else {
-          Serial.println("⚠️中继已有时间，不接收普通上报时间");
+          // Serial.println("⚠️中继已有时间，不接收普通上报时间");
         }
       }
     }
