@@ -219,7 +219,7 @@ void onSendDone(void) {
   Serial.print("✅ 发送完成");
   if (typeindex == 1) {
     Serial.println("定时上报信息");
-    inRxEndTime = millis() + 5000;  //5秒后结束接收窗口
+    inRxEndTime = millis() + 4000;  //5秒后结束接收窗口
     typeindex = 2;
     Radio.Rx(0);
   } else if (typeindex == 3) {

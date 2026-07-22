@@ -360,8 +360,8 @@ void sendLoraToDeviceid(String dataStr) {
     Serial.println("⚠️ 数据过长，已截断");
     sendData[BUFFER_SIZE - 1] = '\0';
   }
-  Serial.print(getCurrentTime(true));
-  Serial.print("下发数据：");
+  // Serial.print(getCurrentTime(true));
+  Serial.print("SEND DOWN：");
   Serial.print(sendData);
   Serial.print("len:");
   Serial.println(strlen(sendData));
@@ -395,7 +395,7 @@ void sendDownInfo(String loraStr) {
     sendLoraToDeviceid(dataStr);
   } else {
     needSyncTimeDeviceid = deviceId;
-    down_syn_time = millis() + 2000;
+    down_syn_time = millis() + 1500;
     // TODO: 此处 delay(2000)
     // 用于协调多中继，但会阻塞系统，后期改为非阻塞方式（millis）
     // delay(2000); // 如果普通对时就延时2秒，优先指令下载
@@ -453,9 +453,7 @@ void processLoraData() {
         if (!haveRightTime() || messageType == MSG_TYPE_SYN_UP_TIME) {
           // Serial.println("✅ 系统更新LORA上报的时间可能有很大误差");
           setTimeFromLora(timeStr);
-        } else {
-          // Serial.println("⚠️中继已有时间，不接收普通上报时间");
-        }
+        }  
       }
     }
   }

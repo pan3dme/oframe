@@ -13,7 +13,6 @@
   <view class="list-panel" wx:if="{{deviceList.length > 0 && singleLineRecord}}">
     <view class="list-item list-item-compact" wx:for="{{deviceList}}" wx:key="deviceId" bindtap="onTapDevice" data-deviceid="{{item.deviceId}}">
       <text class="item-index">{{index + 1}}</text>
-      <view class="item-icon-compact">📡</view>
       <view class="item-info">
         <view class="item-line-one">
           <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}</text>
