@@ -279,9 +279,12 @@ Page({
           iconPath: this._cowIconPath || '',
           title: labelText,
           callout: {
-            content: labelText + '\nID:' + item.crow_id,
+            content: labelText + '\nID:' + item.crow_id + '\n更新:' + (item.time || '-'),
             display: 'BYCLICK',
-            textAlign: 'center'
+            textAlign: 'center',
+            fontSize: 13,
+            padding: 8,
+            borderRadius: 6
           },
           label: {
             content: labelText,
@@ -383,9 +386,12 @@ Page({
         iconPath: this._deviceIconPath || '',
         title: '设备 ' + (item.deviceId || '-'),
         callout: {
-          content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng,
+          content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng + '\n更新:' + (item.rawTime || '-'),
           display: 'BYCLICK',
-          textAlign: 'center'
+          textAlign: 'center',
+          fontSize: 13,
+          padding: 8,
+          borderRadius: 6
         },
         label: {
           content: labelText,
