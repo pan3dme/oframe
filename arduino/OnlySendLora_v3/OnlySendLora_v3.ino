@@ -25,11 +25,11 @@ unsigned long gpsWorkStat = 0;
 int typeindex = 0;  // 0空闲 1发送中 2接收等待 3GPS搜星
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
-RTC_DATA_ATTR bool isFristOpenGps = true;          // 标记是否还在第一次开启GPS
-RTC_DATA_ATTR int roundTime = 0;                   // 默认上报周末使用系统配置
-RTC_DATA_ATTR int rtcResiveIdx = 0;                // 默认上报周末使用系统配置
-RTC_DATA_ATTR char work_time_str[32] = "0:0|24:59";  // 默认工作时间
-RadioEvents_t radioEvents;                         // LoRa事件回调
+RTC_DATA_ATTR bool isFristOpenGps = true;              // 标记是否还在第一次开启GPS
+RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
+RTC_DATA_ATTR int rtcResiveIdx = 0;                    // 默认上报周末使用系统配置
+RTC_DATA_ATTR char work_time_str[32] = "0:0|24:59";    // 默认工作时间
+RadioEvents_t radioEvents;                             // LoRa事件回调
 void printTimeToString(String str, unsigned long ms);  // 前向声明
 
 // 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
@@ -54,7 +54,7 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
 
   // 3. 判断是否在工作时间内
   bool inWorkTime = (nowMinutes >= startMinutes && nowMinutes <= endMinutes);
-  if (inWorkTime||!haveRightTime()) {
+  if (inWorkTime || !haveRightTime()) {
     Serial.println("✅ 当前在工作时间内，按原计划休眠");
     return (uint64_t)sleepMs * 1000ULL;
   }
@@ -267,7 +267,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 // ==================== 构建并发送数据包 ====================
 void buildAndSendPacket(int packetType) {
   String dataStr = String(packetType) + "|" + deviceName;
-  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYN_UP_TIME) {
+  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYN_UP_TIME || packetType == MSG_TYPE_TIME_REALY) {
     dataStr += "|" + getCurrentTime(true) + "|" + batterystr;
   } else if (packetType == MSG_TYPE_GPS) {
     dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
@@ -475,9 +475,8 @@ void loop() {
       if (rtcResiveIdx != rtcSendCount) {
         Serial.println("❌上报信息后并没有收到 中继下发的LORA   "
                        "补发一条对时信息上 rtcSendCount 回一档 ");
-        // 补发一条对时信息上
         rtcSendCount = rtcSendCount - 1;
-        buildAndSendPacket(MSG_TYPE_TIME);
+        buildAndSendPacket(MSG_TYPE_TIME_REALY);
         delay(2000);
       }
 
@@ -526,6 +525,16 @@ void loop() {
         // esp_deep_sleep(sleepTime);
         esp_sleep_enable_timer_wakeup(sleepTime);
         Serial.println("--->即将进入深度睡眠...");
+        // 计算并打印预计开机时间
+        {
+          uint64_t wakeUpSec = sleepTime / 1000000ULL;
+          time_t now = time(nullptr);
+          time_t wakeTime = now + (time_t)wakeUpSec;
+          struct tm wt;
+          localtime_r(&wakeTime, &wt);
+          Serial.printf("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
+                        wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
+        }
         Serial.flush();
         esp_deep_sleep_start();
         Serial.println("我已经睡着了...");
