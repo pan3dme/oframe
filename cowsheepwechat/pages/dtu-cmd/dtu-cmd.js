@@ -192,6 +192,19 @@ Page({
       return
     }
 
+    // 校验 tm 字段不能超过 60
+    try {
+      const cmdObj = JSON.parse(cmdText)
+      if (cmdObj.tm !== undefined && Number(cmdObj.tm) > 60) {
+        cmdObj.tm = 60
+        cmdText = JSON.stringify(cmdObj)
+        this.addLog('info', 'tm超限，已自动调整为60')
+        wx.showToast({ title: 'tm不能超过60，已自动调整', icon: 'none', duration: 2000 })
+      }
+    } catch (e) {
+      // 非JSON或解析失败，跳过校验
+    }
+
     // 获取手动选择的中继转发设备
     const relayDevice = this.data.relayDeviceList[this.data.relayIndex]  // null=自动
 
