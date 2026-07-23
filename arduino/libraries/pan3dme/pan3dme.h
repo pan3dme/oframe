@@ -73,7 +73,7 @@ extern unsigned long syncedMillis;
 #define VBAT_CTRL_PIN 37 // ADC_Ctrl（控制检测电路开关）
 #define VBAT_READ_PIN 1  // VBAT_Read（ADC1_CH0）
 
-const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 30; // 现在设定30分钟一次
+const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 2; // 现在设定30分钟一次
 
 struct BLECallbacks {
   BLEServer *pServer;

@@ -31,6 +31,10 @@
       <button class="quick-btn {{quickSelected === 7 ? 'quick-active' : ''}}" bindtap="onQuickReport30Min">⏱️ 30分钟上报</button>
       <button class="quick-btn {{quickSelected === 10 ? 'quick-active' : ''}}" bindtap="onQuickTrack">🛰️ 持续跟踪</button>
     </view>
+    <view class="quick-row">
+      <button class="quick-btn {{quickSelected === 12 ? 'quick-active' : ''}}" bindtap="onQuickNormalMode">📶 普通模式</button>
+      <button class="quick-btn {{quickSelected === 13 ? 'quick-active' : ''}}" bindtap="onQuickHandshakeMode">🤝 握手模式</button>
+    </view>
   </view>
 
   <!-- 发送按钮 -->

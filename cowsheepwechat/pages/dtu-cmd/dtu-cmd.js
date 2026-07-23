@@ -119,6 +119,12 @@ Page({
   onQuickTrack() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 10 }), quickSelected: 10 })
   },
+  onQuickNormalMode() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 0, tm: 0 }), quickSelected: 12 })
+  },
+  onQuickHandshakeMode() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 1, tm: 0 }), quickSelected: 13 })
+  },
 
   // ========== 发送指令 ==========
   onSend() {
