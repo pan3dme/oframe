@@ -265,13 +265,16 @@ Page({
         if (isNaN(wgsLat) || isNaN(wgsLng)) return null
         const gcj = wgs84ToGcj02(wgsLng, wgsLat)
 
-        const labelText = nameMap[item.crow_id] || (item.crow_id || item.crow_idx)
+        let labelText = nameMap[item.crow_id] || (item.crow_id || item.crow_idx)
+        if (labelText && labelText.length > 9) {
+          labelText = labelText.substring(0, 9) + '...'
+        }
 
         return {
           id: index,
           latitude: gcj.lat,
           longitude: gcj.lng,
-          width: 28,
+          width: 50,
           height: 28,
           iconPath: this._cowIconPath || '',
           title: labelText,
@@ -284,20 +287,19 @@ Page({
             content: labelText,
             color: '#333333',
             fontSize: 14,
-            bgColor: '#ffffff',
+            bgColor: '#ff0000',
             borderColor: '#999999',
             borderWidth: 1,
             borderRadius: 4,
             padding: 2,
-            anchorX: 60,
-            anchorY: -28,
+            anchorX: 0,
+            anchorY: 0,
             textAlign: 'left'
           }
         }
       })
       .filter(item => item !== null)
-
-    console.log('[地图] 牛群标记点:', markers.length, '个')
+ 
     this._cowMarkers = markers
     this._applyAllMarkers()
   },
@@ -364,7 +366,10 @@ Page({
       if (!coord) return
       const gcj = wgs84ToGcj02(coord.lng, coord.lat)
       const rename = renameMap[item.deviceId] || ''
-      const labelText = (item.deviceId || '-').substring(0, 10) + (rename ? '（' + rename + '）' : '')
+      let labelText = (item.deviceId || '-').substring(0, 10) + (rename ? '（' + rename + '）' : '')
+      if (labelText && labelText.length > 6) {
+        labelText = labelText.substring(0, 6) + '...'
+      }
       markers.push({
         id: index + 50000,
         latitude: gcj.lat,
