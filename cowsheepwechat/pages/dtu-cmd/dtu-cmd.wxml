@@ -34,6 +34,33 @@
     <view class="quick-row">
       <button class="quick-btn {{quickSelected === 12 ? 'quick-active' : ''}}" bindtap="onQuickNormalMode">📶 普通模式</button>
       <button class="quick-btn {{quickSelected === 13 ? 'quick-active' : ''}}" bindtap="onQuickHandshakeMode">🤝 握手模式</button>
+      <button class="quick-btn {{quickSelected === 14 ? 'quick-active' : ''}}" bindtap="onQuickWorkTime">🕐 工作时间</button>
+    </view>
+  </view>
+
+  <!-- 工作时间弹框 -->
+  <view class="modal-overlay" wx:if="{{showWorkTimeModal}}" bindtap="onWorkTimeCancel">
+    <view class="modal-container" catchtap="noop">
+      <view class="modal-title">设置工作时间</view>
+      <view class="modal-body">
+        <view class="time-picker-row">
+          <text class="time-picker-label">开始时间</text>
+          <picker mode="time" value="{{workStartTime}}" bindchange="onWorkStartChange">
+            <view class="time-picker-value">{{workStartTime}}</view>
+          </picker>
+        </view>
+        <view class="time-picker-divider">~</view>
+        <view class="time-picker-row">
+          <text class="time-picker-label">结束时间</text>
+          <picker mode="time" value="{{workEndTime}}" bindchange="onWorkEndChange">
+            <view class="time-picker-value">{{workEndTime}}</view>
+          </picker>
+        </view>
+      </view>
+      <view class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" bindtap="onWorkTimeCancel">取消</button>
+        <button class="modal-btn modal-btn-confirm" bindtap="onWorkTimeConfirm">确定</button>
+      </view>
     </view>
   </view>
 

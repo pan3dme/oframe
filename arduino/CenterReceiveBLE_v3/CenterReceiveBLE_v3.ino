@@ -396,6 +396,10 @@ void sendDownInfo(String loraStr) {
       int tm = docCom["tm"].as<int>();
       dataStr = String(MSG_TYPE_COM) +"|" + deviceId + "|" + cmd + "|" + String(type) + "|" + String(tm);
     }
+    if (cmd == "work_time") {  //新板本下一个版本的下发指令
+      // dataStr = String(MSG_TYPE_COM) +"|" + deviceId + "|" + cmd + "|8:0|17:0" ;
+      dataStr = String(MSG_TYPE_COM) +"|" + deviceId + "|" + cmd + "|"+ docCom["value"].as<String>() ;
+    }
     removeTargetId(selectCmdStr);
     sendLoraToDeviceid(dataStr);
   } else {

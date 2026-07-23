@@ -215,3 +215,94 @@ page {
   word-break: break-all;
   line-height: 1.5;
 }
+
+/* ===== 工作时间弹框 ===== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-container {
+  width: 600rpx;
+  background: #fff;
+  border-radius: 20rpx;
+  overflow: hidden;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+  text-align: center;
+  padding: 36rpx 0 20rpx;
+}
+
+.modal-body {
+  padding: 0 48rpx 36rpx;
+}
+
+.time-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.time-picker-label {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.time-picker-value {
+  font-size: 32rpx;
+  color: #1989fa;
+  font-weight: 600;
+  padding: 8rpx 24rpx;
+  background: #f0f7ff;
+  border-radius: 10rpx;
+  border: 2rpx solid #b3d9ff;
+}
+
+.time-picker-divider {
+  text-align: center;
+  font-size: 28rpx;
+  color: #999;
+  padding: 8rpx 0;
+}
+
+.modal-footer {
+  display: flex;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 96rpx;
+  line-height: 96rpx;
+  font-size: 30rpx;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  background: #fff;
+  border: none;
+}
+
+.modal-btn-cancel {
+  color: #999;
+  border-right: 1rpx solid #f0f0f0;
+}
+
+.modal-btn-confirm {
+  color: #1989fa;
+  font-weight: 600;
+}

@@ -28,8 +28,52 @@ RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true;          // 标记是否还在第一次开启GPS
 RTC_DATA_ATTR int roundTime = 0;                   // 默认上报周末使用系统配置
 RTC_DATA_ATTR int rtcResiveIdx = 0;                // 默认上报周末使用系统配置
-RTC_DATA_ATTR String work_time_str = "0:0|24:59";  // 默认工作时间
+RTC_DATA_ATTR char work_time_str[32] = "0:0|24:59";  // 默认工作时间
 RadioEvents_t radioEvents;                         // LoRa事件回调
+void printTimeToString(String str, unsigned long ms);  // 前向声明
+
+// 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
+// work_time_str格式: "05:02|10:59" 表示工作时段 05:02 ~ 10:59
+uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
+  // 1. 解析工作时间窗口
+  int startH = 0, startM = 0, endH = 0, endM = 0;
+  sscanf(work_time_str, "%d:%d|%d:%d", &startH, &startM, &endH, &endM);
+  int startMinutes = startH * 60 + startM;
+  int endMinutes = endH * 60 + endM;
+
+  // 2. 获取当前时间
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  time_t now = tv.tv_sec;
+  struct tm t;
+  localtime_r(&now, &t);
+  int nowMinutes = t.tm_hour * 60 + t.tm_min;
+
+  Serial.printf("工作时间窗口: %02d:%02d ~ %02d:%02d, 当前: %02d:%02d\n",
+                startH, startM, endH, endM, t.tm_hour, t.tm_min);
+
+  // 3. 判断是否在工作时间内
+  bool inWorkTime = (nowMinutes >= startMinutes && nowMinutes <= endMinutes);
+  if (inWorkTime||!haveRightTime()) {
+    Serial.println("✅ 当前在工作时间内，按原计划休眠");
+    return (uint64_t)sleepMs * 1000ULL;
+  }
+
+  // 4. 不在工作时间内，计算到下次工作开始的秒数
+  int waitMinutes = 0;
+  if (nowMinutes < startMinutes) {
+    // 当前在工作时间之前，等到今天的工作开始
+    waitMinutes = startMinutes - nowMinutes;
+  } else {
+    // 当前已过工作时间，等到明天的工作开始
+    waitMinutes = (24 * 60 - nowMinutes) + startMinutes;
+  }
+
+  uint64_t adjustedUs = (uint64_t)waitMinutes * 60 * 1000000ULL;
+  Serial.printf("❌ 当前不在工作时间，%d分钟后开始工作，休眠%llu秒\n",
+                waitMinutes, adjustedUs / 1000000ULL);
+  return adjustedUs;
+}
 
 unsigned long get_send_interval_ms() {
   if (roundTime == 0) {
@@ -108,6 +152,7 @@ void initLora() {
 }
 void OnRxTimeout(void) {
   Serial.println("⚠️ Radio接收超时!");
+  Radio.Rx(0);
 }
 
 void OnRxError(void) {
@@ -140,7 +185,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   memcpy(buf, payload, size);
   buf[size] = '\0';
   Serial.println("");
-  Serial.print(" ROLA -：");
+  Serial.print("接收到中继下发ROLA ：");
   Serial.println(buf);
 
   // 检查是否为GPS高频指令（5|v4-6,...）且目标是当前设备
@@ -154,11 +199,15 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 
   int messageType = infoStr.substring(0, firstPipeIndex).toInt();
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
-    Serial.print("新规格的下发LORA指令    ");
-    Serial.println(infoStr);
     if (infoStr.indexOf("work_time") != -1) {
-      // 11|v4-10|work_time|0.0|25：59
-      Serial.println("❌❌❌❌设置功作时间");
+      // 11|v4-10|work_time|05:02|10:59
+      int wtIdx = infoStr.indexOf("work_time|");
+      if (wtIdx != -1) {
+        String tmp = infoStr.substring(wtIdx + strlen("work_time|"));
+        tmp.toCharArray(work_time_str, sizeof(work_time_str));
+      }
+      Serial.print("✅✅设置工作时间：");
+      Serial.println(work_time_str);
 
     } else if (infoStr.indexOf("sendmode") != -1) {
       // 11|v4-10|sendmode|1|0
@@ -259,7 +308,7 @@ void onSendDone(void) {
 
 // ==================== LoRa发送超时回调 ====================
 void onSendTimeout(void) {
-  Radio.Sleep();
+  // Radio.Sleep();  // 中断中不应操作Radio硬件，移到loop处理
   Serial.println("❌ 发送超时");
   typeindex = 0;
 }
@@ -470,7 +519,10 @@ void loop() {
 
         hideOLED();
         delay(1000);
-        uint64_t sleepTime = (uint64_t)(waittm - num6000) * 1000ULL;
+
+
+        // 05:02|10:59
+        uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
         // esp_deep_sleep(sleepTime);
         esp_sleep_enable_timer_wakeup(sleepTime);
         Serial.println("--->即将进入深度睡眠...");
