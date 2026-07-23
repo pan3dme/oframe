@@ -400,7 +400,7 @@ void sendDownInfo(String loraStr) {
     sendLoraToDeviceid(dataStr);
   } else {
     needSyncTimeDeviceid = deviceId;
-    down_syn_time = millis() + 1500;
+    down_syn_time = millis() + 2000;
     // TODO: 此处 delay(2000)
     // 用于协调多中继，但会阻塞系统，后期改为非阻塞方式（millis）
     // delay(2000); // 如果普通对时就延时2秒，优先指令下载

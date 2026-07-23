@@ -26,9 +26,9 @@ int typeindex = 0; // 0空闲 1发送中 2接收等待 3GPS搜星
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true; // 标记是否还在第一次开启GPS
-RTC_DATA_ATTR int roundTime =
-    0; // 默认上报周末使用系统配置，如果有接收到就按数字算新的周末
-RadioEvents_t radioEvents; // LoRa事件回调
+RTC_DATA_ATTR int roundTime = 0;          // 默认上报周末使用系统配置
+RTC_DATA_ATTR int rtcResiveIdx = 0;       // 默认上报周末使用系统配置
+RadioEvents_t radioEvents;                // LoRa事件回调
 
 unsigned long get_send_interval_ms() {
   if (roundTime == 0) {
@@ -105,7 +105,11 @@ void initLora() {
 }
 void OnRxTimeout(void) { Serial.println("⚠️ Radio接收超时!"); }
 
-void OnRxError(void) { Serial.println("❌ Radio接收错误!"); }
+void OnRxError(void) {
+  // 接收到错误，相当于有多个中继打架，暂做标记
+  rtcResiveIdx = rtcSendCount;
+  Serial.println("❌ Radio接收错误!");
+}
 String extractDeviceIdFromInfo(String infoStr) {
   int first = infoStr.indexOf('|');
   if (first == -1) {
@@ -140,6 +144,8 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (firstPipeIndex <= 0) {
     return;
   }
+  // 标记接收窗口信息 记录下IDX然后用于判断是否握手成功
+  rtcResiveIdx = rtcSendCount;
 
   int messageType = infoStr.substring(0, firstPipeIndex).toInt();
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
@@ -239,6 +245,8 @@ void onSendDone(void) {
     inRxEndTime = millis() + 5000; // 5秒后结束接收窗口
     typeindex = 2;
     Radio.Rx(0);
+  } else if (typeindex == 2) {
+    Serial.println("初发上报时间信息");
   } else if (typeindex == 3) {
     Serial.println("Gps上报完成");
   }
@@ -405,6 +413,20 @@ void loop() {
     delay(100);
     Serial.print(".");
     if (inRxEndTime < millis()) {
+      // rtcResiveIdx=rtcSendCount
+      Serial.print(rtcResiveIdx);
+      Serial.print("-");
+      Serial.print(rtcSendCount);
+
+      if (rtcResiveIdx != rtcSendCount) {
+        Serial.println("❌上报信息后并没有收到 中继下发的LORA   "
+                       "补发一条对时信息上 rtcSendCount 回一档 ");
+        // 补发一条对时信息上
+        rtcSendCount = rtcSendCount - 1;
+        buildAndSendPacket(MSG_TYPE_TIME);
+        delay(2000);
+      }
+
       // 回到普通模式，准备可以休眠
       nextSendTime = 0;
       typeindex = 0;
