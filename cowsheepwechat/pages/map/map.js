@@ -266,9 +266,9 @@ Page({
         const gcj = wgs84ToGcj02(wgsLng, wgsLat)
 
         let labelText = nameMap[item.crow_id] || (item.crow_id || item.crow_idx)
-        if (labelText && labelText.length > 9) {
-          labelText = labelText.substring(0, 9) + '...'
-        }
+        // if (labelText && labelText.length > 9) {
+        //   labelText = labelText.substring(0, 9) + '...'
+        // }
 
         return {
           id: index,
@@ -367,9 +367,13 @@ Page({
       const gcj = wgs84ToGcj02(coord.lng, coord.lat)
       const rename = renameMap[item.deviceId] || ''
       let labelText = (item.deviceId || '-').substring(0, 10) + (rename ? '（' + rename + '）' : '')
-      if (labelText && labelText.length > 6) {
-        labelText = labelText.substring(0, 6) + '...'
-      }
+      var devAnchorX = Math.max(-30, Math.min(130, labelText.length * 12 - 30))
+
+      // if (labelText && labelText.length > 15) {
+      //   labelText = labelText.substring(0, 15) + '...'
+      // }
+      devAnchorX=((labelText.length) * 11.0)/2 +15
+    
       markers.push({
         id: index + 50000,
         latitude: gcj.lat,
@@ -393,9 +397,9 @@ Page({
           borderRadius: 4,
           padding: 2,
           maxWidth: 300,
-          anchorX: 122,
-          anchorY: -26,
-          textAlign: 'left'
+          anchorX: devAnchorX,
+          anchorY: -25,
+          textAlign: 'centen'
         }
       })
     })
