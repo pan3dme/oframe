@@ -8,12 +8,12 @@
 #include <pan3dme.h>
 
 // ==================== 全局变量 ====================
-String deviceName;          // 设备名称
-char sendData[BUFFER_SIZE]; // 发送数据缓存
+String deviceName;           // 设备名称
+char sendData[BUFFER_SIZE];  // 发送数据缓存
 // LoRa发射时间管理
-int deviceIndex = -1;           // 当前设备索引（从pan3dme获取）
-int totalDevices = 0;           // 设备总数（从pan3dme获取）
-unsigned long nextSendTime = 0; // 下次发送时间点（millis）
+int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
+int totalDevices = 0;            // 设备总数（从pan3dme获取）
+unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 bool timeSynFlage = false;
 
@@ -22,13 +22,14 @@ String batterystr = "";
 int sendmodeFlage = 0;
 unsigned long gpsWorkTime = 0;
 unsigned long gpsWorkStat = 0;
-int typeindex = 0; // 0空闲 1发送中 2接收等待 3GPS搜星
+int typeindex = 0;  // 0空闲 1发送中 2接收等待 3GPS搜星
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
-RTC_DATA_ATTR bool isFristOpenGps = true; // 标记是否还在第一次开启GPS
-RTC_DATA_ATTR int roundTime = 0;          // 默认上报周末使用系统配置
-RTC_DATA_ATTR int rtcResiveIdx = 0;       // 默认上报周末使用系统配置
-RadioEvents_t radioEvents;                // LoRa事件回调
+RTC_DATA_ATTR bool isFristOpenGps = true;          // 标记是否还在第一次开启GPS
+RTC_DATA_ATTR int roundTime = 0;                   // 默认上报周末使用系统配置
+RTC_DATA_ATTR int rtcResiveIdx = 0;                // 默认上报周末使用系统配置
+RTC_DATA_ATTR String work_time_str = "0:0|24:59";  // 默认工作时间
+RadioEvents_t radioEvents;                         // LoRa事件回调
 
 unsigned long get_send_interval_ms() {
   if (roundTime == 0) {
@@ -37,7 +38,9 @@ unsigned long get_send_interval_ms() {
     return roundTime;
   }
 }
-float getSlotDuration() { return get_send_interval_ms() / 60 / 1000; }
+float getSlotDuration() {
+  return get_send_interval_ms() / 60 / 1000;
+}
 
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
@@ -59,12 +62,12 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 
   // 2. 计算基础参数
   unsigned long mySlotOffset =
-      (unsigned long)(deviceIndex * getSlotDuration()); // 我在周期内的偏移量
+    (unsigned long)(deviceIndex * getSlotDuration());  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
   unsigned long lastTargetSeconds =
-      cyclesPassed * intervalSeconds + mySlotOffset;
+    cyclesPassed * intervalSeconds + mySlotOffset;
 
   long secondsDiff = 0;
   if (lastTargetSeconds < currentSeconds) {
@@ -103,7 +106,9 @@ void initLora() {
     initPanRadio(&radioEvents, TX_POWER);
   }
 }
-void OnRxTimeout(void) { Serial.println("⚠️ Radio接收超时!"); }
+void OnRxTimeout(void) {
+  Serial.println("⚠️ Radio接收超时!");
+}
 
 void OnRxError(void) {
   // 接收到错误，相当于有多个中继打架，暂做标记
@@ -151,17 +156,18 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
     Serial.print("新规格的下发LORA指令    ");
     Serial.println(infoStr);
-    if (infoStr.indexOf("sendmode") != -1) {
+    if (infoStr.indexOf("work_time") != -1) {
+      // 11|v4-10|work_time|0.0|25：59
+      Serial.println("❌❌❌❌设置功作时间");
+
+    } else if (infoStr.indexOf("sendmode") != -1) {
       // 11|v4-10|sendmode|1|0
-      int lastPipe = infoStr.lastIndexOf('|'); // 最后一个 | 的位置
+      int lastPipe = infoStr.lastIndexOf('|');  // 最后一个 | 的位置
       int prevPipe =
-          infoStr.lastIndexOf('|', lastPipe - 1); // 倒数第二个 | 的位置
-      String sendmodevalue =
-          infoStr.substring(prevPipe + 1, lastPipe); // 得到 "1"
-
+        infoStr.lastIndexOf('|', lastPipe - 1);                          // 倒数第二个 | 的位置
+      String sendmodevalue = infoStr.substring(prevPipe + 1, lastPipe);  // 得到 "1"
       sendmodeFlage = sendmodevalue.toInt();
-
-      Serial.print("sendmodeFlage  =");
+      Serial.print("✅✅sendmodeFlage  =");
       Serial.println(sendmodeFlage);
 
     } else {
@@ -181,8 +187,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       gpsWorkTime = value * 60 * 1000;
     }
   }
-  if (messageType == MSG_TYPE_CHANGE_ROUND &&
-      isMyDeviceInList(infoStr, deviceName)) {
+  if (messageType == MSG_TYPE_CHANGE_ROUND && isMyDeviceInList(infoStr, deviceName)) {
     int lastPipe = infoStr.lastIndexOf('|');
     if (lastPipe != -1) {
       String lastPart = infoStr.substring(lastPipe + 1);
@@ -242,7 +247,7 @@ void onSendDone(void) {
   Serial.print("✅ 发送完成");
   if (typeindex == 1) {
     Serial.println("定时上报信息");
-    inRxEndTime = millis() + 5000; // 5秒后结束接收窗口
+    inRxEndTime = millis() + 5000;  // 5秒后结束接收窗口
     typeindex = 2;
     Radio.Rx(0);
   } else if (typeindex == 2) {
@@ -322,18 +327,18 @@ void meshGpsInfoFun(bool closeGps = true) {
   }
   delay(10);
 }
-String lastPrintTimeStr = ""; // 存储上次打印的时间字符串（不含毫秒）
+String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
 
 void printCurrentTime() {
   String nowStr =
-      getCurrentTime(true); // 完整时间字符串 "1970/01/01 00:00:48.679"
+    getCurrentTime(true);  // 完整时间字符串 "1970/01/01 00:00:48.679"
   // 提取秒级字符串：去掉毫秒部分（取第一个空格后的前8个字符？实际是日期+时间，要忽略毫秒）
   // 假设格式固定为 "YYYY/MM/DD HH:MM:SS.mmm"，我们需要取到秒
   int dotIndex = nowStr.indexOf('.');
   String nowSecStr =
-      (dotIndex != -1) ? nowStr.substring(0, dotIndex) : nowStr; // 去掉毫秒
+    (dotIndex != -1) ? nowStr.substring(0, dotIndex) : nowStr;  // 去掉毫秒
   if (lastPrintTimeStr != nowSecStr) {
-    Serial.println(nowStr); // 或者只打印秒级字符串
+    Serial.println(nowStr);  // 或者只打印秒级字符串
     lastPrintTimeStr = nowSecStr;
   }
   if (!haveRightTime()) {
@@ -366,7 +371,7 @@ void setup() {
 
   initLora();
 }
-unsigned long num6000 = 10000; // 暂时提前10秒开机
+unsigned long num6000 = 10000;  // 暂时提前10秒开机
 bool sendFlagType = false;
 // ==================== 主循环 ====================
 void loop() {
@@ -378,18 +383,18 @@ void loop() {
     Serial.print(millis() - gpsWorkStat);
     Serial.print("-");
     Serial.println(gpsWorkTime);
-    Radio.Sleep(); // IrqProcess已完成，安全Sleep
+    Radio.Sleep();  // IrqProcess已完成，安全Sleep
     showOLED();
     delay(1000);
     Serial.print("获取GPS");
     printCurrentTime();
     meshGpsInfoFun(false);
     buildAndSendPacket(MSG_TYPE_GPS);
-    delay(2000);            // 上报LORA需要2秒钟间隔
-    if (gpsWorkTime == 0) { // 如果只定位一次，那正好提交一次对时信息
+    delay(2000);             // 上报LORA需要2秒钟间隔
+    if (gpsWorkTime == 0) {  // 如果只定位一次，那正好提交一次对时信息
       Serial.println("上报一次必须对时信息");
       buildAndSendPacket(MSG_TYPE_SYN_UP_TIME);
-      delay(2000); // 上报LORA需要2秒钟间隔
+      delay(2000);  // 上报LORA需要2秒钟间隔
     }
 
     hideOLED();
@@ -405,7 +410,7 @@ void loop() {
     } else {
       printTimeToString("延时1分钟再上报GPS信息 还会持续",
                         gpsWorkTime - (millis() - gpsWorkStat));
-      delay(60 * 1000); // 延时1分钟
+      delay(60 * 1000);  // 延时1分钟
     }
     return;
   }
@@ -441,7 +446,7 @@ void loop() {
   if (typeindex == 0) {
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
-      if (timeSynFlage) { // 接收了同步时间
+      if (timeSynFlage) {  // 接收了同步时间
         if ((nextSendTime - millis()) < num6000) {
           Serial.print("❌接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
                        "要跳过这个窗口将时间后移到下一个周末");

@@ -52,7 +52,7 @@ extern unsigned long syncedMillis;
 #define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 923000000 // 433MHz 国内通用863 863   923  928   433000000
+#define LORA_FREQ 928000000 // 433MHz 国内通用863 863   923  928   433000000
 #define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 12          // 扩频因子
