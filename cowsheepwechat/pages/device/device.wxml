@@ -15,7 +15,7 @@
       <text class="item-index">{{index + 1}}</text>
       <view class="item-info">
         <view class="item-line-one">
-          <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}</text>
+          <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}<text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text></text>
           <view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps"></view>
           <text wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon">🕐</text>
           <text class="item-time-compact" wx:if="{{item.relativeTime}}" style="color:{{item.timeColor}};background:{{item.timeBgColor}}">{{item.relativeTime}}</text>
@@ -32,7 +32,7 @@
       <image class="item-device-pic" wx:if="{{item.picurl}}" src="{{item.picurl}}" mode="aspectFill" />
       <view class="item-avatar-placeholder" wx:else>📡</view>
       <view class="item-info">
-        <view class="item-name">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}<view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps"></view><text wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon">🕐</text></view>
+        <view class="item-name">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}<text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text><view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps"></view><text wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon">🕐</text></view>
         <view class="item-meta" wx:if="{{!item.device_key}}">
           <text class="item-time" style="color:#ff9800;">请输入唯一编码</text>
         </view>
