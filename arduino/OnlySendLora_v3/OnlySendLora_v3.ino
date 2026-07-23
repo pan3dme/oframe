@@ -218,10 +218,19 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       sendmodeFlage = sendmodevalue.toInt();
       Serial.print("✅✅sendmodeFlage  =");
       Serial.println(sendmodeFlage);
-
+    } else if (infoStr.indexOf("setinterval") != -1) {
+      // 11|v4-10|setinterval|30
+      int lastPipe = infoStr.lastIndexOf('|');
+      String intervalvalue = infoStr.substring(lastPipe + 1);  // 从最后一个'|'后取到末尾
+      roundTime = intervalvalue.toInt() * 60 * 1000;
+      Serial.print("修改上报时间周末roundTime");
+      Serial.println(roundTime);
+    } else if (infoStr.indexOf("upgps") != -1) {
+      Serial.println("❌❌❌❌ 需要补充功能upgps");
+      return;
     } else {
-
       Serial.println("❌❌❌❌ 需要补充功能列表");
+      return;
     }
   }
 
@@ -236,14 +245,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       gpsWorkTime = value * 60 * 1000;
     }
   }
-  if (messageType == MSG_TYPE_CHANGE_ROUND && isMyDeviceInList(infoStr, deviceName)) {
-    int lastPipe = infoStr.lastIndexOf('|');
-    if (lastPipe != -1) {
-      String lastPart = infoStr.substring(lastPipe + 1);
-      int value = lastPart.toInt();
-      roundTime = value * 60 * 1000;
-    }
-  }
+
 
   if (messageType == MSG_TYPE_SYN_TIME) {
     int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);

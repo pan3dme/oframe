@@ -119,7 +119,7 @@ Page({
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 }), quickSelected: 5 })
   },
   onQuickReport30Min() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 6, tm: 30 }), quickSelected: 7 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'setinterval', value: 30 }), quickSelected: 7 })
   },
   onQuickTrack() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 10 }), quickSelected: 10 })

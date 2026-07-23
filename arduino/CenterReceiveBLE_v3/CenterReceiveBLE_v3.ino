@@ -390,16 +390,21 @@ void sendDownInfo(String loraStr) {
       int type = docCom["value"].as<int>();
       int tm = docCom["tm"].as<int>();
       dataStr = String(type) + "|" + deviceId + "|" + tm;
-    }
-    if (cmd == "sendmode") {  //新板本下一个版本的下发指令
+    } else if (cmd == "sendmode") {
       int type = docCom["value"].as<int>();
       int tm = docCom["tm"].as<int>();
-      dataStr = String(MSG_TYPE_COM) +"|" + deviceId + "|" + cmd + "|" + String(type) + "|" + String(tm);
+      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + String(type) + "|" + String(tm);
+    } else if (cmd == "work_time") {
+      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
+    } else if (cmd == "setinterval") {
+      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
+    } else {
+      Serial.print("❌❌❌当前docCom    cmd  没有对应的方法");
+      Serial.println(cmd);
+      return;
     }
-    if (cmd == "work_time") {  //新板本下一个版本的下发指令
-      // dataStr = String(MSG_TYPE_COM) +"|" + deviceId + "|" + cmd + "|8:0|17:0" ;
-      dataStr = String(MSG_TYPE_COM) +"|" + deviceId + "|" + cmd + "|"+ docCom["value"].as<String>() ;
-    }
+
+
     removeTargetId(selectCmdStr);
     sendLoraToDeviceid(dataStr);
   } else {
