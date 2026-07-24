@@ -28,16 +28,16 @@ RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true;              // 标记是否还在第一次开启GPS
 RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
 RTC_DATA_ATTR int rtcResiveIdx = 0;                    // 默认上报周末使用系统配置
-RTC_DATA_ATTR char work_time_str[32] = "0:0|24:59";    // 默认工作时间
+RTC_DATA_ATTR char work_time_str[32] = "0:0-24:59";    // 默认工作时间
 RadioEvents_t radioEvents;                             // LoRa事件回调
 void printTimeToString(String str, unsigned long ms);  // 前向声明
 
 // 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
-// work_time_str格式: "05:02|10:59" 表示工作时段 05:02 ~ 10:59
+// work_time_str格式: "05:02-10:59" 表示工作时段 05:02 ~ 10:59
 uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
   // 1. 解析工作时间窗口
   int startH = 0, startM = 0, endH = 0, endM = 0;
-  sscanf(work_time_str, "%d:%d|%d:%d", &startH, &startM, &endH, &endM);
+  sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
   int startMinutes = startH * 60 + startM;
   int endMinutes = endH * 60 + endM;
 
@@ -199,21 +199,21 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 
   int messageType = infoStr.substring(0, firstPipeIndex).toInt();
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
-    if (infoStr.indexOf("work_time") != -1) {
-      // 11|v4-10|work_time|05:02|10:59
-      int wtIdx = infoStr.indexOf("work_time|");
+    if (infoStr.indexOf("worktime") != -1) {
+      // 11|v4-10|worktime|05:02-10:59
+      int wtIdx = infoStr.indexOf("worktime|");
       if (wtIdx != -1) {
-        String tmp = infoStr.substring(wtIdx + strlen("work_time|"));
+        String tmp = infoStr.substring(wtIdx + strlen("worktime|"));
         tmp.toCharArray(work_time_str, sizeof(work_time_str));
       }
       Serial.print("✅✅设置工作时间：");
       Serial.println(work_time_str);
+ 
 
     } else if (infoStr.indexOf("sendmode") != -1) {
       // 11|v4-10|sendmode|1|0
-      int lastPipe = infoStr.lastIndexOf('|');  // 最后一个 | 的位置
-      int prevPipe =
-        infoStr.lastIndexOf('|', lastPipe - 1);                          // 倒数第二个 | 的位置
+      int lastPipe = infoStr.lastIndexOf('|');                           // 最后一个 | 的位置
+      int prevPipe = infoStr.lastIndexOf('|', lastPipe - 1);             // 倒数第二个 | 的位置
       String sendmodevalue = infoStr.substring(prevPipe + 1, lastPipe);  // 得到 "1"
       sendmodeFlage = sendmodevalue.toInt();
       Serial.print("✅✅sendmodeFlage  =");
@@ -226,31 +226,29 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       Serial.print("修改上报时间周末roundTime");
       Serial.println(roundTime);
     } else if (infoStr.indexOf("upgps") != -1) {
-      Serial.println("❌❌❌❌ 需要补充功能upgps");
-      return;
+      Serial.println(" 功能upgps");
+      typeindex = 3;
+      int lastPipe = infoStr.lastIndexOf('|');
+      String intervalvalue = infoStr.substring(lastPipe + 1);  // 从最后一个'|'后取到末尾
+      gpsWorkStat = millis();
+      gpsWorkTime =  intervalvalue.toInt() * 60 * 1000;
     } else {
       Serial.println("❌❌❌❌ 需要补充功能列表");
       return;
     }
   }
 
-  if (messageType == MSG_TYPE_UP_GPS && isMyDeviceInList(infoStr, deviceName)) {
-    Serial.println("✅是当前设备，标记GPS搜星");
-    typeindex = 3;
-    int lastPipe = infoStr.lastIndexOf('|');
-    if (lastPipe != -1) {
-      String lastPart = infoStr.substring(lastPipe + 1);
-      int value = lastPart.toInt();
-      gpsWorkStat = millis();
-      gpsWorkTime = value * 60 * 1000;
-    }
-  }
-
-
   if (messageType == MSG_TYPE_SYN_TIME) {
     int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
+    if (secondPipeIndex == -1) {
+      Serial.println("❌ 对时消息格式错误");
+      return;
+    }
     String timeStr = infoStr.substring(secondPipeIndex + 1);
-    timeStr = timeStr.substring(0, timeStr.indexOf('|'));
+    int nextPipe = timeStr.indexOf('|');
+    if (nextPipe != -1) {
+      timeStr = timeStr.substring(0, nextPipe);
+    }
 
     if (!haveRightTime()) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
@@ -422,7 +420,7 @@ void setup() {
 
   initLora();
 }
-unsigned long num6000 = 10000;  // 暂时提前10秒开机
+unsigned long num6000 = 20000;  // 暂时提前10秒开机
 bool sendFlagType = false;
 // ==================== 主循环 ====================
 void loop() {
@@ -522,7 +520,7 @@ void loop() {
         delay(1000);
 
 
-        // 05:02|10:59
+        // 05:02-10:59
         uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
         // esp_deep_sleep(sleepTime);
         esp_sleep_enable_timer_wakeup(sleepTime);

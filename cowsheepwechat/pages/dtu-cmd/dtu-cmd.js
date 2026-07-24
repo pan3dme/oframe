@@ -116,19 +116,13 @@ Page({
 
   // ========== 快捷按钮 ==========
   onQuickReportGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 }), quickSelected: 5 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'upgps', value: 0 }), quickSelected: 5 })
   },
   onQuickReport30Min() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setinterval', value: 30 }), quickSelected: 7 })
   },
-  onQuickTrack() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setfreq', value: 5, tm: 10 }), quickSelected: 10 })
-  },
   onQuickNormalMode() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 0, tm: 0 }), quickSelected: 12 })
-  },
-  onQuickHandshakeMode() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 1, tm: 0 }), quickSelected: 13 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 0 }), quickSelected: 12 })
   },
 
   // ========== 工作时间快捷按钮 ==========
@@ -166,10 +160,10 @@ Page({
       return
     }
 
-    // 格式: HH:mm|HH:mm
-    const value = start + '|' + end
+    // 格式: HH:mm-HH:mm
+    const value = start + '-' + end
     this.setData({
-      cmdText: JSON.stringify({ cmd: 'work_time', value: value }),
+      cmdText: JSON.stringify({ cmd: 'worktime', value: value }),
       showWorkTimeModal: false
     })
   },

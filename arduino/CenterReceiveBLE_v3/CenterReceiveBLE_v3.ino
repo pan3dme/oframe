@@ -386,35 +386,18 @@ void sendDownInfo(String loraStr) {
     Serial.print("✅标记了下发数据");
     Serial.println(selectCmdStr);
     String cmd = docCom["cmd"].as<String>();
-    if (cmd == "setfreq") {
-      int type = docCom["value"].as<int>();
-      int tm = docCom["tm"].as<int>();
-      dataStr = String(type) + "|" + deviceId + "|" + tm;
-    } else if (cmd == "sendmode") {
-      int type = docCom["value"].as<int>();
-      int tm = docCom["tm"].as<int>();
-      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + String(type) + "|" + String(tm);
-    } else if (cmd == "work_time") {
-      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
-    } else if (cmd == "setinterval") {
+    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode") {
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
     } else {
       Serial.print("❌❌❌当前docCom    cmd  没有对应的方法");
       Serial.println(cmd);
       return;
     }
-
-
     removeTargetId(selectCmdStr);
     sendLoraToDeviceid(dataStr);
   } else {
     needSyncTimeDeviceid = deviceId;
     down_syn_time = millis() + 2000;
-    // TODO: 此处 delay(2000)
-    // 用于协调多中继，但会阻塞系统，后期改为非阻塞方式（millis）
-    // delay(2000); // 如果普通对时就延时2秒，优先指令下载
-    // dataStr = String(MSG_TYPE_SYN_TIME) + "|" + deviceId;
-    // dataStr += "|" + getCurrentTime(true);
   }
 }
 
@@ -452,9 +435,9 @@ void processLoraData() {
   if (firstPipeIndex > 0) {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
-    sendLoraInfoUseDtu(String(loraStr), String(lastRssi), String(lastSnr));
+    sendLoraInfoUseDtu(String(loraStr), String(lastRssi), infoStr);
     if (messageType == MSG_TYPE_TIME) {
-      sendDownInfo(String(loraStr));
+      sendDownInfo(infoStr);
     }
     // 3. 下发回复
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYN_UP_TIME) {
