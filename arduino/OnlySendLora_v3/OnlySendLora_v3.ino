@@ -507,8 +507,15 @@ void loop() {
         Serial.print(num6000 / 1000);
         Serial.print("秒进入睡眠");
 
+        // 关闭外设以降低休眠功耗
         hideOLED();
-        delay(1000);
+        if (getGpsStatus()) {
+          setGpsEnable(false);  // 关闭GPS
+          Serial.println("✅ GPS已关闭");
+        }
+        Radio.Sleep();  // 关闭LoRa Radio
+        Serial.println("✅ LoRa Radio已休眠");
+        delay(100);
 
 
         // 05:02|10:59
