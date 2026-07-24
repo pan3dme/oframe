@@ -296,7 +296,8 @@ void receiveDtuData() {
     delay(2);  // 等待下一个字节
   }
   Serial2.flush();
-
+  Serial.print("raw");
+  Serial.println(raw);
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   String cominfoArray[10];
   int cominfoCount = 0;
@@ -435,7 +436,7 @@ void processLoraData() {
   if (firstPipeIndex > 0) {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
-    sendLoraInfoUseDtu(String(loraStr), String(lastRssi), infoStr);
+    sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
     if (messageType == MSG_TYPE_TIME) {
       sendDownInfo(infoStr);
     }

@@ -51,7 +51,7 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
 
   Serial.printf("工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
                 startH, startM, endH, endM, t.tm_hour, t.tm_min);
-                
+
 
   // 3. 判断是否在工作时间内
   bool inWorkTime = (nowMinutes >= startMinutes && nowMinutes <= endMinutes);
@@ -197,66 +197,46 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   }
   // 标记接收窗口信息 记录下IDX然后用于判断是否握手成功
   rtcResiveIdx = rtcSendCount;
-
   int messageType = infoStr.substring(0, firstPipeIndex).toInt();
+  int lastPipe = infoStr.lastIndexOf('|');
+  String tmp = infoStr.substring(lastPipe + 1);  // 从最后一个'|'后取到末尾
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
     if (infoStr.indexOf("worktime") != -1) {
       // 11|v4-10|work_time|05:02-10:59
-      int wtIdx = infoStr.indexOf("worktime|");
-      if (wtIdx != -1) {
-        String tmp = infoStr.substring(wtIdx + strlen("work_time|"));
-        tmp.toCharArray(work_time_str, sizeof(work_time_str));
-      }
       Serial.print("✅✅设置工作时间：");
+      tmp.toCharArray(work_time_str, sizeof(work_time_str));
       Serial.println(work_time_str);
- 
-
     } else if (infoStr.indexOf("sendmode") != -1) {
       // 11|v4-10|sendmode|1|0
-      int lastPipe = infoStr.lastIndexOf('|');                           // 最后一个 | 的位置
-      int prevPipe = infoStr.lastIndexOf('|', lastPipe - 1);             // 倒数第二个 | 的位置
-      String sendmodevalue = infoStr.substring(prevPipe + 1, lastPipe);  // 得到 "1"
-      sendmodeFlage = sendmodevalue.toInt();
-      Serial.print("✅✅sendmodeFlage  =");
+      Serial.print("✅✅设置工作模式：");
+      sendmodeFlage = tmp.toInt();
       Serial.println(sendmodeFlage);
     } else if (infoStr.indexOf("setinterval") != -1) {
       // 11|v4-10|setinterval|30
-      int lastPipe = infoStr.lastIndexOf('|');
-      String intervalvalue = infoStr.substring(lastPipe + 1);  // 从最后一个'|'后取到末尾
-      roundTime = intervalvalue.toInt() * 60 * 1000;
+      Serial.print("✅✅设置上报周期：");
+      roundTime = tmp.toInt() * 60 * 1000;
       Serial.print("修改上报时间周末roundTime");
       Serial.println(roundTime);
     } else if (infoStr.indexOf("upgps") != -1) {
-      Serial.println(" 功能upgps");
+      //11|v4-10|upgps|0
+      Serial.print("✅✅上报GPS坐标：");
       typeindex = 3;
-      int lastPipe = infoStr.lastIndexOf('|');
-      String intervalvalue = infoStr.substring(lastPipe + 1);  // 从最后一个'|'后取到末尾
       gpsWorkStat = millis();
-      gpsWorkTime =  intervalvalue.toInt() * 60 * 1000;
+      gpsWorkTime = tmp.toInt() * 60 * 1000;
     } else {
       Serial.println("❌❌❌❌ 需要补充功能列表");
       return;
     }
   }
 
-  // if (messageType == MSG_TYPE_UP_GPS && isMyDeviceInList(infoStr, deviceName)) {
-  //   Serial.println("✅是当前设备，标记GPS搜星");
-  //   typeindex = 3;
-  //   int lastPipe = infoStr.lastIndexOf('|');
-  //   if (lastPipe != -1) {
-  //     String lastPart = infoStr.substring(lastPipe + 1);
-  //     int value = lastPart.toInt();
-  //     gpsWorkStat = millis();
-  //     gpsWorkTime = value * 60 * 1000;
-  //   }
-  // }
 
 
   if (messageType == MSG_TYPE_SYN_TIME) {
+
     int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
     String timeStr = infoStr.substring(secondPipeIndex + 1);
     timeStr = timeStr.substring(0, timeStr.indexOf('|'));
-
+    Serial.print(getCurrentTime(false));
     if (!haveRightTime()) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
     } else {
@@ -307,7 +287,7 @@ void onSendDone(void) {
     typeindex = 2;
     Radio.Rx(0);
   } else if (typeindex == 2) {
-    Serial.println("初发上报时间信息");
+    Serial.println("重复上报时间信息");
   } else if (typeindex == 3) {
     Serial.println("Gps上报完成");
   }
@@ -427,7 +407,7 @@ void setup() {
 
   initLora();
 }
-unsigned long num6000 = 10000;  // 暂时提前10秒开机
+unsigned long num6000 = 20000;  // 暂时提前20秒开机
 bool sendFlagType = false;
 // ==================== 主循环 ====================
 void loop() {
@@ -471,22 +451,25 @@ void loop() {
     return;
   }
   if (typeindex == 2) {
+
     delay(100);
+
     Serial.print(".");
     if (inRxEndTime < millis()) {
+
       // rtcResiveIdx=rtcSendCount
       Serial.print(rtcResiveIdx);
       Serial.print("-");
       Serial.print(rtcSendCount);
-
-      if (rtcResiveIdx != rtcSendCount) {
-        Serial.println("❌上报信息后并没有收到 中继下发的LORA   "
-                       "补发一条对时信息上 rtcSendCount 回一档 ");
+      if (rtcResiveIdx != rtcSendCount && sendmodeFlage == 1) {
+        //上报模式为0就是上报了不管理 1是上报了判断一次， 也许以后还有3会持续上报
+        Serial.println("❌上报信息后并没有收到 中继下发的LORA ❌");
+        Radio.Sleep();
         rtcSendCount = rtcSendCount - 1;
+        delay(random(0, 10000)); //给一个10秒不确定的再次上传的机会，还要测试看重复率
         buildAndSendPacket(MSG_TYPE_TIME_REALY);
         delay(2000);
       }
-
       // 回到普通模式，准备可以休眠
       nextSendTime = 0;
       typeindex = 0;

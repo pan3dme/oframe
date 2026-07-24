@@ -22,11 +22,16 @@ typedef enum {
   MSG_TYPE_UP_GPS = 5,       //   上报GPS坐标
   MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
   MSG_TYPE_TIME_REALY = 8,    // 补发对时信息
-
-
-
   MSG_TYPE_COM = 11 // 下载指令到设备
 } MessageType_t;
+
+
+typedef enum {
+    FLAG_TYPE_0 = 0,
+    FLAG_TYPE_1 = 1,
+    FLAG_TYPE_2 = 2,
+    FLAG_TYPE_3 = 3
+} FlagType_t;
 
 // 前向声明：在头文件中避免包含过多实现细节
 class TinyGPSPlus;
