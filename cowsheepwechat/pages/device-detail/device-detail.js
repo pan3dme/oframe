@@ -447,7 +447,7 @@ Page({
   onGetLocationTap() {
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const cmdText = JSON.stringify({ cmd: 'setfreq', value: 5, tm: 0 })
+    const cmdText = JSON.stringify({ cmd: 'upgps', value: 0 })
     const deviceInfo = this.data.deviceInfo
 
     // 设备已有密钥，直接发送

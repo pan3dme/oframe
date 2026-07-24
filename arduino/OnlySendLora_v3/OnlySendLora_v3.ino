@@ -389,6 +389,7 @@ void setup() {
   Serial.begin(115200);
   delay(100);
   Serial.print("setup");
+   randomSeed(analogRead(0)); 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
   if (haveRightTime()) {
