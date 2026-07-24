@@ -58,10 +58,10 @@ class MyServerCallbacks : public BLEServerCallbacks {
     pServer->startAdvertising();
   }
 };
-#define TARGET_ID_MAX 20
+
+#define TARGET_ID_MAX 60
 String targetIdList[TARGET_ID_MAX];
 int targetIdCount = 0;
-
 // 检查 targetId 是否已存在
 bool isTargetIdExist(String id) {
   for (int i = 0; i < targetIdCount; i++) {
@@ -116,11 +116,76 @@ void removeTargetId(String id) {
   Serial.println(id);
 }
 
-// 清空所有（可选）
-void clearTargetIdList() {
-  targetIdCount = 0;
-  Serial.println("🗑️ 已清空所有 targetId");
+
+String targetGpsList[TARGET_ID_MAX];
+int targetGpsCount = 0;
+// 检查 targetId 是否已存在
+bool isTargetGpsExist(String id) {
+  for (int i = 0; i < targetGpsCount; i++) {
+    if (targetGpsList[i] == id)
+      return true;
+  }
+  return false;
 }
+
+// 添加 targetId（若已存在则忽略）
+void addTargetGps(String id) {
+  if (id.length() == 0)
+    return;
+  if (isTargetGpsExist(id)) {
+    Serial.println("⚠️ targetGps 已存在，忽略添加");
+    return;
+  }
+  if (targetGpsCount < TARGET_ID_MAX) {
+    targetGpsList[targetGpsCount++] = id;
+    Serial.print("✅ 已添加 targetGps: ");
+    Serial.println(id);
+  } else {
+    Serial.println("❌ targetGps 列表已满！");
+  }
+}
+String getGpsTargetByDeviceid(String deviceId) {
+  for (int i = 0; i < targetGpsCount; i++) {
+    deserializeJson(docCom, targetGpsList[i]);
+    if (docCom.containsKey("deviceId")) {
+      String targetId = docCom["deviceId"].as<String>();
+      if (targetId == deviceId) {  // 只处理发给当前设备的指令
+        return targetGpsList[i];
+      }
+    }
+  }
+  return "";
+}
+void removeTargetGpsByDeviceId(String deviceId) {
+  for (int i = targetGpsCount - 1; i >= 0; i--) {
+    deserializeJson(docCom, targetGpsList[i]);
+    if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
+      String targetId = docCom["deviceId"].as<String>();
+      if (targetId == deviceId) {
+        removeTargetGps(targetGpsList[i]);
+      }
+    }
+  }
+}
+// 删除指定的 targetId
+void removeTargetGps(String id) {
+  for (int i = 0; i < targetGpsCount; i++) {
+    if (targetGpsList[i] == id) {
+      // 将后面的元素前移
+      for (int j = i; j < targetGpsCount - 1; j++) {
+        targetGpsList[j] = targetGpsList[j + 1];
+      }
+      targetGpsCount--;
+      Serial.print("✅ 已删除 targetGps: ");
+      Serial.println(id);
+      return;
+    }
+  }
+  Serial.print("⚠️ 未找到 targetGps: ");
+  Serial.println(id);
+}
+
+
 
 void meshCmdInfomsg(String rxValue) {
   Serial.println(rxValue);
@@ -368,17 +433,25 @@ void sendLoraToDeviceid(String dataStr) {
 String needSyncTimeDeviceid;
 long down_syn_time = 0;
 // ========================= 下发指令 =========================
-void sendDownInfo(String loraStr) {
-  String deviceId = extractDeviceIdFromInfo(loraStr);
+void sendDownInfo(String loraStr, String deviceId) {
+
   String dataStr = "";
-  String selectCmdStr = "";
-  for (int i = 0; i < targetIdCount; i++) {
-    deserializeJson(docCom, targetIdList[i]);
-    if (docCom.containsKey("deviceId")) {
-      String targetId = docCom["deviceId"].as<String>();
-      if (targetId == deviceId) {  // 只处理发给当前设备的指令
-        selectCmdStr = targetIdList[i];
-        break;  // 找到第一个即停止，或改为处理所有
+  String selectCmdStr = getGpsTargetByDeviceid(deviceId);
+  bool lastCmd = false;
+  if (selectCmdStr.length() > 0) {
+    lastCmd = true;
+    // Serial.print("❌上次需要上报GPS的信息还没收到过这次重新下发GPS更新指令");
+  } else {
+    lastCmd = false;
+    for (int i = 0; i < targetIdCount; i++) {
+      deserializeJson(docCom, targetIdList[i]);
+      if (docCom.containsKey("deviceId")) {
+        String targetId = docCom["deviceId"].as<String>();
+        if (targetId == deviceId) {  // 只处理发给当前设备的指令
+          selectCmdStr = targetIdList[i];
+          removeTargetId(selectCmdStr);
+          break;  // 找到第一个即停止，或改为处理所有
+        }
       }
     }
   }
@@ -387,15 +460,19 @@ void sendDownInfo(String loraStr) {
     Serial.print("✅标记了下发数据");
     Serial.println(selectCmdStr);
     String cmd = docCom["cmd"].as<String>();
+    if (cmd == "upgps" && lastCmd == false) {
+      //特殊处理GPS需要上报的记录用于核对必须接收到GPS定位才解除
+      addTargetGps(selectCmdStr);
+    }
     if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode") {
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
+      sendLoraToDeviceid(dataStr);
     } else {
       Serial.print("❌❌❌当前docCom    cmd  没有对应的方法");
       Serial.println(cmd);
       return;
     }
-    removeTargetId(selectCmdStr);
-    sendLoraToDeviceid(dataStr);
+
   } else {
     needSyncTimeDeviceid = deviceId;
     down_syn_time = millis() + 2000;
@@ -437,8 +514,12 @@ void processLoraData() {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
     sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
+    if (messageType == MSG_TYPE_GPS) {
+      // Serial.println("接收到gps信息  准备清理GPS必须有GPS信息的标记: ");
+      removeTargetGpsByDeviceId(devId);
+    }
     if (messageType == MSG_TYPE_TIME) {
-      sendDownInfo(infoStr);
+      sendDownInfo(infoStr, devId);
     }
     // 3. 下发回复
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYN_UP_TIME) {
