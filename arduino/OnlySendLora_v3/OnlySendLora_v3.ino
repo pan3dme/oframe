@@ -22,7 +22,7 @@ String batterystr = "";
 int sendmodeFlage = 0;
 unsigned long gpsWorkTime = 0;
 unsigned long gpsWorkStat = 0;
-int typeindex = 0;  // 0空闲 1发送中 2接收等待 3GPS搜星
+int typeindex = FLAG_TYPE_0;
 
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true;              // 标记是否还在第一次开启GPS
@@ -220,7 +220,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     } else if (infoStr.indexOf("upgps") != -1) {
       //11|v4-10|upgps|0
       Serial.print("✅✅上报GPS坐标：");
-      typeindex = 3;
+      typeindex = FLAG_TYPE_3;
       gpsWorkStat = millis();
       gpsWorkTime = tmp.toInt() * 60 * 1000;
     } else {
@@ -236,7 +236,8 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
     String timeStr = infoStr.substring(secondPipeIndex + 1);
     timeStr = timeStr.substring(0, timeStr.indexOf('|'));
-    Serial.print(getCurrentTime(false));
+    // Serial.print("本机时间");
+    // Serial.print(getCurrentTime(false));
     if (!haveRightTime()) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
     } else {
@@ -247,7 +248,8 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     }
     timeSynFlage = true;
     setTimeFromLora(timeStr);
-    Serial.println(timeStr);
+    // Serial.print("本机修改后时间");
+    // Serial.print(getCurrentTime(false));
   }
 }
 
@@ -281,14 +283,14 @@ unsigned long inRxEndTime = 0;
 void onSendDone(void) {
   // Radio.Sleep();
   Serial.print("✅ 发送完成");
-  if (typeindex == 1) {
+  if (typeindex == FLAG_TYPE_1) {
     Serial.println("定时上报信息");
     inRxEndTime = millis() + 5000;  // 5秒后结束接收窗口
-    typeindex = 2;
+    typeindex = FLAG_TYPE_2;
     Radio.Rx(0);
-  } else if (typeindex == 2) {
+  } else if (typeindex == FLAG_TYPE_2) {
     Serial.println("重复上报时间信息");
-  } else if (typeindex == 3) {
+  } else if (typeindex == FLAG_TYPE_3) {
     Serial.println("Gps上报完成");
   }
 }
@@ -297,7 +299,7 @@ void onSendDone(void) {
 void onSendTimeout(void) {
   // Radio.Sleep();  // 中断中不应操作Radio硬件，移到loop处理
   Serial.println("❌ 发送超时");
-  typeindex = 0;
+  typeindex = FLAG_TYPE_0;
 }
 
 void printTimeToString(String str, unsigned long ms) {
@@ -414,7 +416,7 @@ void loop() {
 
   Radio.IrqProcess();
 
-  if (typeindex == 3) {
+  if (typeindex == FLAG_TYPE_3) {
     Serial.print("gps持续准备上报位置:");
     Serial.print(millis() - gpsWorkStat);
     Serial.print("-");
@@ -442,7 +444,7 @@ void loop() {
         delay(100);
       }
       nextSendTime = 0;
-      typeindex = 0;
+      typeindex = FLAG_TYPE_0;
     } else {
       printTimeToString("延时1分钟再上报GPS信息 还会持续",
                         gpsWorkTime - (millis() - gpsWorkStat));
@@ -450,14 +452,13 @@ void loop() {
     }
     return;
   }
-  if (typeindex == 2) {
+  if (typeindex == FLAG_TYPE_2) {
 
     delay(100);
 
     Serial.print(".");
     if (inRxEndTime < millis()) {
-
-      // rtcResiveIdx=rtcSendCount
+      Serial.print("rtcResiveIdx-rtcSendCount=");
       Serial.print(rtcResiveIdx);
       Serial.print("-");
       Serial.print(rtcSendCount);
@@ -466,22 +467,22 @@ void loop() {
         Serial.println("❌上报信息后并没有收到 中继下发的LORA ❌");
         Radio.Sleep();
         rtcSendCount = rtcSendCount - 1;
-        delay(random(0, 10000)); //给一个10秒不确定的再次上传的机会，还要测试看重复率
+        delay(random(0, 10000));  //给一个10秒不确定的再次上传的机会，还要测试看重复率
         buildAndSendPacket(MSG_TYPE_TIME_REALY);
         delay(2000);
       }
       // 回到普通模式，准备可以休眠
       nextSendTime = 0;
-      typeindex = 0;
+      typeindex = FLAG_TYPE_0;
       Serial.println("");
     }
     return;
   }
-  if (typeindex == 1) {
+  if (typeindex == FLAG_TYPE_1) {
     delay(100);
     return;
   }
-  if (typeindex == 0) {
+  if (typeindex == FLAG_TYPE_0) {
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
       if (timeSynFlage) {  // 接收了同步时间
@@ -531,7 +532,7 @@ void loop() {
       }
     }
     if (nextSendTime < millis()) {
-      typeindex = 1;
+      typeindex = FLAG_TYPE_1;
 
       if (rtcSendCount == 0 && getGpsInfoStr() != "0.00000,0.00000") {
         // 第一次并有GPS时就发送GPS

@@ -296,8 +296,8 @@ void receiveDtuData() {
     delay(2);  // 等待下一个字节
   }
   Serial2.flush();
-  Serial.print("raw");
-  Serial.println(raw);
+  // Serial.print("raw");
+  // Serial.println(raw);
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   String cominfoArray[10];
   int cominfoCount = 0;
