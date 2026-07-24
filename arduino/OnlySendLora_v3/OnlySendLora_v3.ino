@@ -409,7 +409,7 @@ void setup() {
 
   initLora();
 }
-unsigned long num6000 = 20000;  // 暂时提前20秒开机
+unsigned long num6000 = 5000;  // 暂时提前20秒开机
 bool sendFlagType = false;
 // ==================== 主循环 ====================
 void loop() {
