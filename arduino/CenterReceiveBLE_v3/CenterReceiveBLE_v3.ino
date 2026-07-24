@@ -319,7 +319,7 @@ void receiveDtuData() {
         // 解析并提取cominfo
         DeserializationError err = deserializeJson(docCom, jsonStr);
         if (err) {
-          Serial.print("解析失败: ");
+          Serial.print("receiveDtu解析失败: ");
           Serial.println(err.c_str());
         } else {
           const char *cominfo = docCom["params"]["cominfo"];
@@ -358,7 +358,7 @@ void sendLoraToDeviceid(String dataStr) {
     sendData[BUFFER_SIZE - 1] = '\0';
   }
   // Serial.print(getCurrentTime(true));
-  Serial.print("SEND DOWN：");
+  Serial.print("下发lora：");
   Serial.print(sendData);
   Serial.print("len:");
   Serial.println(strlen(sendData));
@@ -409,7 +409,7 @@ void processLoraData() {
     return;
   }
   loraReceivedFlag = false;
-  Serial.print("LORA：");
+  Serial.print("接收lora：");
   Serial.println(loraStr);
 
   // 1. 构建JSON并存入队列/设备缓存

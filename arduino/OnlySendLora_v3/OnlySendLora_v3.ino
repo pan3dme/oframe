@@ -49,8 +49,9 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
   localtime_r(&now, &t);
   int nowMinutes = t.tm_hour * 60 + t.tm_min;
 
-  Serial.printf("工作时间窗口: %02d:%02d ~ %02d:%02d, 当前: %02d:%02d\n",
+  Serial.printf("工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
                 startH, startM, endH, endM, t.tm_hour, t.tm_min);
+                
 
   // 3. 判断是否在工作时间内
   bool inWorkTime = (nowMinutes >= startMinutes && nowMinutes <= endMinutes);
@@ -200,10 +201,10 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   int messageType = infoStr.substring(0, firstPipeIndex).toInt();
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
     if (infoStr.indexOf("worktime") != -1) {
-      // 11|v4-10|worktime|05:02-10:59
+      // 11|v4-10|work_time|05:02-10:59
       int wtIdx = infoStr.indexOf("worktime|");
       if (wtIdx != -1) {
-        String tmp = infoStr.substring(wtIdx + strlen("worktime|"));
+        String tmp = infoStr.substring(wtIdx + strlen("work_time|"));
         tmp.toCharArray(work_time_str, sizeof(work_time_str));
       }
       Serial.print("✅✅设置工作时间：");
@@ -238,17 +239,23 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     }
   }
 
+  // if (messageType == MSG_TYPE_UP_GPS && isMyDeviceInList(infoStr, deviceName)) {
+  //   Serial.println("✅是当前设备，标记GPS搜星");
+  //   typeindex = 3;
+  //   int lastPipe = infoStr.lastIndexOf('|');
+  //   if (lastPipe != -1) {
+  //     String lastPart = infoStr.substring(lastPipe + 1);
+  //     int value = lastPart.toInt();
+  //     gpsWorkStat = millis();
+  //     gpsWorkTime = value * 60 * 1000;
+  //   }
+  // }
+
+
   if (messageType == MSG_TYPE_SYN_TIME) {
     int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
-    if (secondPipeIndex == -1) {
-      Serial.println("❌ 对时消息格式错误");
-      return;
-    }
     String timeStr = infoStr.substring(secondPipeIndex + 1);
-    int nextPipe = timeStr.indexOf('|');
-    if (nextPipe != -1) {
-      timeStr = timeStr.substring(0, nextPipe);
-    }
+    timeStr = timeStr.substring(0, timeStr.indexOf('|'));
 
     if (!haveRightTime()) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
@@ -420,7 +427,7 @@ void setup() {
 
   initLora();
 }
-unsigned long num6000 = 20000;  // 暂时提前10秒开机
+unsigned long num6000 = 10000;  // 暂时提前10秒开机
 bool sendFlagType = false;
 // ==================== 主循环 ====================
 void loop() {
@@ -520,7 +527,7 @@ void loop() {
         delay(1000);
 
 
-        // 05:02-10:59
+        // 05:02|10:59
         uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
         // esp_deep_sleep(sleepTime);
         esp_sleep_enable_timer_wakeup(sleepTime);
