@@ -459,7 +459,7 @@ void loop() {
 
     Serial.print(".");
     if (inRxEndTime < millis()) {
-      Serial.print("rtcResiveIdx-rtcSendCount=");
+      Serial.print("   Idx-Count=");
       Serial.print(rtcResiveIdx);
       Serial.print("-");
       Serial.print(rtcSendCount);

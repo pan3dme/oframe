@@ -45,6 +45,11 @@ int8_t lastSnr = 0;
 
 StaticJsonDocument<200> docCom;  // BLE指令解析用（全局复用）
 
+// 晶振偏差追踪
+unsigned long lastSyncMillis = 0;  // 上次对时时的 millis()
+time_t lastSyncEpoch = 0;          // 上次对时后的系统 epoch
+bool hasLastSync = false;          // 是否已有上次记录
+
 // ========================= BLE回调 =========================
 
 // BLE服务器连接/断开回调
@@ -527,10 +532,44 @@ void processLoraData() {
       if (secondPipeIndex > 0) {
         String timeStr = infoStr.substring(secondPipeIndex + 1);
         timeStr = timeStr.substring(0, timeStr.indexOf('|'));
-        // Serial.print("⏰ 收到对时信息: ");
-        // Serial.print(timeStr);
+        // 解析LoRa时间为epoch
+        if (messageType == MSG_TYPE_SYN_UP_TIME) {
+          int year, month, day, hour, minute, second = 0;
+          sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second);
+          struct tm loraTm = { 0 };
+          loraTm.tm_year = year - 1900;
+          loraTm.tm_mon = month - 1;
+          loraTm.tm_mday = day;
+          loraTm.tm_hour = hour;
+          loraTm.tm_min = minute;
+          loraTm.tm_sec = second;
+          loraTm.tm_isdst = 0;
+          time_t currentLoraEpoch = mktime(&loraTm);
+          unsigned long currentMillis = millis();
+          // 计算晶振偏差
+          if (hasLastSync) {
+            long localDiffMs = (long)(currentMillis - lastSyncMillis);
+            if (localDiffMs > 1000 * 60 * 1) {
+              long loraDiffMs = (long)(currentLoraEpoch - lastSyncEpoch) * 1000L;
+              long driftMs = localDiffMs - loraDiffMs;
+              double hourlyDriftMs = (double)driftMs * 3600000.0 / loraDiffMs;
+
+              Serial.println("==== 晶振偏差分析 ====");
+              Serial.printf("LoRa实际经过: %ld 秒\n", loraDiffMs / 1000);
+              Serial.printf("本地millis经过: %ld 秒\n", localDiffMs / 1000);
+              Serial.printf("偏差: %ld 毫秒\n", driftMs);
+              Serial.printf("每小时偏差: %.2f 毫秒\n", hourlyDriftMs);
+              Serial.println("=====================");
+            }
+
+          } else {
+            lastSyncEpoch = currentLoraEpoch;
+            lastSyncMillis = currentMillis;
+            hasLastSync = true;
+          }
+        }
+        // 设置系统时间
         if (!haveRightTime() || messageType == MSG_TYPE_SYN_UP_TIME) {
-          // Serial.println("✅ 系统更新LORA上报的时间可能有很大误差");
           setTimeFromLora(timeStr);
         }
       }
