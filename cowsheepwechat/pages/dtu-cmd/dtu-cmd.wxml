@@ -29,9 +29,7 @@
     <view class="quick-row">
       <button class="quick-btn {{quickSelected === 5 ? 'quick-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
       <button class="quick-btn {{quickSelected === 7 ? 'quick-active' : ''}}" bindtap="onQuickReport30Min">⏱️ 30分钟上报</button>
-
-    </view>
-    <view class="quick-row">
+      <button class="quick-btn {{quickSelected === 2 ? 'quick-active' : ''}}" bindtap="onQuickRefreshGps">📍 中继刷定位</button>
       <button class="quick-btn {{quickSelected === 12 ? 'quick-active' : ''}}" bindtap="onQuickNormalMode">📶 上报模式</button>
       <button class="quick-btn {{quickSelected === 14 ? 'quick-active' : ''}}" bindtap="onQuickWorkTime">🕐 工作时间</button>
     </view>

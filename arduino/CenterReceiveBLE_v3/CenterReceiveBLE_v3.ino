@@ -33,6 +33,8 @@ int deviceCacheCount = 0;
 int rtcSendCount = 0;
 String batterystr = "";
 String deviceName = "x-x";
+//必须要上报GPS时间段
+long mustrefrishgpsTime = 0;
 
 // ========================= LoRa全局变量 =========================
 char loraStr[BUFFER_SIZE];
@@ -205,10 +207,24 @@ void meshCmdInfomsg(String rxValue) {
     return;
   }
   if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
-    int type = docCom["value"].as<int>();
-    // 先移除原来对应设备的
-    removeTargetByDeviceId(docCom["deviceId"].as<String>());
-    addTargetId(rxValue);
+
+    String deviceId = docCom["deviceId"].as<String>();
+    if (deviceId == deviceName) {
+
+      String cmd = docCom["cmd"].as<String>();
+      if (cmd == "refrishgps") {
+        int valueNum = docCom["value"].as<int>();
+        Serial.print("刷新中继连接所有 设备GPS valueNum=");
+        Serial.println(valueNum);
+        mustrefrishgpsTime = millis() + valueNum * 60 * 1000;
+      } else {
+        Serial.println("❌❌❌下发的对象就是中继， 我要分批处理 全局指令❌❌❌");
+      }
+    } else {
+      // 先移除原来对应设备的
+      removeTargetByDeviceId(deviceId);
+      addTargetId(rxValue);
+    }
   }
 }
 
@@ -626,7 +642,17 @@ void processLoraData() {
       removeTargetGpsByDeviceId(devId);
     }
     if (messageType == MSG_TYPE_TIME) {
-      sendDownInfo(infoStr, devId);
+      Serial.print("mustrefrishgpsTime-");
+      Serial.print(mustrefrishgpsTime);
+      Serial.print("-");
+      Serial.println(millis());
+      if (mustrefrishgpsTime > millis()) {
+        Serial.print(devId);
+        Serial.println("必须经上报GPS坐标");
+        sendLoraToDeviceid(String(MSG_TYPE_COM) + "|" + devId + "|upgps|0");
+      } else {
+        sendDownInfo(infoStr, devId);
+      }
       testOutInfo(infoStr, devId);
     }
     // 3. 下发回复

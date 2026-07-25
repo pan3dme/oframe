@@ -121,6 +121,9 @@ Page({
   onQuickReport30Min() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setinterval', value: 30 }), quickSelected: 7 })
   },
+  onQuickRefreshGps() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'refrishgps', value: 30 }), quickSelected: 2 })
+  },
   onQuickNormalMode() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 0 }), quickSelected: 12 })
   },
