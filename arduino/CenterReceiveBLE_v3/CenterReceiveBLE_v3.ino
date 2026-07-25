@@ -483,6 +483,108 @@ void sendDownInfo(String loraStr, String deviceId) {
     down_syn_time = millis() + 2000;
   }
 }
+unsigned long get_send_interval_ms() {
+  return 1000 * 60 * 30;
+}
+float getSlotDuration() {
+  return get_send_interval_ms() / 60 / 1000;
+}
+void testOutInfo(String loraStr, String deviceId) {
+  unsigned long intervalSeconds = get_send_interval_ms() / 1000;
+  String num = deviceId.substring(3);
+  int deviceIndex = num.toInt();
+
+  // 1. 从LoRa消息中提取设备上报的时间
+  String loraTimeStr = "";
+  int firstPipe = loraStr.indexOf('|');
+  if (firstPipe > 0) {
+    int secondPipe = loraStr.indexOf('|', firstPipe + 1);
+    if (secondPipe > 0) {
+      loraTimeStr = loraStr.substring(secondPipe + 1);
+      int endPipe = loraTimeStr.indexOf('|');
+      if (endPipe > 0) {
+        loraTimeStr = loraTimeStr.substring(0, endPipe);
+      }
+    }
+  }
+
+  // 2. 获取当前系统时间
+  String timeStr = getCurrentTime(true);
+  int hour = 0, minute = 0, second = 0;
+  sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
+  unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
+
+  // 2.1 解析设备上报时间为epoch秒数，计算时间差
+  time_t loraEpoch = 0, localEpoch = 0;
+  bool hasLoraTime = false;
+  if (loraTimeStr.length() > 0) {
+    int loraYear = 0, loraMonth = 0, loraDay = 0, loraH = 0, loraM = 0, loraS = 0;
+    sscanf(loraTimeStr.c_str(), "%d/%d/%d %d:%d:%d", &loraYear, &loraMonth, &loraDay, &loraH, &loraM, &loraS);
+    struct tm loraTm = { 0 };
+    loraTm.tm_year = loraYear - 1900;
+    loraTm.tm_mon = loraMonth - 1;
+    loraTm.tm_mday = loraDay;
+    loraTm.tm_hour = loraH;
+    loraTm.tm_min = loraM;
+    loraTm.tm_sec = loraS;
+    loraTm.tm_isdst = 0;
+    loraEpoch = mktime(&loraTm);
+    localEpoch = time(nullptr);
+    hasLoraTime = true;
+  }
+
+  // 3. 计算时隙参数
+  float slotDuration = getSlotDuration();
+  unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);
+  unsigned long cyclesPassed = currentSeconds / intervalSeconds;
+  unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + mySlotOffset;
+
+  long secondsDiff = 0;
+  if (lastTargetSeconds < currentSeconds) {
+    secondsDiff = intervalSeconds - (currentSeconds - lastTargetSeconds);
+  } else {
+    secondsDiff = lastTargetSeconds - currentSeconds;
+  }
+  if (secondsDiff < 0) {
+    secondsDiff += intervalSeconds;
+  }
+
+  unsigned long delayMillis = secondsDiff * 1000;
+  unsigned long waitMin = delayMillis / 60000;
+  unsigned long waitSec = (delayMillis % 60000) / 1000;
+
+  // 4. 计算预计下次开机时间
+  unsigned long nextSlotSeconds = lastTargetSeconds;
+  if (lastTargetSeconds < currentSeconds) {
+    nextSlotSeconds = (cyclesPassed + 1) * intervalSeconds + mySlotOffset;
+  }
+  int nextH = (nextSlotSeconds / 3600) % 24;
+  int nextM = (nextSlotSeconds % 3600) / 60;
+  int nextS = nextSlotSeconds % 60;
+
+  // 5. 打印测试输出
+  Serial.println("====== testOutInfo ======");
+  Serial.printf("设备: %s (index=%d)\n", deviceId.c_str(), deviceIndex);
+  Serial.printf("本机当前时间: %s\n", timeStr.c_str());
+  if (hasLoraTime) {
+    long timeDiffSec = (long)(localEpoch - loraEpoch);
+    long absDiff = timeDiffSec >= 0 ? timeDiffSec : -timeDiffSec;
+    int diffH = absDiff / 3600;
+    int diffM = (absDiff % 3600) / 60;
+    int diffS = absDiff % 60;
+    Serial.printf("设备上报时间: %s\n", loraTimeStr.c_str());
+    Serial.printf("时间差: %ld秒 (%d时%d分%d秒) [%s]\n", timeDiffSec,
+                  diffH, diffM, diffS,
+                  timeDiffSec >= 0 ? "本机快" : "设备快");
+  } else {
+    Serial.printf("设备上报时间: (未解析到)\n");
+  }
+  Serial.printf("上报周期: %lu秒, 时隙: %.2f秒\n", intervalSeconds, slotDuration);
+  Serial.printf("本设备时隙偏移: %lu秒\n", mySlotOffset);
+  Serial.printf("距下次时隙: %lu分%lu秒\n", waitMin, waitSec);
+  Serial.printf("预计下次开机: %02d:%02d:%02d\n", nextH, nextM, nextS);
+  Serial.println("=========================");
+}
 
 // ========================= 主循环处理LoRa数据 =========================
 
@@ -525,6 +627,7 @@ void processLoraData() {
     }
     if (messageType == MSG_TYPE_TIME) {
       sendDownInfo(infoStr, devId);
+      testOutInfo(infoStr, devId);
     }
     // 3. 下发回复
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYN_UP_TIME) {

@@ -389,8 +389,8 @@ void setup() {
   Serial.begin(115200);
   delay(100);
   Serial.print("setup");
-   randomSeed(analogRead(0)); 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  randomSeed(analogRead(0));
   deviceName = makeDivceName();
   if (haveRightTime()) {
     Serial.print("✅已有GPS时间");
@@ -459,7 +459,7 @@ void loop() {
 
     Serial.print(".");
     if (inRxEndTime < millis()) {
-      Serial.print("   Idx-Count=");
+      Serial.print("rtcResiveIdx-rtcSendCount=");
       Serial.print(rtcResiveIdx);
       Serial.print("-");
       Serial.print(rtcSendCount);
@@ -487,7 +487,7 @@ void loop() {
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
       if (timeSynFlage) {  // 接收了同步时间
-        if ((nextSendTime - millis()) < num6000) {
+        if ((nextSendTime - millis()) < get_send_interval_ms() / 2) {
           Serial.print("❌接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
                        "要跳过这个窗口将时间后移到下一个周末");
           nextSendTime = nextSendTime + get_send_interval_ms();
@@ -508,15 +508,8 @@ void loop() {
         Serial.print(num6000 / 1000);
         Serial.print("秒进入睡眠");
 
-        // 关闭外设以降低休眠功耗
         hideOLED();
-        if (getGpsStatus()) {
-          setGpsEnable(false);  // 关闭GPS
-          Serial.println("✅ GPS已关闭");
-        }
-        Radio.Sleep();  // 关闭LoRa Radio
-        Serial.println("✅ LoRa Radio已休眠");
-        delay(100);
+        delay(1000);
 
 
         // 05:02|10:59
