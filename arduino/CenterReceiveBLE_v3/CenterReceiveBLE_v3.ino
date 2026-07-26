@@ -503,7 +503,7 @@ unsigned long get_send_interval_ms() {
   return 1000 * 60 * 30;
 }
 float getSlotDuration() {
-  return get_send_interval_ms() / 60 / 1000;
+  return get_send_interval_ms() / 30 / 1000; //30台设备现在是30分钟
 }
 void testOutInfo(String loraStr, String deviceId) {
   unsigned long intervalSeconds = get_send_interval_ms() / 1000;
@@ -551,7 +551,8 @@ void testOutInfo(String loraStr, String deviceId) {
 
   // 3. 计算时隙参数
   float slotDuration = getSlotDuration();
-  unsigned long mySlotOffset = (unsigned long)(deviceIndex * slotDuration);
+  unsigned long mySlotOffset = (unsigned long)((deviceIndex+0.5) * slotDuration);
+
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
   unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + mySlotOffset;
 
@@ -595,6 +596,7 @@ void testOutInfo(String loraStr, String deviceId) {
   } else {
     Serial.printf("设备上报时间: (未解析到)\n");
   }
+  Serial.printf("本设备周期内排列位置: %lu秒\n", mySlotOffset/ 60);
   Serial.printf("上报周期: %lu秒, 时隙: %.2f秒\n", intervalSeconds, slotDuration);
   Serial.printf("本设备时隙偏移: %lu秒\n", mySlotOffset);
   Serial.printf("距下次时隙: %lu分%lu秒\n", waitMin, waitSec);

@@ -84,7 +84,7 @@ unsigned long get_send_interval_ms() {
   }
 }
 float getSlotDuration() {
-  return get_send_interval_ms() / 60 / 1000;
+  return get_send_interval_ms() / 30 / 1000; //30台设备现在是30分钟
 }
 
 // ==================== 计算下次发送时间 (修正版) ====================
@@ -107,7 +107,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 
   // 2. 计算基础参数
   unsigned long mySlotOffset =
-    (unsigned long)(deviceIndex * getSlotDuration());  // 我在周期内的偏移量
+    (unsigned long)((deviceIndex+0.5) * getSlotDuration());  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
@@ -488,7 +488,7 @@ void loop() {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
       if (timeSynFlage) {  // 接收了同步时间
         if ((nextSendTime - millis()) < get_send_interval_ms() / 2) {
-          Serial.print("❌接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
+          Serial.print("⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
                        "要跳过这个窗口将时间后移到下一个周末");
           nextSendTime = nextSendTime + get_send_interval_ms();
         }
