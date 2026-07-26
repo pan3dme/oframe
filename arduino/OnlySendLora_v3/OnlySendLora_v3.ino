@@ -19,11 +19,12 @@ bool timeSynFlage = false;
 
 String batterystr = "";
 
-int sendmodeFlage = 0;
+
 unsigned long gpsWorkTime = 0;
 unsigned long gpsWorkStat = 0;
 int typeindex = FLAG_TYPE_0;
 
+RTC_DATA_ATTR int sendmodeFlage = 0;
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true;              // 标记是否还在第一次开启GPS
 RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
@@ -84,7 +85,7 @@ unsigned long get_send_interval_ms() {
   }
 }
 float getSlotDuration() {
-  return get_send_interval_ms() / 30 / 1000; //30台设备现在是30分钟
+  return get_send_interval_ms() / 30 / 1000;  //30台设备现在是30分钟
 }
 
 // ==================== 计算下次发送时间 (修正版) ====================
@@ -107,7 +108,7 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 
   // 2. 计算基础参数
   unsigned long mySlotOffset =
-    (unsigned long)((deviceIndex+0.5) * getSlotDuration());  // 我在周期内的偏移量
+    (unsigned long)((deviceIndex + 0.5) * getSlotDuration());  // 我在周期内的偏移量
 
   // 3. 核心修复逻辑：计算到下一个时隙的等待时间
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
@@ -247,7 +248,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       printTimeToString("✅ 收到对时信息  : 和本机时间差", abs(diff_ms));
     }
     timeSynFlage = true;
-    setTimeFromLora(timeStr);
+    // setTimeFromLora(timeStr);
     // Serial.print("本机修改后时间");
     // Serial.print(getCurrentTime(false));
   }
@@ -418,7 +419,7 @@ void loop() {
   Radio.IrqProcess();
 
   if (typeindex == FLAG_TYPE_3) {
-    unsigned long bigenTm = millis()+5000 ;
+    unsigned long bigenTm = millis() + 5000;
     Serial.print("gps持续准备上报位置:");
     Serial.print(millis() - gpsWorkStat);
     Serial.print("-");
@@ -429,9 +430,9 @@ void loop() {
     Serial.print("获取GPS");
     printCurrentTime();
     meshGpsInfoFun(false);
-    if(bigenTm>millis()){
+    if (bigenTm > millis()) {
       //再次上传不能和另一台中继下发时间冲突，有可能获取GPS很块
-       delay(bigenTm-millis());
+      delay(bigenTm - millis());
     }
 
     buildAndSendPacket(MSG_TYPE_GPS);
@@ -477,6 +478,14 @@ void loop() {
         delay(random(0, 10000));  //给一个10秒不确定的再次上传的机会，还要测试看重复率
         buildAndSendPacket(MSG_TYPE_TIME_REALY);
         delay(2000);
+      }
+      if (sendmodeFlage == 2) {
+        //每次都上报GPS
+        Serial.print("✅✅上报GPS坐标：");
+        typeindex = FLAG_TYPE_3;
+        gpsWorkStat = millis();
+        gpsWorkTime = 0;
+        return ;
       }
       // 回到普通模式，准备可以休眠
       nextSendTime = 0;
