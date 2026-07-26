@@ -418,6 +418,7 @@ void loop() {
   Radio.IrqProcess();
 
   if (typeindex == FLAG_TYPE_3) {
+    unsigned long bigenTm = millis()+5000 ;
     Serial.print("gps持续准备上报位置:");
     Serial.print(millis() - gpsWorkStat);
     Serial.print("-");
@@ -428,6 +429,11 @@ void loop() {
     Serial.print("获取GPS");
     printCurrentTime();
     meshGpsInfoFun(false);
+    if(bigenTm>millis()){
+      //再次上传不能和另一台中继下发时间冲突，有可能获取GPS很块
+       delay(bigenTm-millis());
+    }
+
     buildAndSendPacket(MSG_TYPE_GPS);
     delay(2000);             // 上报LORA需要2秒钟间隔
     if (gpsWorkTime == 0) {  // 如果只定位一次，那正好提交一次对时信息

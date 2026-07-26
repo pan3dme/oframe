@@ -596,7 +596,7 @@ void testOutInfo(String loraStr, String deviceId) {
   } else {
     Serial.printf("设备上报时间: (未解析到)\n");
   }
-  Serial.printf("本设备周期内排列位置: %lu秒\n", mySlotOffset/ 60);
+  Serial.printf("本设备周期内排列位置: %lu分钟\n", mySlotOffset/ 60);
   Serial.printf("上报周期: %lu秒, 时隙: %.2f秒\n", intervalSeconds, slotDuration);
   Serial.printf("本设备时隙偏移: %lu秒\n", mySlotOffset);
   Serial.printf("距下次时隙: %lu分%lu秒\n", waitMin, waitSec);
