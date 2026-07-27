@@ -165,6 +165,10 @@
       placeholder="请输入DeviceSecret"
       bindinput="onEditDeviceSecretInput" />
 
+    <!-- 是否隐藏 -->
+    <view class="modal-label">是否隐藏</view>
+    <switch checked="{{editVisible}}" bindchange="onEditVisibleChange" class="modal-switch" />
+
     <view class="modal-btns">
       <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
       <button class="modal-btn modal-btn-confirm" bindtap="onEditConfirm">确认修改</button>

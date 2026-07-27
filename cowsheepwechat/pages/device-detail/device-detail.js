@@ -28,6 +28,7 @@ Page({
     editDeviceSecret: '',
     editPicurl: '',
     editPicFilePath: '',
+    editVisible: false,
     // 连接牛羊弹窗
     showBindModal: false,
     bindDeviceId: '',
@@ -241,7 +242,8 @@ Page({
       editDeviceName: info.DeviceName || '',
       editDeviceSecret: info.DeviceSecret || '',
       editPicurl: info.picurl || '',
-      editPicFilePath: ''
+      editPicFilePath: '',
+      editVisible: info.visible === true || info.visible === 'true' || info.visible === 1
     })
   },
 
@@ -263,6 +265,10 @@ Page({
 
   onEditDeviceSecretInput(e) {
     this.setData({ editDeviceSecret: e.detail.value })
+  },
+
+  onEditVisibleChange(e) {
+    this.setData({ editVisible: e.detail.value })
   },
 
   onEditPic() {
@@ -293,6 +299,7 @@ Page({
     const ProductKey = this.data.editProductKey.trim()
     const DeviceName = this.data.editDeviceName.trim()
     const DeviceSecret = this.data.editDeviceSecret.trim()
+    const visible = this.data.editVisible
     const picFilePath = this.data.editPicFilePath
 
     this.setData({ showEditModal: false })
@@ -303,25 +310,25 @@ Page({
       compressImage(picFilePath).then((compressedPath) => {
         return uploadToOSS(compressedPath, objectKey, 'device/')
       }).then((ossUrl) => {
-        this._doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, ossUrl)
+        this._doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, ossUrl)
       }).catch((err) => {
         wx.hideLoading()
         console.error('OSS 上传失败:', err)
         wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
       })
     } else {
-      this._doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, this.data.editPicurl)
+      this._doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, this.data.editPicurl)
     }
   },
 
-  _doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, picurl) {
+  _doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl) {
     wx.showLoading({ title: '更新中...' })
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
         action: 'updateDevice',
-        info: { deviceId: oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, picurl }
+        info: { deviceId: oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl }
       },
       success: (res) => {
         wx.hideLoading()

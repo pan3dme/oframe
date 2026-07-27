@@ -564,6 +564,10 @@ page {
   box-sizing: border-box;
   margin-bottom: 28rpx;
 }
+.modal-switch {
+  margin-bottom: 28rpx;
+  transform: scale(0.9);
+}
 .modal-picker {
   width: 100%;
   height: 80rpx;
