@@ -721,14 +721,18 @@ void setup() {
   delay(1000);
 
 #if defined(WIFI_LORA_32_V3)
-  Serial2.begin(115200, SERIAL_8N1, 17, 18);
-  dtuSerial = &Serial2;
+  Serial1.begin(115200, SERIAL_8N1, 17, 18);
+  dtuSerial = &Serial1;
   Serial.println("✅ v3 板子 DTU");
+  dtuSerial->println("V3 DTU TEST");
+  delay(1000);
 #endif
 #if defined(WIFI_LORA_32_V4)
-  Serial2.begin(115200, SERIAL_8N1, 43, 44);
-  dtuSerial = &Serial2;
+  Serial1.begin(115200, SERIAL_8N1, 38, 39); // RX=38, TX=39
+  dtuSerial = &Serial1;
   Serial.println("✅ v4 板子 DTU");
+  dtuSerial->println("V4 DTU TEST");
+  delay(1000);
 #endif
 
 
