@@ -433,6 +433,7 @@ page {
 .rec-val-update {
   color: #888;
   font-size: 24rpx;
+  font-weight: bold;
   flex-shrink: 0;
 }
 
