@@ -12,7 +12,7 @@
 #include <BLEUtils.h>
 #include <pan3dme.h>
 #include <time.h>
-
+HardwareSerial *dtuSerial;
 // ========================= BLE全局对象 =========================
 bool needSync = false;
 BLECharacteristic *pCharacteristic = NULL;
@@ -367,23 +367,26 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
                 + snr + "}"
                         "}";
   // Serial.println("上报报文：" + json);
-  Serial2.println(json);
+  dtuSerial->println(json);
 }
 // 接收 Serial2 (DTU) 数据，拆分多个拼接JSON并提取cominfo
 void receiveDtuData() {
-  if (Serial2.available() <= 0) {
+  String raw = "";
+
+
+  if (dtuSerial->available() <= 0) {
     return;
   }
-
   // 1. 读取本次全部数据
-  String raw = "";
-  while (Serial2.available() > 0) {
-    raw += (char)Serial2.read();
+  while (dtuSerial->available() > 0) {
+    raw += (char)dtuSerial->read();
     delay(2);  // 等待下一个字节
   }
-  Serial2.flush();
-  // Serial.print("raw");
-  // Serial.println(raw);
+
+
+  dtuSerial->flush();
+  Serial.print("raw");
+  Serial.println(raw);
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   String cominfoArray[10];
   int cominfoCount = 0;
@@ -503,7 +506,7 @@ unsigned long get_send_interval_ms() {
   return 1000 * 60 * 30;
 }
 float getSlotDuration() {
-  return get_send_interval_ms() / 30 / 1000; //30台设备现在是30分钟
+  return get_send_interval_ms() / 30 / 1000;  //30台设备现在是30分钟
 }
 void testOutInfo(String loraStr, String deviceId) {
   unsigned long intervalSeconds = get_send_interval_ms() / 1000;
@@ -551,7 +554,7 @@ void testOutInfo(String loraStr, String deviceId) {
 
   // 3. 计算时隙参数
   float slotDuration = getSlotDuration();
-  unsigned long mySlotOffset = (unsigned long)((deviceIndex+0.5) * slotDuration);
+  unsigned long mySlotOffset = (unsigned long)((deviceIndex + 0.5) * slotDuration);
 
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
   unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + mySlotOffset;
@@ -596,7 +599,7 @@ void testOutInfo(String loraStr, String deviceId) {
   } else {
     Serial.printf("设备上报时间: (未解析到)\n");
   }
-  Serial.printf("本设备周期内排列位置: %lu分钟\n", mySlotOffset/ 60);
+  Serial.printf("本设备周期内排列位置: %lu分钟\n", mySlotOffset / 60);
   Serial.printf("上报周期: %lu秒, 时隙: %.2f秒\n", intervalSeconds, slotDuration);
   Serial.printf("本设备时隙偏移: %lu秒\n", mySlotOffset);
   Serial.printf("距下次时隙: %lu分%lu秒\n", waitMin, waitSec);
@@ -700,7 +703,8 @@ void processLoraData() {
           }
         }
         // 设置系统时间
-        if (!haveRightTime() || messageType == MSG_TYPE_SYN_UP_TIME) {
+        // if (!haveRightTime() || messageType == MSG_TYPE_SYN_UP_TIME) {
+        if (!haveRightTime()) {
           setTimeFromLora(timeStr);
         }
       }
@@ -713,9 +717,22 @@ void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   delay(1000);
-  Serial2.begin(115200, SERIAL_8N1, 17, 18);
-  delay(1000);
   deviceName = makeDivceName();
+  delay(1000);
+
+#if defined(WIFI_LORA_32_V3)
+  Serial2.begin(115200, SERIAL_8N1, 17, 18);
+  dtuSerial = &Serial2;
+  Serial.println("✅ v3 板子 DTU");
+#endif
+#if defined(WIFI_LORA_32_V4)
+  Serial2.begin(115200, SERIAL_8N1, 43, 44);
+  dtuSerial = &Serial2;
+  Serial.println("✅ v4 板子 DTU");
+#endif
+
+
+
   initRadio();
   initBLE();
   Serial.println("✅ 系统启动完成   进入监听状态");
