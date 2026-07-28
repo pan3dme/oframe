@@ -21,6 +21,14 @@
       </view>
       <switch checked="{{bleSound}}" bindchange="onBleSoundChange" color="#07c160" />
     </view>
+
+    <view class="setting-row">
+      <view class="setting-left">
+        <text class="setting-icon">📱</text>
+        <text class="setting-label">显示所有设备</text>
+      </view>
+      <switch checked="{{showAllDevices}}" bindchange="onShowAllDevicesChange" color="#07c160" />
+    </view>
   </view>
 
   <!-- 权限设置 -->

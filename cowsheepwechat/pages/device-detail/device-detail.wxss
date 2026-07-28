@@ -10,6 +10,12 @@ page {
   overflow-y: hidden;
 }
 
+/* ========== 轨迹可滑动区域 ========== */
+.record-scroll {
+  flex: 1;
+  height: 0;
+}
+
 /* ========== 设备头部卡片：左图片 + 右基本信息 ========== */
 .detail-header {
   position: relative;
@@ -366,8 +372,8 @@ page {
 
 /* ========== 轨迹数据列表（卡片式，随机背景） ========== */
 .msg-panel {
-  margin: 0 24rpx 24rpx;
-  border-radius: 16rpx;
+  margin: 0 24rpx 0;
+  border-radius: 0 0 16rpx 16rpx;
   overflow: hidden;
   box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
@@ -376,10 +382,12 @@ page {
   font-size: 28rpx;
   color: #555;
   padding: 16rpx 20rpx;
+  margin: 24rpx 24rpx 0;
   background: #fff;
   text-align: center;
   font-weight: 600;
   border-bottom: 1rpx solid #f0f0f0;
+  border-radius: 16rpx 16rpx 0 0;
 }
 
 .record-list {
@@ -454,6 +462,15 @@ page {
 .rec-val-snr {
   font-size: 24rpx;
   flex-shrink: 0;
+}
+
+/* 加载更多提示 */
+.load-more-tip {
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+  padding: 24rpx 0;
+  background: #fff;
 }
 
 .rec-icon-lora {

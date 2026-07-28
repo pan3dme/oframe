@@ -114,9 +114,10 @@ function _parseDeviceRecords(data) {
     const ProductKey = attr.ProductKey || record.ProductKey || ''
     const DeviceName = attr.DeviceName || record.DeviceName || ''
     const DeviceSecret = attr.DeviceSecret || record.DeviceSecret || ''
+    const visible = attr.visible === true || attr.visible === 'true' || attr.visible === 1 || attr.visible === '1'
     const rawTime = attr.time || record.time || '-'
     const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-    return { deviceId, device_key, rename, lorastr, link_cowsheep_id, picurl, ProductKey, DeviceName, DeviceSecret, date: date || '-', time_part: time_part || '', rawTime }
+    return { deviceId, device_key, rename, lorastr, link_cowsheep_id, picurl, ProductKey, DeviceName, DeviceSecret, visible, date: date || '-', time_part: time_part || '', rawTime }
   })
   records.sort((a, b) => {
     const ta = new Date(a.rawTime).getTime()

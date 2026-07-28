@@ -12,12 +12,14 @@ Page({
     deviceList: [],
     isAdmin: false,
     singleLineRecord: false,
+    showAllDevices: false,
     refresherTriggered: false
   },
 
   _readSettings() {
     let isAdmin = false
     let singleLineRecord = false
+    let showAllDevices = false
     try {
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)
@@ -26,7 +28,11 @@ Page({
       const raw = wx.getStorageSync('setting_single_line_record')
       singleLineRecord = raw === true || raw === 'true' || raw === 1 || raw === '1'
     } catch (e) { /* ignore */ }
-    this.setData({ isAdmin, singleLineRecord })
+    try {
+      const raw = wx.getStorageSync('setting_show_all_devices')
+      showAllDevices = raw === true || raw === 'true' || raw === 1 || raw === '1'
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin, singleLineRecord, showAllDevices })
   },
 
   onLoad() {
@@ -142,7 +148,12 @@ Page({
         return getSeq(a.deviceId) - getSeq(b.deviceId)
       })
 
-      this.setData({ deviceList })
+      // 根据设置过滤：如果未开启"显示所有设备"，仅显示 visible=true 的设备
+      const filteredList = this.data.showAllDevices
+        ? deviceList
+        : deviceList.filter(item => item.visible === true)
+
+      this.setData({ deviceList: filteredList })
       if (forceRefresh) {
         wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
       }

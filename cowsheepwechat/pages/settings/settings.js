@@ -2,6 +2,7 @@
 const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
 const STORAGE_KEY_SINGLE_LINE = 'setting_single_line_record'
 const STORAGE_KEY_IS_ADMIN = 'setting_is_admin'
+const STORAGE_KEY_SHOW_ALL_DEVICES = 'setting_show_all_devices'
 const ADMIN_PASSWORD = '1234'
 const dataCache = require('../../config/data-cache.js')
 
@@ -9,7 +10,8 @@ Page({
   data: {
     bleSound: true,          // 默认开启蓝牙接收声音
     singleLineRecord: false,  // 默认不单行显示
-    isAdmin: false            // 默认不是管理员
+    isAdmin: false,           // 默认不是管理员
+    showAllDevices: false     // 默认不显示所有设备（仅显示visible=true的）
   },
 
   _readSettings() {
@@ -34,6 +36,13 @@ Page({
         this.setData({ isAdmin: isAdmin === true || isAdmin === 'true' })
       }
     } catch (e) { /* 首次使用，保持默认值 */ }
+
+    try {
+      const showAll = wx.getStorageSync(STORAGE_KEY_SHOW_ALL_DEVICES)
+      if (showAll !== '' && showAll !== undefined && showAll !== null) {
+        this.setData({ showAllDevices: showAll === true || showAll === 'true' })
+      }
+    } catch (e) { /* 首次使用，保持默认值 */ }
   },
 
   onLoad() {
@@ -51,6 +60,14 @@ Page({
     this.setData({ bleSound: value })
     wx.setStorageSync(STORAGE_KEY_BLE_SOUND, value)
     wx.showToast({ title: value ? '蓝牙声音已开启' : '蓝牙声音已关闭', icon: 'none', duration: 1000 })
+  },
+
+  // 显示所有设备开关
+  onShowAllDevicesChange(e) {
+    const value = e.detail.value === true || e.detail.value === 'true'
+    this.setData({ showAllDevices: value })
+    wx.setStorageSync(STORAGE_KEY_SHOW_ALL_DEVICES, value)
+    wx.showToast({ title: value ? '显示所有设备' : '仅显示可见设备', icon: 'none', duration: 1000 })
   },
 
   // 单行显示记录开关

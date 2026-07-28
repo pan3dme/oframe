@@ -212,7 +212,12 @@ void meshCmdInfomsg(String rxValue) {
     if (deviceId == deviceName) {
 
       String cmd = docCom["cmd"].as<String>();
-      if (cmd == "refrishgps") {
+      if (cmd == "synctime") {
+        String timestr = docCom["value"].as<String>();
+        setTimeFromLora(timestr);
+        Serial.print("中继地时过来的-");
+        Serial.println(getCurrentTime(true));
+      } else if (cmd == "refrishgps") {
         int valueNum = docCom["value"].as<int>();
         Serial.print("刷新中继连接所有 设备GPS valueNum=");
         Serial.println(valueNum);
@@ -728,7 +733,7 @@ void setup() {
   delay(1000);
 #endif
 #if defined(WIFI_LORA_32_V4)
-  Serial2.begin(115200, SERIAL_8N1, 38, 39); // RX=38, TX=39
+  Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
   dtuSerial = &Serial2;
   Serial.println("✅ v4 板子 DTU");
   // dtuSerial->println("V4 DTU TEST");

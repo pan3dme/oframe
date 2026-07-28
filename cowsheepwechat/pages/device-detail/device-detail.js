@@ -12,12 +12,14 @@ Page({
   data: {
     deviceId: '',
     deviceInfo: null,
-    // 查看设备轨迹
-    showTrackModal: false,
-    trackDate: '',
     // 列出数据（表格展示）
     showRecordTable: false,
     recordList: [],
+    recordLimit: 10,
+    recordOffset: 0,
+    hasMore: true,
+    isLoadingMore: false,
+    isRefreshing: false,
     // 编辑设备弹窗
     showEditModal: false,
     editOldDeviceKey: '',
@@ -83,7 +85,7 @@ Page({
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)
     } catch (e) { /* ignore */ }
-    this.setData({ deviceId, trackDate: '', isAdmin })
+    this.setData({ deviceId, isAdmin })
     if (deviceId) {
       this.loadDeviceInfo(deviceId)
     }
@@ -182,7 +184,7 @@ Page({
   _loadBindName(item) {
     if (!item.link_cowsheep_id) {
       this.setData({ deviceInfo: { ...item, bindName: '' } })
-      this.loadTodayRecords()
+      this.loadTodayRecords(0)
       return
     }
     dataCache.getLivestockList((livestockData) => {
@@ -191,18 +193,15 @@ Page({
       const found = list.find(v => v.cowsheepId === item.link_cowsheep_id)
       if (found) bindName = found.name
       this.setData({ deviceInfo: { ...item, bindName } })
-      this.loadTodayRecords()
+      this.loadTodayRecords(0)
     })
   },
 
-  // 自动加载轨迹记录（首入时不传日期=查全部，选择日期后传 curdate 查对应日期）
-  loadTodayRecords(callback) {
+  // 自动加载轨迹记录
+  loadTodayRecords(offset, callback) {
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const info = { limit: 10, deviceId: deviceId }
-    if (this.data.trackDate) {
-      info.curdate = this.data.trackDate
-    }
+    const info = { limit: this.data.recordLimit, deviceId: deviceId, offset: offset || 0 }
     wx.request({
       url: API_URL,
       method: 'POST',
@@ -212,22 +211,55 @@ Page({
         time: getApp().formatTime()
       },
       success: (res) => {
-        console.log('设备当天轨迹查询返回:', JSON.stringify(res.data))
-        const recordList = this._parseRecords(res.data)
-        this.setData({ recordList, showRecordTable: recordList.length > 0 })
+        console.log('设备轨迹查询返回:', JSON.stringify(res.data))
+        const newRecords = this._parseRecords(res.data)
+        if (offset > 0) {
+          // 加载更多：追加到列表末尾
+          const merged = this.data.recordList.concat(newRecords)
+          this.setData({
+            recordList: merged,
+            recordOffset: offset + newRecords.length,
+            hasMore: newRecords.length >= this.data.recordLimit,
+            isLoadingMore: false,
+            showRecordTable: merged.length > 0
+          })
+        } else {
+          // 首次加载或刷新：替换整个列表
+          this.setData({
+            recordList: newRecords,
+            recordOffset: newRecords.length,
+            hasMore: newRecords.length >= this.data.recordLimit,
+            isLoadingMore: false,
+            isRefreshing: false,
+            showRecordTable: newRecords.length > 0
+          })
+        }
         if (callback) callback()
       },
       fail: (err) => {
         console.error('设备轨迹查询失败:', err)
+        this.setData({ isLoadingMore: false, isRefreshing: false })
         if (callback) callback()
       }
     })
   },
 
-  getTodayStr() {
-    const d = new Date()
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  // 下拉刷新
+  onRefreshRecords() {
+    if (this.data.isRefreshing) return
+    this.setData({ isRefreshing: true })
+    this.loadTodayRecords(0, () => {
+      wx.showToast({ title: '刷新成功', icon: 'none', duration: 1000 })
+    })
   },
+
+  // 滚动到底部加载更多
+  onLoadMoreRecords() {
+    if (this.data.isLoadingMore || !this.data.hasMore) return
+    this.setData({ isLoadingMore: true })
+    this.loadTodayRecords(this.data.recordOffset)
+  },
+
 
   // ========== 编辑设备弹窗 ==========
   onDetailEdit() {
@@ -630,61 +662,7 @@ Page({
     }
   },
 
-  onViewRecords() {
-    this.setData({
-      showTrackModal: true,
-      trackDate: this.getTodayStr()
-    })
-  },
 
-  onTrackDateChange(e) {
-    this.setData({ trackDate: e.detail.value })
-  },
-
-  onTrackClose() {
-    this.setData({ showTrackModal: false })
-  },
-
-  onTrackConfirm() {
-    this.setData({ showTrackModal: false })
-    wx.showLoading({ title: '查询中...' })
-    this.loadTodayRecords(() => wx.hideLoading())
-  },
-
-  // 轨迹地图：跳转到地图页展示GPS轨迹
-  onTrackShowMap() {
-    const deviceId = this.data.deviceId
-    this.setData({ showTrackModal: false })
-    wx.showLoading({ title: '查询中...' })
-    const info = { limit: 30, deviceId: deviceId }
-    if (this.data.trackDate) {
-      info.curdate = this.data.trackDate
-    }
-    wx.request({
-      url: API_URL,
-      method: 'POST',
-      data: {
-        action: 'getDeviceLogbyId',
-        info: info,
-        time: getApp().formatTime()
-      },
-      success: (res) => {
-        wx.hideLoading()
-        console.log('设备轨迹查询返回:', JSON.stringify(res.data))
-        const recordList = this._parseRecordsForMap(res.data)
-        if (recordList.length === 0) {
-          wx.showToast({ title: '该设备当天无轨迹数据', icon: 'none' })
-          return
-        }
-        getApp().globalData.trackData = recordList
-        wx.navigateTo({ url: '/pages/trackmap/trackmap' })
-      },
-      fail: (err) => {
-        wx.hideLoading()
-        wx.showToast({ title: '查询失败', icon: 'error' })
-      }
-    })
-  },
 
   // 列出数据的解析：和features页parseRecordList格式一致
   _parseRecords(data) {
@@ -694,7 +672,7 @@ Page({
     } else if (Array.isArray(data)) {
       rawList = data
     }
-    const records = rawList.map(record => {
+    const records = rawList.map((record, idx) => {
       const attr = {}
       if (record.attributes) {
         record.attributes.forEach(item => {
@@ -739,7 +717,7 @@ Page({
         msgType = parts[0] || '-'
       }
 
-      return { deviceId, upDateDevice, lorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
+      return { _key: rawTime + '_' + idx, deviceId, upDateDevice, lorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()
@@ -752,34 +730,5 @@ Page({
     return records
   },
 
-  // 地图轨迹解析：输出gps/crow_id供trackmap使用
-  _parseRecordsForMap(data) {
-    let rawList = []
-    if (data && data.data && Array.isArray(data.data)) {
-      rawList = data.data
-    } else if (Array.isArray(data)) {
-      rawList = data
-    }
-    return rawList.map(record => {
-      const attr = {}
-      if (record.attributes) {
-        record.attributes.forEach(item => {
-          attr[item.columnName] = item.columnValue
-        })
-      }
-      if (record.primaryKey) {
-        record.primaryKey.forEach(item => {
-          attr[item.name] = item.value
-        })
-      }
-      return {
-        deviceId: attr.deviceId || record.deviceId || '-',
-        auto_id: attr.auto_id || record.auto_id || '-',
-        gps: attr.gps || record.gps || '',
-        lorastr: attr.lorastr || record.lorastr || '',
-        crow_id: attr.crow_idx || record.crow_idx || '',
-        time: attr.time || record.time || ''
-      }
-    })
-  }
+
 })
