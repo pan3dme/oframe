@@ -786,7 +786,7 @@ void loop() {
   }
   if (down_syn_time < millis() && needSyncTimeDeviceid.length() > 0) {
     String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + needSyncTimeDeviceid;
-    dataStr += "|" + getCurrentTime(true);
+    dataStr += "|" + getCurrentTime(true) +"|" +deviceName;
     sendLoraToDeviceid(dataStr);
     needSyncTimeDeviceid = "";
   }
