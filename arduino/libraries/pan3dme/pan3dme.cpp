@@ -469,6 +469,48 @@ String getCurrentTime(bool includeMillis) {
   return String(buf);
 }
 
+// 获取当前时间戳（毫秒级）
+long long getCurrentTimestampMs() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  return (long long)tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+}
+
+// 通过时间戳（毫秒）设置系统时间
+void setTimeFromTimestamp(long long epochMs) {
+  struct timeval new_tv;
+  new_tv.tv_sec = (time_t)(epochMs / 1000LL);
+  new_tv.tv_usec = (suseconds_t)((epochMs % 1000LL) * 1000);
+  settimeofday(&new_tv, NULL);
+}
+
+// 将毫秒时间戳转为可读时间并打印
+void printTimestampMs(long long epochMs, const char* label) {
+  time_t sec = (time_t)(epochMs / 1000LL);
+  int ms = (int)(epochMs % 1000LL);
+  struct tm t;
+  localtime_r(&sec, &t);
+  Serial.printf("%s%4d/%d/%d %02d:%02d:%02d.%03d\n",
+                label,
+                t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                t.tm_hour, t.tm_min, t.tm_sec, ms);
+}
+
+// 将毫秒差值打印为 N小时N分N秒N毫秒
+void printDurationMs(long long diffMs, const char* label) {
+  bool negative = diffMs < 0;
+  if (negative) {
+    diffMs = -diffMs;
+  }
+  long long hours = diffMs / 3600000LL;
+  long long minutes = (diffMs % 3600000LL) / 60000LL;
+  long long seconds = (diffMs % 60000LL) / 1000LL;
+  long long millis = diffMs % 1000LL;
+  Serial.printf("%s%s%lld小时%lld分%lld秒%lld毫秒\n",
+                label, negative ? "-" : "",
+                hours, minutes, seconds, millis);
+}
+
 // 从LoRa对时信息设置时间2026/07/14 23:23:10.513
 void setTimeFromLora(String timeStr) {
   int year, month, day, hour, minute, second, millis = 0;

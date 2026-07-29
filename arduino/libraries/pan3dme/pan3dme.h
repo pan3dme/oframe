@@ -61,7 +61,7 @@ extern unsigned long syncedMillis;
 #define LORA_FREQ 923000000 // 433MHz 国内通用863 863   923  928   433000000
 #define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
-#define LORA_SF 12          // 扩频因子
+#define LORA_SF 11          // 扩频因子
 #define LORA_CR 1           // 纠错率
 #define PREAMBLE_LENGTH 8   // 前导码
 #define BUFFER_SIZE 48      // 数据缓冲区
@@ -79,7 +79,7 @@ extern unsigned long syncedMillis;
 #define VBAT_CTRL_PIN 37 // ADC_Ctrl（控制检测电路开关）
 #define VBAT_READ_PIN 1  // VBAT_Read（ADC1_CH0）
 
-const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 30; // 现在设定30分钟一次
+const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 2; // 现在设定30分钟一次
 
 struct BLECallbacks {
   BLEServer *pServer;
@@ -103,6 +103,10 @@ void gpsEncode(); // GPS对象
 void initPanRadio(RadioEvents_t *radioEvents, int txPower);
 String getGpsInfoStr();
 String getCurrentTime(bool includeMillis);
+long long getCurrentTimestampMs();  // 获取当前时间戳（毫秒）
+void setTimeFromTimestamp(long long epochMs); // 通过时间戳（毫秒）设置系统时间
+void printTimestampMs(long long epochMs, const char* label); // 将时间戳转为可读时间并打印
+void printDurationMs(long long diffMs, const char* label); // 将毫秒差值打印为 N小时N分N秒N毫秒
 bool hasValidTime();
 void setTimeFromLora(String timeStr);
 int getDevicesIdx();
