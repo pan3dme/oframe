@@ -23,7 +23,9 @@ unsigned long gpsWorkTime = 0;
 unsigned long gpsWorkStat = 0;
 int typeindex = FLAG_TYPE_0;
 
+
 RTC_DATA_ATTR long long lastSendTimeTemp = 0;   // 上次收到的中继时间
+RTC_DATA_ATTR long long lastDriftCompMs = 0;   // 上次收到的中继时间
 RTC_DATA_ATTR char lastrelayName[32] = "";      // 上次收到的中继时间
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
 RTC_DATA_ATTR int sendmodeFlage = 0;
@@ -253,9 +255,10 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
         Serial.println(relayName);
         if (lastSendTimeTemp > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
           Serial.println("---中继和上次相对，那开始计算晶震偏移:----- ");
-          long long ds = getCurrentTimestampMs() - lastSendTimeTemp;
+          long long ds = getCurrentTimestampMs()+lastDriftCompMs - lastSendTimeTemp;
+       
           printDurationMs(ds, "本机周期: ");
-          long long diff_ms = mathTimeDiffmstimeFromLora(timeStr);
+          long long diff_ms = mathTimeDiffmstimeFromLora(timeStr)+lastDriftCompMs;
           printDurationMs(diff_ms, "当前偏差: ");
           // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
           if (ds > 0) {
@@ -561,6 +564,8 @@ void loop() {
           long long driftCompMs = hourlyDriftMsTemp * sleepMs / 3600000LL;
           long long currentMs = getCurrentTimestampMs();
           long long adjustedMs = currentMs + driftCompMs;
+
+          lastDriftCompMs=driftCompMs;
 
           Serial.printf("每小时偏差: %lld 毫秒\n", hourlyDriftMsTemp);
           Serial.printf("休眠时长: %llu 微秒\n", sleepTime);
