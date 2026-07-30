@@ -143,6 +143,9 @@ Page({
       String(now.getMilliseconds()).padStart(3, '0')
     this.setData({ cmdText: JSON.stringify({ cmd: 'synctime', value: timeStr }), quickSelected: 15 })
   },
+  onQuickTxPower() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'txpower', value: 20 }), quickSelected: 16 })
+  },
 
   onWorkStartChange(e) {
     this.setData({ workStartTime: e.detail.value })

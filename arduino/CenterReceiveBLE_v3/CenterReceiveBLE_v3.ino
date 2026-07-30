@@ -493,7 +493,7 @@ void sendDownInfo(String loraStr, String deviceId) {
       //特殊处理GPS需要上报的记录用于核对必须接收到GPS定位才解除
       addTargetGps(selectCmdStr);
     }
-    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode") {
+    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode"|| cmd == "txpower") {
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
       sendLoraToDeviceid(dataStr);
     } else {

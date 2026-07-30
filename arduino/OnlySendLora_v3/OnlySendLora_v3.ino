@@ -25,9 +25,10 @@ int typeindex = FLAG_TYPE_0;
 
 
 RTC_DATA_ATTR long long lastSendTimeTemp = 0;   // 上次收到的中继时间
-RTC_DATA_ATTR long long lastDriftCompMs = 0;   // 上次收到的中继时间
+RTC_DATA_ATTR long long lastDriftCompMs = 0;    // 上次收到的中继时间
 RTC_DATA_ATTR char lastrelayName[32] = "";      // 上次收到的中继时间
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
+RTC_DATA_ATTR int loraTxPower = 0;
 RTC_DATA_ATTR int sendmodeFlage = 0;
 RTC_DATA_ATTR unsigned long rtcSendCount = 0;
 RTC_DATA_ATTR bool isFristOpenGps = true;              // 标记是否还在第一次开启GPS
@@ -146,13 +147,11 @@ void initLora() {
   radioEvents.RxDone = OnRxDone;
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
-
   bool isV4 = deviceName.startsWith("v4-");
-  if (isV4 && rtcSendCount % 5 == 0) {
-    initPanRadio(&radioEvents, 28);
-    Serial.println("⚠️ 28dbm 发射功率");
-  } else {
+  if (loraTxPower == 0) {
     initPanRadio(&radioEvents, TX_POWER);
+  } else {
+    initPanRadio(&radioEvents, loraTxPower);
   }
 }
 void OnRxTimeout(void) {
@@ -221,6 +220,9 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       roundTime = tmp.toInt() * 60 * 1000;
       Serial.print("修改上报时间周末roundTime");
       Serial.println(roundTime);
+    } else if (infoStr.indexOf("txPower") != -1) {
+      Serial.print("✅✅修改发射功率：");
+      loraTxPower = tmp.toInt();
     } else if (infoStr.indexOf("upgps") != -1) {
       // 11|v4-10|upgps|0
       Serial.print("✅✅上报GPS坐标：");
@@ -255,10 +257,10 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
         Serial.println(relayName);
         if (lastSendTimeTemp > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
           Serial.println("---中继和上次相对，那开始计算晶震偏移:----- ");
-          long long ds = getCurrentTimestampMs()+lastDriftCompMs - lastSendTimeTemp;
-       
+          long long ds = getCurrentTimestampMs() + lastDriftCompMs - lastSendTimeTemp;
+
           printDurationMs(ds, "本机周期: ");
-          long long diff_ms = mathTimeDiffmstimeFromLora(timeStr)+lastDriftCompMs;
+          long long diff_ms = mathTimeDiffmstimeFromLora(timeStr) + lastDriftCompMs;
           printDurationMs(diff_ms, "当前偏差: ");
           // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
           if (ds > 0) {
@@ -273,7 +275,6 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
         setTimeFromLora(timeStr);
         lastSendTimeTemp = getCurrentTimestampMs();
         strcpy(lastrelayName, relayName.c_str());
-        
       }
     }
 
@@ -565,7 +566,7 @@ void loop() {
           long long currentMs = getCurrentTimestampMs();
           long long adjustedMs = currentMs + driftCompMs;
 
-          lastDriftCompMs=driftCompMs;
+          lastDriftCompMs = driftCompMs;
 
           Serial.printf("每小时偏差: %lld 毫秒\n", hourlyDriftMsTemp);
           Serial.printf("休眠时长: %llu 微秒\n", sleepTime);
