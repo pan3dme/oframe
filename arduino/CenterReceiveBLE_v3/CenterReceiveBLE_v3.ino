@@ -390,8 +390,8 @@ void receiveDtuData() {
 
 
   dtuSerial->flush();
-  // Serial.print("raw");
-  // Serial.println(raw);
+  Serial.print("dtu 返回 -");
+  Serial.println(raw);
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   String cominfoArray[10];
   int cominfoCount = 0;
@@ -493,7 +493,7 @@ void sendDownInfo(String loraStr, String deviceId) {
       //特殊处理GPS需要上报的记录用于核对必须接收到GPS定位才解除
       addTargetGps(selectCmdStr);
     }
-    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode"|| cmd == "txpower") {
+    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode" || cmd == "txpower") {
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
       sendLoraToDeviceid(dataStr);
     } else {
@@ -741,17 +741,26 @@ void setup() {
 #endif
 
 
+  // testTimesyncTm();
 
   initRadio();
   initBLE();
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-unsigned long lastUpSelfTm = (30 * 60 * 1000) / 2;
+//1分钟就上报中继在线时间
+unsigned long lastUpSelfTm = 10 * 1000;
+unsigned long nextSyncTm = 5 * 1000;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
-  if ((lastUpSelfTm) < millis()) {
+
+  if (nextSyncTm < millis()) {
+    //请求网络时间
+    nextSyncTm = millis() + SEND_INTERVAL_MS;
+    dtuSerial->println("config,get,nettime");
+  }
+  if ((lastUpSelfTm) < millis() && SEND_INTERVAL_MS > (10 * 60 * 1000)) {
     lastUpSelfTm = millis() + (30 * 60 * 1000);
     // 测试电量
     batterystr = readBatteryEndStr(deviceName);
@@ -786,7 +795,7 @@ void loop() {
   }
   if (down_syn_time < millis() && needSyncTimeDeviceid.length() > 0) {
     String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + needSyncTimeDeviceid;
-    dataStr += "|" + getCurrentTime(true) +"|" +deviceName;
+    dataStr += "|" + getCurrentTime(true) + "|" + deviceName;
     sendLoraToDeviceid(dataStr);
     needSyncTimeDeviceid = "";
   }

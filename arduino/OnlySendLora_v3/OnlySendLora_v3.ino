@@ -427,21 +427,21 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
-  if (haveRightTime()) {
-    Serial.print("✅已有GPS时间");
-    Serial.println(getCurrentTime(true));
-    isFristOpenGps = false;
-  } else {
-    Serial.print("❌板子还没有时间");
-    Serial.println(getCurrentTime(true));
-    isFristOpenGps = true;
-  }
-  // 必须开GPS
-  if (isFristOpenGps) {
-    meshGpsInfoFun();
-  } else {
-    Serial.print("✅不打开GPS，也就是现在只有时间");
-  }
+  // if (haveRightTime()) {
+  //   Serial.print("✅已有GPS时间");
+  //   Serial.println(getCurrentTime(true));
+  //   isFristOpenGps = false;
+  // } else {
+  //   Serial.print("❌板子还没有时间");
+  //   Serial.println(getCurrentTime(true));
+  //   isFristOpenGps = true;
+  // }
+  // // 必须开GPS
+  // if (isFristOpenGps) {
+  //   meshGpsInfoFun();
+  // } else {
+  //   Serial.print("✅不打开GPS，也就是现在只有时间");
+  // }
   batterystr = readBatteryEndStr(deviceName);
 
   initLora();

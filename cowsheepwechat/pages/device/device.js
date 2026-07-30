@@ -138,8 +138,12 @@ Page({
         }
       })
 
-      // 按设备ID中"-"后面的序号数字排序（忽略V3/V4等类型前缀）
+      // 排序：无ProductKey的在前，有ProductKey的排到最后，各自内部按设备ID中"-"后面的序号数字排序
       deviceList.sort((a, b) => {
+        const hasPK = (item) => !!(item.ProductKey && item.ProductKey !== '-')
+        // 有ProductKey的排后面
+        if (hasPK(a) !== hasPK(b)) return hasPK(a) ? 1 : -1
+        // 同组内按设备ID序号升序
         const getSeq = (id) => {
           if (!id) return 0
           const match = id.match(/-(\d+)$/)
