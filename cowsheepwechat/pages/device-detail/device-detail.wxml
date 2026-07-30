@@ -174,8 +174,8 @@
       placeholder="请输入DeviceSecret"
       bindinput="onEditDeviceSecretInput" />
 
-    <!-- 是否隐藏 -->
-    <view class="modal-label">是否隐藏</view>
+    <!-- 是否可见 -->
+    <view class="modal-label">是否可见</view>
     <switch checked="{{editVisible}}" bindchange="onEditVisibleChange" class="modal-switch" />
 
     <view class="modal-btns">

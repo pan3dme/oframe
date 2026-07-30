@@ -353,7 +353,7 @@ void meshGpsInfoFun(bool closeGps = true) {
   }
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
-  int seacthTm=180000;
+  int seacthTm = 180000;
   while (true) {
     gpsEncode();
     bool hasLocValid = gps.location.isValid();
@@ -388,7 +388,7 @@ void meshGpsInfoFun(bool closeGps = true) {
     }
     if (!timeoutOk) {
       Serial.print("==== 搜星 ");
-      Serial.print(seacthTm/1000);
+      Serial.print(seacthTm / 1000);
       Serial.println(" 秒超时，强制退出 ====");
       break;
     }
@@ -430,6 +430,7 @@ void setup() {
   if (haveRightTime()) {
     Serial.print("✅已有GPS时间");
     Serial.println(getCurrentTime(true));
+    isFristOpenGps = false;
   } else {
     Serial.print("❌板子还没有时间");
     Serial.println(getCurrentTime(true));
@@ -535,8 +536,8 @@ void loop() {
     return;
   }
   if (typeindex == FLAG_TYPE_0) {
-    if(rtcSendCount==0){
-      nextSendTime=millis()-1;
+    if (rtcSendCount == 0) {
+      nextSendTime = millis() - 1;
     }
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);

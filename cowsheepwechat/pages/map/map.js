@@ -310,27 +310,33 @@ Page({
   // ==================== 设备 LOT 标记点 ====================
 
   fetchDeviceLotData() {
-    // 先获取设备列表（含rename别名），构建 deviceId -> rename 映射
+    // 先获取设备列表（含rename别名、visible、ProductKey），构建映射
     dataCache.getDeviceList((devData) => {
-      const renameMap = {}
+      const deviceInfoMap = {} // deviceId -> { rename, visible, hasProductKey }
       const recordList = devData.recordList || []
       recordList.forEach(r => {
-        if (r.deviceId && r.rename) {
-          renameMap[r.deviceId] = r.rename
+        if (r.deviceId) {
+          const visible = r.visible === true || r.visible === 'true' || r.visible === 1
+          const hasProductKey = !!(r.ProductKey && r.ProductKey !== '-')
+          deviceInfoMap[r.deviceId] = {
+            rename: r.rename || '',
+            visible: visible,
+            hasProductKey: hasProductKey
+          }
         }
       })
 
       dataCache.getDeviceLotRefresh((lotData) => {
         const lotList = lotData.lotList || []
         console.log('[地图] 设备LOT数据:', lotList.length, '条')
-        this._renderDeviceMarkers(lotList, renameMap)
+        this._renderDeviceMarkers(lotList, deviceInfoMap)
         this._applyAllMarkers()
         wx.hideLoading()
       }, true)
     })
   },
 
-  _renderDeviceMarkers(lotList, renameMap) {
+  _renderDeviceMarkers(lotList, deviceInfoMap) {
     if (!lotList || lotList.length === 0) {
       this._deviceMarkers = []
       return
@@ -365,10 +371,14 @@ Page({
 
     const markers = []
     lotList.forEach((item, index) => {
+      const info = deviceInfoMap[item.deviceId]
+      // 过滤：只显示 visible=true 且 没有ProductKey 的设备
+      if (!info || !info.visible || info.hasProductKey) return
+
       const coord = extractCoord(item)
       if (!coord) return
       const gcj = wgs84ToGcj02(coord.lng, coord.lat)
-      const rename = renameMap[item.deviceId] || ''
+      const rename = info.rename || ''
       let labelText = (item.deviceId || '-').substring(0, 10) + (rename ? '（' + rename + '）' : '')
       var devAnchorX = Math.max(-30, Math.min(130, labelText.length * 12 - 30))
 
