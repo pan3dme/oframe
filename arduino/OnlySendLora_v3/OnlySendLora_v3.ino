@@ -269,7 +269,10 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
             Serial.print(hourlyDriftMs);
             Serial.println(" 毫秒");
             printDurationMs(hourlyDriftMs, "每小时偏差: ");
-            hourlyDriftMsTemp = hourlyDriftMs;
+            //每小时小于31秒的偏差才通过，防止出乱子
+            if (abs(hourlyDriftMs) < 31000) {
+              hourlyDriftMsTemp = hourlyDriftMs;
+            }
           }
         }
         setTimeFromLora(timeStr);
