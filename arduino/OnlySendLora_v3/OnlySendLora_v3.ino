@@ -353,12 +353,13 @@ void meshGpsInfoFun(bool closeGps = true) {
   }
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
+  int seacthTm=180000;
   while (true) {
     gpsEncode();
     bool hasLocValid = gps.location.isValid();
     bool yearOk = (gps.date.year() > 2025);
     bool gpsReliable = isReliableGPS();
-    bool timeoutOk = (millis() - startAttemptTime < 180000);
+    bool timeoutOk = (millis() - startAttemptTime < seacthTm);
     // Serial.print(".");
     // Serial.println(getCurrentTime());
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
@@ -386,7 +387,9 @@ void meshGpsInfoFun(bool closeGps = true) {
       break;
     }
     if (!timeoutOk) {
-      Serial.println("==== 搜星120秒超时，强制退出 ====");
+      Serial.print("==== 搜星 ");
+      Serial.print(seacthTm/1000);
+      Serial.println(" 秒超时，强制退出 ====");
       break;
     }
     delay(1000);
@@ -532,6 +535,9 @@ void loop() {
     return;
   }
   if (typeindex == FLAG_TYPE_0) {
+    if(rtcSendCount==0){
+      nextSendTime=millis()-1;
+    }
     if (nextSendTime == 0) {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
       if (timeSynFlage) {  // 接收了同步时间

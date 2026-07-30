@@ -165,6 +165,9 @@ void gpsEncode() {
     //    Serial.println(getGpsInfoStr());
   }
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
+    if (haveRightTime()) {
+        return;
+    }
   if (gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025) {
 
     int year = gps.date.year();
