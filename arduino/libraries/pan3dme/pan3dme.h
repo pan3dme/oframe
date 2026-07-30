@@ -90,7 +90,8 @@ struct BLECallbacks {
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
                         BLECharacteristicCallbacks *charCallbacks);
 
-bool setCSTTimeIfNewer(int year, int mon, int day, int h, int m, int s, int ms);
+ 
+long long setCSTTime(int year, int mon, int day, int h, int m, int s, int ms);
 bool haveRightTime();
 void hideOLED();
 void showOLED();

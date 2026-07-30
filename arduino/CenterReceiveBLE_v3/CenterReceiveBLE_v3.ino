@@ -33,32 +33,30 @@ int deviceCacheCount = 0;
 int rtcSendCount = 0;
 String batterystr = "";
 String deviceName = "x-x";
-//必须要上报GPS时间段
+// 必须要上报GPS时间段
 long mustrefrishgpsTime = 0;
 
 // ========================= LoRa全局变量 =========================
 char loraStr[BUFFER_SIZE];
-char sendData[BUFFER_SIZE];  // 发送数据缓存
+char sendData[BUFFER_SIZE]; // 发送数据缓存
 
 // 回调标记（主循环根据此标志处理数据）
 bool loraReceivedFlag = false;
 int16_t lastRssi = 0;
 int8_t lastSnr = 0;
 
-StaticJsonDocument<200> docCom;  // BLE指令解析用（全局复用）
+StaticJsonDocument<200> docCom; // BLE指令解析用（全局复用）
 
 // 晶振偏差追踪
-unsigned long lastSyncMillis = 0;  // 上次对时时的 millis()
-time_t lastSyncEpoch = 0;          // 上次对时后的系统 epoch
-bool hasLastSync = false;          // 是否已有上次记录
+unsigned long lastSyncMillis = 0; // 上次对时时的 millis()
+time_t lastSyncEpoch = 0;         // 上次对时后的系统 epoch
+bool hasLastSync = false;         // 是否已有上次记录
 
 // ========================= BLE回调 =========================
 
 // BLE服务器连接/断开回调
 class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) {
-    Serial.println("✅ 小程序已连接");
-  }
+  void onConnect(BLEServer *pServer) { Serial.println("✅ 小程序已连接"); }
   void onDisconnect(BLEServer *pServer) {
     needSync = false;
     Serial.println("❌ 断开连接 | 同步已关闭");
@@ -123,7 +121,6 @@ void removeTargetId(String id) {
   Serial.println(id);
 }
 
-
 String targetGpsList[TARGET_ID_MAX];
 int targetGpsCount = 0;
 // 检查 targetId 是否已存在
@@ -156,7 +153,7 @@ String getGpsTargetByDeviceid(String deviceId) {
     deserializeJson(docCom, targetGpsList[i]);
     if (docCom.containsKey("deviceId")) {
       String targetId = docCom["deviceId"].as<String>();
-      if (targetId == deviceId) {  // 只处理发给当前设备的指令
+      if (targetId == deviceId) { // 只处理发给当前设备的指令
         return targetGpsList[i];
       }
     }
@@ -192,8 +189,6 @@ void removeTargetGps(String id) {
   Serial.println(id);
 }
 
-
-
 void meshCmdInfomsg(String rxValue) {
   Serial.println(rxValue);
   DeserializationError error = deserializeJson(docCom, rxValue);
@@ -223,7 +218,8 @@ void meshCmdInfomsg(String rxValue) {
         Serial.println(valueNum);
         mustrefrishgpsTime = millis() + valueNum * 60 * 1000;
       } else {
-        Serial.println("❌❌❌下发的对象就是中继， 我要分批处理 全局指令❌❌❌");
+        Serial.println(
+            "❌❌❌下发的对象就是中继， 我要分批处理 全局指令❌❌❌");
       }
     } else {
       // 先移除原来对应设备的
@@ -306,7 +302,7 @@ void initBLE() {
   static MyCallbacks charCallbacks;
 
   BLECallbacks bleCallbacks =
-    initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
+      initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
   // pServer = bleCallbacks.pServer;
   pCharacteristic = bleCallbacks.pCharacteristic;
 }
@@ -357,20 +353,25 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 // 通过串口2将LoRa数据上报给DTU
 void sendLoraInfoUseDtu(String str, String rssi, String snr) {
   String json = "{"
-                "\"id\":"
-                + String(millis()) + ","
-                                     "\"version\":\"1.0\","
-                                     "\"method\":\"thing.event.property.post\","
-                                     "\"params\":{"
-                                     "\"lorainfo\":\""
-                + str + "\","
-                        "\"upDateDevice\":\""
-                + deviceName + "\","
-                               "\"rssi\":"
-                + rssi + ","
-                         "\"snr\":"
-                + snr + "}"
-                        "}";
+                "\"id\":" +
+                String(millis()) +
+                ","
+                "\"version\":\"1.0\","
+                "\"method\":\"thing.event.property.post\","
+                "\"params\":{"
+                "\"lorainfo\":\"" +
+                str +
+                "\","
+                "\"upDateDevice\":\"" +
+                deviceName +
+                "\","
+                "\"rssi\":" +
+                rssi +
+                ","
+                "\"snr\":" +
+                snr +
+                "}"
+                "}";
   // Serial.println("上报报文：" + json);
   dtuSerial->println(json);
 }
@@ -378,20 +379,33 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
 void receiveDtuData() {
   String raw = "";
 
-
   if (dtuSerial->available() <= 0) {
     return;
   }
   // 1. 读取本次全部数据
   while (dtuSerial->available() > 0) {
     raw += (char)dtuSerial->read();
-    delay(2);  // 等待下一个字节
+    delay(2); // 等待下一个字节
   }
 
-
   dtuSerial->flush();
-  Serial.print("dtu 返回 -");
-  Serial.println(raw);
+  // Serial.print("dtu 返回 -");
+  // Serial.println(raw);
+
+  // 解析DTU返回的网络时间: config,nettime,ok,2026,7,31,1,50,6,5
+  // 格式: 年,月,日,时,分,秒,毫秒
+  if (raw.indexOf("config,nettime,ok,") != -1) {
+    String timePart =
+        raw.substring(raw.indexOf("config,nettime,ok,") + 18); // 跳过前缀
+    int ntYear = 0, ntMon = 0, ntDay = 0, ntH = 0, ntM = 0, ntS = 0, ntMs = 0;
+    sscanf(timePart.c_str(), "%d,%d,%d,%d,%d,%d,%d", &ntYear, &ntMon, &ntDay,
+           &ntH, &ntM, &ntS, &ntMs);
+    Serial.printf("DTU网络时间: %4d/%d/%d %02d:%02d:%02d.%03d\n", ntYear, ntMon,
+                  ntDay, ntH, ntM, ntS, ntMs);
+
+    setCSTTime(ntYear, ntMon, ntDay, ntH, ntM, ntS, ntMs);
+    return;
+  }
   // 2. 用大括号计数法拆分多个拼接的JSON对象
   String cominfoArray[10];
   int cominfoCount = 0;
@@ -402,7 +416,7 @@ void receiveDtuData() {
     char c = raw[i];
     if (c == '{') {
       if (depth == 0) {
-        start = i;  // 记录JSON起始位置
+        start = i; // 记录JSON起始位置
       }
       depth++;
     } else if (c == '}') {
@@ -476,10 +490,10 @@ void sendDownInfo(String loraStr, String deviceId) {
       deserializeJson(docCom, targetIdList[i]);
       if (docCom.containsKey("deviceId")) {
         String targetId = docCom["deviceId"].as<String>();
-        if (targetId == deviceId) {  // 只处理发给当前设备的指令
+        if (targetId == deviceId) { // 只处理发给当前设备的指令
           selectCmdStr = targetIdList[i];
           removeTargetId(selectCmdStr);
-          break;  // 找到第一个即停止，或改为处理所有
+          break; // 找到第一个即停止，或改为处理所有
         }
       }
     }
@@ -490,11 +504,13 @@ void sendDownInfo(String loraStr, String deviceId) {
     Serial.println(selectCmdStr);
     String cmd = docCom["cmd"].as<String>();
     if (cmd == "upgps" && lastCmd == false) {
-      //特殊处理GPS需要上报的记录用于核对必须接收到GPS定位才解除
+      // 特殊处理GPS需要上报的记录用于核对必须接收到GPS定位才解除
       addTargetGps(selectCmdStr);
     }
-    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode" || cmd == "txpower") {
-      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
+    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" ||
+        cmd == "sendmode" || cmd == "txpower") {
+      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" +
+                docCom["value"].as<String>();
       sendLoraToDeviceid(dataStr);
     } else {
       Serial.print("❌❌❌当前docCom    cmd  没有对应的方法");
@@ -507,11 +523,9 @@ void sendDownInfo(String loraStr, String deviceId) {
     down_syn_time = millis() + 2000;
   }
 }
-unsigned long get_send_interval_ms() {
-  return 1000 * 60 * 30;
-}
+unsigned long get_send_interval_ms() { return 1000 * 60 * 30; }
 float getSlotDuration() {
-  return get_send_interval_ms() / 30 / 1000;  //30台设备现在是30分钟
+  return get_send_interval_ms() / 30 / 1000; // 30台设备现在是30分钟
 }
 void testOutInfo(String loraStr, String deviceId) {
   unsigned long intervalSeconds = get_send_interval_ms() / 1000;
@@ -542,9 +556,11 @@ void testOutInfo(String loraStr, String deviceId) {
   time_t loraEpoch = 0, localEpoch = 0;
   bool hasLoraTime = false;
   if (loraTimeStr.length() > 0) {
-    int loraYear = 0, loraMonth = 0, loraDay = 0, loraH = 0, loraM = 0, loraS = 0;
-    sscanf(loraTimeStr.c_str(), "%d/%d/%d %d:%d:%d", &loraYear, &loraMonth, &loraDay, &loraH, &loraM, &loraS);
-    struct tm loraTm = { 0 };
+    int loraYear = 0, loraMonth = 0, loraDay = 0, loraH = 0, loraM = 0,
+        loraS = 0;
+    sscanf(loraTimeStr.c_str(), "%d/%d/%d %d:%d:%d", &loraYear, &loraMonth,
+           &loraDay, &loraH, &loraM, &loraS);
+    struct tm loraTm = {0};
     loraTm.tm_year = loraYear - 1900;
     loraTm.tm_mon = loraMonth - 1;
     loraTm.tm_mday = loraDay;
@@ -559,10 +575,12 @@ void testOutInfo(String loraStr, String deviceId) {
 
   // 3. 计算时隙参数
   float slotDuration = getSlotDuration();
-  unsigned long mySlotOffset = (unsigned long)((deviceIndex + 0.5) * slotDuration);
+  unsigned long mySlotOffset =
+      (unsigned long)((deviceIndex + 0.5) * slotDuration);
 
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
-  unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + mySlotOffset;
+  unsigned long lastTargetSeconds =
+      cyclesPassed * intervalSeconds + mySlotOffset;
 
   long secondsDiff = 0;
   if (lastTargetSeconds < currentSeconds) {
@@ -598,14 +616,14 @@ void testOutInfo(String loraStr, String deviceId) {
     int diffM = (absDiff % 3600) / 60;
     int diffS = absDiff % 60;
     Serial.printf("设备上报时间: %s\n", loraTimeStr.c_str());
-    Serial.printf("时间差: %ld秒 (%d时%d分%d秒) [%s]\n", timeDiffSec,
-                  diffH, diffM, diffS,
-                  timeDiffSec >= 0 ? "本机快" : "设备快");
+    Serial.printf("时间差: %ld秒 (%d时%d分%d秒) [%s]\n", timeDiffSec, diffH,
+                  diffM, diffS, timeDiffSec >= 0 ? "本机快" : "设备快");
   } else {
     Serial.printf("设备上报时间: (未解析到)\n");
   }
   Serial.printf("本设备周期内排列位置: %lu分钟\n", mySlotOffset / 60);
-  Serial.printf("上报周期: %lu秒, 时隙: %.2f秒\n", intervalSeconds, slotDuration);
+  Serial.printf("上报周期: %lu秒, 时隙: %.2f秒\n", intervalSeconds,
+                slotDuration);
   Serial.printf("本设备时隙偏移: %lu秒\n", mySlotOffset);
   Serial.printf("距下次时隙: %lu分%lu秒\n", waitMin, waitSec);
   Serial.printf("预计下次开机: %02d:%02d:%02d\n", nextH, nextM, nextS);
@@ -663,57 +681,9 @@ void processLoraData() {
       } else {
         sendDownInfo(infoStr, devId);
       }
-      testOutInfo(infoStr, devId);
     }
     // 3. 下发回复
-    if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_SYN_UP_TIME) {
-      int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
-      if (secondPipeIndex > 0) {
-        String timeStr = infoStr.substring(secondPipeIndex + 1);
-        timeStr = timeStr.substring(0, timeStr.indexOf('|'));
-        // 解析LoRa时间为epoch
-        if (messageType == MSG_TYPE_SYN_UP_TIME) {
-          int year, month, day, hour, minute, second = 0;
-          sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second);
-          struct tm loraTm = { 0 };
-          loraTm.tm_year = year - 1900;
-          loraTm.tm_mon = month - 1;
-          loraTm.tm_mday = day;
-          loraTm.tm_hour = hour;
-          loraTm.tm_min = minute;
-          loraTm.tm_sec = second;
-          loraTm.tm_isdst = 0;
-          time_t currentLoraEpoch = mktime(&loraTm);
-          unsigned long currentMillis = millis();
-          // 计算晶振偏差
-          if (hasLastSync) {
-            long localDiffMs = (long)(currentMillis - lastSyncMillis);
-            if (localDiffMs > 1000 * 60 * 1) {
-              long loraDiffMs = (long)(currentLoraEpoch - lastSyncEpoch) * 1000L;
-              long driftMs = localDiffMs - loraDiffMs;
-              double hourlyDriftMs = (double)driftMs * 3600000.0 / loraDiffMs;
-
-              Serial.println("==== 晶振偏差分析 ====");
-              Serial.printf("LoRa实际经过: %ld 秒\n", loraDiffMs / 1000);
-              Serial.printf("本地millis经过: %ld 秒\n", localDiffMs / 1000);
-              Serial.printf("偏差: %ld 毫秒\n", driftMs);
-              Serial.printf("每小时偏差: %.2f 毫秒\n", hourlyDriftMs);
-              Serial.println("=====================");
-            }
-
-          } else {
-            lastSyncEpoch = currentLoraEpoch;
-            lastSyncMillis = currentMillis;
-            hasLastSync = true;
-          }
-        }
-        // 设置系统时间
-        // if (!haveRightTime() || messageType == MSG_TYPE_SYN_UP_TIME) {
-        if (!haveRightTime()) {
-          setTimeFromLora(timeStr);
-        }
-      }
-    }
+    
   }
 }
 
@@ -733,13 +703,12 @@ void setup() {
   delay(1000);
 #endif
 #if defined(WIFI_LORA_32_V4)
-  Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
+  Serial2.begin(115200, SERIAL_8N1, 38, 39); // RX=38, TX=39
   dtuSerial = &Serial2;
   Serial.println("✅ v4 板子 DTU");
   // dtuSerial->println("V4 DTU TEST");
   delay(1000);
 #endif
-
 
   // testTimesyncTm();
 
@@ -748,7 +717,7 @@ void setup() {
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
-//1分钟就上报中继在线时间
+// 1分钟就上报中继在线时间
 unsigned long lastUpSelfTm = 10 * 1000;
 unsigned long nextSyncTm = 5 * 1000;
 void loop() {
@@ -756,7 +725,7 @@ void loop() {
   // 超过10分钟的周期才上报，不要流量溢出
 
   if (nextSyncTm < millis()) {
-    //请求网络时间
+    // 请求网络时间
     nextSyncTm = millis() + SEND_INTERVAL_MS;
     dtuSerial->println("config,get,nettime");
   }
@@ -764,7 +733,8 @@ void loop() {
     lastUpSelfTm = millis() + (30 * 60 * 1000);
     // 测试电量
     batterystr = readBatteryEndStr(deviceName);
-    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
+    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" +
+                     getCurrentTime(false) + "|" + batterystr;
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, "0", "0");
   }
