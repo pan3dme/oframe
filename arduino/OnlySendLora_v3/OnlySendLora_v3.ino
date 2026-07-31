@@ -24,17 +24,17 @@ unsigned long gpsWorkStat = 0;
 int typeindex = FLAG_TYPE_0;
 
 
-RTC_DATA_ATTR long long lastSendTimeTemp = 0;   // 上次收到的中继时间
-RTC_DATA_ATTR long long lastDriftCompMs = 0;    // 上次收到的中继时间
-RTC_DATA_ATTR char lastrelayName[32] = "";      // 上次收到的中继时间
+RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
+RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
 RTC_DATA_ATTR int loraTxPower = 0;
-RTC_DATA_ATTR int sendmodeFlage = 0;
-RTC_DATA_ATTR unsigned long rtcSendCount = 0;
-RTC_DATA_ATTR bool isFristOpenGps = true;              // 标记是否还在第一次开启GPS
-RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
-RTC_DATA_ATTR int rtcResiveIdx = 0;                    // 默认上报周末使用系统配置
-RTC_DATA_ATTR char work_time_str[32] = "0:0-24:59";    // 默认工作时间
+RTC_DATA_ATTR int sendmodeFlage = 0;    //工作模式  0默认 1需要验证上传成功1次
+RTC_DATA_ATTR int rtcSendCount = 0;
+RTC_DATA_ATTR int rtcResiveIdx = 0;
+RTC_DATA_ATTR int roundTime = 0;                     // 默认上报周末使用系统配置
+RTC_DATA_ATTR char lastrelayName[32] = "";           //
+RTC_DATA_ATTR char work_time_str[32] = "0:0-24:59";  // 默认工作时间
+
 RadioEvents_t radioEvents;                             // LoRa事件回调
 void printTimeToString(String str, unsigned long ms);  // 前向声明
 
@@ -247,6 +247,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     if (!haveRightTime()) {
       Serial.print("✅本机时间无效 更新ROLA同步时间 ");
       setTimeFromLora(timeStr);
+      timeSynFlage = true;
     } else {
       // 4|v4-10|2026/7/29 15:56:46.126|v4-24
       // 提取最后一段设备名（中继名）
@@ -276,12 +277,11 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
           }
         }
         setTimeFromLora(timeStr);
+        timeSynFlage = true;
         lastSendTimeTemp = getCurrentTimestampMs();
         strcpy(lastrelayName, relayName.c_str());
       }
     }
-
-    timeSynFlage = true;
   }
 }
 
@@ -383,7 +383,7 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
     if (allPass) {
       Serial.println("==== GPS全部条件满足，退出搜星循环 ====");
-      isFristOpenGps = false;
+
       break;
     }
     if (!timeoutOk) {
@@ -427,27 +427,13 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
-  // if (haveRightTime()) {
-  //   Serial.print("✅已有GPS时间");
-  //   Serial.println(getCurrentTime(true));
-  //   isFristOpenGps = false;
-  // } else {
-  //   Serial.print("❌板子还没有时间");
-  //   Serial.println(getCurrentTime(true));
-  //   isFristOpenGps = true;
-  // }
-  // // 必须开GPS
-  // if (isFristOpenGps) {
-  //   meshGpsInfoFun();
-  // } else {
-  //   Serial.print("✅不打开GPS，也就是现在只有时间");
-  // }
+
   batterystr = readBatteryEndStr(deviceName);
 
   initLora();
 }
 unsigned long num6000 = 5000;  // 暂时提前20秒开机
-bool sendFlagType = false;
+
 // ==================== 主循环 ====================
 void loop() {
 
@@ -471,13 +457,7 @@ void loop() {
     }
 
     buildAndSendPacket(MSG_TYPE_GPS);
-    delay(2000);             // 上报LORA需要2秒钟间隔
-    if (gpsWorkTime == 0) {  // 如果只定位一次，那正好提交一次对时信息
-      Serial.println("上报一次必须对时信息");
-      buildAndSendPacket(MSG_TYPE_SYN_UP_TIME);
-      delay(2000);  // 上报LORA需要2秒钟间隔
-    }
-
+    delay(2000);  // 上报LORA需要2秒钟间隔
     hideOLED();
     Radio.Sleep();
     if ((millis() - gpsWorkStat) > gpsWorkTime) {
@@ -491,7 +471,7 @@ void loop() {
     } else {
       printTimeToString("延时1分钟再上报GPS信息 还会持续",
                         gpsWorkTime - (millis() - gpsWorkStat));
-      delay(60 * 1000);  // 延时1分钟
+      delay(60 * 1000 * 2);  // 延时1分钟
     }
     return;
   }
@@ -546,11 +526,7 @@ void loop() {
         }
       }
 
-      if (isFristOpenGps && !sendFlagType) {
-        // 没有GPS授时就设定一次开机上报，数据基本是错误的，只做为上报链路测试
-        sendFlagType = true;
-        nextSendTime = millis() + num6000;
-      }
+
       unsigned long waittm = nextSendTime - millis();
 
       printTimeToString("到上报时间还有 ", nextSendTime - millis());
