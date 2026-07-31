@@ -38,25 +38,27 @@ long mustrefrishgpsTime = 0;
 
 // ========================= LoRa全局变量 =========================
 char loraStr[BUFFER_SIZE];
-char sendData[BUFFER_SIZE]; // 发送数据缓存
+char sendData[BUFFER_SIZE];  // 发送数据缓存
 
 // 回调标记（主循环根据此标志处理数据）
 bool loraReceivedFlag = false;
 int16_t lastRssi = 0;
 int8_t lastSnr = 0;
 
-StaticJsonDocument<200> docCom; // BLE指令解析用（全局复用）
+StaticJsonDocument<200> docCom;  // BLE指令解析用（全局复用）
 
 // 晶振偏差追踪
-unsigned long lastSyncMillis = 0; // 上次对时时的 millis()
-time_t lastSyncEpoch = 0;         // 上次对时后的系统 epoch
-bool hasLastSync = false;         // 是否已有上次记录
+unsigned long lastSyncMillis = 0;  // 上次对时时的 millis()
+time_t lastSyncEpoch = 0;          // 上次对时后的系统 epoch
+bool hasLastSync = false;          // 是否已有上次记录
 
 // ========================= BLE回调 =========================
 
 // BLE服务器连接/断开回调
 class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) { Serial.println("✅ 小程序已连接"); }
+  void onConnect(BLEServer *pServer) {
+    Serial.println("✅ 小程序已连接");
+  }
   void onDisconnect(BLEServer *pServer) {
     needSync = false;
     Serial.println("❌ 断开连接 | 同步已关闭");
@@ -153,7 +155,7 @@ String getGpsTargetByDeviceid(String deviceId) {
     deserializeJson(docCom, targetGpsList[i]);
     if (docCom.containsKey("deviceId")) {
       String targetId = docCom["deviceId"].as<String>();
-      if (targetId == deviceId) { // 只处理发给当前设备的指令
+      if (targetId == deviceId) {  // 只处理发给当前设备的指令
         return targetGpsList[i];
       }
     }
@@ -219,7 +221,7 @@ void meshCmdInfomsg(String rxValue) {
         mustrefrishgpsTime = millis() + valueNum * 60 * 1000;
       } else {
         Serial.println(
-            "❌❌❌下发的对象就是中继， 我要分批处理 全局指令❌❌❌");
+          "❌❌❌下发的对象就是中继， 我要分批处理 全局指令❌❌❌");
       }
     } else {
       // 先移除原来对应设备的
@@ -302,7 +304,7 @@ void initBLE() {
   static MyCallbacks charCallbacks;
 
   BLECallbacks bleCallbacks =
-      initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
+    initBLEFun(deviceName, &serverCallbacks, &charCallbacks);
   // pServer = bleCallbacks.pServer;
   pCharacteristic = bleCallbacks.pCharacteristic;
 }
@@ -353,25 +355,20 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 // 通过串口2将LoRa数据上报给DTU
 void sendLoraInfoUseDtu(String str, String rssi, String snr) {
   String json = "{"
-                "\"id\":" +
-                String(millis()) +
-                ","
-                "\"version\":\"1.0\","
-                "\"method\":\"thing.event.property.post\","
-                "\"params\":{"
-                "\"lorainfo\":\"" +
-                str +
-                "\","
-                "\"upDateDevice\":\"" +
-                deviceName +
-                "\","
-                "\"rssi\":" +
-                rssi +
-                ","
-                "\"snr\":" +
-                snr +
-                "}"
-                "}";
+                "\"id\":"
+                + String(millis()) + ","
+                                     "\"version\":\"1.0\","
+                                     "\"method\":\"thing.event.property.post\","
+                                     "\"params\":{"
+                                     "\"lorainfo\":\""
+                + str + "\","
+                        "\"upDateDevice\":\""
+                + deviceName + "\","
+                               "\"rssi\":"
+                + rssi + ","
+                         "\"snr\":"
+                + snr + "}"
+                        "}";
   // Serial.println("上报报文：" + json);
   dtuSerial->println(json);
 }
@@ -385,7 +382,7 @@ void receiveDtuData() {
   // 1. 读取本次全部数据
   while (dtuSerial->available() > 0) {
     raw += (char)dtuSerial->read();
-    delay(2); // 等待下一个字节
+    delay(2);  // 等待下一个字节
   }
 
   dtuSerial->flush();
@@ -396,12 +393,32 @@ void receiveDtuData() {
   // 格式: 年,月,日,时,分,秒,毫秒
   if (raw.indexOf("config,nettime,ok,") != -1) {
     String timePart =
-        raw.substring(raw.indexOf("config,nettime,ok,") + 18); // 跳过前缀
+      raw.substring(raw.indexOf("config,nettime,ok,") + 18);  // 跳过前缀
     int ntYear = 0, ntMon = 0, ntDay = 0, ntH = 0, ntM = 0, ntS = 0, ntMs = 0;
     sscanf(timePart.c_str(), "%d,%d,%d,%d,%d,%d,%d", &ntYear, &ntMon, &ntDay,
            &ntH, &ntM, &ntS, &ntMs);
     Serial.printf("DTU网络时间: %4d/%d/%d %02d:%02d:%02d.%03d\n", ntYear, ntMon,
                   ntDay, ntH, ntM, ntS, ntMs);
+
+    long long localEpochMs = getCurrentTimestampMs();
+
+    // 计算DTU时间戳
+    struct tm dtuTm = { 0 };
+    dtuTm.tm_year = ntYear - 1900;
+    dtuTm.tm_mon = ntMon - 1;
+    dtuTm.tm_mday = ntDay;
+    dtuTm.tm_hour = ntH;
+    dtuTm.tm_min = ntM;
+    dtuTm.tm_sec = ntS;
+    dtuTm.tm_isdst = 0;
+    long long dtuEpochMs = (long long)mktime(&dtuTm) * 1000LL + ntMs;
+    long long diffMs = dtuEpochMs - localEpochMs;
+
+    printTimestampMs(localEpochMs, "本机时间: ");
+    printTimestampMs(dtuEpochMs, "DTU时间: ");
+    Serial.printf("时间差: %lld 毫秒 (%s)\n", diffMs >= 0 ? diffMs : -diffMs,
+                  diffMs >= 0 ? "DTU快" : "本机快");
+    printDurationMs(diffMs >= 0 ? diffMs : -diffMs, "时间差: ");
 
     setCSTTime(ntYear, ntMon, ntDay, ntH, ntM, ntS, ntMs);
     return;
@@ -416,7 +433,7 @@ void receiveDtuData() {
     char c = raw[i];
     if (c == '{') {
       if (depth == 0) {
-        start = i; // 记录JSON起始位置
+        start = i;  // 记录JSON起始位置
       }
       depth++;
     } else if (c == '}') {
@@ -490,10 +507,10 @@ void sendDownInfo(String loraStr, String deviceId) {
       deserializeJson(docCom, targetIdList[i]);
       if (docCom.containsKey("deviceId")) {
         String targetId = docCom["deviceId"].as<String>();
-        if (targetId == deviceId) { // 只处理发给当前设备的指令
+        if (targetId == deviceId) {  // 只处理发给当前设备的指令
           selectCmdStr = targetIdList[i];
           removeTargetId(selectCmdStr);
-          break; // 找到第一个即停止，或改为处理所有
+          break;  // 找到第一个即停止，或改为处理所有
         }
       }
     }
@@ -507,10 +524,8 @@ void sendDownInfo(String loraStr, String deviceId) {
       // 特殊处理GPS需要上报的记录用于核对必须接收到GPS定位才解除
       addTargetGps(selectCmdStr);
     }
-    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" ||
-        cmd == "sendmode" || cmd == "txpower") {
-      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" +
-                docCom["value"].as<String>();
+    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode" || cmd == "txpower") {
+      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
       sendLoraToDeviceid(dataStr);
     } else {
       Serial.print("❌❌❌当前docCom    cmd  没有对应的方法");
@@ -523,9 +538,11 @@ void sendDownInfo(String loraStr, String deviceId) {
     down_syn_time = millis() + 2000;
   }
 }
-unsigned long get_send_interval_ms() { return 1000 * 60 * 30; }
+unsigned long get_send_interval_ms() {
+  return 1000 * 60 * 30;
+}
 float getSlotDuration() {
-  return get_send_interval_ms() / 30 / 1000; // 30台设备现在是30分钟
+  return get_send_interval_ms() / 30 / 1000;  // 30台设备现在是30分钟
 }
 void testOutInfo(String loraStr, String deviceId) {
   unsigned long intervalSeconds = get_send_interval_ms() / 1000;
@@ -560,7 +577,7 @@ void testOutInfo(String loraStr, String deviceId) {
         loraS = 0;
     sscanf(loraTimeStr.c_str(), "%d/%d/%d %d:%d:%d", &loraYear, &loraMonth,
            &loraDay, &loraH, &loraM, &loraS);
-    struct tm loraTm = {0};
+    struct tm loraTm = { 0 };
     loraTm.tm_year = loraYear - 1900;
     loraTm.tm_mon = loraMonth - 1;
     loraTm.tm_mday = loraDay;
@@ -576,11 +593,11 @@ void testOutInfo(String loraStr, String deviceId) {
   // 3. 计算时隙参数
   float slotDuration = getSlotDuration();
   unsigned long mySlotOffset =
-      (unsigned long)((deviceIndex + 0.5) * slotDuration);
+    (unsigned long)((deviceIndex + 0.5) * slotDuration);
 
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
   unsigned long lastTargetSeconds =
-      cyclesPassed * intervalSeconds + mySlotOffset;
+    cyclesPassed * intervalSeconds + mySlotOffset;
 
   long secondsDiff = 0;
   if (lastTargetSeconds < currentSeconds) {
@@ -670,11 +687,12 @@ void processLoraData() {
       removeTargetGpsByDeviceId(devId);
     }
     if (messageType == MSG_TYPE_TIME) {
-      Serial.print("mustrefrishgpsTime-");
-      Serial.print(mustrefrishgpsTime);
-      Serial.print("-");
-      Serial.println(millis());
+
       if (mustrefrishgpsTime > millis()) {
+        Serial.print("mustrefrishgpsTime-");
+        Serial.print(mustrefrishgpsTime);
+        Serial.print("-");
+        Serial.println(millis());
         Serial.print(devId);
         Serial.println("必须经上报GPS坐标");
         sendLoraToDeviceid(String(MSG_TYPE_COM) + "|" + devId + "|upgps|0");
@@ -683,7 +701,6 @@ void processLoraData() {
       }
     }
     // 3. 下发回复
-    
   }
 }
 
@@ -703,7 +720,7 @@ void setup() {
   delay(1000);
 #endif
 #if defined(WIFI_LORA_32_V4)
-  Serial2.begin(115200, SERIAL_8N1, 38, 39); // RX=38, TX=39
+  Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
   dtuSerial = &Serial2;
   Serial.println("✅ v4 板子 DTU");
   // dtuSerial->println("V4 DTU TEST");
@@ -733,8 +750,7 @@ void loop() {
     lastUpSelfTm = millis() + (30 * 60 * 1000);
     // 测试电量
     batterystr = readBatteryEndStr(deviceName);
-    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" +
-                     getCurrentTime(false) + "|" + batterystr;
+    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, "0", "0");
   }

@@ -496,12 +496,9 @@ void loop() {
     return;
   }
   if (typeindex == FLAG_TYPE_2) {
-
     delay(100);
-
     Serial.print(".");
     if (inRxEndTime < millis()) {
-      Serial.print("rtcResiveIdx-rtcSendCount=");
       Serial.print(rtcResiveIdx);
       Serial.print("-");
       Serial.print(rtcSendCount);
@@ -562,13 +559,10 @@ void loop() {
         Serial.print("距离上报时间超过 ");
         Serial.print(num6000 / 1000);
         Serial.print("秒进入睡眠");
-
         hideOLED();
         delay(1000);
-
         // 05:02|10:59
         uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
-
         // 根据每小时偏差补偿休眠期间的时钟漂移
         if (hourlyDriftMsTemp != 0) {
           long long sleepMs = (long long)(sleepTime / 1000ULL);
@@ -585,7 +579,6 @@ void loop() {
           setTimeFromTimestamp(adjustedMs);
           printTimestampMs(adjustedMs, "补偿后时间: ");
         }
-
         // esp_deep_sleep(sleepTime);
         esp_sleep_enable_timer_wakeup(sleepTime);
         Serial.println("--->即将进入深度睡眠...");
@@ -606,13 +599,7 @@ void loop() {
     }
     if (nextSendTime < millis()) {
       typeindex = FLAG_TYPE_1;
-
-      if (rtcSendCount == 0 && getGpsInfoStr() != "0.00000,0.00000") {
-        // 第一次并有GPS时就发送GPS
-        buildAndSendPacket(MSG_TYPE_GPS);
-      } else {
-        buildAndSendPacket(MSG_TYPE_TIME);
-      }
+      buildAndSendPacket(MSG_TYPE_TIME);
     }
   }
   printCurrentTime();
