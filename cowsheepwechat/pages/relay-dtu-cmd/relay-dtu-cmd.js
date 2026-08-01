@@ -106,8 +106,8 @@ Page({
   onQuickLoraSw() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'lorasw', value: 1 }), quickSelected: 17 })
   },
-  onQuickLedSw() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'ledsw', value: 1 }), quickSelected: 18 })
+  onQuickRelayReboot() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'relayreboot', value: 1 }), quickSelected: 18 })
   },
   onQuickRelayTimeLoc() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'relaytimeloc', value: 1 }), quickSelected: 19 })

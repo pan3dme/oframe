@@ -22,7 +22,7 @@
       <button class="quick-btn {{quickSelected === 14 ? 'quick-active' : ''}}" bindtap="onQuickWorkTime">🕐 工作时间</button>
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
       <button class="quick-btn {{quickSelected === 17 ? 'quick-active' : ''}}" bindtap="onQuickLoraSw">🔘 开关LORA</button>
-      <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickLedSw">💡 开平dtu灯</button>
+      <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickRelayReboot">🔄 重启中继</button>
       <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickRelayTimeLoc">📍 中继下发位置</button>
     </view>
   </view>

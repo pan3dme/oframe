@@ -240,6 +240,12 @@ void meshCmdInfomsg(String rxValue) {
           Serial.print("❌关led 灯-");
         }
 
+      } else if (cmd == "relayreboot") {
+        int sw = tmp.toInt();
+        if (sw == 1) {
+          ESP.restart();
+        }
+
 
       } else if (cmd == "refrishgps") {
         // int valueNum = docCom["value"].as<int>();
