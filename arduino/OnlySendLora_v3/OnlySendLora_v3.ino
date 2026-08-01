@@ -258,8 +258,17 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (messageType == MSG_TYPE_SYN_TIME) {
 
     int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
+    if (secondPipeIndex < 0) {
+      Serial.println("❌ SYN_TIME格式错误：缺少第二个分隔符");
+      return;
+    }
     String timeStr = infoStr.substring(secondPipeIndex + 1);
-    timeStr = timeStr.substring(0, timeStr.indexOf('|'));
+    int timePipeIdx = timeStr.indexOf('|');
+    if (timePipeIdx < 0) {
+      Serial.println("❌ SYN_TIME格式错误：时间字段后缺少分隔符");
+      return;
+    }
+    timeStr = timeStr.substring(0, timePipeIdx);
     Serial.print("本机时间");
     Serial.println(getCurrentTime(true));
 
