@@ -28,10 +28,11 @@ RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
 RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
 RTC_DATA_ATTR int loraTxPower = 0;
-RTC_DATA_ATTR int sendmodeFlage = 0;    //工作模式  0默认 1需要验证上传成功1次
-RTC_DATA_ATTR int rtcSendCount = 0;
+RTC_DATA_ATTR int sendmodeFlage = 0;  //工作模式  0默认 1需要验证上传成功1次
+RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
 RTC_DATA_ATTR int roundTime = 0;                     // 默认上报周末使用系统配置
+RTC_DATA_ATTR char needSendGpsStr[32] = "";          //
 RTC_DATA_ATTR char lastrelayName[32] = "";           //
 RTC_DATA_ATTR char work_time_str[32] = "0:0-24:59";  // 默认工作时间
 
@@ -220,7 +221,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
       roundTime = tmp.toInt() * 60 * 1000;
       Serial.print("修改上报时间周末roundTime");
       Serial.println(roundTime);
-    } else if (infoStr.indexOf("txPower") != -1) {
+    } else if (infoStr.indexOf("txpower") != -1) {
       Serial.print("✅✅修改发射功率：");
       loraTxPower = tmp.toInt();
     } else if (infoStr.indexOf("upgps") != -1) {
@@ -245,7 +246,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     printTimestampMs(getCurrentTimestampMs(), "getCurrentTimestampMs");
 
     if (!haveRightTime()) {
-      Serial.print("✅本机时间无效 更新ROLA同步时间 ");
+      Serial.print("✅本机时间无效 更新中继ROLA同步时间 ");
       setTimeFromLora(timeStr);
       timeSynFlage = true;
     } else {
@@ -284,16 +285,9 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     }
   }
 }
+void sendLoraToMid(String dataStr) {
 
-// ==================== 构建并发送数据包 ====================
-void buildAndSendPacket(int packetType) {
-  String dataStr = String(packetType) + "|" + deviceName;
-  if (packetType == MSG_TYPE_TIME || packetType == MSG_TYPE_SYN_UP_TIME || packetType == MSG_TYPE_TIME_REALY) {
-    dataStr += "|" + getCurrentTime(true) + "|" + batterystr;
-  } else if (packetType == MSG_TYPE_GPS) {
-    dataStr += "|" + getGpsInfoStr() + "|" + batterystr;
-  }
-
+  dataStr += "|" + batterystr;
   dataStr += "|" + String(rtcSendCount++);
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
@@ -309,6 +303,8 @@ void buildAndSendPacket(int packetType) {
   Radio.Send((uint8_t *)sendData, strlen(sendData));
   delay(100);
 }
+// ==================== 构建并发送数据包 ====================
+
 // 结果接收窗口
 unsigned long inRxEndTime = 0;
 // ==================== LoRa发送完成回调 ====================
@@ -347,13 +343,14 @@ void printTimeToString(String str, unsigned long ms) {
   Serial.print(remMs);
   Serial.println("毫秒");
 }
+int seacthTm = 180000;
 void meshGpsInfoFun(bool closeGps = true) {
   if (!getGpsStatus()) {
     initPanGPS();
   }
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
-  int seacthTm = 180000;
+
   while (true) {
     gpsEncode();
     bool hasLocValid = gps.location.isValid();
@@ -422,14 +419,28 @@ void printCurrentTime() {
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
-  delay(100);
+  if (rtcSendCount == -1) {
+    unsigned long endTm = millis() + 20000;
+    while (endTm > millis()) {
+      delay(1000);
+      Serial.print("x");
+    }
+    rtcSendCount = 0;
+  }
+
   Serial.print("setup");
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
-
   batterystr = readBatteryEndStr(deviceName);
 
+
+
+
+  if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0) {
+    meshGpsInfoFun(true);
+    strcpy(needSendGpsStr, getGpsInfoStr().c_str());
+  }
   initLora();
 }
 unsigned long num6000 = 5000;  // 暂时提前20秒开机
@@ -455,8 +466,10 @@ void loop() {
       // 再次上传不能和另一台中继下发时间冲突，有可能获取GPS很块
       delay(bigenTm - millis());
     }
+    String dataStr = String(MSG_TYPE_GPS) + "|" + deviceName + "|" + getGpsInfoStr();
+    sendLoraToMid(dataStr);
 
-    buildAndSendPacket(MSG_TYPE_GPS);
+
     delay(2000);  // 上报LORA需要2秒钟间隔
     hideOLED();
     Radio.Sleep();
@@ -482,25 +495,8 @@ void loop() {
       Serial.print(rtcResiveIdx);
       Serial.print("-");
       Serial.print(rtcSendCount);
-      if (rtcResiveIdx != rtcSendCount && sendmodeFlage == 1) {
-        // 上报模式为0就是上报了不管理 1是上报了判断一次，
-        // 也许以后还有3会持续上报
-        Serial.println("❌上报信息后并没有收到 中继下发的LORA ❌");
-        Radio.Sleep();
-        rtcSendCount = rtcSendCount - 1;
-        delay(random(
-          0, 10000));  // 给一个10秒不确定的再次上传的机会，还要测试看重复率
-        buildAndSendPacket(MSG_TYPE_TIME_REALY);
-        delay(2000);
-      }
-      if (sendmodeFlage == 2) {
-        // 每次都上报GPS
-        Serial.print("✅✅上报GPS坐标：");
-        typeindex = FLAG_TYPE_3;
-        gpsWorkStat = millis();
-        gpsWorkTime = 0;
-        return;
-      }
+
+
       // 回到普通模式，准备可以休眠
       nextSendTime = 0;
       typeindex = FLAG_TYPE_0;
@@ -539,6 +535,10 @@ void loop() {
         delay(1000);
         // 05:02|10:59
         uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
+        if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0 && sleepTime > (seacthTm * 1000ULL)) {
+          Serial.println("工作模式上报GPS，需要提前开启GPS");
+          sleepTime = sleepTime - (seacthTm * 1000ULL);
+        }
         // 根据每小时偏差补偿休眠期间的时钟漂移
         if (hourlyDriftMsTemp != 0) {
           long long sleepMs = (long long)(sleepTime / 1000ULL);
@@ -574,8 +574,16 @@ void loop() {
       }
     }
     if (nextSendTime < millis()) {
+
       typeindex = FLAG_TYPE_1;
-      buildAndSendPacket(MSG_TYPE_TIME);
+      if (sendmodeFlage == 1 && strlen(needSendGpsStr) > 0) {
+        String dataStr = String(MSG_TYPE_GPS) + "|" + deviceName + "|26.52961,109.39072";
+        strcpy(needSendGpsStr, "");
+        sendLoraToMid(dataStr);
+      } else {
+
+        sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(true));
+      }
     }
   }
   printCurrentTime();

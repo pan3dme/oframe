@@ -686,7 +686,7 @@ void processLoraData() {
       // Serial.println("接收到gps信息  准备清理GPS必须有GPS信息的标记: ");
       removeTargetGpsByDeviceId(devId);
     }
-    if (messageType == MSG_TYPE_TIME) {
+    if (messageType == MSG_TYPE_TIME||messageType == MSG_TYPE_GPS) {
 
       if (mustrefrishgpsTime > millis()) {
         Serial.print("mustrefrishgpsTime-");
@@ -735,8 +735,8 @@ void setup() {
   Radio.Rx(0);
 }
 // 1分钟就上报中继在线时间
-unsigned long lastUpSelfTm = 10 * 1000;
-unsigned long nextSyncTm = 5 * 1000;
+unsigned long lastUpSelfTm = 15 * 1000;
+unsigned long nextSyncTm = 10 * 1000;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
