@@ -30,6 +30,7 @@ String deviceCacheId[DEVICE_CACHE_MAX];
 String deviceCacheMsg[DEVICE_CACHE_MAX];
 int deviceCacheCount = 0;
 
+int recelveIdx = 1;
 int rtcSendCount = 0;
 String batterystr = "";
 String deviceName = "x-x";
@@ -209,20 +210,47 @@ void meshCmdInfomsg(String rxValue) {
     if (deviceId == deviceName) {
 
       String cmd = docCom["cmd"].as<String>();
-      if (cmd == "synctime") {
-        String timestr = docCom["value"].as<String>();
-        setTimeFromLora(timestr);
-        Serial.print("中继地时过来的-");
-        Serial.println(getCurrentTime(true));
+      String tmp = docCom["value"].as<String>();
+      if (cmd == "lorasw") {
+        int sw = tmp.toInt();
+        if (sw == 1) {
+          Radio.Rx(0);
+          Serial.print("✅ROLA 开始接收-");
+        } else {
+          Radio.Sleep();
+          Serial.print("❌ROLA进入休眠-");
+        }
+
+      } else if (cmd == "relaytimeloc") {
+        recelveIdx = tmp.toInt();
+        if (recelveIdx == 0) {
+          Serial.print("❌不下发对时-");
+        } else {
+          Serial.print("✅中继下发位置");
+          Serial.println(recelveIdx);
+        }
+
+
+      } else if (cmd == "ledsw") {
+        int sw = tmp.toInt();
+        if (sw == 1) {
+          Serial.print("✅开led 灯-");
+        } else {
+
+          Serial.print("❌关led 灯-");
+        }
+
+
       } else if (cmd == "refrishgps") {
-        int valueNum = docCom["value"].as<int>();
-        Serial.print("刷新中继连接所有 设备GPS valueNum=");
-        Serial.println(valueNum);
-        mustrefrishgpsTime = millis() + valueNum * 60 * 1000;
+        // int valueNum = docCom["value"].as<int>();
+        // Serial.print("刷新中继连接所有 设备GPS valueNum=");
+        // Serial.println(valueNum);
+        // mustrefrishgpsTime = millis() + valueNum * 60 * 1000;
       } else {
         Serial.println(
-          "❌❌❌下发的对象就是中继， 我要分批处理 全局指令❌❌❌");
+          "❌❌❌下发的对象就是中继， 还没有设计指令功能❌❌❌");
       }
+      Serial.println(getCurrentTime(true));
     } else {
       // 先移除原来对应设备的
       removeTargetByDeviceId(deviceId);
@@ -386,8 +414,8 @@ void receiveDtuData() {
   }
 
   dtuSerial->flush();
-  // Serial.print("dtu 返回 -");
-  // Serial.println(raw);
+  Serial.print("dtu 返回 -");
+  Serial.println(raw);
 
   // 解析DTU返回的网络时间: config,nettime,ok,2026,7,31,1,50,6,5
   // 格式: 年,月,日,时,分,秒,毫秒
@@ -494,6 +522,10 @@ String needSyncTimeDeviceid;
 long down_syn_time = 0;
 // ========================= 下发指令 =========================
 void sendDownInfo(String loraStr, String deviceId) {
+  if (recelveIdx == 0) {
+    Serial.println("❌不下发指令，用于测试，中继互不干扰的测试");
+    return;
+  }
 
   String dataStr = "";
   String selectCmdStr = getGpsTargetByDeviceid(deviceId);
@@ -522,12 +554,12 @@ void sendDownInfo(String loraStr, String deviceId) {
     String cmd = docCom["cmd"].as<String>();
     String value = docCom["value"].as<String>();
 
-    dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" +value;
+    dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
     sendLoraToDeviceid(dataStr);
 
   } else {
     needSyncTimeDeviceid = deviceId;
-    down_syn_time = millis() + 2000;
+    down_syn_time = millis() + 2000 * recelveIdx;
   }
 }
 unsigned long get_send_interval_ms() {

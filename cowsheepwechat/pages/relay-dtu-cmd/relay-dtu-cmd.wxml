@@ -1,5 +1,5 @@
-<!--dtu-cmd.wxml-->
-<navigation-bar title="设备DTU指令" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<!--relay-dtu-cmd.wxml-->
+<navigation-bar title="中继DTU指令" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <scroll-view class="scrollarea" scroll-y type="list">
 
   <!-- 设备选择 -->
@@ -10,15 +10,6 @@
     </picker>
   </view>
 
-  <!-- 中继转发设备选择 -->
-  <view class="section-card">
-    <view class="section-title">🔄 中继转发设备</view>
-    <picker mode="selector" range="{{relayDisplayList}}" value="{{relayIndex}}" bindchange="onRelayChange">
-      <view class="cmd-picker relay-picker">{{relayDisplayList[relayIndex] || '自动'}}</view>
-    </picker>
-    <view class="relay-hint">自动模式下将根据RSSI信号自动选择最佳转发设备</view>
-  </view>
-
   <!-- 指令输入 -->
   <view class="section-card">
     <view class="section-title">⚡ 指令内容</view>
@@ -27,13 +18,12 @@
     <!-- 快捷按钮 -->
     <view class="quick-label">快捷指令</view>
     <view class="quick-row">
-      <button class="quick-btn {{quickSelected === 5 ? 'quick-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
-      <button class="quick-btn {{quickSelected === 7 ? 'quick-active' : ''}}" bindtap="onQuickReport30Min">⏱️ 30分钟上报</button>
       <button class="quick-btn {{quickSelected === 2 ? 'quick-active' : ''}}" bindtap="onQuickRefreshGps">📍 中继刷定位</button>
-      <button class="quick-btn {{quickSelected === 12 ? 'quick-active' : ''}}" bindtap="onQuickNormalMode">📶 上报模式</button>
       <button class="quick-btn {{quickSelected === 14 ? 'quick-active' : ''}}" bindtap="onQuickWorkTime">🕐 工作时间</button>
-      <button class="quick-btn {{quickSelected === 15 ? 'quick-active' : ''}}" bindtap="onQuickSyncTime">📍 位置跟踪</button>
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
+      <button class="quick-btn {{quickSelected === 17 ? 'quick-active' : ''}}" bindtap="onQuickLoraSw">🔘 开关LORA</button>
+      <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickLedSw">💡 开平dtu灯</button>
+      <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickRelayTimeLoc">📍 中继对时位置</button>
     </view>
   </view>
 

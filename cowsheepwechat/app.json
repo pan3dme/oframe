@@ -19,7 +19,8 @@
     "pages/battery-analysis/battery-analysis",
     "pages/road-optimize/road-optimize",
     "pages/cloud-records/cloud-records",
-    "pages/dtu-cmd/dtu-cmd"
+    "pages/dtu-cmd/dtu-cmd",
+    "pages/relay-dtu-cmd/relay-dtu-cmd"
   ],
   "window": {
     "navigationBarTextStyle": "black",
