@@ -20,6 +20,7 @@ bool timeSynFlage = false;
 String batterystr = "";
 
 unsigned long gpsWorkTime = 0;
+unsigned long gpsWorkInterval = 0;
 unsigned long gpsWorkStat = 0;
 int typeindex = FLAG_TYPE_0;
 
@@ -224,12 +225,30 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     } else if (infoStr.indexOf("txpower") != -1) {
       Serial.print("✅✅修改发射功率：");
       loraTxPower = tmp.toInt();
-    } else if (infoStr.indexOf("upgps") != -1) {
-      // 11|v4-10|upgps|0
-      Serial.print("✅✅上报GPS坐标：");
-      typeindex = FLAG_TYPE_3;
-      gpsWorkStat = millis();
-      gpsWorkTime = tmp.toInt() * 60 * 1000;
+    } else if (infoStr.indexOf("follow") != -1) {
+      // 11|v4-10|follow|30,5
+      int commaIndex = tmp.indexOf(',');
+      if (commaIndex != -1) {
+        String firstStr = tmp.substring(0, commaIndex);
+        String secondStr = tmp.substring(commaIndex + 1);
+        int firstNum = firstStr.toInt();
+        int secondNum = secondStr.toInt();
+        Serial.println(firstNum);   // 输出 30
+        Serial.println(secondNum);  // 输出 5
+        if (firstNum > 0 && firstNum < 60 && secondNum > 0 && secondNum < 60) {
+          Serial.print("✅✅上报GPS坐标：");
+          typeindex = FLAG_TYPE_3;
+          gpsWorkStat = millis();
+          gpsWorkTime = firstNum * 60 * 1000;       //跟踪时间
+          gpsWorkInterval = secondNum * 60 * 1000;  //跟踪上报间隔
+        }
+
+      } else {
+        // 没有逗号的处理逻辑
+        Serial.println("没有找到逗号");
+      }
+
+
     } else {
       Serial.println("❌❌❌❌ 需要补充功能列表");
       return;
@@ -243,7 +262,6 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     timeStr = timeStr.substring(0, timeStr.indexOf('|'));
     Serial.print("本机时间");
     Serial.println(getCurrentTime(true));
-    printTimestampMs(getCurrentTimestampMs(), "getCurrentTimestampMs");
 
     int lastPipeIdx = infoStr.lastIndexOf('|');
     String relayName = infoStr.substring(lastPipeIdx + 1);
@@ -475,9 +493,9 @@ void loop() {
       nextSendTime = 0;
       typeindex = FLAG_TYPE_0;
     } else {
-      printTimeToString("延时1分钟再上报GPS信息 还会持续",
-                        gpsWorkTime - (millis() - gpsWorkStat));
-      delay(60 * 1000 * 2);  // 延时1分钟
+      printTimeToString("延时 ", gpsWorkInterval);
+      printTimeToString("延时1分钟再上报GPS信息 还会持续", gpsWorkTime - (millis() - gpsWorkStat));
+      delay(gpsWorkInterval);  // 延时1分钟
     }
     return;
   }

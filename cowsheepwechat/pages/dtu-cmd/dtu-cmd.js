@@ -133,15 +133,7 @@ Page({
     this.setData({ showWorkTimeModal: true, quickSelected: 14 })
   },
   onQuickSyncTime() {
-    const now = new Date()
-    const timeStr = now.getFullYear() + '/' +
-      String(now.getMonth() + 1).padStart(2, '0') + '/' +
-      String(now.getDate()).padStart(2, '0') + ' ' +
-      String(now.getHours()).padStart(2, '0') + ':' +
-      String(now.getMinutes()).padStart(2, '0') + ':' +
-      String(now.getSeconds()).padStart(2, '0') + '.' +
-      String(now.getMilliseconds()).padStart(3, '0')
-    this.setData({ cmdText: JSON.stringify({ cmd: 'synctime', value: timeStr }), quickSelected: 15 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'follow', value: '30,5' }), quickSelected: 15 })
   },
   onQuickTxPower() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'txpower', value: 20 }), quickSelected: 16 })
