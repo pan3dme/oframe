@@ -245,44 +245,37 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     Serial.println(getCurrentTime(true));
     printTimestampMs(getCurrentTimestampMs(), "getCurrentTimestampMs");
 
-    if (!haveRightTime()) {
-      Serial.print("✅本机时间无效 更新中继ROLA同步时间 ");
-      setTimeFromLora(timeStr);
-      timeSynFlage = true;
-    } else {
-      // 4|v4-10|2026/7/29 15:56:46.126|v4-24
-      // 提取最后一段设备名（中继名）
-      int lastPipeIdx = infoStr.lastIndexOf('|');
-      String relayName = infoStr.substring(lastPipeIdx + 1);
-      if (relayName.length() > 0) {
-        Serial.print("中继名: ");
-        Serial.println(relayName);
-        if (lastSendTimeTemp > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
-          Serial.println("---中继和上次相对，那开始计算晶震偏移:----- ");
-          long long ds = getCurrentTimestampMs() + lastDriftCompMs - lastSendTimeTemp;
+    int lastPipeIdx = infoStr.lastIndexOf('|');
+    String relayName = infoStr.substring(lastPipeIdx + 1);
+    if (relayName.length() > 0) {
+      Serial.print("中继名: ");
+      Serial.println(relayName);
+      if (lastSendTimeTemp > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
+        Serial.println("---中继和上次相对，那开始计算晶震偏移:----- ");
+        long long ds = getCurrentTimestampMs() + lastDriftCompMs - lastSendTimeTemp;
 
-          printDurationMs(ds, "本机周期: ");
-          long long diff_ms = mathTimeDiffmstimeFromLora(timeStr) + lastDriftCompMs;
-          printDurationMs(diff_ms, "当前偏差: ");
-          // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
-          if (ds > 0) {
-            long long hourlyDriftMs = diff_ms * 3600000LL / ds;
-            Serial.print("每小时偏差: ");
-            Serial.print(hourlyDriftMs);
-            Serial.println(" 毫秒");
-            printDurationMs(hourlyDriftMs, "每小时偏差: ");
-            //每小时小于31秒的偏差才通过，防止出乱子
-            if (abs(hourlyDriftMs) < 31000) {
-              hourlyDriftMsTemp = hourlyDriftMs;
-            }
+        printDurationMs(ds, "本机周期: ");
+        long long diff_ms = mathTimeDiffmstimeFromLora(timeStr) + lastDriftCompMs;
+        printDurationMs(diff_ms, "当前偏差: ");
+        // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
+        if (ds > 0) {
+          long long hourlyDriftMs = diff_ms * 3600000LL / ds;
+          Serial.print("每小时偏差: ");
+          Serial.print(hourlyDriftMs);
+          Serial.println(" 毫秒");
+          printDurationMs(hourlyDriftMs, "每小时偏差: ");
+          //每小时小于31秒的偏差才通过，防止出乱子
+          if (abs(hourlyDriftMs) < 31000) {
+            hourlyDriftMsTemp = hourlyDriftMs;
           }
         }
-        setTimeFromLora(timeStr);
-        timeSynFlage = true;
-        lastSendTimeTemp = getCurrentTimestampMs();
-        strcpy(lastrelayName, relayName.c_str());
       }
+      strcpy(lastrelayName, relayName.c_str());
     }
+
+    setTimeFromLora(timeStr);
+    lastSendTimeTemp = getCurrentTimestampMs();
+    timeSynFlage = true;
   }
 }
 void sendLoraToMid(String dataStr) {

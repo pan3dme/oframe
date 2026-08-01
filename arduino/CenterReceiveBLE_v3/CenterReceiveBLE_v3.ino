@@ -520,18 +520,10 @@ void sendDownInfo(String loraStr, String deviceId) {
     Serial.print("✅标记了下发数据");
     Serial.println(selectCmdStr);
     String cmd = docCom["cmd"].as<String>();
-    if (cmd == "upgps" && lastCmd == false) {
-      // 特殊处理GPS需要上报的记录用于核对必须接收到GPS定位才解除
-      addTargetGps(selectCmdStr);
-    }
-    if (cmd == "upgps" || cmd == "worktime" || cmd == "setinterval" || cmd == "sendmode" || cmd == "txpower") {
-      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + docCom["value"].as<String>();
-      sendLoraToDeviceid(dataStr);
-    } else {
-      Serial.print("❌❌❌当前docCom    cmd  没有对应的方法");
-      Serial.println(cmd);
-      return;
-    }
+    String value = docCom["value"].as<String>();
+
+    dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" +value;
+    sendLoraToDeviceid(dataStr);
 
   } else {
     needSyncTimeDeviceid = deviceId;
@@ -682,11 +674,8 @@ void processLoraData() {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
     sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
-    if (messageType == MSG_TYPE_GPS) {
-      // Serial.println("接收到gps信息  准备清理GPS必须有GPS信息的标记: ");
-      removeTargetGpsByDeviceId(devId);
-    }
-    if (messageType == MSG_TYPE_TIME||messageType == MSG_TYPE_GPS) {
+
+    if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_GPS) {
 
       if (mustrefrishgpsTime > millis()) {
         Serial.print("mustrefrishgpsTime-");
