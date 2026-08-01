@@ -444,6 +444,20 @@ void setup() {
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
   batterystr = readBatteryEndStr(deviceName);
+  int pos = batterystr.indexOf('|');
+  if (pos != -1) {  // 确保找到了分隔符
+    String firstPart = batterystr.substring(0, pos);
+    if (firstPart.toInt() < 0.1) {
+      esp_sleep_enable_timer_wakeup(24 * 60 * 60 * 1000 * 1000ULL);
+      Serial.println("--->电量过底进入长期休眠...");
+      Serial.flush();
+      esp_deep_sleep_start();
+    }
+    Serial.println(firstPart);  // 输出 1.0
+  } else {
+    // 没有分隔符，整个字符串就是所需部分
+    Serial.println(batterystr);
+  }
 
 
 
