@@ -19,7 +19,7 @@ typedef enum {
   MSG_TYPE_TIME = 2,        // 对时信息
   MSG_TYPE_BATTERY = 3,     // 电量信息（小数，如0.5、0.1）
   MSG_TYPE_SYN_TIME = 4,    // 下发对时信息
-    MSG_TYPE_SYN_TIME_COPY = 6,    // 时间戳的下发对时
+  MSG_TYPE_SYN_TIME_COPY = 6,    // 时间戳的下发对时
   MSG_TYPE_UP_GPS = 5,       //   上报GPS坐标
   MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
   MSG_TYPE_TIME_REALY = 8,    // 补发对时信息

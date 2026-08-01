@@ -238,7 +238,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
         if (firstNum > 0 && firstNum < 60 && secondNum > 0 && secondNum < 60) {
           Serial.print("✅✅上报GPS坐标：");
           typeindex = FLAG_TYPE_3;
-          gpsWorkStat = millis();
+          gpsWorkStat = millis() + 5000;            //延时5秒
           gpsWorkTime = firstNum * 60 * 1000;       //跟踪时间
           gpsWorkInterval = secondNum * 60 * 1000;  //跟踪上报间隔
         }
@@ -462,25 +462,22 @@ void loop() {
   Radio.IrqProcess();
 
   if (typeindex == FLAG_TYPE_3) {
-    unsigned long bigenTm = millis() + 5000;
+    Radio.Sleep();  // IrqProcess已完成，安全Sleep
+    if (millis() < gpsWorkStat) {
+      Serial.println("准备跟踪GPS位置");
+      delay(1000);  // 上报LORA需要2秒钟间隔
+      return;
+    }
     Serial.print("gps持续准备上报位置:");
     Serial.print(millis() - gpsWorkStat);
     Serial.print("-");
     Serial.println(gpsWorkTime);
-    Radio.Sleep();  // IrqProcess已完成，安全Sleep
     showOLED();
-    delay(1000);
-    Serial.print("获取GPS");
+    Serial.print("获取GPS ");
     printCurrentTime();
     meshGpsInfoFun(false);
-    if (bigenTm > millis()) {
-      // 再次上传不能和另一台中继下发时间冲突，有可能获取GPS很块
-      delay(bigenTm - millis());
-    }
-    String dataStr = String(MSG_TYPE_GPS) + "|" + deviceName + "|" + getGpsInfoStr();
-    sendLoraToMid(dataStr);
-
-
+    delay(1000);
+    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + getGpsInfoStr());
     delay(2000);  // 上报LORA需要2秒钟间隔
     hideOLED();
     Radio.Sleep();
@@ -494,7 +491,7 @@ void loop() {
       typeindex = FLAG_TYPE_0;
     } else {
       printTimeToString("延时 ", gpsWorkInterval);
-      printTimeToString("延时1分钟再上报GPS信息 还会持续", gpsWorkTime - (millis() - gpsWorkStat));
+      printTimeToString("还会持续", gpsWorkTime - (millis() - gpsWorkStat));
       delay(gpsWorkInterval);  // 延时1分钟
     }
     return;

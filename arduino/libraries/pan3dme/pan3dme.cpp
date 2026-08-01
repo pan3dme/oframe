@@ -27,7 +27,7 @@ uint64_t allowedDevices[] = {
     0x9875555,
     0x6809A21B5BF8, // v4    6
     0x9875555,
-    0x8442AAAC85D8, // v3    8
+    0xF478B549FD8C, // v4    8
     0x9875555,
     0x301BA21B5BF8, // v4    10
     0x9875555,

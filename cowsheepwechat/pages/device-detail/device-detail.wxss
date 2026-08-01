@@ -493,6 +493,9 @@ page {
 .rec-icon-lora.type-3 {
   background: #4CAF50;
 }
+.rec-icon-lora.type-5 {
+  background: #8E24AA;
+}
 
 /* 类型标签 */
 .type-tag {
@@ -514,6 +517,9 @@ page {
 }
 .type-tag.type-3 {
   background: #4CAF50;
+}
+.type-tag.type-5 {
+  background: #8E24AA;
 }
 
 /* ========== 弹窗（编辑/连接） ========== */

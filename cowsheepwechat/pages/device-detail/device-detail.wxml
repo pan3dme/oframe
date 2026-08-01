@@ -84,7 +84,7 @@
             <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}</text>
           </view>
           <view class="rec-row rec-row-content">
-            <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType}}</text>
+            <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType}}</text>
             <text class="rec-val rec-val-lora">{{item.lorastr}}</text>
           </view>
           <view class="rec-row rec-row-rssi" wx:if="{{item.rssi !== '' || item.snr !== ''}}">
