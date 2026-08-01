@@ -208,20 +208,40 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
     if (infoStr.indexOf("worktime") != -1) {
       // 11|v4-10|work_time|05:02-10:59
-      Serial.print("✅✅设置工作时间：");
-      tmp.toCharArray(work_time_str, sizeof(work_time_str));
-      Serial.println(work_time_str);
+      int h1, m1, h2, m2;
+      if (sscanf(tmp.c_str(), "%d:%d-%d:%d", &h1, &m1, &h2, &m2) == 4 &&
+          h1 >= 0 && h1 <= 24 && m1 >= 0 && m1 <= 59 &&
+          h2 >= 0 && h2 <= 24 && m2 >= 0 && m2 <= 59) {
+        Serial.print("✅✅设置工作时间：");
+        tmp.toCharArray(work_time_str, sizeof(work_time_str));
+        Serial.println(work_time_str);
+      } else {
+        Serial.print("❌工作时间格式错误：");
+        Serial.println(tmp);
+      }
     } else if (infoStr.indexOf("sendmode") != -1) {
       // 11|v4-10|sendmode|1|0
-      Serial.print("✅✅设置工作模式：");
-      sendmodeFlage = tmp.toInt();
-      Serial.println(sendmodeFlage);
+      int modeVal = tmp.toInt();
+      if (modeVal >= 0 && modeVal <= 2) {
+        Serial.print("✅✅设置工作模式：");
+        sendmodeFlage = modeVal;
+        Serial.println(sendmodeFlage);
+      } else {
+        Serial.print("❌工作模式值错误(需0/1/2)：");
+        Serial.println(modeVal);
+      }
     } else if (infoStr.indexOf("setinterval") != -1) {
       // 11|v4-10|setinterval|30
-      Serial.print("✅✅设置上报周期：");
-      roundTime = tmp.toInt() * 60 * 1000;
-      Serial.print("修改上报时间周末roundTime");
-      Serial.println(roundTime);
+      int intervalVal = tmp.toInt();
+      if (intervalVal > 5 && intervalVal <= 60) {
+        Serial.print("✅✅设置上报周期：");
+        roundTime = intervalVal * 60 * 1000;
+        Serial.print("修改上报时间周末roundTime");
+        Serial.println(roundTime);
+      } else {
+        Serial.print("❌上报周期值错误(需6-60)：");
+        Serial.println(intervalVal);
+      }
     } else if (infoStr.indexOf("txpower") != -1) {
       Serial.print("✅✅修改发射功率：");
       loraTxPower = tmp.toInt();
@@ -235,7 +255,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
         int secondNum = secondStr.toInt();
         Serial.println(firstNum);   // 输出 30
         Serial.println(secondNum);  // 输出 5
-        if (firstNum > 0 && firstNum < 60 && secondNum > 0 && secondNum < 60) {
+        if (firstNum > 5 && firstNum < 60 && secondNum > 0 && secondNum <= firstNum) {
           Serial.print("✅✅上报GPS坐标：");
           typeindex = FLAG_TYPE_3;
           gpsWorkStat = millis() + 5000;            //延时5秒
