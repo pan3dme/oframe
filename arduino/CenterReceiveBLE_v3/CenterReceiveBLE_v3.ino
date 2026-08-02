@@ -12,6 +12,7 @@
 #include <BLEUtils.h>
 #include <pan3dme.h>
 #include <time.h>
+#include "esp_task_wdt.h"
 HardwareSerial *dtuSerial;
 // ========================= BLE全局对象 =========================
 bool needSync = false;
@@ -52,6 +53,8 @@ StaticJsonDocument<200> docCom;  // BLE指令解析用（全局复用）
 unsigned long lastSyncMillis = 0;  // 上次对时时的 millis()
 time_t lastSyncEpoch = 0;          // 上次对时后的系统 epoch
 bool hasLastSync = false;          // 是否已有上次记录
+
+
 
 // ========================= BLE回调 =========================
 
@@ -245,7 +248,11 @@ void meshCmdInfomsg(String rxValue) {
         if (sw == 1) {
           ESP.restart();
         }
-
+      } else if (cmd == "txpower") {
+        int power = tmp.toInt();
+        if (power > 10 && power <= 28) {
+          initRadio(power);
+        }
 
       } else if (cmd == "refrishgps") {
         // int valueNum = docCom["value"].as<int>();
@@ -344,13 +351,13 @@ void initBLE() {
 }
 
 // 初始化LoRa Radio
-void initRadio() {
+void initRadio(int power) {
   RadioEvents.RxDone = OnRxDone;
   RadioEvents.RxTimeout = OnRxTimeout;
   RadioEvents.RxError = OnRxError;
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
-  initPanRadio(&RadioEvents, TX_POWER);
+  initPanRadio(&RadioEvents, power);
   Radio.Rx(0);
 }
 
@@ -407,16 +414,23 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
   dtuSerial->println(json);
 }
 // 接收 Serial2 (DTU) 数据，拆分多个拼接JSON并提取cominfo
+String signalRss = "0";
 void receiveDtuData() {
   String raw = "";
 
   if (dtuSerial->available() <= 0) {
     return;
   }
-  // 1. 读取本次全部数据
-  while (dtuSerial->available() > 0) {
+  // 1. 读取本次全部数据（限制最大长度防止内存耗尽）
+  int rawLen = 0;
+  while (dtuSerial->available() > 0 && rawLen < 1024) {
     raw += (char)dtuSerial->read();
+    rawLen++;
     delay(2);  // 等待下一个字节
+  }
+  // 丢弃超出部分
+  while (dtuSerial->available() > 0) {
+    dtuSerial->read();
   }
 
   dtuSerial->flush();
@@ -425,6 +439,18 @@ void receiveDtuData() {
 
   // 解析DTU返回的网络时间: config,nettime,ok,2026,7,31,1,50,6,5
   // 格式: 年,月,日,时,分,秒,毫秒
+  if (raw.indexOf("config,csq,ok,") != -1) {
+    int lastComma = raw.lastIndexOf(',');
+    if (lastComma != -1) {
+      String valueStr = raw.substring(lastComma + 1);
+      valueStr.trim();  // 去除换行和空格
+      int signal = valueStr.toInt();
+      int percentage = map(signal, 0, 31, 0, 100);  // 使用 Arduino 的 map 函数
+      Serial.print("信号强度值: ");
+      Serial.println(percentage);
+      signalRss = String(percentage);
+    }
+  }
   if (raw.indexOf("config,nettime,ok,") != -1) {
     String timePart =
       raw.substring(raw.indexOf("config,nettime,ok,") + 18);  // 跳过前缀
@@ -568,7 +594,7 @@ void sendDownInfo(String loraStr, String deviceId) {
     down_syn_time = millis() + 2000 * recelveIdx;
   }
 }
- 
+
 
 // ========================= 主循环处理LoRa数据 =========================
 
@@ -624,6 +650,7 @@ void processLoraData() {
   }
 }
 
+
 // ========================= 系统初始化 =========================
 void setup() {
   Serial.begin(115200);
@@ -647,13 +674,24 @@ void setup() {
   delay(1000);
 #endif
 
-  // testTimesyncTm();
 
-  initRadio();
+
+  initRadio(22);
   initBLE();
+
+  // 启用任务看门狗，30秒超时自动重启
+  esp_task_wdt_config_t wdtConfig = {
+    .timeout_ms = 30 * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true  // 超时触发重启并打印原因
+  };
+  esp_task_wdt_init(&wdtConfig);
+  esp_task_wdt_add(NULL);  // 监控主循环任务
+
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
 }
+
 // 1分钟就上报中继在线时间
 unsigned long lastUpSelfTm = 15 * 1000;
 unsigned long nextSyncTm = 10 * 1000;
@@ -664,16 +702,18 @@ void loop() {
 
   if (nextSyncTm < millis()) {
     // 请求网络时间
-    nextSyncTm = millis() + SEND_INTERVAL_MS;
+    nextSyncTm = millis() + CENTEN_INTERVAL_MS;
+    dtuSerial->println("config,get,csq");
+    delay(200);
     dtuSerial->println("config,get,nettime");
   }
-  if ((lastUpSelfTm) < millis()  ) {
-    lastUpSelfTm = millis() +CENTEN_INTERVAL_MS;
+  if ((lastUpSelfTm) < millis()) {
+    lastUpSelfTm = millis() + CENTEN_INTERVAL_MS;
     // 测试电量
     batterystr = readBatteryEndStr(deviceName);
     String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
     dataStr += "|" + String(rtcSendCount++);
-    sendLoraInfoUseDtu(dataStr, "0", "0");
+    sendLoraInfoUseDtu(dataStr, signalRss, "0");
   }
 
   // BLE数据同步发送
@@ -692,8 +732,13 @@ void loop() {
       serializeJson(newDoc, finalJsonData);
       // 打印或发送最终结果
       Serial.println(finalJsonData);
-      pCharacteristic->setValue(finalJsonData.c_str());
-      pCharacteristic->notify();
+      if (pCharacteristic != NULL) {
+        pCharacteristic->setValue(finalJsonData.c_str());
+        pCharacteristic->notify();
+      } else {
+        Serial.println("❌ BLE特征值未初始化，跳过通知");
+        needSync = false;
+      }
       Serial.print("✅ 同步发送：");
       Serial.println(finalJsonData);
       Serial.print("📊 剩余：");
@@ -710,5 +755,6 @@ void loop() {
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();
+  esp_task_wdt_reset();  // 喂狗：告诉看门狗系统还活着
   delay(100);
 }

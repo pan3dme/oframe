@@ -60,7 +60,7 @@ extern unsigned long syncedMillis;
 
 // ==================== LoRa 通信参数 ====================
 #define LORA_FREQ 915000000 // 433MHz 国内通用863 863   923  928   915
-#define TX_POWER 22         // 发射功率
+//#define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 11          // 扩频因子
 #define LORA_CR 1           // 纠错率
