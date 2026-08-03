@@ -236,7 +236,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceBestRssibyId',
-        info: { limit: 2, deviceId: targetDeviceId }
+        info: { limit: 3, deviceId: targetDeviceId }
       },
       success: (res) => {
         wx.hideLoading()
