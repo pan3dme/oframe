@@ -434,8 +434,8 @@ void receiveDtuData() {
   }
 
   dtuSerial->flush();
-  Serial.print("dtu 返回 -");
-  Serial.println(raw);
+  // Serial.print("dtu 返回 -");
+  // Serial.println(raw);
 
   // 解析DTU返回的网络时间: config,nettime,ok,2026,7,31,1,50,6,5
   // 格式: 年,月,日,时,分,秒,毫秒
@@ -748,6 +748,12 @@ void loop() {
   if (down_syn_time < millis() && needSyncTimeDeviceid.length() > 0) {
     String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + needSyncTimeDeviceid;
     dataStr += "|" + getCurrentTime(true) + "|" + deviceName;
+
+    //     String dataStr = String(MSG_TYPE_SYN_TIME_COPY) + "|" + needSyncTimeDeviceid;
+    // dataStr += "|" +String( getCurrentTimestampMs()) + "|" + deviceName;
+
+
+    
     sendLoraToDeviceid(dataStr);
     needSyncTimeDeviceid = "";
   }

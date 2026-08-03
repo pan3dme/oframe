@@ -228,27 +228,20 @@ Page({
     }
   },
 
-  // 通过 getDeviceLogbyId 查询目标设备的最新N条记录，找到信号最佳的上传设备以获取密钥
+  // 通过 getDeviceBestRssibyId 查询目标设备的最新记录，找到信号最佳的上传设备以获取密钥
   _queryUploadDevice(targetDeviceId, cmdText) {
     const that = this
-    const today = this._getTodayStr()
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
-        action: 'getDeviceLogbyId',
-        info: {
-          limit: 2,
-          deviceId: targetDeviceId
- 
-        },
-        time: getApp().formatTime()
+        action: 'getDeviceBestRssibyId',
+        info: { limit: 2, deviceId: targetDeviceId }
       },
       success: (res) => {
         wx.hideLoading()
-        console.log('[DTU指令] getDeviceLogbyId 返回:', JSON.stringify(res.data))
+        console.log('[DTU指令] getDeviceBestRssibyId 返回:', JSON.stringify(res.data))
 
-        // 解析记录
         let rawList = []
         if (res.data && res.data.data && Array.isArray(res.data.data)) {
           rawList = res.data.data
@@ -261,18 +254,13 @@ Page({
           return
         }
 
-        // 解析所有记录，提取 upDateDevice 和 RSSI
         const parsedRecords = rawList.map(record => {
           const attr = {}
           if (record.attributes) {
-            record.attributes.forEach(item => {
-              attr[item.columnName] = item.columnValue
-            })
+            record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
           }
           if (record.primaryKey) {
-            record.primaryKey.forEach(item => {
-              attr[item.name] = item.value
-            })
+            record.primaryKey.forEach(item => { attr[item.name] = item.value })
           }
           const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
           const rssi = this._parseRssi(attr.rssi || attr.RSSI || record.rssi || record.RSSI)
@@ -284,7 +272,6 @@ Page({
           return
         }
 
-        // 按设备聚合，取每个设备的最佳 RSSI（最大值=信号最好）
         const deviceBestRssi = {}
         const deviceCount = {}
         parsedRecords.forEach(r => {
@@ -294,27 +281,20 @@ Page({
           deviceCount[r.upDateDevice] = (deviceCount[r.upDateDevice] || 0) + 1
         })
 
-        // 选信号最好的设备：RSSI 越小越好（绝对值越小，信号越强），其次出现次数多
         let bestDevice = null
-        let bestRssi = 999
+        let bestRssi = -999
         let bestCount = 0
         Object.keys(deviceBestRssi).forEach(devId => {
           const r = deviceBestRssi[devId]
           const c = deviceCount[devId]
-          // 有 RSSI 数据时按 RSSI 越小排序，否则按出现次数
-          const hasRssi = r < 999
+          const hasRssi = r > -999
           if (hasRssi) {
-            if (r < bestRssi || (r === bestRssi && c > bestCount)) {
-              bestRssi = r
-              bestCount = c
-              bestDevice = devId
+            // RSSI 越大（越接近0）信号越好，用 > 比较
+            if (r > bestRssi || (r === bestRssi && c > bestCount)) {
+              bestRssi = r; bestCount = c; bestDevice = devId
             }
-          } else if (bestRssi >= 999) {
-            // 都没有 RSSI 时，按出现次数选
-            if (c > bestCount) {
-              bestCount = c
-              bestDevice = devId
-            }
+          } else if (bestRssi <= -999) {
+            if (c > bestCount) { bestCount = c; bestDevice = devId }
           }
         })
 
@@ -340,7 +320,7 @@ Page({
       },
       fail: (err) => {
         wx.hideLoading()
-        console.error('[DTU指令] getDeviceLogbyId 失败:', err)
+        console.error('[DTU指令] getDeviceBestRssibyId 失败:', err)
         wx.showToast({ title: '查询上传设备失败', icon: 'error' })
       }
     })
@@ -351,12 +331,6 @@ Page({
     if (val === undefined || val === null || val === '' || val === '-') return -999
     const n = parseInt(val, 10)
     return isNaN(n) ? -999 : n
-  },
-
-  // 获取今天日期字符串 yyyy-MM-dd
-  _getTodayStr() {
-    const d = new Date()
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
   },
 
   // 实际执行发送：credDevice 提供密钥，targetDeviceId 注入到消息中

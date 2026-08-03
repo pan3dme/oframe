@@ -266,6 +266,13 @@ void meshCmdType(String infoStr, String tmp) {
     if (tmp.toInt() >= 10 && tmp.toInt() <= 28) {
       loraTxPower = tmp.toInt();
     }
+  } else if (infoStr.indexOf("upgps") != -1) {
+
+    Serial.print("✅✅时时定位改成只跟踪1分钟，正好利用现有机制");
+    typeindex = FLAG_TYPE_3;
+    gpsWorkStat = millis() + 5000;    // 延时5秒
+    gpsWorkTime = 1 * 60 * 1000;      // 跟踪时间
+    gpsWorkInterval = 1 * 60 * 1000;  // 跟踪上报间隔
 
   } else if (infoStr.indexOf("follow") != -1) {
     // 11|v4-10|follow|30,5

@@ -515,13 +515,12 @@ Page({
       url: API_URL,
       method: 'POST',
       data: {
-        action: 'getDeviceLogbyId',
-        info: { limit: 2, deviceId: targetDeviceId },
-        time: getApp().formatTime()
+        action: 'getDeviceBestRssibyId',
+        info: { limit: 2, deviceId: targetDeviceId } 
       },
       success: (res) => {
         wx.hideLoading()
-        console.log('[获取定位] getDeviceLogbyId 返回:', JSON.stringify(res.data))
+        console.log('[获取定位] getDeviceBestRssibyId 返回:', JSON.stringify(res.data))
 
         let rawList = []
         if (res.data && res.data.data && Array.isArray(res.data.data)) {
@@ -563,17 +562,18 @@ Page({
         })
 
         let bestDevice = null
-        let bestRssi = 999
+        let bestRssi = -999
         let bestCount = 0
         Object.keys(deviceBestRssi).forEach(devId => {
           const r = deviceBestRssi[devId]
           const c = deviceCount[devId]
-          const hasRssi = r < 999
+          const hasRssi = r > -999
           if (hasRssi) {
-            if (r < bestRssi || (r === bestRssi && c > bestCount)) {
+            // RSSI 越大（越接近0）信号越好，用 > 比较
+            if (r > bestRssi || (r === bestRssi && c > bestCount)) {
               bestRssi = r; bestCount = c; bestDevice = devId
             }
-          } else if (bestRssi >= 999) {
+          } else if (bestRssi <= -999) {
             if (c > bestCount) { bestCount = c; bestDevice = devId }
           }
         })
