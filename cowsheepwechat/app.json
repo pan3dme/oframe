@@ -20,7 +20,8 @@
     "pages/road-optimize/road-optimize",
     "pages/cloud-records/cloud-records",
     "pages/dtu-cmd/dtu-cmd",
-    "pages/relay-dtu-cmd/relay-dtu-cmd"
+    "pages/relay-dtu-cmd/relay-dtu-cmd",
+    "pages/location-map/location-map"
   ],
   "window": {
     "navigationBarTextStyle": "black",

@@ -450,6 +450,16 @@ page {
   font-size: 32rpx;
 }
 
+/* 定位记录点击箭头 */
+.rec-tap-arrow {
+  font-size: 40rpx;
+  color: #1976d2;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  line-height: 1;
+}
+
 /* RSSI / SNR 行 */
 .rec-row-rssi {
   padding-top: 4rpx;

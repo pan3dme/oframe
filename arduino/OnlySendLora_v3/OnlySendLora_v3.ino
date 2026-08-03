@@ -27,7 +27,7 @@ int typeindex = FLAG_TYPE_0;
 RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
 RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
-RTC_DATA_ATTR int loraTxPower = 0;
+RTC_DATA_ATTR int loraTxPower = 28;
 RTC_DATA_ATTR int sendmodeFlage = 0;  // 工作模式  0默认 1需要验证上传成功1次
 RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
@@ -149,11 +149,8 @@ void initLora() {
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
   bool isV4 = deviceName.startsWith("v4-");
-  if (loraTxPower == 0) {
-    initPanRadio(&radioEvents, TX_POWER);
-  } else {
-    initPanRadio(&radioEvents, loraTxPower);
-  }
+
+  initPanRadio(&radioEvents, loraTxPower);
 }
 void OnRxTimeout(void) {
   Serial.println("⚠️ Radio接收超时!");
@@ -266,7 +263,10 @@ void meshCmdType(String infoStr, String tmp) {
     }
   } else if (infoStr.indexOf("txpower") != -1) {
     Serial.print("✅✅修改发射功率：");
-    loraTxPower = tmp.toInt();
+    if (tmp.toInt() >= 10 && tmp.toInt() <= 28) {
+      loraTxPower = tmp.toInt();
+    }
+
   } else if (infoStr.indexOf("follow") != -1) {
     // 11|v4-10|follow|30,5
     int commaIndex = tmp.indexOf(',');

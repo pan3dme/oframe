@@ -78,7 +78,7 @@
   >
     <view class="msg-panel" wx:if="{{showRecordTable}}">
       <view class="record-list">
-        <view class="record-item" wx:for="{{recordList}}" wx:key="_key" style="background-color:{{item.bgColor}}">
+        <view class="record-item" wx:for="{{recordList}}" wx:key="_key" style="background-color:{{item.bgColor}}" bindtap="onRecordTap" data-index="{{index}}">
           <view class="rec-row rec-row-time">
             <text class="rec-val rec-val-time">{{item.date}} {{item.time_part}}</text>
             <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}</text>
@@ -86,6 +86,7 @@
           <view class="rec-row rec-row-content">
             <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType}}</text>
             <text class="rec-val rec-val-lora">{{item.lorastr}}</text>
+            <text class="rec-tap-arrow" wx:if="{{item.msgType === '1' || item.msgType === '5'}}">›</text>
           </view>
           <view class="rec-row rec-row-rssi" wx:if="{{item.rssi !== '' || item.snr !== ''}}">
             <text class="rec-val rec-val-rssi" wx:if="{{item.rssi !== ''}}">RSSI: {{item.rssi}}dBm</text>

@@ -659,6 +659,43 @@ Page({
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
   },
 
+  // 点击数据记录：如果是定位记录(msgType=1)，跳转到定位地图页
+  onRecordTap(e) {
+    const index = e.currentTarget.dataset.index
+    const record = this.data.recordList[index]
+    if (!record) return
+    // 定位(msgType=1)和跟踪(msgType=5)才响应点击
+    if (record.msgType !== '1' && record.msgType !== '5') return
+
+    // 从 lorastr 中提取 GPS 坐标：格式 type|deviceId|lat,lng|...
+    let lat = null, lng = null
+    if (record.lorastr && record.lorastr !== '-') {
+      const segs = record.lorastr.split(/[｜|]/)
+      if (segs.length >= 3 && segs[2]) {
+        const parts = segs[2].split(/[,，]\s*/)
+        if (parts.length >= 2) {
+          lat = parseFloat(parts[0])
+          lng = parseFloat(parts[1])
+        }
+      }
+    }
+    if (isNaN(lat) || isNaN(lng)) {
+      wx.showToast({ title: '该记录无有效坐标', icon: 'none' })
+      return
+    }
+
+    // 跳转到定位地图页
+    wx.navigateTo({
+      url: '/pages/location-map/location-map' +
+        '?lat=' + lat +
+        '&lng=' + lng +
+        '&deviceId=' + encodeURIComponent(record.deviceId || '') +
+        '&time=' + encodeURIComponent(record.rawTime || '') +
+        '&lorastr=' + encodeURIComponent(record.lorastr || '') +
+        '&upDateDevice=' + encodeURIComponent(record.upDateDevice || '')
+    })
+  },
+
   // 点击设备图片放大预览
   onPreviewImage() {
     const picurl = this.data.deviceInfo && this.data.deviceInfo.picurl

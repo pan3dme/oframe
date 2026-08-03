@@ -1,0 +1,35 @@
+<!--location-map.wxml-->
+<navigation-bar title="定位详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<!-- 顶部信息栏 -->
+<view class="info-bar" wx:if="{{deviceId}}">
+  <view class="info-row">
+    <text class="info-label">设备: </text>
+    <text class="info-value">{{deviceId}}</text>
+  </view>
+  <view class="info-row" wx:if="{{upDateDevice}}">
+    <text class="info-label">上传: </text>
+    <text class="info-value">{{upDateDevice}}</text>
+  </view>
+  <view class="info-row">
+    <text class="info-label">坐标: </text>
+    <text class="info-value coords">{{originLat}}, {{originLng}}</text>
+  </view>
+  <view class="info-row" wx:if="{{recordTime}}">
+    <text class="info-label">时间: </text>
+    <text class="info-value">{{recordTime}}</text>
+  </view>
+</view>
+
+<map id="locMap" class="map"
+  latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
+  markers="{{markers}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
+  bindregionchange="onRegionChange" />
+
+<!-- 右下角按钮 -->
+<view class="map-toolbar">
+  <view class="tool-btn" bindtap="moveToPoint">
+    <text class="tool-icon">📍</text>
+    <text class="tool-label">回点</text>
+  </view>
+</view>
