@@ -649,7 +649,24 @@ void processLoraData() {
     // 3. 下发回复
   }
 }
+void batteryLowSheep() {
 
+  int separatorIndex = batterystr.indexOf('|');
+  String firstPart = batterystr.substring(0, separatorIndex);
+  float value = firstPart.toFloat();  // 可选
+  if (value < 0.1) {
+    Serial.println("电压过底，休眠1个小时");
+    unsigned long endTm = millis() + 30000;
+    while (endTm > millis()) {
+      delay(1000);
+      Serial.print("x");
+    }
+    esp_sleep_enable_timer_wakeup(60 * 60 * 1000 * 1000ULL);
+    Serial.println("--->即将进入深度睡眠...");
+    Serial.flush();
+    esp_deep_sleep_start();
+  } 
+}
 
 // ========================= 系统初始化 =========================
 void setup() {
@@ -657,7 +674,11 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   delay(1000);
   deviceName = makeDivceName();
+
+  batterystr = readBatteryEndStr(deviceName);
+  batteryLowSheep();
   delay(1000);
+
 
 #if defined(WIFI_LORA_32_V3)
   Serial2.begin(115200, SERIAL_8N1, 17, 18);
@@ -711,6 +732,7 @@ void loop() {
     lastUpSelfTm = millis() + CENTEN_INTERVAL_MS;
     // 测试电量
     batterystr = readBatteryEndStr(deviceName);
+    batteryLowSheep();
     String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, signalRss, "0");
@@ -753,7 +775,7 @@ void loop() {
     // dataStr += "|" +String( getCurrentTimestampMs()) + "|" + deviceName;
 
 
-    
+
     sendLoraToDeviceid(dataStr);
     needSyncTimeDeviceid = "";
   }

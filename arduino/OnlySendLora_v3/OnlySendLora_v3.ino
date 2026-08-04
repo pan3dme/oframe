@@ -465,6 +465,25 @@ void printCurrentTime() {
   }
 }
 
+void batteryLowSheep() {
+
+  int separatorIndex = batterystr.indexOf('|');
+  String firstPart = batterystr.substring(0, separatorIndex);
+  float value = firstPart.toFloat();  // 可选
+  if (value < 0.1) {
+    Serial.println("电压过底，休眠24个小时");
+    unsigned long endTm = millis() + 30000;
+    while (endTm > millis()) {
+      delay(1000);
+      Serial.print("x");
+    }
+    esp_sleep_enable_timer_wakeup(24 * 60 * 60 * 1000 * 1000ULL);
+    Serial.println("--->即将进入深度睡眠...");
+    Serial.flush();
+    esp_deep_sleep_start();
+    Serial.println("我已经睡着了...");
+  } 
+}
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
@@ -475,7 +494,7 @@ void setup() {
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
   batterystr = readBatteryEndStr(deviceName);
-
+  batteryLowSheep();
   if (rtcSendCount == -1) {
     unsigned long endTm = millis() + 20000;
     while (endTm > millis()) {
