@@ -252,7 +252,7 @@ void meshCmdType(String infoStr, String tmp) {
   } else if (infoStr.indexOf("setinterval") != -1) {
     // 11|v4-10|setinterval|30
     int intervalVal = tmp.toInt();
-    if (intervalVal > 5 && intervalVal <= 60) {
+    if (intervalVal > 1 && intervalVal <= 60) {
       Serial.print("✅✅设置上报周期：");
       roundTime = intervalVal * 60 * 1000;
       Serial.print("修改上报时间周末roundTime");
@@ -397,6 +397,7 @@ void meshGpsInfoFun(bool closeGps = true) {
   if (!getGpsStatus()) {
     initPanGPS();
   }
+  clearGPSData();
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
 
@@ -411,7 +412,7 @@ void meshGpsInfoFun(bool closeGps = true) {
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
                        String(skipnum++));
     Serial.print(hasLocValid ? "✅" : "❌");
-    Serial.print("定位有效:");
+    Serial.print("定位数据:");
     if (hasLocValid) {
       Serial.print(getGpsInfoStr());
     }
@@ -419,17 +420,18 @@ void meshGpsInfoFun(bool closeGps = true) {
     Serial.print(" 年份>2025:");
     Serial.print(gpsReliable ? "✅" : "❌");
     Serial.print(" GPS可靠:");
-    Serial.print(timeoutOk ? "✅" : "❌");
-    Serial.print(" 未超时:(");
+    Serial.print(timeoutOk ? "" : "❌");
+    Serial.print("搜星时间:(");
     int sec = (millis() - startAttemptTime) / 1000;
     Serial.print(sec);
     Serial.print("秒)    ");
     Serial.println(getCurrentTime(true));
 
+
+
     bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
     if (allPass) {
       Serial.println("==== GPS全部条件满足，退出搜星循环 ====");
-
       break;
     }
     if (!timeoutOk) {
@@ -482,7 +484,7 @@ void batteryLowSheep() {
     Serial.flush();
     esp_deep_sleep_start();
     Serial.println("我已经睡着了...");
-  } 
+  }
 }
 // ==================== 系统初始化 ====================
 void setup() {
@@ -597,9 +599,14 @@ void loop() {
         delay(1000);
         // 05:02|10:59
         uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
-        if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0 && sleepTime > (seacthTm * 1000ULL)) {
+        if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0) {
           Serial.println("工作模式上报GPS，需要提前开启GPS");
-          sleepTime = sleepTime - (seacthTm * 1000ULL);
+          if (sleepTime > (seacthTm * 1000ULL)) {
+            sleepTime = sleepTime - (seacthTm * 1000ULL);
+          } else {
+            //小于时间周期，10秒就马上重启
+            sleepTime = 10 * 1000 * 1000ULL;
+          }
         }
         // 根据每小时偏差补偿休眠期间的时钟漂移
         if (hourlyDriftMsTemp != 0) {

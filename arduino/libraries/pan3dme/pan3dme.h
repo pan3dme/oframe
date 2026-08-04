@@ -98,6 +98,7 @@ void showOLED();
 void openLedByNum(int count, int delayMs);
 void showDisplayBy4Area(String a, String b, String c, String d);
 void initPanGPS();
+void clearGPSData();
 bool isReliableGPS();
 void setGpsEnable(bool value);
 bool getGpsStatus();

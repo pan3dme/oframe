@@ -94,8 +94,11 @@ void showOLED() {
   initOLED();
   initOLED();
 }
-
+void clearGPSData() {
+  gps = TinyGPSPlus();
+}
 void initPanGPS() {
+
   pinMode(VGNSS_CTRL, OUTPUT);
   pinMode(GPS_ANT_EN, OUTPUT);
   setGpsEnable(true);
