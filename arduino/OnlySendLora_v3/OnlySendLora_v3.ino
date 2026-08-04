@@ -397,7 +397,7 @@ void meshGpsInfoFun(bool closeGps = true) {
   if (!getGpsStatus()) {
     initPanGPS();
   }
-  clearGPSData();
+ 
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
 
@@ -406,9 +406,13 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool hasLocValid = gps.location.isValid();
     bool yearOk = (gps.date.year() > 2025);
     bool gpsReliable = isReliableGPS();
+    bool ellitesNum = gps.satellites.value() > 7;
+
     bool timeoutOk = (millis() - startAttemptTime < seacthTm);
     // Serial.print(".");
     // Serial.println(getCurrentTime());
+
+
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
                        String(skipnum++));
     Serial.print(hasLocValid ? "✅" : "❌");
@@ -418,8 +422,15 @@ void meshGpsInfoFun(bool closeGps = true) {
     }
     Serial.print(yearOk ? "✅" : "❌");
     Serial.print(" 年份>2025:");
+
     Serial.print(gpsReliable ? "✅" : "❌");
     Serial.print(" GPS可靠:");
+
+    Serial.print(ellitesNum ? "✅" : "❌");
+    Serial.print(" 卫星数量:");
+    Serial.print(gps.satellites.value());
+    Serial.print("   ");
+
     Serial.print(timeoutOk ? "" : "❌");
     Serial.print("搜星时间:(");
     int sec = (millis() - startAttemptTime) / 1000;
@@ -442,11 +453,16 @@ void meshGpsInfoFun(bool closeGps = true) {
     }
     delay(1000);
   }
+  gpsEncode();
+  delay(1000);
+  gpsEncode();
+
   Serial.println(getGpsInfoStr());
+
   if (closeGps) {
     setGpsEnable(false);
   }
-  delay(10);
+  delay(100);
 }
 String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
 
@@ -647,7 +663,7 @@ void loop() {
       typeindex = FLAG_TYPE_1;
       if (sendmodeFlage == 1 && strlen(needSendGpsStr) > 0) {
         String dataStr =
-          String(MSG_TYPE_GPS) + "|" + deviceName + "|26.52961,109.39072";
+          String(MSG_TYPE_GPS) + "|" + deviceName + "|" + needSendGpsStr;
         strcpy(needSendGpsStr, "");
         sendLoraToMid(dataStr);
       } else {
