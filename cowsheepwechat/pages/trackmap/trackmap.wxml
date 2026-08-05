@@ -10,8 +10,14 @@
 
 <map wx:if="{{showNativeMap}}" id="trackMap" class="map"
   latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
-  markers="{{markers}}" polyline="{{polyline}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
+  markers="{{markers}}" polyline="{{polylines}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
   bindregionchange="onRegionChange" />
+
+<!-- 左下角图层切换按钮 -->
+<view class="layer-toggle {{showRoadLayer ? 'layer-on' : ''}}" bindtap="toggleLayer">
+  <text class="layer-icon">🗺</text>
+  <text class="layer-label">{{layerLabel}}</text>
+</view>
 
 <!-- 右下角功能按钮组 -->
 <view class="map-toolbar">

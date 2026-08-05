@@ -143,7 +143,7 @@ page {
   font-size: 26rpx;
   line-height: 1;
 }
-.battery-link {
+.track-link {
   flex-shrink: 0;
   margin-left: 8rpx;
   width: 44rpx;
@@ -155,11 +155,11 @@ page {
   background: rgba(255, 255, 255, 0.2);
   transition: all 0.2s;
 }
-.battery-link:active {
+.track-link:active {
   transform: scale(0.85);
   background: rgba(255, 255, 255, 0.4);
 }
-.battery-icon {
+.track-icon {
   font-size: 26rpx;
   line-height: 1;
 }

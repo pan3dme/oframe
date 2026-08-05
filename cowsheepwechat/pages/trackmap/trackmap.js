@@ -1,5 +1,6 @@
 // trackmap.js - 轨迹地图页（接收设备详情传入的GPS数据，红点+连线）
-const { wgs84ToGcj02 } = require('../../utils/coord-transform.js')
+const { wgs84ToGcj02, parseRoadPoints } = require('../../utils/coord-transform.js')
+const dataCache = require('../../config/data-cache.js')
 
 Page({
   data: {
@@ -16,24 +17,105 @@ Page({
     nativeScale: 15,
     isSatellite: true,
     markers: [],
-    polyline: []
+    polylines: [],
+    // 图层切换
+    showRoadLayer: false,
+    currentLevel: 0,
+    maxLevel: 1,
+    layerLabel: '图层'
   },
 
-  onLoad() {
-    const app = getApp()
-    const trackData = app.globalData.trackData
-    if (trackData && trackData.length > 0) {
-      console.log('[轨迹地图] 收到数据:', trackData.length, '条')
-      this._trackData = trackData
-    } else {
-      console.log('[轨迹地图] 暂无轨迹数据')
+  onLoad(options) {
+    const deviceId = options.deviceId || ''
+    if (!deviceId) {
+      console.warn('[轨迹地图] 缺少 deviceId')
       this._trackData = null
+      this.loadMap()
+      return
     }
-    app.globalData.trackData = null
-    this.loadMap()
+    this._deviceId = deviceId
+    this.fetchTrackData()
+  },
+
+  // 从网络请求设备GPS轨迹记录（最近99条）
+  fetchTrackData() {
+    const app = getApp()
+    const deviceId = this._deviceId
+    const now = new Date()
+    const curdate = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0')
+
+    wx.showLoading({ title: '加载轨迹...' })
+    console.log('[轨迹地图] 请求设备GPS轨迹, deviceId:', deviceId)
+    wx.request({
+      url: app.globalData.api_device_Url,
+      method: 'POST',
+      data: {
+        action: 'getDeviceLogGpsbyId',
+        info: {
+          deviceId: deviceId,
+          limit: 99,
+          curdate: curdate
+        },
+        time: app.formatTime(now)
+      },
+      timeout: 10000,
+      success: (res) => {
+        wx.hideLoading()
+        const data = res.data
+        let rawList = []
+        if (data && data.data && Array.isArray(data.data)) {
+          rawList = data.data
+        } else if (Array.isArray(data)) {
+          rawList = data
+        }
+
+        const recordList = rawList.map(record => {
+          const attr = {}
+          if (record.attributes) {
+            record.attributes.forEach(item => {
+              attr[item.columnName] = item.columnValue
+            })
+          }
+          if (record.primaryKey) {
+            record.primaryKey.forEach(item => {
+              attr[item.name] = item.value
+            })
+          }
+          const gps = attr.gps || record.gps || '-'
+          const time = attr.time || record.time || '-'
+          const deviceIdVal = attr.deviceId || record.deviceId || this._deviceId
+          const lorastr = attr.lorastr || record.lorastr || ''
+          return { gps, time, deviceId: deviceIdVal, lorastr }
+        })
+        console.log('[轨迹地图] 网络获取:', recordList.length, '条GPS记录')
+        if (recordList.length > 0) {
+          this._trackData = recordList
+        } else {
+          this._trackData = null
+          wx.showToast({ title: '暂无轨迹记录', icon: 'none' })
+        }
+        this.loadMap()
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('[轨迹地图] 请求失败:', JSON.stringify(err))
+        wx.showToast({ title: '轨迹数据加载失败', icon: 'none' })
+        this.loadMap()
+      }
+    })
   },
 
   // ==================== GPS 坐标提取（兼容多种格式） ====================
+
+  // 判断坐标是否有效（非 NaN 且非 0,0）
+  _isValidCoord(lat, lng) {
+    if (isNaN(lat) || isNaN(lng)) return false
+    // 排除无效定位 (0,0)
+    if (lat === 0 && lng === 0) return false
+    return true
+  },
 
   _extractCoord(item) {
     // 1) 优先用 gps 字段: lat|lng 或 lat,lng
@@ -42,7 +124,7 @@ Page({
       if (parts.length >= 2) {
         const lat = parseFloat(parts[0])
         const lng = parseFloat(parts[1])
-        if (!isNaN(lat) && !isNaN(lng)) return { lat, lng }
+        if (this._isValidCoord(lat, lng)) return { lat, lng }
       }
     }
     // 2) 回退：从 lorastr 提取第3段
@@ -53,7 +135,7 @@ Page({
         if (parts.length >= 2) {
           const lat = parseFloat(parts[0])
           const lng = parseFloat(parts[1])
-          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng }
+          if (this._isValidCoord(lat, lng)) return { lat, lng }
         }
       }
     }
@@ -301,6 +383,27 @@ Page({
 
   // ==================== 渲染红点标记 + 连线 ====================
 
+  // 两点间近似距离（单位：度）
+  _coordDist(a, b) {
+    const dlat = a.lat - b.lat
+    const dlng = a.lng - b.lng
+    return Math.sqrt(dlat * dlat + dlng * dlng)
+  },
+
+  // 稀化坐标：去除与前后都极近的中间点，使地图更清晰
+  _thinCoords(coords, threshold) {
+    if (coords.length <= 2) return coords
+    const result = [coords[0]]
+    for (let i = 1; i < coords.length - 1; i++) {
+      const dPrev = this._coordDist(coords[i], coords[i - 1])
+      const dNext = this._coordDist(coords[i], coords[i + 1])
+      if (dPrev < threshold && dNext < threshold) continue
+      result.push(coords[i])
+    }
+    result.push(coords[coords.length - 1])
+    return result
+  },
+
   renderMarkers() {
     const trackData = this._trackData
     if (!trackData || trackData.length === 0) {
@@ -308,18 +411,43 @@ Page({
       return
     }
 
-    const markers = []
-    trackData.forEach((item, index) => {
+    // 1) 提取全部有效坐标（WGS84 → GCJ02）
+    const rawCoords = []
+    trackData.forEach((item) => {
       const coord = this._extractCoord(item)
       if (!coord) return
       const gcj = wgs84ToGcj02(coord.lng, coord.lat)
-      const labelText = (index + 1) + ''
+      rawCoords.push({ gcj, coord, item })
+    })
+    if (rawCoords.length === 0) {
+      console.log('[轨迹地图] 无有效坐标')
+      return
+    }
+
+    // 2) 稀化：剔除与前后都极近的点（阈值约15米 ≈ 0.00015度）
+    const THRESHOLD = 0.00055
+    const thinGcj = this._thinCoords(rawCoords.map(c => c.gcj), THRESHOLD)
+    // 用 hash 匹配回原始数据
+    const thinSet = new Set(thinGcj.map(p => p.lat.toFixed(8) + ',' + p.lng.toFixed(8)))
+    const filtered = rawCoords.filter(c =>
+      thinSet.has(c.gcj.lat.toFixed(8) + ',' + c.gcj.lng.toFixed(8))
+    )
+
+    const skipped = rawCoords.length - filtered.length
+    if (skipped > 0) {
+      console.log('[轨迹地图] 稀化跳过', skipped, '个极近点')
+    }
+
+    // 3) 构建标记
+    const markers = []
+    filtered.forEach((row, index) => {
+      const { gcj, coord, item } = row
       markers.push({
         id: index,
         latitude: gcj.lat,
         longitude: gcj.lng,
-        width: 30,
-        height: 30,
+        width: 20,
+        height: 20,
         title: item.crow_id || item.deviceId || ('点' + (index + 1)),
         callout: {
           content: (item.crow_id ? 'ID:' + item.crow_id : '设备:' + (item.deviceId || '-')) +
@@ -328,7 +456,7 @@ Page({
           textAlign: 'center'
         },
         label: {
-          content: labelText,
+          content: (index + 1) + '',
           color: '#ffffff',
           fontSize: 13,
           anchorX: 0,
@@ -338,31 +466,32 @@ Page({
       })
     })
 
-    // 按顺序连线
+    // 4) 连线
     const points = markers.map(m => ({
       latitude: m.latitude,
       longitude: m.longitude
     }))
-    const polyline = points.length >= 2 ? [{
+    this._trackPolyline = points.length >= 2 ? [{
       points,
       color: '#FF4444CC',
       width: 3,
       arrowLine: true
     }] : []
 
-    console.log('[轨迹地图] 红点:', markers.length, '个, 连线:', polyline.length, '条')
+    this._trackMarkers = markers
+    console.log('[轨迹地图] 红点:', markers.length, '个, 连线:', this._trackPolyline.length, '条')
 
     if (markers.length > 0) {
       this.setData({
         markers,
-        polyline,
         nativeLat: markers[0].latitude,
         nativeLng: markers[0].longitude
       }, () => {
+        this._applyPolylines()
         this._refreshOverlays(markers[0].latitude, markers[0].longitude, this.data.nativeScale)
       })
     } else {
-      this.setData({ markers, polyline })
+      this.setData({ markers })
     }
   },
 
@@ -394,8 +523,186 @@ Page({
 
   onToolBtn2() {
     wx.showLoading({ title: '刷新中...' })
-    this.setData({ markers: [], polyline: [] })
+    this.setData({ markers: [] })
     this.renderMarkers()
     wx.hideLoading()
+  },
+
+  // ==================== 图层切换（道路+地名） ====================
+
+  // 合并轨迹折线和道路折线，更新 polylines
+  _applyPolylines() {
+    const track = this._trackPolyline || []
+    const roads = this._roadPolylines || []
+    this.setData({ polylines: track.concat(roads) })
+  },
+
+  // 左下角图层按钮
+  toggleLayer() {
+    if (!this._roadFetched || !this._placeFetched) {
+      if (!this._roadFetched) this.fetchRoadData()
+      if (!this._placeFetched) this.fetchPlaceData()
+      return
+    }
+    const { currentLevel, maxLevel } = this.data
+    if (currentLevel >= maxLevel) {
+      this._applyLevel(0)
+      return
+    }
+    this._applyLevel(currentLevel + 1)
+  },
+
+  _applyLevel(level) {
+    const show = level > 0
+
+    // 过滤道路
+    const filteredRoads = show
+      ? (this._fullRoadList || []).filter(r => (parseInt(r.level) || 1) <= level)
+      : []
+    this._buildRoadPolylines(filteredRoads)
+
+    // 过滤地名
+    const filteredPlaces = show
+      ? (this._fullPlaceList || []).filter(p => (parseInt(p.level) || 1) <= level)
+      : []
+    this._buildPlaceMarkers(filteredPlaces)
+
+    const label = show ? ('Lv.' + level) : '图层'
+    this.setData({
+      showRoadLayer: show,
+      currentLevel: level,
+      layerLabel: label
+    })
+    this._applyPolylines()
+    this._applyAllMarkers()
+  },
+
+  _applyAllMarkers() {
+    const trackMarkers = this._trackMarkers || []
+    const placeMarkers = this._placeMarkers || []
+    this.setData({ markers: trackMarkers.concat(placeMarkers) })
+  },
+
+  fetchRoadData() {
+    wx.showLoading({ title: '加载道路...' })
+    const that = this
+    dataCache.getRoadListFromCache((cachedData) => {
+      wx.hideLoading()
+      const roadList = (cachedData && cachedData.roadList) ? cachedData.roadList : []
+      if (roadList.length === 0) {
+        console.log('[道路] 暂无道路数据')
+        that._roadFetched = true
+        that._tryInitLevel()
+        return
+      }
+      console.log('[道路] 已解析:', roadList.length, '条')
+      that._fullRoadList = roadList
+      that._roadFetched = true
+      that._tryInitLevel()
+    })
+  },
+
+  fetchPlaceData() {
+    const that = this
+    dataCache.getPlaceListFromCache((cachedData) => {
+      const placeList = (cachedData && cachedData.placeList) ? cachedData.placeList : []
+      if (placeList.length === 0) {
+        console.log('[地名] 暂无数据')
+        that._placeFetched = true
+        that._tryInitLevel()
+        return
+      }
+      console.log('[地名] 已解析:', placeList.length, '条')
+      that._fullPlaceList = placeList
+      that._placeFetched = true
+      that._tryInitLevel()
+    })
+  },
+
+  _tryInitLevel() {
+    if (!this._roadFetched || !this._placeFetched) return
+    if (this.data.currentLevel > 0) return
+
+    let maxLevel = 0
+    const allItems = [...(this._fullRoadList || []), ...(this._fullPlaceList || [])]
+    allItems.forEach(item => {
+      const lv = parseInt(item.level) || 1
+      if (lv > maxLevel) maxLevel = lv
+    })
+    if (maxLevel < 1) maxLevel = 1
+
+    this.setData({ maxLevel })
+    console.log('[图层] maxLevel =', maxLevel)
+    this._applyLevel(1)
+  },
+
+  _buildRoadPolylines(roadList) {
+    const polylines = []
+    roadList.forEach((road) => {
+      const points = parseRoadPoints(road.roadinfo)
+      if (points.length < 2) {
+        console.warn('[道路] 坐标点不足，跳过:', road.roadname || road.route_id)
+        return
+      }
+      const gcjPoints = points.map(p => {
+        const gcj = wgs84ToGcj02(p.lng, p.lat)
+        return { latitude: gcj.lat, longitude: gcj.lng }
+      })
+      polylines.push({
+        points: gcjPoints,
+        color: '#C8C8C8',
+        width: 4,
+        borderColor: '#808080',
+        borderWidth: 1.5,
+        arrowLine: false,
+        dottedLine: false
+      })
+    })
+    console.log('[道路] 构建折线:', polylines.length, '条')
+    this._roadPolylines = polylines
+  },
+
+  _parseSingleGPS(gpsStr) {
+    if (!gpsStr || gpsStr === '-') return null
+    const parts = gpsStr.split(/[｜|,，]\s*/)
+    if (parts.length < 2) return null
+    const lat = parseFloat(parts[0])
+    const lng = parseFloat(parts[1])
+    if (isNaN(lat) || isNaN(lng)) return null
+    return { lat, lng }
+  },
+
+  _buildPlaceMarkers(placeList) {
+    const markers = []
+    const ID_BASE = 90000
+    placeList.forEach((place, index) => {
+      const coord = this._parseSingleGPS(place.gps)
+      if (!coord) return
+      const gcj = wgs84ToGcj02(coord.lng, coord.lat)
+      const name = place.name || place.placeid || '-'
+      markers.push({
+        id: ID_BASE + index,
+        latitude: gcj.lat,
+        longitude: gcj.lng,
+        width: 30,
+        height: 30,
+        title: name,
+        callout: {
+          content: name + '\n' + coord.lat.toFixed(6) + ',' + coord.lng.toFixed(6),
+          display: 'BYCLICK',
+          textAlign: 'center'
+        },
+        label: {
+          content: name,
+          color: '#C62828',
+          fontSize: 13,
+          anchorX: 0,
+          anchorY: 4,
+          textAlign: 'center'
+        }
+      })
+    })
+    console.log('[地名] 构建标记:', markers.length, '个')
+    this._placeMarkers = markers
   }
 })

@@ -45,8 +45,8 @@
           <view class="get-location-link" bindtap="onGetLocationTap">
             <text class="get-location-icon">📍</text>
           </view>
-          <view class="battery-link" bindtap="onBatteryAnalysisTap">
-            <text class="battery-icon">🔋</text>
+          <view class="track-link" bindtap="onViewTrackTap">
+            <text class="track-icon">🗺</text>
           </view>
         </view>
       </view>

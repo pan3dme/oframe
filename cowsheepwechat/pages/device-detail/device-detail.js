@@ -481,13 +481,38 @@ Page({
     }
   },
 
-  // 点击电池图标 → 跳转电量分析页
-  onBatteryAnalysisTap() {
-    const deviceId = this.data.deviceId
-    if (!deviceId) return
-    wx.navigateTo({
-      url: '/pages/battery-analysis/battery-analysis?deviceId=' + encodeURIComponent(deviceId)
-    })
+  // 查看定位轨迹 → 收集当前定位记录，跳转轨迹地图
+  onViewTrackTap() {
+    const recordList = this.data.recordList
+    // 筛选出定位(msgType=1)和跟踪(msgType=5)记录，提取GPS坐标
+    const trackData = recordList
+      .filter(r => r.msgType === '1' || r.msgType === '5')
+      .map(r => {
+        let lat = null, lng = null
+        if (r.lorastr && r.lorastr !== '-') {
+          const segs = r.lorastr.split(/[｜|]/)
+          if (segs.length >= 3 && segs[2]) {
+            const parts = segs[2].split(/[,，]\s*/)
+            if (parts.length >= 2) {
+              lat = parseFloat(parts[0])
+              lng = parseFloat(parts[1])
+            }
+          }
+        }
+        return {
+          gps: (!isNaN(lat) && !isNaN(lng)) ? (lat + '|' + lng) : '',
+          lorastr: r.lorastr,
+          time: r.rawTime,
+          deviceId: r.deviceId
+        }
+      })
+      .filter(item => item.gps && item.gps !== '')
+
+    if (trackData.length === 0) {
+      wx.showToast({ title: '暂无定位轨迹记录', icon: 'none' })
+      return
+    }
+    wx.navigateTo({ url: '/pages/trackmap/trackmap?deviceId=' + encodeURIComponent(this.data.deviceId || '') })
   },
 
   // ========== 获取定位（快捷DTU指令） ==========
