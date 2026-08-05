@@ -29,9 +29,9 @@
     <view class="quick-row">
       <button class="quick-btn {{quickSelected === 5 ? 'quick-active' : ''}}" bindtap="onQuickReportGps">📍 上报GPS</button>
       <button class="quick-btn {{quickSelected === 7 ? 'quick-active' : ''}}" bindtap="onQuickReport30Min">⏱️ 30分钟上报</button>
-      <button class="quick-btn {{quickSelected === 2 ? 'quick-active' : ''}}" bindtap="onQuickRefreshGps">📍 中继刷定位</button>
       <button class="quick-btn {{quickSelected === 12 ? 'quick-active' : ''}}" bindtap="onQuickNormalMode">📶 上报模式</button>
       <button class="quick-btn {{quickSelected === 14 ? 'quick-active' : ''}}" bindtap="onQuickWorkTime">🕐 工作时间</button>
+      <button class="quick-btn {{quickSelected === 3 ? 'quick-active' : ''}}" bindtap="onQuickGpsTime">📌 定位时间</button>
       <button class="quick-btn {{quickSelected === 15 ? 'quick-active' : ''}}" bindtap="onQuickSyncTime">📍 位置跟踪</button>
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
     </view>
@@ -59,6 +59,32 @@
       <view class="modal-footer">
         <button class="modal-btn modal-btn-cancel" bindtap="onWorkTimeCancel">取消</button>
         <button class="modal-btn modal-btn-confirm" bindtap="onWorkTimeConfirm">确定</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 定位时间弹框 -->
+  <view class="modal-overlay" wx:if="{{showGpsTimeModal}}" bindtap="onGpsTimeCancel">
+    <view class="modal-container" catchtap="noop">
+      <view class="modal-title">设置定位时间</view>
+      <view class="modal-body">
+        <view class="time-picker-row">
+          <text class="time-picker-label">开始时间</text>
+          <picker mode="time" value="{{gpsStartTime}}" bindchange="onGpsStartChange">
+            <view class="time-picker-value">{{gpsStartTime}}</view>
+          </picker>
+        </view>
+        <view class="time-picker-divider">~</view>
+        <view class="time-picker-row">
+          <text class="time-picker-label">结束时间</text>
+          <picker mode="time" value="{{gpsEndTime}}" bindchange="onGpsEndChange">
+            <view class="time-picker-value">{{gpsEndTime}}</view>
+          </picker>
+        </view>
+      </view>
+      <view class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" bindtap="onGpsTimeCancel">取消</button>
+        <button class="modal-btn modal-btn-confirm" bindtap="onGpsTimeConfirm">确定</button>
       </view>
     </view>
   </view>

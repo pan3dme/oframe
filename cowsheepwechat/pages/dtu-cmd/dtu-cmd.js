@@ -28,6 +28,11 @@ Page({
     workStartTime: '00:00',
     workEndTime: '23:59',
 
+    // 定位时间弹框
+    showGpsTimeModal: false,
+    gpsStartTime: '00:00',
+    gpsEndTime: '23:59',
+
     // 发送日志
     sendLog: []
   },
@@ -121,9 +126,7 @@ Page({
   onQuickReport30Min() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'setinterval', value: 30 }), quickSelected: 7 })
   },
-  onQuickRefreshGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'refrishgps', value: 30 }), quickSelected: 2 })
-  },
+
   onQuickNormalMode() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 0 }), quickSelected: 12 })
   },
@@ -179,6 +182,50 @@ Page({
 
   onWorkTimeCancel() {
     this.setData({ showWorkTimeModal: false })
+  },
+
+  // ========== 定位时间快捷按钮 ==========
+  onQuickGpsTime() {
+    this.setData({ showGpsTimeModal: true, quickSelected: 3 })
+  },
+
+  onGpsStartChange(e) {
+    this.setData({ gpsStartTime: e.detail.value })
+  },
+
+  onGpsEndChange(e) {
+    this.setData({ gpsEndTime: e.detail.value })
+  },
+
+  onGpsTimeConfirm() {
+    const start = this.data.gpsStartTime
+    const end = this.data.gpsEndTime
+
+    const [sh, sm] = start.split(':').map(Number)
+    const [eh, em] = end.split(':').map(Number)
+    const startMin = sh * 60 + sm
+    const endMin = eh * 60 + em
+
+    if (startMin >= endMin) {
+      wx.showToast({ title: '开始时间必须小于结束时间', icon: 'none' })
+      return
+    }
+
+    // 时间窗口不能小于1小时（60分钟）
+    if (endMin - startMin < 60) {
+      wx.showToast({ title: '定位时间窗口不能小于1小时', icon: 'none' })
+      return
+    }
+
+    const value = start + '-' + end
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'gpstime', value: value }),
+      showGpsTimeModal: false
+    })
+  },
+
+  onGpsTimeCancel() {
+    this.setData({ showGpsTimeModal: false })
   },
 
   // ========== 发送指令 ==========

@@ -472,6 +472,7 @@ String getCurrentTime(bool includeMillis) {
   }
   return String(buf);
 }
+ 
 
 // 获取当前时间戳（毫秒级）
 long long getCurrentTimestampMs() {
@@ -564,4 +565,34 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
                     PREAMBLE_LENGTH, false, true, 0, 0, false, 1000);
 
   Serial.println("✅ LoRa 初始化完成");
+}
+
+// 判断时间戳是否在指定时段内
+// timestampMs: 毫秒时间戳
+// timeRangeStr 格式: "H:M-H:M" 如 "05:02-10:59" 或 "0:0-24:59"
+bool isTimeInRange(long long timestampMs, const char* timeRangeStr) {
+  int startH = 0, startM = 0, endH = 0, endM = 0;
+  if (sscanf(timeRangeStr, "%d:%d-%d:%d", &startH, &startM, &endH, &endM) != 4) {
+    Serial.print("❌ isTimeInRange 解析失败: ");
+    Serial.println(timeRangeStr);
+    return true;  // 解析失败默认在范围内，避免阻止业务
+  }
+
+  // 将时间戳转为本地时间的时和分
+  time_t sec = (time_t)(timestampMs / 1000LL);
+  struct tm t;
+  localtime_r(&sec, &t);
+  int nowMinutes = t.tm_hour * 60 + t.tm_min;
+
+  int startMinutes = startH * 60 + startM;
+  int endMinutes = endH * 60 + endM;
+
+  // 处理跨午夜的情况（如 22:00-06:00）
+  if (startMinutes <= endMinutes) {
+    // 正常情况：如 05:02-10:59
+    return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+  } else {
+    // 跨午夜：如 22:00-06:00
+    return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
+  }
 }

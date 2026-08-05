@@ -116,5 +116,6 @@ int getTotalDevices(); // 获取设备总数
 String makeDivceName();
 String readBatteryEndStr(String deviceName);
 long long mathTimeDiffmstimeFromLora(String timeStr);
+bool isTimeInRange(long long timestampMs, const char* timeRangeStr);  // 判断时间戳是否在指定时段内（格式 "H:M-H:M"）
 
 #endif

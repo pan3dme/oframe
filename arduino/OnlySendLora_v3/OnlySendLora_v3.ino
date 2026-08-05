@@ -28,13 +28,16 @@ RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
 RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
 RTC_DATA_ATTR int loraTxPower = 28;
-RTC_DATA_ATTR int sendmodeFlage = 0;  // 工作模式  0默认 1需要验证上传成功1次
+ 
 RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
 RTC_DATA_ATTR int roundTime = 0;                     // 默认上报周末使用系统配置
 RTC_DATA_ATTR char needSendGpsStr[32] = "";          //
 RTC_DATA_ATTR char lastrelayName[32] = "";           //
-RTC_DATA_ATTR char work_time_str[32] = "0:0-24:59";  // 默认工作时间
+RTC_DATA_ATTR char work_time_str[32] = "00:00-24:59";  // 默认工作时间
+RTC_DATA_ATTR char gps_time_str[32] = "09:09-16:30";   // gps上报时间
+
+
 
 RadioEvents_t radioEvents;                             // LoRa事件回调
 void printTimeToString(String str, unsigned long ms);  // 前向声明
@@ -238,13 +241,23 @@ void meshCmdType(String infoStr, String tmp) {
       Serial.print("❌工作时间格式错误：");
       Serial.println(tmp);
     }
+  } else if (infoStr.indexOf("gpstime") != -1) {
+    // 11|v4-10|gps_time|05:02-10:59
+    int h1, m1, h2, m2;
+    if (sscanf(tmp.c_str(), "%d:%d-%d:%d", &h1, &m1, &h2, &m2) == 4 && h1 >= 0 && h1 <= 24 && m1 >= 0 && m1 <= 59 && h2 >= 0 && h2 <= 24 && m2 >= 0 && m2 <= 59) {
+      Serial.print("✅✅设置gps时间：");
+      tmp.toCharArray(gps_time_str, sizeof(gps_time_str));
+      Serial.println(gps_time_str);
+    } else {
+      Serial.print("❌gps时间格式错误：");
+      Serial.println(tmp);
+    }
   } else if (infoStr.indexOf("sendmode") != -1) {
     // 11|v4-10|sendmode|1|0
     int modeVal = tmp.toInt();
     if (modeVal >= 0 && modeVal <= 2) {
       Serial.print("✅✅设置工作模式：");
-      sendmodeFlage = modeVal;
-      Serial.println(sendmodeFlage);
+
     } else {
       Serial.print("❌工作模式值错误(需0/1/2)：");
       Serial.println(modeVal);
@@ -498,7 +511,7 @@ void testSheepFun() {
     delay(1000);
     // 05:02|10:59
     uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
-    if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0) {
+    if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) == 0) {
       Serial.println("工作模式上报GPS，需要提前开启GPS");
       if (sleepTime > (seacthTm * 1000ULL)) {
         sleepTime = sleepTime - (seacthTm * 1000ULL);
@@ -558,7 +571,7 @@ void setup() {
     }
     rtcSendCount = 0;
   }
-  if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0) {
+  if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) == 0) {
     meshGpsInfoFun(true);
     strcpy(needSendGpsStr, getGpsInfoStr().c_str());
     nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
@@ -626,8 +639,8 @@ void loop() {
       nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
       if (timeSynFlage) {  // 接收了同步时间
         if ((nextSendTime - millis()) < get_send_interval_ms() / 2) {
-          Serial.print("⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
-                       "要跳过这个窗口将时间后移到下一个周末");
+          Serial.print("⚠️⚠️⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
+                       "要跳过这个窗口将时间后移到下一个周期⚠️⚠️⚠️");
           nextSendTime = nextSendTime + get_send_interval_ms();
         }
       }
@@ -635,7 +648,8 @@ void loop() {
     }
     if (nextSendTime < millis()) {
       typeindex = FLAG_TYPE_1;
-      if (sendmodeFlage == 1 && strlen(needSendGpsStr) > 0) {
+  
+      if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) > 0) {
         String dataStr =
           String(MSG_TYPE_GPS) + "|" + deviceName + "|" + needSendGpsStr;
         strcpy(needSendGpsStr, "");
