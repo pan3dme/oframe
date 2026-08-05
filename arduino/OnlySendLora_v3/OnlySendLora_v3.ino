@@ -15,6 +15,8 @@ int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
+
+
 bool timeSynFlage = false;
 
 String batterystr = "";
@@ -27,13 +29,15 @@ int typeindex = FLAG_TYPE_0;
 RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
 RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
-RTC_DATA_ATTR int loraTxPower = 28;
- 
+RTC_DATA_ATTR int loraTxPower = 22;
+RTC_DATA_ATTR int16_t lastRssi = 0;
+RTC_DATA_ATTR int8_t lastSnr = 0;
+
 RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
-RTC_DATA_ATTR int roundTime = 0;                     // 默认上报周末使用系统配置
-RTC_DATA_ATTR char needSendGpsStr[32] = "";          //
-RTC_DATA_ATTR char lastrelayName[32] = "";           //
+RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
+RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
+RTC_DATA_ATTR char lastrelayName[32] = "";             //
 RTC_DATA_ATTR char work_time_str[32] = "00:00-24:59";  // 默认工作时间
 RTC_DATA_ATTR char gps_time_str[32] = "09:09-16:30";   // gps上报时间
 
@@ -151,9 +155,18 @@ void initLora() {
   radioEvents.RxDone = OnRxDone;
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
-  bool isV4 = deviceName.startsWith("v4-");
 
-  initPanRadio(&radioEvents, loraTxPower);
+
+  if (rtcSendCount == rtcResiveIdx) {
+    if (abs(lastRssi) > 90||lastRssi==0) {
+      initPanRadio(&radioEvents, loraTxPower);
+    } else {
+      initPanRadio(&radioEvents, 15);
+    }
+  } else {
+    //没有收到下行包，就最大功率发射
+    initPanRadio(&radioEvents, 28);
+  }
 }
 void OnRxTimeout(void) {
   Serial.println("⚠️ Radio接收超时!");
@@ -320,13 +333,20 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (size >= BUFFER_SIZE) {
     return;
   }
-
+  lastRssi = rssi;
+  lastSnr = snr;
   char buf[BUFFER_SIZE];
   memcpy(buf, payload, size);
   buf[size] = '\0';
   Serial.println("");
   Serial.print("接收：");
   Serial.println(buf);
+
+  Serial.print(" rssi：");
+  Serial.print(lastRssi);
+  Serial.print(" snr");
+  Serial.println(lastSnr);
+
 
   // 检查是否为GPS高频指令（5|v4-6,...）且目标是当前设备
   String infoStr(buf);
@@ -648,7 +668,7 @@ void loop() {
     }
     if (nextSendTime < millis()) {
       typeindex = FLAG_TYPE_1;
-  
+
       if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) > 0) {
         String dataStr =
           String(MSG_TYPE_GPS) + "|" + deviceName + "|" + needSendGpsStr;
