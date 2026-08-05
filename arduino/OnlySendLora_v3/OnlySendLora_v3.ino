@@ -56,7 +56,7 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
   localtime_r(&now, &t);
   int nowMinutes = t.tm_hour * 60 + t.tm_min;
 
-  Serial.printf("工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
+  Serial.printf("    工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
                 startH, startM, endH, endM, t.tm_hour, t.tm_min);
 
   // 3. 判断是否在工作时间内
@@ -334,8 +334,8 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     meshSynTime(infoStr, firstPipeIndex);
   }
 }
+//发送LORA到中继
 void sendLoraToMid(String dataStr) {
-
   dataStr += "|" + batterystr;
   dataStr += "|" + String(rtcSendCount++);
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
@@ -343,12 +343,10 @@ void sendLoraToMid(String dataStr) {
     Serial.println("⚠️ 数据过长，已截断");
     sendData[BUFFER_SIZE - 1] = '\0';
   }
-
   Serial.print("发送：");
   Serial.print(sendData);
   Serial.print("  len:");
   Serial.println(strlen(sendData));
-
   Radio.Send((uint8_t *)sendData, strlen(sendData));
   delay(100);
 }
@@ -362,7 +360,7 @@ void onSendDone(void) {
   Serial.print("✅ 发送完成");
   if (typeindex == FLAG_TYPE_1) {
     Serial.println("定时上报信息");
-    inRxEndTime = millis() + 5000;  // 5秒后结束接收窗口
+    inRxEndTime = millis() + 4000;  // 4秒后结束接收窗口
     typeindex = FLAG_TYPE_2;
     Radio.Rx(0);
   } else if (typeindex == FLAG_TYPE_2) {
@@ -397,10 +395,8 @@ void meshGpsInfoFun(bool closeGps = true) {
   if (!getGpsStatus()) {
     initPanGPS();
   }
- 
   unsigned long startAttemptTime = millis();
   int skipnum = 0;
-
   while (true) {
     gpsEncode();
     bool hasLocValid = gps.location.isValid();
@@ -411,8 +407,6 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool timeoutOk = (millis() - startAttemptTime < seacthTm);
     // Serial.print(".");
     // Serial.println(getCurrentTime());
-
-
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
                        String(skipnum++));
     Serial.print(hasLocValid ? "✅" : "❌");
@@ -453,24 +447,14 @@ void meshGpsInfoFun(bool closeGps = true) {
     }
     delay(1000);
   }
-  gpsEncode();
-  delay(1000);
-  gpsEncode();
-
   Serial.println(getGpsInfoStr());
-
   if (closeGps) {
     setGpsEnable(false);
   }
-  delay(100);
 }
 String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
-
 void printCurrentTime() {
-  String nowStr =
-    getCurrentTime(true);  // 完整时间字符串 "1970/01/01 00:00:48.679"
-  // 提取秒级字符串：去掉毫秒部分（取第一个空格后的前8个字符？实际是日期+时间，要忽略毫秒）
-  // 假设格式固定为 "YYYY/MM/DD HH:MM:SS.mmm"，我们需要取到秒
+  String nowStr = getCurrentTime(true);
   int dotIndex = nowStr.indexOf('.');
   String nowSecStr =
     (dotIndex != -1) ? nowStr.substring(0, dotIndex) : nowStr;  // 去掉毫秒
@@ -484,7 +468,6 @@ void printCurrentTime() {
 }
 
 void batteryLowSheep() {
-
   int separatorIndex = batterystr.indexOf('|');
   String firstPart = batterystr.substring(0, separatorIndex);
   float value = firstPart.toFloat();  // 可选
@@ -499,14 +482,68 @@ void batteryLowSheep() {
     Serial.println("--->即将进入深度睡眠...");
     Serial.flush();
     esp_deep_sleep_start();
+  }
+}
+
+unsigned long num6000 = 5000;  // 暂时提前20秒开机
+void testSheepFun() {
+  unsigned long waittm = nextSendTime - millis();
+  printTimeToString("到上报时间还有 ", nextSendTime - millis());
+  // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
+  if (waittm > num6000) {
+    Serial.print("距离上报时间超过 ");
+    Serial.print(num6000 / 1000);
+    Serial.print("秒进入睡眠");
+    hideOLED();
+    delay(1000);
+    // 05:02|10:59
+    uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
+    if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0) {
+      Serial.println("工作模式上报GPS，需要提前开启GPS");
+      if (sleepTime > (seacthTm * 1000ULL)) {
+        sleepTime = sleepTime - (seacthTm * 1000ULL);
+      } else {
+        //小于时间周期，10秒就马上重启
+        sleepTime = 10 * 1000 * 1000ULL;
+      }
+    }
+    // 根据每小时偏差补偿休眠期间的时钟漂移
+    if (hourlyDriftMsTemp != 0) {
+      long long sleepMs = (long long)(sleepTime / 1000ULL);
+      long long driftCompMs = hourlyDriftMsTemp * sleepMs / 3600000LL;
+      long long currentMs = getCurrentTimestampMs();
+      long long adjustedMs = currentMs + driftCompMs;
+
+      lastDriftCompMs = driftCompMs;
+
+      Serial.printf("每小时偏差: %lld 毫秒\n", hourlyDriftMsTemp);
+      Serial.printf("休眠时长: %llu 微秒\n", sleepTime);
+      Serial.printf("休眠期间预估偏差: %lld 毫秒\n", driftCompMs);
+      printTimestampMs(currentMs, "补偿前时间: ");
+      setTimeFromTimestamp(adjustedMs);
+      printTimestampMs(adjustedMs, "补偿后时间: ");
+    }
+    // esp_deep_sleep(sleepTime);
+    esp_sleep_enable_timer_wakeup(sleepTime);
+    Serial.println("--->即将进入深度睡眠...");
+    // 计算并打印预计开机时间
+    {
+      uint64_t wakeUpSec = sleepTime / 1000000ULL;
+      time_t now = time(nullptr);
+      time_t wakeTime = now + (time_t)wakeUpSec;
+      struct tm wt;
+      localtime_r(&wakeTime, &wt);
+      Serial.printf("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
+                    wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
+    }
+    Serial.flush();
+    esp_deep_sleep_start();
     Serial.println("我已经睡着了...");
   }
 }
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
-
-
   Serial.print("setup");
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   randomSeed(analogRead(0));
@@ -521,20 +558,17 @@ void setup() {
     }
     rtcSendCount = 0;
   }
-
   if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0) {
     meshGpsInfoFun(true);
     strcpy(needSendGpsStr, getGpsInfoStr().c_str());
+    nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
+    testSheepFun();
   }
   initLora();
 }
-unsigned long num6000 = 5000;  // 暂时提前20秒开机
-
 // ==================== 主循环 ====================
 void loop() {
-
   Radio.IrqProcess();
-
   if (typeindex == FLAG_TYPE_3) {
     Radio.Sleep();  // IrqProcess已完成，安全Sleep
     if (millis() < gpsWorkStat) {
@@ -550,7 +584,6 @@ void loop() {
     Serial.print("获取GPS ");
     printCurrentTime();
     meshGpsInfoFun(false);
-    delay(1000);
     sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + getGpsInfoStr());
     delay(2000);  // 上报LORA需要2秒钟间隔
     hideOLED();
@@ -569,27 +602,23 @@ void loop() {
       delay(gpsWorkInterval);  // 延时1分钟
     }
     return;
-  }
-  if (typeindex == FLAG_TYPE_2) {
+  } else if (typeindex == FLAG_TYPE_2) {
     delay(100);
     Serial.print(".");
     if (inRxEndTime < millis()) {
       Serial.print(rtcResiveIdx);
       Serial.print("-");
       Serial.print(rtcSendCount);
-
       // 回到普通模式，准备可以休眠
       nextSendTime = 0;
       typeindex = FLAG_TYPE_0;
       Serial.println("");
     }
     return;
-  }
-  if (typeindex == FLAG_TYPE_1) {
+  } else if (typeindex == FLAG_TYPE_1) {
     delay(100);
     return;
-  }
-  if (typeindex == FLAG_TYPE_0) {
+  } else if (typeindex == FLAG_TYPE_0) {
     if (rtcSendCount == 0) {
       nextSendTime = millis() - 1;
     }
@@ -602,64 +631,9 @@ void loop() {
           nextSendTime = nextSendTime + get_send_interval_ms();
         }
       }
-
-      unsigned long waittm = nextSendTime - millis();
-
-      printTimeToString("到上报时间还有 ", nextSendTime - millis());
-      // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
-      if (waittm > num6000) {
-        Serial.print("距离上报时间超过 ");
-        Serial.print(num6000 / 1000);
-        Serial.print("秒进入睡眠");
-        hideOLED();
-        delay(1000);
-        // 05:02|10:59
-        uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
-        if (sendmodeFlage == 1 && strlen(needSendGpsStr) == 0) {
-          Serial.println("工作模式上报GPS，需要提前开启GPS");
-          if (sleepTime > (seacthTm * 1000ULL)) {
-            sleepTime = sleepTime - (seacthTm * 1000ULL);
-          } else {
-            //小于时间周期，10秒就马上重启
-            sleepTime = 10 * 1000 * 1000ULL;
-          }
-        }
-        // 根据每小时偏差补偿休眠期间的时钟漂移
-        if (hourlyDriftMsTemp != 0) {
-          long long sleepMs = (long long)(sleepTime / 1000ULL);
-          long long driftCompMs = hourlyDriftMsTemp * sleepMs / 3600000LL;
-          long long currentMs = getCurrentTimestampMs();
-          long long adjustedMs = currentMs + driftCompMs;
-
-          lastDriftCompMs = driftCompMs;
-
-          Serial.printf("每小时偏差: %lld 毫秒\n", hourlyDriftMsTemp);
-          Serial.printf("休眠时长: %llu 微秒\n", sleepTime);
-          Serial.printf("休眠期间预估偏差: %lld 毫秒\n", driftCompMs);
-          printTimestampMs(currentMs, "补偿前时间: ");
-          setTimeFromTimestamp(adjustedMs);
-          printTimestampMs(adjustedMs, "补偿后时间: ");
-        }
-        // esp_deep_sleep(sleepTime);
-        esp_sleep_enable_timer_wakeup(sleepTime);
-        Serial.println("--->即将进入深度睡眠...");
-        // 计算并打印预计开机时间
-        {
-          uint64_t wakeUpSec = sleepTime / 1000000ULL;
-          time_t now = time(nullptr);
-          time_t wakeTime = now + (time_t)wakeUpSec;
-          struct tm wt;
-          localtime_r(&wakeTime, &wt);
-          Serial.printf("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
-                        wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
-        }
-        Serial.flush();
-        esp_deep_sleep_start();
-        Serial.println("我已经睡着了...");
-      }
+      testSheepFun();
     }
     if (nextSendTime < millis()) {
-
       typeindex = FLAG_TYPE_1;
       if (sendmodeFlage == 1 && strlen(needSendGpsStr) > 0) {
         String dataStr =
@@ -667,7 +641,6 @@ void loop() {
         strcpy(needSendGpsStr, "");
         sendLoraToMid(dataStr);
       } else {
-
         sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(true));
       }
     }
