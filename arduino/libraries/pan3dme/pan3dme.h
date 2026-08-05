@@ -12,6 +12,20 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 
+// ==================== 调试开关 ====================
+// 1=开发模式（输出所有调试信息） 0=正式模式（仅输出关键信息）
+#define DEBUG_MODE 1
+
+#if DEBUG_MODE
+  #define DEBUG_PRINT(x)    Serial.print(x)
+  #define DEBUG_PRINTLN(x)  Serial.println(x)
+  #define DEBUG_PRINTF(...) Serial.printf(__VA_ARGS__)
+#else
+  #define DEBUG_PRINT(x)
+  #define DEBUG_PRINTLN(x)
+  #define DEBUG_PRINTF(...)
+#endif
+
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 //  LoRa消息类型枚举
 typedef enum {

@@ -111,13 +111,13 @@ void setGpsEnable(bool value) {
     digitalWrite(VGNSS_CTRL, LOW);
     digitalWrite(GPS_ANT_EN, HIGH);
     Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-    Serial.println("GPS 已开启");
+    DEBUG_PRINTLN("GPS 已开启");
 
   } else {
     Serial2.end();
     digitalWrite(VGNSS_CTRL, HIGH);
     digitalWrite(GPS_ANT_EN, LOW);
-    Serial.println("GPS 已关闭");
+    DEBUG_PRINTLN("GPS 已关闭");
   }
 
   isGpsOn = value; // 更新状态记录
@@ -209,11 +209,11 @@ void gpsEncode() {
     // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
     long long diff =
         setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
-    Serial.print("✅GPS成功设置一次时间");
+    DEBUG_PRINT("✅GPS成功设置一次时间");
     if (diff >= 0) {
-      Serial.print("，时间调快了 ");
+      DEBUG_PRINT("，时间调快了 ");
     } else {
-      Serial.print("，时间调慢了 ");
+      DEBUG_PRINT("，时间调慢了 ");
       diff = -diff;
     }
     long long diff_sec = diff / 1000000;
@@ -221,12 +221,12 @@ void gpsEncode() {
     long long seconds = diff_sec % 60;
     long long millis = (diff % 1000000) / 1000;
 
-    Serial.print(minutes);
-    Serial.print("分");
-    Serial.print(seconds);
-    Serial.print("秒");
-    Serial.print(millis);
-    Serial.println("毫秒");
+    DEBUG_PRINT(minutes);
+    DEBUG_PRINT("分");
+    DEBUG_PRINT(seconds);
+    DEBUG_PRINT("秒");
+    DEBUG_PRINT(millis);
+    DEBUG_PRINTLN("毫秒");
   }
 }
 
@@ -258,19 +258,19 @@ bool isReliableGPS() {
   // 5. 可选：排除 0,0（若认为无效）
   if (gps.location.lat() <= 1 && gps.location.lng() <= 1)
     return false;
-  Serial.println("1 ");
+  DEBUG_PRINTLN("1 ");
   // 6. ★ 新增：受时成功判断（时间必须有效）
   if (!gps.time.isValid())
     return false; // 时间有效
-  Serial.println("2 ");
+  DEBUG_PRINTLN("2 ");
   // 可选：也检查日期有效性
   if (!gps.date.isValid())
     return false;
-  Serial.println("3 ");
+  DEBUG_PRINTLN("3 ");
   // 可选：检查时间数据是否也新鲜（通常与位置同步）
   if (gps.time.age() > 2000)
     return false;
-  Serial.println("4 ");
+  DEBUG_PRINTLN("4 ");
 
   return true;
 }
@@ -292,7 +292,7 @@ int getDevicesIdx() {
 int getTotalDevices() { return DEVICE_COUNT; }
 String makeDivceName() {
   uint64_t currentId = ESP.getEfuseMac();
-  Serial.printf("当前设备编号: %012llX\n", currentId);
+  DEBUG_PRINTF("当前设备编号: %012llX\n", currentId);
   int index = getDevicesIdx();
   if (index != -1) {
     String syname = "vx-x";
@@ -302,10 +302,10 @@ String makeDivceName() {
 #if defined(WIFI_LORA_32_V4)
     syname = "v4-" + String(index);
 #endif
-    Serial.println("设备认证成功，设备名为: " + syname);
+    DEBUG_PRINTLN("设备认证成功，设备名为: " + syname);
     return syname;
   } else {
-    Serial.println("错误：该设备编号不在白名单中！");
+    DEBUG_PRINTLN("错误：该设备编号不在白名单中！");
 #if defined(WIFI_LORA_32_V3)
     return "v3-x";
 #endif
@@ -330,7 +330,7 @@ BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
   cbs.pCharacteristic->setCallbacks(charCallbacks);
   pService->start();
   BLEDevice::startAdvertising();
-  Serial.println("✅ 初始化蓝牙完成");
+  DEBUG_PRINTLN("✅ 初始化蓝牙完成");
 
   return cbs;
 }
@@ -372,14 +372,14 @@ long long mathTimeDiffms(int year, int mon, int day, int h, int m, int s,
   long long now_ms_total = (long long)now_sec * 1000LL + now_ms;
   long long diff_ms = new_ms_total - now_ms_total;
 
-  Serial.print("时间偏差 (new - current): ");
+  DEBUG_PRINT("时间偏差 (new - current): ");
   if (diff_ms >= 0) {
-    Serial.print("+");
+    DEBUG_PRINT("+");
   }
-  Serial.print(diff_ms / 1000);
-  Serial.print("s ");
-  Serial.print(diff_ms % 1000);
-  Serial.println("ms");
+  DEBUG_PRINT(diff_ms / 1000);
+  DEBUG_PRINT("s ");
+  DEBUG_PRINT(diff_ms % 1000);
+  DEBUG_PRINTLN("ms");
 
   return diff_ms;
 }
@@ -410,16 +410,16 @@ String readBatteryEndStr(String deviceName) {
 
   float batteryVoltage = mvAvg * 5.35 / 1000.0;
 
-  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
-                batteryVoltage);
+//  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
+//                batteryVoltage);
 
   int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 100);
   soc = constrain(soc, 0, 100);
   float socRatio = soc / 100.0;
 
   String outStr = String(socRatio, 1) + "|" + String(batteryVoltage, 1);
-  Serial.print("电量信息：");
-  Serial.println(outStr);
+//  Serial.print("电量信息：");
+//  Serial.println(outStr);
 
   return outStr;
 }
@@ -435,8 +435,8 @@ long long mathTimeDiffmstimeFromLora(String timeStr) {
                     &hour, &minute, &second) == 6) {
     millis = 0; // 无毫秒
   } else {
-    Serial.print("❌ LoRa对时解析失败: ");
-    Serial.println(timeStr);
+    DEBUG_PRINT("❌ LoRa对时解析失败: ");
+    DEBUG_PRINTLN(timeStr);
     return 0;
   }
   return mathTimeDiffms(year, month, day, hour, minute, second, millis);
@@ -495,7 +495,7 @@ void printTimestampMs(long long epochMs, const char* label) {
   int ms = (int)(epochMs % 1000LL);
   struct tm t;
   localtime_r(&sec, &t);
-  Serial.printf("%s%4d/%d/%d %02d:%02d:%02d.%03d\n",
+  DEBUG_PRINTF("%s%4d/%d/%d %02d:%02d:%02d.%03d\n",
                 label,
                 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                 t.tm_hour, t.tm_min, t.tm_sec, ms);
@@ -511,7 +511,7 @@ void printDurationMs(long long diffMs, const char* label) {
   long long minutes = (diffMs % 3600000LL) / 60000LL;
   long long seconds = (diffMs % 60000LL) / 1000LL;
   long long millis = diffMs % 1000LL;
-  Serial.printf("%s%s%lld小时%lld分%lld秒%lld毫秒\n",
+  DEBUG_PRINTF("%s%s%lld小时%lld分%lld秒%lld毫秒\n",
                 label, negative ? "-" : "",
                 hours, minutes, seconds, millis);
 }
@@ -527,8 +527,8 @@ void setTimeFromLora(String timeStr) {
                     &hour, &minute, &second) == 6) {
     millis = 0; // 无毫秒
   } else {
-    Serial.print("❌ LoRa对时解析失败: ");
-    Serial.println(timeStr);
+    DEBUG_PRINT("❌ LoRa对时解析失败: ");
+    DEBUG_PRINTLN(timeStr);
     return;
   }
   // 优化偏移 这个代码还要验证LORA互相传输延时暂定200毫秒
@@ -553,10 +553,7 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
 
   Radio.Init(radioEvents);
   Radio.SetChannel(LORA_FREQ);
-  Serial.print("✅ 当前lora频段");
-  Serial.print(LORA_FREQ);
-  Serial.print(" 发射功率");
-  Serial.println(txPower);
+
   Radio.SetRxConfig(MODEM_LORA, LORA_BW, LORA_SF, LORA_CR, 0, PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
 
@@ -564,7 +561,11 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
   Radio.SetTxConfig(MODEM_LORA, txPower, 0, LORA_BW, LORA_SF, LORA_CR,
                     PREAMBLE_LENGTH, false, true, 0, 0, false, 1000);
 
-  Serial.println("✅ LoRa 初始化完成");
+    DEBUG_PRINT("✅ 当前lora频段");
+    DEBUG_PRINT(LORA_FREQ);
+    DEBUG_PRINT(" 发射功率");
+    DEBUG_PRINTLN(txPower);
+    DEBUG_PRINTLN("✅ LoRa 初始化完成");
 }
 
 // 判断时间戳是否在指定时段内
@@ -573,8 +574,8 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
 bool isTimeInRange(long long timestampMs, const char* timeRangeStr) {
   int startH = 0, startM = 0, endH = 0, endM = 0;
   if (sscanf(timeRangeStr, "%d:%d-%d:%d", &startH, &startM, &endH, &endM) != 4) {
-    Serial.print("❌ isTimeInRange 解析失败: ");
-    Serial.println(timeRangeStr);
+    DEBUG_PRINT("❌ isTimeInRange 解析失败: ");
+    DEBUG_PRINTLN(timeRangeStr);
     return true;  // 解析失败默认在范围内，避免阻止业务
   }
 
