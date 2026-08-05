@@ -312,7 +312,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   memcpy(buf, payload, size);
   buf[size] = '\0';
   Serial.println("");
-  Serial.print("接收到中继下发ROLA ：");
+  Serial.print("接收：");
   Serial.println(buf);
 
   // 检查是否为GPS高频指令（5|v4-6,...）且目标是当前设备
@@ -402,7 +402,7 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool hasLocValid = gps.location.isValid();
     bool yearOk = (gps.date.year() > 2025);
     bool gpsReliable = isReliableGPS();
-    bool ellitesNum = gps.satellites.value() > 7;
+    bool ellitesNum = gps.satellites.value() >= 6;
 
     bool timeoutOk = (millis() - startAttemptTime < seacthTm);
     // Serial.print(".");

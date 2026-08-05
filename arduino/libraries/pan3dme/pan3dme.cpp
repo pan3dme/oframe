@@ -247,7 +247,7 @@ bool isReliableGPS() {
   if (!gps.location.isValid())
     return false;
   // 2. 卫星数 >= 4
-  if (gps.satellites.value() < 4)
+  if (gps.satellites.value() < 6)
     return false;
   // 3. HDOP 小于 3.0（可根据需求调整）
   if (gps.hdop.value() <= 3.0)
