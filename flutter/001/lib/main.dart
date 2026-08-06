@@ -61,10 +61,9 @@ class _HomePageState extends State<HomePage> {
         index: _currentIndex,
         children: const [
           DeviceManagePage(),
-          LivestockManagePage(),
           BluetoothPage(),
-          MapCenterPage(),
           SettingsPage(),
+          MapCenterPage(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -83,20 +82,16 @@ class _HomePageState extends State<HomePage> {
             label: '设备管理',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.pets),
-            label: '牛羊管理',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(Icons.bluetooth),
             label: '蓝牙',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.map),
-            label: '地图中心',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(Icons.settings),
             label: '设置',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map),
+            label: '地图中心',
           ),
         ],
       ),
