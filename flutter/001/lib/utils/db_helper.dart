@@ -25,7 +25,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 7, // 升级到版本7，添加ProductKey列
+      version: 8, // 升级到版本8，添加visible列
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: _onUpgrade, // 也处理降级情况
@@ -43,6 +43,7 @@ class DBHelper {
         rename TEXT,
         picurl TEXT,
         ProductKey TEXT,
+        visible INTEGER,
         cached_at TEXT
       )
     ''');
@@ -250,6 +251,16 @@ class DBHelper {
         print('数据库升级: 添加 ProductKey 列时出错: $e');
       }
     }
+    
+    if (oldVersion < 8) {
+      // 版本8：设备表添加visible列
+      try {
+        await db.execute('ALTER TABLE devices ADD COLUMN visible INTEGER');
+        print('数据库升级: 已添加 visible 列');
+      } catch (e) {
+        print('数据库升级: 添加 visible 列时出错: $e');
+      }
+    }
   }
 
   /// 保存设备数据（覆盖式）
@@ -269,6 +280,7 @@ class DBHelper {
         'rename': device['rename'],
         'picurl': device['picurl'],
         'ProductKey': device['ProductKey'],
+        'visible': device['visible'] == true ? 1 : (device['visible'] == 'true' ? 1 : 0),
         'cached_at': DateTime.now().toIso8601String(),
       });
     }

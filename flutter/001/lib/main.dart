@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'pages/device_manage_page.dart';
 import 'pages/livestock_manage_page.dart';
-import 'pages/function_list_page.dart';
+import 'pages/bluetooth_page.dart';
 import 'pages/map_center_page.dart';
+import 'pages/settings_page.dart';
 
 // 全局路由观察者，用于监听页面可见性
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
@@ -61,8 +62,9 @@ class _HomePageState extends State<HomePage> {
         children: const [
           DeviceManagePage(),
           LivestockManagePage(),
-          FunctionListPage(),
+          BluetoothPage(),
           MapCenterPage(),
+          SettingsPage(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -85,12 +87,16 @@ class _HomePageState extends State<HomePage> {
             label: '牛羊管理',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.apps),
-            label: '功能列表',
+            icon: Icon(Icons.bluetooth),
+            label: '蓝牙',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.map),
             label: '地图中心',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: '设置',
           ),
         ],
       ),

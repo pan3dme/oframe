@@ -99,6 +99,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
       if (cachedData.isNotEmpty) {
         setState(() {
           _data = cachedData;
+          _filterVisibleDevices(); // 过滤visible=true
           _sortDevices(); // 排序
           _isLoading = false;
           // 不设置 _isFromCache 和 _loadStatus，等网络请求结果再决定
@@ -281,6 +282,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
           
           setState(() {
             _data = parsedData;
+            _filterVisibleDevices(); // 过滤visible=true
             _sortDevices(); // 排序
             _isLoading = false;
             _isFromCache = false;
@@ -373,6 +375,14 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
       final bNum = _extractDeviceNumber(b['deviceId']?.toString() ?? '');
       return aNum.compareTo(bNum);
     });
+  }
+
+  /// 过滤设备：只显示visible=true的设备
+  void _filterVisibleDevices() {
+    _data = _data.where((item) {
+      final v = item['visible'];
+      return v == true || v == 'true' || v == 1;
+    }).toList();
   }
 
   @override
