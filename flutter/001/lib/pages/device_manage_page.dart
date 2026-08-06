@@ -180,11 +180,14 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
       final resp = await http.post(
         Uri.parse(_deviceFcUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'getDeviceTaleAll'}),
+        body: jsonEncode({'action': 'getDeviceTaleAll',
+          'info': {
+            'limit': 99,
+          },}),
       );
 
-      debugPrint('FC 响应状态: ${resp.statusCode}');
-      debugPrint('FC 响应体: ${resp.body}');
+      debugPrint('FC getDeviceTaleAll响应状态: ${resp.statusCode}');
+      debugPrint('FC getDeviceTaleAll响应体: ${resp.body}');
 
       if (resp.statusCode == 200) {
         final json = jsonDecode(resp.body) as Map<String, dynamic>;
