@@ -18,6 +18,7 @@ class DeviceManagePage extends StatefulWidget {
 class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
   List<Map<String, dynamic>> _data = [];
   Map<String, Map<String, dynamic>> _deviceLotMap = {}; // 设备LOT数据映射
+  Map<String, Map<String, dynamic>> _deviceSyncMap = {}; // 设备对时表数据映射
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
@@ -86,6 +87,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
     
     // 加载设备LOT数据
     await _loadDeviceLotData();
+    
+    // 加载设备对时表数据
+    await _loadDeviceSyncData();
   }
 
   /// 从缓存加载数据
@@ -95,6 +99,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
       if (cachedData.isNotEmpty) {
         setState(() {
           _data = cachedData;
+          _sortDevices(); // 排序
           _isLoading = false;
           // 不设置 _isFromCache 和 _loadStatus，等网络请求结果再决定
         });
@@ -177,6 +182,78 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
     }
   }
 
+  /// 加载设备对时表数据
+  Future<void> _loadDeviceSyncData() async {
+    try {
+      // 从缓存加载对时表数据
+      final cachedSyncData = await DBHelper().getDeviceSync();
+      if (cachedSyncData.isNotEmpty) {
+        final syncMap = <String, Map<String, dynamic>>{};
+        for (final sync in cachedSyncData) {
+          final deviceId = sync['deviceId'] as String;
+          syncMap[deviceId] = sync;
+        }
+        setState(() {
+          _deviceSyncMap = syncMap;
+        });
+        debugPrint('从缓存加载设备对时表数据: ${cachedSyncData.length} 条');
+      }
+      
+      // 从网络加载对时表数据
+      await _loadDeviceSyncFromNetwork();
+    } catch (e) {
+      debugPrint('加载设备对时表数据失败: $e');
+    }
+  }
+
+  /// 从网络加载设备对时表数据
+  Future<void> _loadDeviceSyncFromNetwork() async {
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'getDevicesyncAll',
+          'info': {
+            'limit': 99,
+          }}),
+      );
+
+      debugPrint('设备对时表 FC 响应状态: ${resp.statusCode}');
+      debugPrint('设备对时表 FC 响应体: ${resp.body}');
+
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        
+        if (json['status'] == 'success') {
+          final rawRows = json['data'] as List<dynamic>;
+          final parsedData = rawRows.map(_parseOtsRow).toList();
+          
+          // 保存到缓存
+          await DBHelper().saveDeviceSync(parsedData);
+          
+          // 构建对时表数据映射
+          final syncMap = <String, Map<String, dynamic>>{};
+          for (final sync in parsedData) {
+            final deviceId = sync['deviceId'] as String;
+            syncMap[deviceId] = sync;
+          }
+          
+          setState(() {
+            _deviceSyncMap = syncMap;
+          });
+          
+          debugPrint('从网络加载设备对时表数据: ${parsedData.length} 条，已缓存');
+        } else {
+          debugPrint('设备对时表请求错误: ${json['msg']} ${json['error'] ?? ''}');
+        }
+      } else {
+        debugPrint('设备对时表 HTTP ${resp.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('设备对时表请求失败: $e');
+    }
+  }
+
   /// 从网络加载数据
   Future<void> _loadFromNetwork() async {
     try {
@@ -204,6 +281,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
           
           setState(() {
             _data = parsedData;
+            _sortDevices(); // 排序
             _isLoading = false;
             _isFromCache = false;
             _loadStatus = ''; // 清除所有提示
@@ -271,6 +349,32 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
     return v.toString();
   }
 
+  /// 从deviceId中提取-后面的数字，用于排序
+  int _extractDeviceNumber(String deviceId) {
+    final match = RegExp(r'-(\d+)').firstMatch(deviceId);
+    if (match != null) {
+      return int.tryParse(match.group(1) ?? '0') ?? 0;
+    }
+    return 0;
+  }
+
+  /// 设备列表排序：按deviceId中-后的数字升序，ProductKey有内容的排最后
+  void _sortDevices() {
+    _data.sort((a, b) {
+      final aHasProductKey = a['ProductKey'] != null && a['ProductKey'].toString().isNotEmpty;
+      final bHasProductKey = b['ProductKey'] != null && b['ProductKey'].toString().isNotEmpty;
+      
+      // productkey有内容的排最后
+      if (aHasProductKey && !bHasProductKey) return 1;
+      if (!aHasProductKey && bHasProductKey) return -1;
+      
+      // 按-后面的数字排序
+      final aNum = _extractDeviceNumber(a['deviceId']?.toString() ?? '');
+      final bNum = _extractDeviceNumber(b['deviceId']?.toString() ?? '');
+      return aNum.compareTo(bNum);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -313,35 +417,12 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                       ],
                     ),
                   ),
-                // 顶部信息栏：设备计数 + 新增按钮
+                // 顶部信息栏：设备计数
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        '共 ${_data.length} 台设备',
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                      ),
-                      const Spacer(),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('新增设备功能开发中')),
-                          );
-                        },
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('新增设备'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2ECC71),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          elevation: 0,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    '共 ${_data.length} 台设备',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
                 ),
                 Expanded(
@@ -382,12 +463,41 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                   
                                   // 获取设备LOT数据
                                   final deviceLot = _deviceLotMap[deviceId];
-                                  final timeRaw = deviceLot != null ? _str(deviceLot, 'time') : '—';
+                                  final lotTimeRaw = deviceLot != null ? _str(deviceLot, 'time') : '—';
                                   final upDateDevice = deviceLot != null ? _str(deviceLot, 'upDateDevice') : '—';
                                   
+                                  // 获取设备对时表数据
+                                  final deviceSync = _deviceSyncMap[deviceId];
+                                  final syncTimeRaw = deviceSync != null ? _str(deviceSync, 'time') : '—';
+                                  
+                                  // 对比LOT表和对时表的时间，取较晚的
+                                  String finalTimeRaw;
+                                  bool timeFromSync; // true=来自对时表(时钟图标), false=来自LOT表(绿点)
+                                  final lotDt = _parseTimeToDateTime(lotTimeRaw);
+                                  final syncDt = _parseTimeToDateTime(syncTimeRaw);
+                                  
+                                  if (lotDt != null && syncDt != null) {
+                                    if (syncDt.isAfter(lotDt)) {
+                                      finalTimeRaw = syncTimeRaw;
+                                      timeFromSync = true;
+                                    } else {
+                                      finalTimeRaw = lotTimeRaw;
+                                      timeFromSync = false;
+                                    }
+                                  } else if (syncDt != null) {
+                                    finalTimeRaw = syncTimeRaw;
+                                    timeFromSync = true;
+                                  } else {
+                                    finalTimeRaw = lotTimeRaw;
+                                    timeFromSync = false;
+                                  }
+                                  
                                   // 计算相对时间
-                                  String timeAgo = _calcTimeAgo(timeRaw);
-                                  bool isRecent = _isRecentTime(timeRaw);
+                                  String timeAgo = _calcTimeAgo(finalTimeRaw);
+                                  bool isRecent = _isRecentTime(finalTimeRaw);
+                                  
+                                  // 图标：LOT表→绿点，对时表→时钟
+                                  bool showGreenDot = !timeFromSync;
                                   
                                   // 构建显示名称：deviceId (rename) (upDateDevice)
                                   String displayName = deviceId;
@@ -446,8 +556,8 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                             ),
                                           ),
                                           const SizedBox(width: 8),
-                                          // 状态图标
-                                          isRecent
+                                          // 状态图标：LOT表用绿点，对时表用时钟
+                                          showGreenDot
                                               ? const Icon(Icons.circle, size: 10, color: Color(0xFF2ECC71))
                                               : Icon(Icons.access_time, size: 18, color: Colors.grey[400]),
                                           const SizedBox(width: 8),
@@ -538,9 +648,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                               const SizedBox(height: 6),
-                                              // 第二行：time (从设备LOT表获取，显示相对时间)
+                                              // 第二行：time (LOT表与对时表对比，取较晚时间)
                                               Text(
-                                                timeAgo.isNotEmpty ? timeAgo : timeRaw,
+                                                timeAgo.isNotEmpty ? timeAgo : finalTimeRaw,
                                                 style: TextStyle(
                                                   fontSize: 11,
                                                   color: Colors.grey[700],
@@ -624,6 +734,33 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
   /// 处理下拉刷新
   Future<void> _handleRefresh() async {
     await _loadData();
+  }
+
+  /// 解析时间字符串为DateTime
+  DateTime? _parseTimeToDateTime(String timeRaw) {
+    if (timeRaw == '—' || timeRaw.isEmpty) return null;
+    try {
+      if (timeRaw.contains(' ')) {
+        final parts = timeRaw.split(' ');
+        if (parts.length >= 2) {
+          final dateParts = parts[0].replaceAll('/', '-').split('-');
+          final timeParts = parts[1].split(':');
+          if (dateParts.length >= 3 && timeParts.length >= 2) {
+            return DateTime(
+              int.parse(dateParts[0]),
+              int.parse(dateParts[1]),
+              int.parse(dateParts[2]),
+              int.parse(timeParts[0]),
+              int.parse(timeParts[1]),
+              timeParts.length >= 3 ? int.parse(timeParts[2]) : 0,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('解析时间失败: $e, 原始时间: $timeRaw');
+    }
+    return null;
   }
 
   /// 计算相对时间显示（不含括号）

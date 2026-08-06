@@ -25,7 +25,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 5, // 升级到版本5，添加设置表
+      version: 7, // 升级到版本7，添加ProductKey列
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: _onUpgrade, // 也处理降级情况
@@ -42,6 +42,7 @@ class DBHelper {
         link_cowsheep_id TEXT,
         rename TEXT,
         picurl TEXT,
+        ProductKey TEXT,
         cached_at TEXT
       )
     ''');
@@ -122,6 +123,17 @@ class DBHelper {
         key TEXT PRIMARY KEY,
         value TEXT,
         updated_at TEXT
+      )
+    ''');
+
+    // 设备对时表
+    await db.execute('''
+      CREATE TABLE device_sync (
+        deviceId TEXT PRIMARY KEY,
+        lorastr TEXT,
+        time TEXT,
+        upDateDevice TEXT,
+        cached_at TEXT
       )
     ''');
   }
@@ -210,6 +222,34 @@ class DBHelper {
         print('数据库升级: 创建 settings 表时出错: $e');
       }
     }
+    
+    if (oldVersion < 6) {
+      // 版本6：添加设备对时表
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS device_sync (
+            deviceId TEXT PRIMARY KEY,
+            lorastr TEXT,
+            time TEXT,
+            upDateDevice TEXT,
+            cached_at TEXT
+          )
+        ''');
+        print('数据库升级: 已创建 device_sync 表');
+      } catch (e) {
+        print('数据库升级: 创建 device_sync 表时出错: $e');
+      }
+    }
+    
+    if (oldVersion < 7) {
+      // 版本7：设备表添加ProductKey列
+      try {
+        await db.execute('ALTER TABLE devices ADD COLUMN ProductKey TEXT');
+        print('数据库升级: 已添加 ProductKey 列');
+      } catch (e) {
+        print('数据库升级: 添加 ProductKey 列时出错: $e');
+      }
+    }
   }
 
   /// 保存设备数据（覆盖式）
@@ -228,6 +268,7 @@ class DBHelper {
         'link_cowsheep_id': device['link_cowsheep_id'],
         'rename': device['rename'],
         'picurl': device['picurl'],
+        'ProductKey': device['ProductKey'],
         'cached_at': DateTime.now().toIso8601String(),
       });
     }
@@ -381,6 +422,36 @@ class DBHelper {
   Future<List<Map<String, dynamic>>> getDeviceLot() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query('device_lot');
+    return maps;
+  }
+
+  /// 保存设备对时数据（覆盖式）
+  Future<void> saveDeviceSync(List<Map<String, dynamic>> deviceSyncList) async {
+    final db = await database;
+    final batch = db.batch();
+
+    // 清空旧数据
+    batch.delete('device_sync');
+
+    // 插入新数据
+    for (final item in deviceSyncList) {
+      batch.insert('device_sync', {
+        'deviceId': item['deviceId'],
+        'lorastr': item['lorastr'],
+        'time': item['time'],
+        'upDateDevice': item['upDateDevice'],
+        'cached_at': DateTime.now().toIso8601String(),
+      });
+    }
+
+    await batch.commit();
+    print('保存设备对时数据: ${deviceSyncList.length} 条');
+  }
+
+  /// 读取设备对时数据
+  Future<List<Map<String, dynamic>>> getDeviceSync() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('device_sync');
     return maps;
   }
 
