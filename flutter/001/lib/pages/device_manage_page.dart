@@ -592,8 +592,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                   // 构建显示名称：deviceId (rename) (upDateDevice)
                                   String displayName = deviceId;
                                   if (rename != '—') displayName += ' ($rename)';
-                                  if (upDateDevice != '—') displayName += ' ($upDateDevice)';
-
+                             
                             // 根据单行显示设置选择不同的显示方式
                             if (_singleLineDisplay) {
                               return Column(
@@ -638,7 +637,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                               displayName,
                                               style: const TextStyle(
                                                 fontSize: 15,
-                                                fontWeight: FontWeight.w500,
+                                                fontWeight: FontWeight.w700,
                                                 color: Color(0xFF333333),
                                               ),
                                               maxLines: 1,
@@ -664,6 +663,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                               timeAgo.isNotEmpty ? timeAgo : '—',
                                               style: TextStyle(
                                                 fontSize: 13,
+                                                fontWeight: FontWeight.w600,
                                                 color: isRecent
                                                     ? const Color(0xFF2ECC71)
                                                     : Colors.grey[500],
@@ -738,11 +738,12 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                               const SizedBox(height: 6),
-                                              // 第二行：time (LOT表与对时表对比，取较晚时间)
+                                              // 第二行：time
                                               Text(
                                                 timeAgo.isNotEmpty ? timeAgo : finalTimeRaw,
                                                 style: TextStyle(
-                                                  fontSize: 11,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
                                                   color: Colors.grey[700],
                                                 ),
                                                 maxLines: 1,
