@@ -44,7 +44,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
   String _levelStatus = '';
   int _maxAvailableLevel = 1;
   String? _lastRoutePlaceFetchDate;
-  bool _showMarkerInfo = false;
 
   @override
   void initState() {
@@ -356,108 +355,39 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                   settings: FMTCTileProviderSettings(),
                 ),
               ),
-              // 坐标图标 + 提示框（合并为一个Marker，Column纵向排列）
+              // 坐标圆点（独立层，位置始终固定）
               MarkerLayer(
                 markers: [
                   Marker(
                     point: markerPoint,
-                    width: 280,
-                    height: 200,
+                    width: 24,
+                    height: 24,
                     alignment: Alignment.bottomCenter,
-                    child: GestureDetector(
-                      onTap: () => setState(() { _showMarkerInfo = !_showMarkerInfo; }),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 提示框（点击后显示）
-                          if (_showMarkerInfo)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.2),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '设备: ${widget.deviceId}',
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'GPS: ${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(5)}',
-                                    style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '更新: ${widget.time}',
-                                    style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          // 坐标圆点 + 设备名标签（横向排列）
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: _typeColor,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _typeColor.withValues(alpha: 0.4),
-                                      blurRadius: 5,
-                                      spreadRadius: 1,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.arrow_drop_down,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(6),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.15),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 1),
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  widget.deviceId,
-                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
-                                ),
-                              ),
-                            ],
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: _typeColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _typeColor.withValues(alpha: 0.4),
+                            blurRadius: 5,
+                            spreadRadius: 1,
                           ),
                         ],
+                      ),
+                      child: const Icon(
+                        Icons.arrow_drop_down,
+                        color: Colors.white,
+                        size: 18,
                       ),
                     ),
                   ),
                 ],
               ),
+
               // 显示道路标记（调试用）
               if (_showRouteAndPlace && _displayedRouteData.isNotEmpty)
                 MarkerLayer(
