@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../utils/db_helper.dart';
 
 /// 设备详情页面
 class DeviceDetailPage extends StatefulWidget {
@@ -51,9 +52,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       });
     }
 
+    final deviceId = widget.device['deviceId']?.toString() ?? '';
+
     try {
-      final deviceId = widget.device['deviceId']?.toString() ?? '';
-      
       final resp = await http.post(
         Uri.parse(_deviceFcUrl),
         headers: {'Content-Type': 'application/json'},
@@ -123,7 +124,66 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         });
       }
     } catch (e) {
-      debugPrint('加载日志失败: $e');
+      debugPrint('加载日志失败(网络): $e，尝试从蓝牙缓存加载');
+      // 网络失败，从蓝牙缓存加载
+      await _loadLogsFromBluetoothCache(deviceId, reset: reset);
+    }
+  }
+
+  /// 从蓝牙缓存加载设备日志（离线回退）
+  Future<void> _loadLogsFromBluetoothCache(String deviceId, {bool reset = false}) async {
+    try {
+      final allBluetoothData = await DBHelper().getBluetoothData();
+      debugPrint('[离线日志] 蓝牙缓存共 ${allBluetoothData.length} 条');
+
+      // 筛选当前设备的记录：info的parts[3] == deviceId
+      final matchedLogs = <Map<String, dynamic>>[];
+      for (final item in allBluetoothData) {
+        final dataStr = item['data'] as String?;
+        if (dataStr == null || dataStr.isEmpty) continue;
+
+        try {
+          final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+          final info = jsonData['info'] as String? ?? '';
+          if (!info.contains('|')) continue;
+
+          final parts = info.split('|');
+          if (parts.length < 4) continue;
+
+          final deviceMarker = parts[1]; // 设备标记在parts[1]
+          if (deviceMarker == deviceId) {
+            // 解析为日志卡片所需格式
+            final log = <String, dynamic>{
+              'time': jsonData['time'] ?? '',
+              'deviceId': deviceId,
+              'lorastr': info,
+              'upDateDevice': jsonData['upDateDevice'] ?? '',
+              'type': parts[0], // type在parts[0]
+              'rssi': jsonData['rssi'],
+              'snr': jsonData['snr'],
+              '_fromCache': true, // 标记来源
+            };
+            matchedLogs.add(log);
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+
+      debugPrint('[离线日志] 匹配到 ${matchedLogs.length} 条记录(设备标记=$deviceId)');
+
+      setState(() {
+        if (reset) {
+          _logs = matchedLogs;
+        } else {
+          _logs.addAll(matchedLogs);
+        }
+        _hasMore = false; // 缓存数据不分页
+        _isLoadingLogs = false;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('[离线日志] 从蓝牙缓存加载失败: $e');
       setState(() {
         _isLoadingLogs = false;
         _isLoadingMore = false;

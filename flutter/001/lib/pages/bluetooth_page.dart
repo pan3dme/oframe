@@ -23,20 +23,24 @@ class BluetoothPage extends StatefulWidget {
 class _BluetoothPageState extends State<BluetoothPage> {
   final List<BluetoothDevice> _scanResults = [];
   bool _isScanning = false;
-  BluetoothDevice? _connectedDevice;
-  BluetoothConnectionState _connectionState =
-      BluetoothConnectionState.disconnected;
-  StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
   StreamSubscription<List<ScanResult>>? _scanResultSubscription;
 
-  // 同步状态
-  bool _isSyncing = false;
-  BluetoothCharacteristic? _writeCharacteristic;
-  BluetoothCharacteristic? _notifyCharacteristic;
-  StreamSubscription<List<int>>? _notifySubscription;
+  // ---- 静态蓝牙连接资源（跨页面存活，切换页面不中断） ----
+  static BluetoothDevice? _connectedDevice;
+  static BluetoothConnectionState _connectionState =
+      BluetoothConnectionState.disconnected;
+  static StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
 
-  // 接收到的数据
-  final List<String> _receivedData = [];
+  // 静态同步状态
+  static bool _isSyncing = false;
+  static BluetoothCharacteristic? _writeCharacteristic;
+  static BluetoothCharacteristic? _notifyCharacteristic;
+  static StreamSubscription<List<int>>? _notifySubscription;
+
+  // 静态接收数据（跨页面累积）
+  static final List<String> _receivedData = [];
+
+  // 页面实例变量
   List<Map<String, dynamic>> _cachedBluetoothData = []; // 缓存的蓝牙数据
   bool _isUploading = false; // 是否正在上传
   bool _uploadPaused = false; // 上传是否因断网暂停
@@ -72,11 +76,17 @@ class _BluetoothPageState extends State<BluetoothPage> {
     // 先加载缓存数据，加载完成后再开始扫描
     _loadCachedBluetoothData().then((_) {
       print('[蓝牙] 缓存数据加载完成，共 ${_cachedBluetoothData.length} 条');
-      // 页面加载完成后自动开始扫描
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        print('[蓝牙] 页面加载完成，自动开始扫描...');
-        _startScan();
-      });
+      // 如果已有静态连接（从其他页面返回），恢复状态监听
+      if (_connectedDevice != null && _connectionState == BluetoothConnectionState.connected) {
+        print('[蓝牙] 检测到已有连接，恢复状态...');
+        setState(() {}); // 触发UI重建
+      } else {
+        // 没有已有连接，正常开始扫描
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          print('[蓝牙] 页面加载完成，自动开始扫描...');
+          _startScan();
+        });
+      }
     });
     
     // 加载声音设置
@@ -323,30 +333,19 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
   @override
   void dispose() {
-    // 如果已连接，直接断开蓝牙连接（不发送同步关闭消息）
-    if (_isConnected && _connectedDevice != null) {
-      print('[蓝牙] 页面退出，直接断开蓝牙连接...');
-      // 直接调用底层disconnect，不经过_disconnect()的同步停止逻辑
-      _connectedDevice!.disconnect().then((_) {
-        print('[蓝牙] 断开连接成功');
-      }).catchError((e) {
-        print('[蓝牙] 断开连接异常: $e');
-      });
-    }
+    // 【重要】不清理蓝牙连接和同步状态！
+    // 连接资源是static的，切换页面时保持活跃
+    // 只有用户主动点击「断开连接」才会断开
     
-    // 取消上传
+    // 只清理扫描相关
+    _scanResultSubscription?.cancel();
+    try { FlutterBluePlus.stopScan(); } catch (_) {}
+    
+    // 停止上传（上传是页面级操作）
     if (_isUploading) {
       _isUploading = false;
-      print('[蓝牙] 页面退出，取消上传');
+      print('[蓝牙] 页面退出，停止上传');
     }
-    
-    // 取消所有订阅（重要：必须在disconnect之前或同时进行）
-    _connectionStateSubscription?.cancel();
-    _scanResultSubscription?.cancel();
-    _notifySubscription?.cancel();
-    
-    // 停止扫描
-    FlutterBluePlus.stopScan();
     
     super.dispose();
   }

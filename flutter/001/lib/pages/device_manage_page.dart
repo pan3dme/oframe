@@ -19,6 +19,8 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
   List<Map<String, dynamic>> _data = [];
   Map<String, Map<String, dynamic>> _deviceLotMap = {}; // 设备LOT数据映射
   Map<String, Map<String, dynamic>> _deviceSyncMap = {}; // 设备对时表数据映射
+  Map<String, String> _bluetoothTimeMap = {}; // 蓝牙缓存中每个设备的最新时间
+  Map<String, String> _bluetoothTypeMap = {}; // 蓝牙缓存中每个设备最新记录的类型
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
@@ -90,6 +92,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
     
     // 加载设备对时表数据
     await _loadDeviceSyncData();
+    
+    // 加载蓝牙缓存中的设备时间（离线模式补充）
+    await _loadBluetoothTimeData();
   }
 
   /// 从缓存加载数据
@@ -252,6 +257,63 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
       }
     } catch (e) {
       debugPrint('设备对时表请求失败: $e');
+    }
+  }
+
+  /// 从蓝牙缓存加载每个设备的最新时间（筛选type 1/2/5）
+  Future<void> _loadBluetoothTimeData() async {
+    try {
+      final allBluetoothData = await DBHelper().getBluetoothData();
+      if (allBluetoothData.isEmpty) return;
+
+      // 按设备标记分组，找每个设备的最新时间和类型
+      final deviceTimeMap = <String, DateTime>{};
+      final deviceTimeRawMap = <String, String>{};
+      final deviceTypeMap = <String, String>{};
+
+      for (final item in allBluetoothData) {
+        final dataStr = item['data'] as String?;
+        if (dataStr == null || dataStr.isEmpty) continue;
+
+        try {
+          final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+          final info = jsonData['info'] as String? ?? '';
+          if (!info.contains('|')) continue;
+
+          final parts = info.split('|');
+          if (parts.length < 2) continue;
+
+          final type = parts[0]; // 类型: 1=GPS, 2=对时, 5=跟踪
+          final deviceMarker = parts[1]; // 设备标记
+
+          // 只处理类型1、2、5
+          if (type != '1' && type != '2' && type != '5') continue;
+
+          final timeStr = jsonData['time'] as String? ?? '';
+          if (timeStr.isEmpty) continue;
+
+          final dt = _parseTimeToDateTime(timeStr);
+          if (dt == null) continue;
+
+          // 保留最新时间
+          if (!deviceTimeMap.containsKey(deviceMarker) || dt.isAfter(deviceTimeMap[deviceMarker]!)) {
+            deviceTimeMap[deviceMarker] = dt;
+            deviceTimeRawMap[deviceMarker] = timeStr;
+            deviceTypeMap[deviceMarker] = type; // 记录类型
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+
+      debugPrint('[蓝牙时间] 从缓存中提取到 ${deviceTimeRawMap.length} 个设备的时间');
+
+      setState(() {
+        _bluetoothTimeMap = deviceTimeRawMap;
+        _bluetoothTypeMap = deviceTypeMap;
+      });
+    } catch (e) {
+      debugPrint('[蓝牙时间] 加载失败: $e');
     }
   }
 
@@ -480,23 +542,41 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                   final deviceSync = _deviceSyncMap[deviceId];
                                   final syncTimeRaw = deviceSync != null ? _str(deviceSync, 'time') : '—';
                                   
-                                  // 对比LOT表和对时表的时间，取较晚的
+                                  // 获取蓝牙缓存时间
+                                  final bluetoothTimeRaw = _bluetoothTimeMap[deviceId] ?? '—';
+                                  
+                                  // 对比LOT表、对时表、蓝牙缓存的时间，取最晚的
                                   String finalTimeRaw;
                                   bool timeFromSync; // true=来自对时表(时钟图标), false=来自LOT表(绿点)
                                   final lotDt = _parseTimeToDateTime(lotTimeRaw);
                                   final syncDt = _parseTimeToDateTime(syncTimeRaw);
+                                  final btDt = _parseTimeToDateTime(bluetoothTimeRaw);
                                   
-                                  if (lotDt != null && syncDt != null) {
-                                    if (syncDt.isAfter(lotDt)) {
-                                      finalTimeRaw = syncTimeRaw;
-                                      timeFromSync = true;
-                                    } else {
-                                      finalTimeRaw = lotTimeRaw;
-                                      timeFromSync = false;
-                                    }
-                                  } else if (syncDt != null) {
+                                  // 找出三个时间中最晚的
+                                  DateTime? latestDt;
+                                  String latestSource = 'lot'; // 'lot', 'sync', 'bluetooth'
+                                  
+                                  if (lotDt != null) {
+                                    latestDt = lotDt;
+                                    latestSource = 'lot';
+                                  }
+                                  if (syncDt != null && (latestDt == null || syncDt.isAfter(latestDt))) {
+                                    latestDt = syncDt;
+                                    latestSource = 'sync';
+                                  }
+                                  if (btDt != null && (latestDt == null || btDt.isAfter(latestDt))) {
+                                    latestDt = btDt;
+                                    latestSource = 'bluetooth';
+                                  }
+                                  
+                                  if (latestSource == 'sync') {
                                     finalTimeRaw = syncTimeRaw;
                                     timeFromSync = true;
+                                  } else if (latestSource == 'bluetooth') {
+                                    finalTimeRaw = bluetoothTimeRaw;
+                                    // 蓝牙类型1/5=定位→绿点，类型2=对时→时钟
+                                    final btType = _bluetoothTypeMap[deviceId] ?? '';
+                                    timeFromSync = (btType == '2');
                                   } else {
                                     finalTimeRaw = lotTimeRaw;
                                     timeFromSync = false;
@@ -566,10 +646,10 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                             ),
                                           ),
                                           const SizedBox(width: 8),
-                                          // 状态图标：LOT表用绿点，对时表用时钟
+                                          // 状态图标：颜色跟随时间
                                           showGreenDot
-                                              ? const Icon(Icons.circle, size: 10, color: Color(0xFF2ECC71))
-                                              : Icon(Icons.access_time, size: 18, color: Colors.grey[400]),
+                                              ? Icon(Icons.circle, size: 10, color: isRecent ? const Color(0xFF2ECC71) : Colors.grey[500])
+                                              : Icon(Icons.access_time, size: 18, color: isRecent ? const Color(0xFF2ECC71) : Colors.grey[500]),
                                           const SizedBox(width: 8),
                                           // 时间标签
                                           Container(

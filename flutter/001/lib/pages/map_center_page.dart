@@ -1599,6 +1599,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
             left: 16,
             bottom: 16,
             child: FloatingActionButton.small(
+              heroTag: 'map_route_place_fab',
               onPressed: _toggleRouteAndPlace,
               backgroundColor: _showRouteAndPlace ? Colors.blue : Colors.white,
               child: _isLoadingRoutePlace
@@ -1624,6 +1625,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
             child: GestureDetector(
               onLongPress: _refreshDevicePositions,
               child: FloatingActionButton.small(
+                heroTag: 'map_device_display_fab',
                 onPressed: _toggleDeviceDisplay,
                 backgroundColor: _showDevices ? Colors.red : Colors.white,
                 child: Icon(
