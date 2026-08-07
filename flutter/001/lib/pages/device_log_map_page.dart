@@ -356,30 +356,30 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                   settings: FMTCTileProviderSettings(),
                 ),
               ),
-              // 定位标记 + 气泡提示 + 设备标签
+              // 坐标图标 + 提示框（合并为一个Marker，Column纵向排列）
               MarkerLayer(
                 markers: [
                   Marker(
                     point: markerPoint,
-                    width: 320,
-                    height: 130,
+                    width: 280,
+                    height: 200,
                     alignment: Alignment.bottomCenter,
                     child: GestureDetector(
                       onTap: () => setState(() { _showMarkerInfo = !_showMarkerInfo; }),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // 气泡提示框
+                          // 提示框（点击后显示）
                           if (_showMarkerInfo)
                             Container(
-                              margin: const EdgeInsets.only(bottom: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(10),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.15),
+                                    color: Colors.black.withValues(alpha: 0.2),
                                     blurRadius: 8,
                                     offset: const Offset(0, 2),
                                   ),
@@ -387,38 +387,26 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '设备:${widget.deviceId}',
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                                    '设备: ${widget.deviceId}',
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'GPS:${widget.latitude.toStringAsFixed(4)},${widget.longitude.toStringAsFixed(5)}',
-                                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                    'GPS: ${widget.latitude.toStringAsFixed(4)}, ${widget.longitude.toStringAsFixed(5)}',
+                                    style: const TextStyle(fontSize: 12, color: Colors.black54),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 2),
                                   Text(
-                                    '更新:${widget.time}',
-                                    style: const TextStyle(fontSize: 13, color: Colors.black54),
+                                    '更新: ${widget.time}',
+                                    style: const TextStyle(fontSize: 12, color: Colors.black54),
                                   ),
                                 ],
                               ),
                             ),
-                          // 向下三角箭头
-                          if (_showMarkerInfo)
-                            Container(
-                              width: 0,
-                              height: 0,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  left: BorderSide(width: 8, color: Colors.transparent),
-                                  right: BorderSide(width: 8, color: Colors.transparent),
-                                  top: BorderSide(width: 8, color: Colors.white),
-                                ),
-                              ),
-                            ),
-                          // 坐标圆点 + 设备标签
+                          // 坐标圆点 + 设备名标签（横向排列）
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -443,7 +431,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                                   size: 18,
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
@@ -451,7 +439,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                                   borderRadius: BorderRadius.circular(6),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.1),
+                                      color: Colors.black.withValues(alpha: 0.15),
                                       blurRadius: 4,
                                       offset: const Offset(0, 1),
                                     ),
@@ -695,4 +683,3 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
     );
   }
 }
-
