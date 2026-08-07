@@ -592,7 +592,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                   // 构建显示名称：deviceId (rename) (upDateDevice)
                                   String displayName = deviceId;
                                   if (rename != '—') displayName += ' ($rename)';
-                             
+
                             // 根据单行显示设置选择不同的显示方式
                             if (_singleLineDisplay) {
                               return Column(

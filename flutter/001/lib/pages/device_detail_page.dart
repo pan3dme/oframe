@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import 'device_log_map_page.dart';
 
 /// 设备详情页面
 class DeviceDetailPage extends StatefulWidget {
@@ -172,6 +173,41 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
 
       debugPrint('[离线日志] 匹配到 ${matchedLogs.length} 条记录(设备标记=$deviceId)');
 
+      // 同时从LOT缓存表取一条定位记录
+      try {
+        final lotData = await DBHelper().getDeviceLotByDeviceId(deviceId);
+        if (lotData != null) {
+          final lotLog = <String, dynamic>{
+            'time': lotData['time'] ?? '',
+            'deviceId': deviceId,
+            'lorastr': lotData['lorastr'] ?? '',
+            'upDateDevice': lotData['upDateDevice'] ?? '',
+            'type': '1', // LOT记录视为定位类型
+            'rssi': null,
+            'snr': null,
+            '_fromCache': true,
+          };
+          // 插入到列表开头（最新位置）
+          matchedLogs.insert(0, lotLog);
+          debugPrint('[离线日志] 从LOT缓存补充1条定位记录');
+        }
+      } catch (e) {
+        debugPrint('[离线日志] LOT缓存加载失败: $e');
+      }
+
+      // 按时间降序排序（最新在最上面）
+      // 先打印时间用于调试
+      for (final log in matchedLogs) {
+        final t = log['time']?.toString() ?? '';
+        final parsed = _parseCacheTime(t);
+        debugPrint('[离线排序] time="$t" => parsed=$parsed');
+      }
+      matchedLogs.sort((a, b) {
+        final ta = _parseCacheTime(a['time']?.toString() ?? '');
+        final tb = _parseCacheTime(b['time']?.toString() ?? '');
+        return tb.compareTo(ta); // 降序
+      });
+
       setState(() {
         if (reset) {
           _logs = matchedLogs;
@@ -188,6 +224,27 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         _isLoadingLogs = false;
         _isLoadingMore = false;
       });
+    }
+  }
+
+  /// 解析缓存时间字符串（格式如 "2026/6/12 13:12:44"）
+  DateTime _parseCacheTime(String timeStr) {
+    try {
+      // 格式: "2026/6/12 13:12:44"，月/日可能是一位数
+      final datePart = timeStr.split(' ')[0]; // "2026/6/12"
+      final timePart = timeStr.split(' ').length > 1 ? timeStr.split(' ')[1] : '00:00:00'; // "13:12:44"
+      final dp = datePart.split('/');
+      final tp = timePart.split(':');
+      return DateTime(
+        int.parse(dp[0]), // year
+        dp.length > 1 ? int.parse(dp[1]) : 1, // month
+        dp.length > 2 ? int.parse(dp[2]) : 1, // day
+        tp.length > 0 ? int.parse(tp[0]) : 0, // hour
+        tp.length > 1 ? int.parse(tp[1]) : 0, // minute
+        tp.length > 2 ? int.parse(tp[2]) : 0, // second
+      );
+    } catch (_) {
+      return DateTime.fromMillisecondsSinceEpoch(0); // 解析失败放最后
     }
   }
 
@@ -486,6 +543,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final lorastr = _str(log['lorastr']);
     final upDateDevice = _str(log['upDateDevice']);
     final typeInfo = _getTypeInfo(log['type']);
+    final typeStr = log['type']?.toString() ?? '';
     
     // 直接取 rssi 和 snr 字段
     final rssiVal = log['rssi'];
@@ -493,7 +551,10 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final rssi = rssiVal != null ? '${rssiVal}dBm' : '—';
     final snr = snrVal != null ? snrVal.toString() : '—';
 
-    return Container(
+    // type 1(定位) 或 5(跟踪) 有GPS坐标，可点击查看地图
+    final bool hasGps = typeStr == '1' || typeStr == '5';
+
+    Widget card = Container(
       color: isEven ? const Color(0xFFE8F5E9) : const Color(0xFFE3F2FD),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -582,6 +643,63 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             ],
           ),
         ],
+      ),
+    );
+
+    // type 1/5 可点击查看地图
+    if (hasGps) {
+      return GestureDetector(
+        onTap: () => _openLogMap(log, lorastr, logDeviceId, typeStr),
+        child: Stack(
+          children: [
+            card,
+            // 右上角地图图标提示
+
+          ],
+        ),
+      );
+    }
+    return card;
+  }
+
+  /// 打开日志定位地图
+  void _openLogMap(Map<String, dynamic> log, String lorastr, String deviceId, String type) {
+    // 从 lorastr 解析 GPS 坐标：格式 "type|deviceMarker|lat,lng|value"
+    final parts = lorastr.split('|');
+    if (parts.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该记录无GPS坐标信息')),
+      );
+      return;
+    }
+    final gpsStr = parts[2]; // "lat,lng"
+    final gpsParts = gpsStr.split(',');
+    if (gpsParts.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GPS坐标格式异常')),
+      );
+      return;
+    }
+    final lat = double.tryParse(gpsParts[0].trim());
+    final lng = double.tryParse(gpsParts[1].trim());
+    if (lat == null || lng == null || (lat == 0 && lng == 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GPS坐标无效（为0或格式错误）')),
+      );
+      return;
+    }
+    final time = _str(log['time']);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DeviceLogMapPage(
+          latitude: lat,
+          longitude: lng,
+          time: time,
+          deviceId: deviceId,
+          type: type,
+        ),
       ),
     );
   }
