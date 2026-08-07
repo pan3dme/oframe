@@ -43,7 +43,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
   // 页面实例变量
   List<Map<String, dynamic>> _cachedBluetoothData = []; // 缓存的蓝牙数据
   bool _isUploading = false; // 是否正在上传
-  bool _uploadPaused = false; // 上传是否因断网暂停
+  bool _autoUpload = false; // 是否开启自动上传
   bool _scanCompleted = false; // 扫描是否已完成
   String? _filterType; // 数据过滤类型: null=全部, '1'=GPS, '2'=对时, '3'=电量
   
@@ -76,6 +76,14 @@ class _BluetoothPageState extends State<BluetoothPage> {
     // 先加载缓存数据，加载完成后再开始扫描
     _loadCachedBluetoothData().then((_) {
       print('[蓝牙] 缓存数据加载完成，共 ${_cachedBluetoothData.length} 条');
+      // 有缓存数据时自动开启上传
+      if (_cachedBluetoothData.isNotEmpty) {
+        setState(() {
+          _autoUpload = true;
+        });
+        _processUploadQueue();
+        print('[蓝牙] 检测到缓存数据，自动开启上传');
+      }
       // 如果已有静态连接（从其他页面返回），恢复状态监听
       if (_connectedDevice != null && _connectionState == BluetoothConnectionState.connected) {
         print('[蓝牙] 检测到已有连接，恢复状态...');
@@ -135,28 +143,31 @@ class _BluetoothPageState extends State<BluetoothPage> {
   
 
 
-  /// 切换上传/暂停上传状态
-  void _toggleUpload() {
-    if (_isUploading) {
-      // 暂停上传
-      setState(() {
-        _isUploading = false;
-        _uploadPaused = true;
-      });
-      print('[蓝牙上传] 用户暂停上传');
-    } else {
-      // 开始/恢复上传
-      setState(() {
-        _isUploading = true;
-        _uploadPaused = false;
-      });
+  /// 切换自动上传开关
+  void _toggleAutoUpload() {
+    setState(() {
+      _autoUpload = !_autoUpload;
+    });
+    print('[蓝牙上传] 自动上传: ${_autoUpload ? "开启" : "关闭"}');
+    if (_autoUpload && !_isUploading) {
       _processUploadQueue();
     }
   }
 
-  /// 处理上传队列（持续运行，上传中新数据也会自动进入队列）
+  /// 尝试自动触发上传（有新数据时调用）
+  void _tryAutoUpload() {
+    if (_autoUpload && !_isUploading && _cachedBluetoothData.isNotEmpty) {
+      print('[蓝牙上传] 检测到新数据，自动触发上传');
+      _processUploadQueue();
+    }
+  }
+
+  /// 处理上传队列（自动模式：有数据就持续上传，无数据则等待）
   Future<void> _processUploadQueue() async {
-    while (_isUploading) {
+    if (_isUploading) return; // 防止重复启动
+    setState(() => _isUploading = true);
+    
+    while (_autoUpload) {
       // 等待缓存数据加载完成
       await _loadCachedBluetoothData();
       
@@ -166,108 +177,109 @@ class _BluetoothPageState extends State<BluetoothPage> {
         continue;
       }
 
-      final item = _cachedBluetoothData.first;
-      try {
-        final dataStr = item['data'] ?? '';
-        final dataId = item['id'] as int;
-
-        print('[蓝牙上传] 原始数据: $dataStr');
-        
-        String deviceId = '';
-        String lorastr = '';
-        String upDateDevice = '';
-        String time = item['time'] ?? formatTime(DateTime.now());
-        
+      // 自动上传模式下，逐条上传所有缓存数据
+      final itemsToUpload = List<Map<String, dynamic>>.from(_cachedBluetoothData);
+      for (final item in itemsToUpload) {
+        if (!_autoUpload) break; // 用户关闭了自动上传
         try {
-          final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
-          lorastr = jsonData['info'] ?? '';
-          upDateDevice = jsonData['upDateDevice'] ?? '';
-          time = jsonData['time'] ?? time;
+          final dataStr = item['data'] ?? '';
+          final dataId = item['id'] as int;
+
+          print('[蓝牙上传] 原始数据: $dataStr');
           
-          if (lorastr.contains('|')) {
-            final parts = lorastr.split('|');
-            if (parts.length >= 2) {
-              deviceId = parts[1];
+          String deviceId = '';
+          String lorastr = '';
+          String upDateDevice = '';
+          String time = item['time'] ?? formatTime(DateTime.now());
+          String rssi = '';
+          String snr = '';
+          
+          try {
+            final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+            lorastr = jsonData['info'] ?? '';
+            upDateDevice = jsonData['upDateDevice'] ?? '';
+            time = jsonData['time'] ?? time;
+            rssi = jsonData['rssi']?.toString() ?? '';
+            snr = jsonData['snr']?.toString() ?? '';
+            
+            if (lorastr.contains('|')) {
+              final parts = lorastr.split('|');
+              if (parts.length >= 2) {
+                deviceId = parts[1];
+              }
             }
+            
+            print('[蓝牙上传] 解析数据: deviceId=$deviceId, lorastr=$lorastr, upDateDevice=$upDateDevice, time=$time, rssi=$rssi, snr=$snr');
+          } catch (e) {
+            print('[蓝牙上传] 解析数据失败: $e');
           }
           
-          print('[蓝牙上传] 解析数据: deviceId=$deviceId, lorastr=$lorastr, upDateDevice=$upDateDevice, time=$time');
-        } catch (e) {
-          print('[蓝牙上传] 解析数据失败: $e');
-        }
-        
-        final resp = await http.post(
-          Uri.parse('https://gpsmoveinfo.cn/fc/device'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'action': 'insertlog',
-            'info': {
-              'deviceId': deviceId,
-              'lorastr': lorastr,
-              'upDateDevice': upDateDevice,
-              'time': time,
-            },
-          }),
-        );
+          final resp = await http.post(
+            Uri.parse('https://gpsmoveinfo.cn/fc/device'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'action': 'insertlog',
+              'info': {
+                'deviceId': deviceId,
+                'lorastr': lorastr,
+                'upDateDevice': upDateDevice,
+                'time': time,
+                'rssi': rssi,
+                'snr': snr,
+              },
+            }),
+          );
 
-        if (resp.statusCode == 200) {
-          final json = jsonDecode(resp.body) as Map<String, dynamic>;
-          if (json['status'] == 'success') {
-            print('[蓝牙上传] 成功上传: deviceId=$deviceId');
-            await DBHelper().deleteBluetoothDataById(dataId);
-            await _loadCachedBluetoothData();
+          if (resp.statusCode == 200) {
+            final json = jsonDecode(resp.body) as Map<String, dynamic>;
+            if (json['status'] == 'success') {
+              print('[蓝牙上传] 成功上传: deviceId=$deviceId');
+              await DBHelper().deleteBluetoothDataById(dataId);
+              await _loadCachedBluetoothData();
+            } else {
+              print('[蓝牙上传] 上传失败: ${json['msg']}');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('上传失败: ${json['msg']}'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+              await Future.delayed(const Duration(seconds: 3));
+            }
           } else {
-            print('[蓝牙上传] 上传失败: ${json['msg']}');
-            setState(() {
-              _isUploading = false;
-              _uploadPaused = true;
-            });
+            print('[蓝牙上传] HTTP错误: ${resp.statusCode}');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('上传失败: ${json['msg']}'),
+                  content: Text('HTTP错误: ${resp.statusCode}'),
                   backgroundColor: Colors.red,
                   duration: const Duration(seconds: 3),
                 ),
               );
             }
-            break;
+            await Future.delayed(const Duration(seconds: 3));
           }
-        } else {
-          print('[蓝牙上传] HTTP错误: ${resp.statusCode}');
-          setState(() {
-            _isUploading = false;
-            _uploadPaused = true;
-          });
+        } catch (e) {
+          print('[蓝牙上传] 上传失败（可能断网）: $e');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('HTTP错误: ${resp.statusCode}'),
+                content: Text('上传失败（可能断网）: $e'),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 3),
               ),
             );
           }
-          break;
+          await Future.delayed(const Duration(seconds: 5));
         }
-      } catch (e) {
-        print('[蓝牙上传] 上传失败（可能断网）: $e');
-        setState(() {
-          _isUploading = false;
-          _uploadPaused = true;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('上传失败（可能断网）: $e'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-        break;
       }
     }
+    
+    setState(() => _isUploading = false);
+    print('[蓝牙上传] 自动上传已停止');
   }
 
   /// 刷新缓存计数
@@ -341,10 +353,10 @@ class _BluetoothPageState extends State<BluetoothPage> {
     _scanResultSubscription?.cancel();
     try { FlutterBluePlus.stopScan(); } catch (_) {}
     
-    // 停止上传（上传是页面级操作）
-    if (_isUploading) {
-      _isUploading = false;
-      print('[蓝牙] 页面退出，停止上传');
+    // 关闭自动上传（上传循环会自行退出）
+    if (_autoUpload) {
+      _autoUpload = false;
+      print('[蓝牙] 页面退出，关闭自动上传');
     }
     
     super.dispose();
@@ -695,6 +707,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
       await DBHelper().saveBluetoothData(deviceName, deviceId, data, time);
       if (mounted) {
         await _loadCachedBluetoothData();
+        // 新数据入库后，尝试自动上传
+        _tryAutoUpload();
       }
     } catch (e) {
       print('[蓝牙] 后台处理数据失败: $e');
@@ -1167,28 +1181,52 @@ class _BluetoothPageState extends State<BluetoothPage> {
                           ),
                         ),
                       ),
-                      ElevatedButton.icon(
-                        onPressed: _toggleUpload,
-                        icon: _isUploading
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : (_uploadPaused
-                                ? const Icon(Icons.play_arrow, size: 16)
-                                : const Icon(Icons.upload, size: 16)),
-                        label: Text(_isUploading ? '上传中' : (_uploadPaused ? '暂停上传' : '上传')),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                      GestureDetector(
+                        onTap: _toggleAutoUpload,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _autoUpload
+                                ? Colors.green.withValues(alpha: 0.12)
+                                : Colors.grey.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: _autoUpload ? Colors.green : Colors.grey.shade400,
+                              width: 1.2,
+                            ),
                           ),
-                          backgroundColor: _isUploading ? Colors.green : (_uploadPaused ? Colors.orange : Colors.blue),
-                          foregroundColor: Colors.white,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_isUploading)
+                                const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.green),
+                                )
+                              else
+                                Icon(
+                                  _autoUpload ? Icons.cloud_done : Icons.cloud_upload,
+                                  size: 16,
+                                  color: _autoUpload ? Colors.green : Colors.grey.shade600,
+                                ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _autoUpload ? '自动上传' : '自动上传',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _autoUpload ? Colors.green : Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(
+                                _autoUpload ? Icons.toggle_on : Icons.toggle_off,
+                                size: 18,
+                                color: _autoUpload ? Colors.green : Colors.grey.shade500,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -1200,10 +1238,10 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
           // 操作按钮Card
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Card(
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 child: Row(
                   children: [
                     // 左按钮：未连接「连接蓝牙」 / 已连接「断开连接」
@@ -1218,20 +1256,22 @@ class _BluetoothPageState extends State<BluetoothPage> {
                               : (_isScanning
                                   ? Icons.search
                                   : Icons.bluetooth_searching),
+                          size: 18,
                         ),
                         label: Text(
                           _isConnected
                               ? '断开连接'
                               : (_isScanning ? '扫描中...' : '连接蓝牙'),
+                          style: const TextStyle(fontSize: 13),
                         ),
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
                           backgroundColor: _isConnected ? Colors.red : Colors.blue,
                           foregroundColor: Colors.white,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     // 右按钮：未连接灰色「同步数据」 / 已连接「同步」 / 同步中「停止同步」
                     Expanded(
                       child: ElevatedButton.icon(
@@ -1240,14 +1280,16 @@ class _BluetoothPageState extends State<BluetoothPage> {
                             : null,
                         icon: Icon(
                           _isSyncing ? Icons.sync_disabled : Icons.sync,
+                          size: 18,
                         ),
                         label: Text(
                           _isSyncing
                               ? '停止同步'
                               : (_isConnected ? '同步' : '同步数据'),
+                          style: const TextStyle(fontSize: 13),
                         ),
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
                           backgroundColor: _isSyncing ? Colors.orange : Colors.blue,
                           foregroundColor: Colors.white,
                           disabledBackgroundColor: Colors.grey.shade300,
@@ -1337,14 +1379,26 @@ class _BluetoothPageState extends State<BluetoothPage> {
                               ),
                               ..._scanResults.map((device) {
                                 return Card(
-                                  margin: const EdgeInsets.symmetric(vertical: 2),
-                                  child: ListTile(
-                                    dense: true,
-                                    leading: const Icon(Icons.bluetooth, size: 20),
-                                    title: Text(_getDeviceName(device), style: const TextStyle(fontSize: 13)),
-                                    subtitle: Text(device.remoteId.str, style: const TextStyle(fontSize: 11)),
-                                    trailing: const Icon(Icons.chevron_right, size: 16),
+                                  margin: const EdgeInsets.symmetric(vertical: 1),
+                                  child: InkWell(
                                     onTap: () => _connectToDevice(device),
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.bluetooth, size: 16, color: Colors.blue[600]),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              _getDeviceName(device),
+                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                            ),
+                                          ),
+                                          Icon(Icons.chevron_right, size: 16, color: Colors.grey.shade400),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 );
                               }),
@@ -1548,24 +1602,32 @@ class _BluetoothPageState extends State<BluetoothPage> {
   Widget _buildConnectedInfo() {
     return Column(
       children: [
-        // 设备信息卡片 - 精简版
+        // 设备信息卡片
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Card(
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
                   const Icon(Icons.bluetooth_connected,
-                      size: 32, color: Colors.blue),
-                  const SizedBox(width: 12),
+                      size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _connectedDevice != null
                           ? _getDeviceName(_connectedDevice!)
                           : '未知设备',
                       style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold),
+                          fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
                     ),
                   ),
                 ],
