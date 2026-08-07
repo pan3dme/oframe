@@ -274,6 +274,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final deviceKey = _str(widget.device['device_key']);
     final linkCowSheepId = _str(widget.device['link_cowsheep_id']);
     final productKey = _str(widget.device['ProductKey']);
+    final picurl = widget.device['picurl']?.toString() ?? '';
     
     // LOT数据
     final timeRaw = widget.deviceLot != null ? _str(widget.deviceLot!['time']) : '—';
@@ -304,35 +305,41 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 左侧图片上传区域
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.4),
-                            width: 2,
+                      // 左侧设备图像区域
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.4),
+                              width: 2,
+                            ),
                           ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.satellite_alt,
-                              size: 32,
-                              color: Colors.white.withOpacity(0.8),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '点击上传',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.white.withOpacity(0.8),
-                              ),
-                            ),
-                          ],
+                          child: picurl.isNotEmpty
+                              ? Image.network(
+                                  picurl,
+                                  width: 80,
+                                  height: 80,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    child: const Icon(
+                                      Icons.gps_fixed,
+                                      size: 40,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  child: const Icon(
+                                    Icons.gps_fixed,
+                                    size: 40,
+                                    color: Colors.white,
+                                  ),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -350,7 +357,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _buildInfoRowWhite('设备编码', deviceKey),
+
                             _buildInfoRowWhite(
                               '绑定牛羊',
                               linkCowSheepId == '—' ? '未绑定' : linkCowSheepId,
@@ -360,16 +367,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                             ),
                             _buildInfoRowWhite('上次换电', '—'),
                             const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                _buildSmallIcon(Icons.cloud_upload, () {}),
-                                const SizedBox(width: 8),
-                                _buildSmallIcon(Icons.location_on, () {}),
-                                const SizedBox(width: 8),
-                                _buildSmallIcon(Icons.map, () {}),
-                              ],
-                            ),
+
                           ],
                         ),
                       ),
@@ -377,17 +375,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                   ),
                 ),
                 // 右上角操作按钮
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Row(
-                    children: [
-                      _buildActionButton(Icons.edit, Colors.amber, () {}),
-                      const SizedBox(width: 8),
-                      _buildActionButton(Icons.link, Colors.white, () {}),
-                    ],
-                  ),
-                ),
+
               ],
             ),
           ),
