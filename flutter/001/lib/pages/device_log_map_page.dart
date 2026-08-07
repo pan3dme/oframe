@@ -89,9 +89,11 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
     setState(() { _isLoadingRoutePlace = true; });
     try {
       await _loadFromCache();
+      debugPrint('[道路地名] 缓存加载后: allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}, displayedRoute=${_displayedRouteData.length}, displayedPlace=${_displayedPlaceData.length}');
       final shouldFetch = await _shouldFetchFromNetwork();
       if (shouldFetch) {
         await _loadFromNetwork();
+        debugPrint('[道路地名] 网络加载后: allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}');
         final now = DateTime.now();
         final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
         setState(() { _lastRoutePlaceFetchDate = today; });
@@ -176,6 +178,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
 
   void _calculateMaxLevel() {
     int maxLevel = 1;
+    // 检查道路数据中的最大level
     for (final route in _allRouteData) {
       try {
         final attributes = route['attributes'] as List<dynamic>?;
@@ -191,7 +194,24 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
         }
       } catch (_) {}
     }
+    // 检查地名数据中的最大level
+    for (final place in _allPlaceData) {
+      try {
+        final attributes = place['attributes'] as List<dynamic>?;
+        if (attributes != null) {
+          for (final attr in attributes) {
+            final attrMap = attr as Map<String, dynamic>;
+            if (attrMap['columnName'] == 'level') {
+              final v = int.tryParse(attrMap['columnValue']?.toString() ?? '') ?? 1;
+              if (v > maxLevel) maxLevel = v;
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
     setState(() { _maxAvailableLevel = maxLevel; });
+    debugPrint('[Level计算] 数据中最大level值为: $_maxAvailableLevel');
   }
 
   void _filterDataByLevel() {
@@ -232,11 +252,14 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
         return level <= _currentLevel;
       }).toList();
     }
+    debugPrint('[Level过滤] 当前level=$_currentLevel, 全部道路=${_allRouteData.length}, 显示道路=${_displayedRouteData.length}, 全部地名=${_allPlaceData.length}, 显示地名=${_displayedPlaceData.length}');
   }
 
   void _toggleRouteAndPlace() async {
+    debugPrint('[Toggle] 开始切换: showRouteAndPlace=$_showRouteAndPlace, currentLevel=$_currentLevel, maxLevel=$_maxAvailableLevel, allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}, isLoading=$_isLoadingRoutePlace');
     if (_allRouteData.isEmpty && _allPlaceData.isEmpty && !_isLoadingRoutePlace) {
       await _loadRouteAndPlaceData();
+      debugPrint('[Toggle] 加载完成: allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}');
       if (_allRouteData.isNotEmpty || _allPlaceData.isNotEmpty) {
         _calculateMaxLevel();
         setState(() {
@@ -245,13 +268,18 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
           _filterDataByLevel();
           _updateLevelStatus();
         });
+        debugPrint('[Toggle] 首次显示: displayedRoute=${_displayedRouteData.length}, displayedPlace=${_displayedPlaceData.length}');
+      } else {
+        debugPrint('[Toggle] 数据为空，无法显示');
       }
       return;
     }
+    debugPrint('[Toggle] 切换后: showRouteAndPlace=$_showRouteAndPlace, currentLevel=$_currentLevel');
     setState(() {
       if (!_showRouteAndPlace) {
         _showRouteAndPlace = true;
         _currentLevel = 1;
+        _filterDataByLevel();
       } else {
         if (_currentLevel < _maxAvailableLevel) {
           _currentLevel++;
@@ -262,6 +290,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       }
       _updateLevelStatus();
     });
+    debugPrint('[Toggle] 切换完成: displayedRoute=${_displayedRouteData.length}, displayedPlace=${_displayedPlaceData.length}');
   }
 
   void _updateLevelStatus() {
@@ -270,67 +299,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) setState(() { _levelStatus = ''; });
     });
-  }
-
-  /// 解析道路坐标点
-  List<LatLng> _parseRoutePoints(Map<String, dynamic> route) {
-    final points = <LatLng>[];
-    try {
-      final attributes = route['attributes'] as List<dynamic>?;
-      if (attributes != null) {
-        for (final attr in attributes) {
-          final attrMap = attr as Map<String, dynamic>;
-          if (attrMap['columnName'] == 'roadinfo') {
-            final val = attrMap['columnValue']?.toString() ?? '';
-            if (val.contains(',')) {
-              final parts = val.split(',');
-              for (int i = 0; i < parts.length - 1; i += 2) {
-                final wgsLat = double.tryParse(parts[i].trim()) ?? 0;
-                final wgsLng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                if (wgsLat != 0 && wgsLng != 0) {
-                  final gcj = CoordTransform.wgs84ToGcj02(wgsLat, wgsLng);
-                  points.add(LatLng(gcj[0], gcj[1]));
-                }
-              }
-            }
-            break;
-          }
-        }
-      }
-    } catch (_) {}
-    return points;
-  }
-
-  /// 解析地名
-  ({LatLng point, String name})? _parsePlace(Map<String, dynamic> place) {
-    double lat = 0, lng = 0;
-    String name = '';
-    try {
-      final attributes = place['attributes'] as List<dynamic>?;
-      if (attributes != null) {
-        for (final attr in attributes) {
-          final attrMap = attr as Map<String, dynamic>;
-          final col = attrMap['columnName']?.toString() ?? '';
-          final val = attrMap['columnValue']?.toString() ?? '';
-          if (col == 'gps' && val.contains(',')) {
-            final parts = val.split(',');
-            if (parts.length >= 2) {
-              final wgsLat = double.tryParse(parts[0].trim()) ?? 0;
-              final wgsLng = double.tryParse(parts[1].trim()) ?? 0;
-              if (wgsLat != 0 && wgsLng != 0) {
-                final gcj = CoordTransform.wgs84ToGcj02(wgsLat, wgsLng);
-                lat = gcj[0];
-                lng = gcj[1];
-              }
-            }
-          } else if (col == 'name') {
-            name = _sanitizeString(val);
-          }
-        }
-      }
-    } catch (_) {}
-    if (lat == 0 && lng == 0) return null;
-    return (point: LatLng(lat, lng), name: name);
   }
 
   @override
@@ -502,27 +470,128 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                   ),
                 ],
               ),
-              // 道路线条
+              // 显示道路标记（调试用）
+              if (_showRouteAndPlace && _displayedRouteData.isNotEmpty)
+                MarkerLayer(
+                  markers: _displayedRouteData.map((route) {
+                    String name = '';
+                    List<LatLng> roadPoints = [];
+                    try {
+                      final attributes = route['attributes'] as List<dynamic>?;
+                      if (attributes != null) {
+                        for (final attr in attributes) {
+                          final attrMap = attr as Map<String, dynamic>;
+                          final columnName = attrMap['columnName']?.toString() ?? '';
+                          final columnValue = attrMap['columnValue']?.toString() ?? '';
+                          if (columnName == 'roadinfo' && columnValue.contains(',')) {
+                            final parts = columnValue.split(',');
+                            if (parts.length >= 2) {
+                              for (int i = 0; i < parts.length - 1; i += 2) {
+                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
+                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
+                                if (wgs84Lat != 0 && wgs84Lng != 0) {
+                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
+                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
+                                }
+                              }
+                              debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
+                            }
+                          } else if (columnName == 'roadname') {
+                            name = _sanitizeString(columnValue);
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint('[道路] 解析失败: $e');
+                    }
+                    if (roadPoints.isEmpty) return null;
+                    return Marker(
+                      point: roadPoints.first,
+                      width: 1,
+                      height: 1,
+                      child: Container(),
+                    );
+                  }).whereType<Marker>().toList(),
+                ),
+              // 显示道路线条
               if (_showRouteAndPlace && _displayedRouteData.isNotEmpty)
                 PolylineLayer(
                   polylines: _displayedRouteData.map((route) {
-                    final points = _parseRoutePoints(route);
+                    List<LatLng> roadPoints = [];
+                    String name = '';
+                    try {
+                      final attributes = route['attributes'] as List<dynamic>?;
+                      if (attributes != null) {
+                        for (final attr in attributes) {
+                          final attrMap = attr as Map<String, dynamic>;
+                          final columnName = attrMap['columnName']?.toString() ?? '';
+                          final columnValue = attrMap['columnValue']?.toString() ?? '';
+                          if (columnName == 'roadinfo' && columnValue.contains(',')) {
+                            final parts = columnValue.split(',');
+                            if (parts.length >= 2) {
+                              for (int i = 0; i < parts.length - 1; i += 2) {
+                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
+                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
+                                if (wgs84Lat != 0 && wgs84Lng != 0) {
+                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
+                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
+                                }
+                              }
+                            }
+                          } else if (columnName == 'roadname') {
+                            name = _sanitizeString(columnValue);
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint('[道路线条] 解析失败: $e');
+                    }
                     return Polyline(
-                      points: points,
+                      points: roadPoints,
                       strokeWidth: 3,
                       color: Colors.white,
                     );
-                  }).where((p) => p.points.isNotEmpty).toList(),
+                  }).toList(),
                 ),
-              // 地名标记
+              // 显示地名标记
               if (_showRouteAndPlace && _displayedPlaceData.isNotEmpty)
                 MarkerLayer(
                   markers: _displayedPlaceData.map((place) {
-                    final parsed = _parsePlace(place);
-                    if (parsed == null) return null;
-                    final safeName = _sanitizeString(parsed.name);
+                    double lat = 0;
+                    double lng = 0;
+                    String name = '';
+                    try {
+                      final attributes = place['attributes'] as List<dynamic>?;
+                      if (attributes != null) {
+                        for (final attr in attributes) {
+                          final attrMap = attr as Map<String, dynamic>;
+                          final columnName = attrMap['columnName']?.toString() ?? '';
+                          final columnValue = attrMap['columnValue']?.toString() ?? '';
+                          if (columnName == 'gps' && columnValue.contains(',')) {
+                            final parts = columnValue.split(',');
+                            if (parts.length >= 2) {
+                              final wgs84Lat = double.tryParse(parts[0].trim()) ?? 0;
+                              final wgs84Lng = double.tryParse(parts[1].trim()) ?? 0;
+                              if (wgs84Lat != 0 && wgs84Lng != 0) {
+                                final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
+                                lat = gcj02Coord[0];
+                                lng = gcj02Coord[1];
+                                debugPrint('[地名坐标转换] WGS-84: ($wgs84Lat, $wgs84Lng) -> GCJ-02: ($lat, $lng)');
+                              }
+                            }
+                          } else if (columnName == 'name') {
+                            name = _sanitizeString(columnValue);
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint('[地名] 解析失败: $e, 原始数据: $place');
+                    }
+                    debugPrint('[地名标记] 名称: $name, 坐标: ($lat, $lng)');
+                    if (lat == 0 && lng == 0) return null;
+                    String safeName = _sanitizeString(name);
                     return Marker(
-                      point: parsed.point,
+                      point: LatLng(lat, lng),
                       width: 60,
                       height: 40,
                       child: Column(
