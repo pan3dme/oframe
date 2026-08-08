@@ -274,10 +274,28 @@ void meshCmdType(String infoStr, String tmp) {
     }
 
   } else if (infoStr.indexOf("config") != -1) {
-    configConfirmed = true;
-    tmp.toCharArray(config_str, sizeof(config_str));
-    DEBUG_PRINT("✅✅全局配置");
-    DEBUG_PRINTLN(config_str);
+    // tmp格式: "30,8-6,12-3"
+    // 第1段: roundTime(分钟)  第2段: work起始小时-持续时长  第3段: gps起始小时-持续时长
+    int rt = 0, wStart = 0, wDur = 0, gStart = 0, gDur = 0;
+    if (sscanf(tmp.c_str(), "%d,%d-%d,%d-%d", &rt, &wStart, &wDur, &gStart, &gDur) == 5) {
+      roundTime = rt * 60 * 1000;
+      int wEnd = (wStart + wDur) % 24;
+      int gEnd = (gStart + gDur) % 24;
+      sprintf(work_time_str, "%02d:00-%02d:00", wStart, wEnd);
+      sprintf(gps_time_str, "%02d:00-%02d:00", gStart, gEnd);
+      tmp.toCharArray(config_str, sizeof(config_str));
+      configConfirmed = true;
+      DEBUG_PRINT("✅✅全局配置 roundTime=");
+      DEBUG_PRINT(roundTime);
+      DEBUG_PRINT(" work=");
+      DEBUG_PRINT(work_time_str);
+      DEBUG_PRINT(" gps=");
+      DEBUG_PRINTLN(gps_time_str);
+
+    } else {
+      DEBUG_PRINT("❌全局配置格式错误：");
+      DEBUG_PRINTLN(tmp);
+    }
 
   } else if (infoStr.indexOf("minbattery") != -1) {
     int modeVal = tmp.toInt();
