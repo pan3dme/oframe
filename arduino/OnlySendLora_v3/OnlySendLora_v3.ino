@@ -38,6 +38,7 @@ RTC_DATA_ATTR int loraTxPower = 22;
 RTC_DATA_ATTR int16_t lastRssi = 0;
 RTC_DATA_ATTR int8_t lastSnr = 0;
 
+RTC_DATA_ATTR bool configConfirmed = false;
 RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
 RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
@@ -45,6 +46,7 @@ RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
 RTC_DATA_ATTR char lastrelayName[32] = "";             //
 RTC_DATA_ATTR char work_time_str[32] = "00:00-24:59";  // 默认工作时间
 RTC_DATA_ATTR char gps_time_str[32] = "09:09-09:09";   // gps上报时间
+RTC_DATA_ATTR char config_str[32] = "30,8-6,12-3";     // 命令集合
 
 
 
@@ -271,6 +273,11 @@ void meshCmdType(String infoStr, String tmp) {
       DEBUG_PRINTLN(tmp);
     }
 
+  } else if (infoStr.indexOf("config") != -1) {
+    configConfirmed = true;
+    tmp.toCharArray(config_str, sizeof(config_str));
+    DEBUG_PRINT("✅✅全局配置");
+    DEBUG_PRINTLN(config_str);
 
   } else if (infoStr.indexOf("minbattery") != -1) {
     int modeVal = tmp.toInt();
@@ -539,7 +546,16 @@ void testSheepFun() {
   unsigned long waittm = nextSendTime - millis();
   printTimeToString("到上报时间还有 ", nextSendTime - millis());
   // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
-  if (waittm > num6000) {
+  if ((waittm) > num6000) {
+    if (configConfirmed) {
+      //确认配置给两秒特殊插入数据，
+      configConfirmed = false;
+      sendLoraToMid(String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str));
+      delay(2000);
+      waittm = nextSendTime - millis();
+    }
+
+
     batteryLowSheep(minBatteryVolage);
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
@@ -688,14 +704,13 @@ void loop() {
       testSheepFun();
     }
     if (nextSendTime < millis()) {
-      typeindex = FLAG_TYPE_1;
 
+      typeindex = FLAG_TYPE_1;
       if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) > 0) {
-        String dataStr =
-          String(MSG_TYPE_GPS) + "|" + deviceName + "|" + needSendGpsStr;
+        sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + needSendGpsStr);
         strcpy(needSendGpsStr, "");
-        sendLoraToMid(dataStr);
       } else {
+
         sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(true));
       }
     }

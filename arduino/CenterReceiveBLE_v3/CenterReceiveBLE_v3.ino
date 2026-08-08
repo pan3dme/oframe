@@ -771,9 +771,6 @@ void loop() {
     String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + needSyncTimeDeviceid;
     dataStr += "|" + getCurrentTime(true) + "|" + deviceName;
 
-    //     String dataStr = String(MSG_TYPE_SYN_TIME_COPY) + "|" + needSyncTimeDeviceid;
-    // dataStr += "|" +String( getCurrentTimestampMs()) + "|" + deviceName;
-
 
 
     sendLoraToDeviceid(dataStr);

@@ -144,6 +144,9 @@ Page({
   onQuickMinBattery() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'minbattery', value: 50 }), quickSelected: 17 })
   },
+  onQuickConfig() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'config', value: '30,8-6,12-3' }), quickSelected: 18 })
+  },
 
   onWorkStartChange(e) {
     this.setData({ workStartTime: e.detail.value })
