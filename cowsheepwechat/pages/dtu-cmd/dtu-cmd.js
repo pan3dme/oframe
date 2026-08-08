@@ -141,6 +141,9 @@ Page({
   onQuickTxPower() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'txpower', value: 20 }), quickSelected: 16 })
   },
+  onQuickMinBattery() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'minbattery', value: 50 }), quickSelected: 17 })
+  },
 
   onWorkStartChange(e) {
     this.setData({ workStartTime: e.detail.value })

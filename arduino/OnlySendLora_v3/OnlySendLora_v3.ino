@@ -5,7 +5,7 @@
 
 // 调试开关：在 include pan3dme.h 之前定义，覆盖默认值
 // 1=开发模式（输出所有调试信息） 0=正式模式（仅输出关键信息）
- 
+
 
 #include "Arduino.h"
 #include "LoRaWan_APP.h"
@@ -33,6 +33,7 @@ int typeindex = FLAG_TYPE_0;
 RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
 RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
 RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
+RTC_DATA_ATTR float minBatteryVolage = 0.5;     //
 RTC_DATA_ATTR int loraTxPower = 22;
 RTC_DATA_ATTR int16_t lastRssi = 0;
 RTC_DATA_ATTR int8_t lastSnr = 0;
@@ -43,7 +44,7 @@ RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使�
 RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
 RTC_DATA_ATTR char lastrelayName[32] = "";             //
 RTC_DATA_ATTR char work_time_str[32] = "00:00-24:59";  // 默认工作时间
-RTC_DATA_ATTR char gps_time_str[32] = "09:09-16:30";   // gps上报时间
+RTC_DATA_ATTR char gps_time_str[32] = "09:09-09:09";   // gps上报时间
 
 
 
@@ -68,7 +69,7 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
   int nowMinutes = t.tm_hour * 60 + t.tm_min;
 
   DEBUG_PRINTF("    工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
-                startH, startM, endH, endM, t.tm_hour, t.tm_min);
+               startH, startM, endH, endM, t.tm_hour, t.tm_min);
 
   // 3. 判断是否在工作时间内
   bool inWorkTime = (nowMinutes >= startMinutes && nowMinutes <= endMinutes);
@@ -89,7 +90,7 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
 
   uint64_t adjustedUs = (uint64_t)waitMinutes * 60 * 1000000ULL;
   DEBUG_PRINTF("❌ 当前不在工作时间，%d分钟后开始工作，休眠%llu秒\n",
-                waitMinutes, adjustedUs / 1000000ULL);
+               waitMinutes, adjustedUs / 1000000ULL);
   return adjustedUs;
 }
 
@@ -146,8 +147,8 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   unsigned long seconds = (delayMillis % 60000) / 1000;
 
   DEBUG_PRINTF("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
-                timeStr.c_str(), deviceIndex, getSlotDuration(), minutes,
-                seconds);
+               timeStr.c_str(), deviceIndex, getSlotDuration(), minutes,
+               seconds);
 
   return millis() + delayMillis;
 }
@@ -162,7 +163,7 @@ void initLora() {
 
 
   if (rtcSendCount == rtcResiveIdx) {
-    if (abs(lastRssi) > 90||lastRssi==0) {
+    if (abs(lastRssi) > 90 || lastRssi == 0) {
       initPanRadio(&radioEvents, loraTxPower);
     } else {
       initPanRadio(&radioEvents, 15);
@@ -269,6 +270,16 @@ void meshCmdType(String infoStr, String tmp) {
       DEBUG_PRINT("❌gps时间格式错误：");
       DEBUG_PRINTLN(tmp);
     }
+
+
+  } else if (infoStr.indexOf("minbattery") != -1) {
+    int modeVal = tmp.toInt();
+    if (modeVal >= 10 && modeVal <= 80) {
+      DEBUG_PRINT("✅✅设置最底工作电量：");
+      minBatteryVolage = modeVal * 0.01;
+      DEBUG_PRINTLN(minBatteryVolage);
+    }
+
   } else if (infoStr.indexOf("sendmode") != -1) {
     // 11|v4-10|sendmode|1|0
     int modeVal = tmp.toInt();
@@ -503,17 +514,18 @@ void printCurrentTime() {
     // Serial.println("❌当前时间还没对时成功");
   }
 }
-
-void batteryLowSheep() {
+//电量不足进入24小时休眠
+void batteryLowSheep(float minValue) {
   int separatorIndex = batterystr.indexOf('|');
   String firstPart = batterystr.substring(0, separatorIndex);
-  float value = firstPart.toFloat();  // 可选
-  if (value < 0.1) {
+  float value = firstPart.toFloat();
+  if (value <= minValue) {
+    DEBUG_PRINTLN("❌❌❌电压过底电压过底电压过底❌❌❌");
     DEBUG_PRINTLN("电压过底，休眠24个小时");
     unsigned long endTm = millis() + 30000;
     while (endTm > millis()) {
       delay(1000);
-      DEBUG_PRINT("x");
+      DEBUG_PRINT("❌");
     }
     esp_sleep_enable_timer_wakeup(24 * 60 * 60 * 1000 * 1000ULL);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
@@ -528,6 +540,7 @@ void testSheepFun() {
   printTimeToString("到上报时间还有 ", nextSendTime - millis());
   // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
   if (waittm > num6000) {
+    batteryLowSheep(minBatteryVolage);
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
     DEBUG_PRINT("秒进入睡眠");
@@ -560,6 +573,9 @@ void testSheepFun() {
       setTimeFromTimestamp(adjustedMs);
       printTimestampMs(adjustedMs, "补偿后时间: ");
     }
+
+
+
     // esp_deep_sleep(sleepTime);
     esp_sleep_enable_timer_wakeup(sleepTime);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
@@ -571,7 +587,7 @@ void testSheepFun() {
       struct tm wt;
       localtime_r(&wakeTime, &wt);
       DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
-                    wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
+                   wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
     }
     Serial.flush();
     esp_deep_sleep_start();
@@ -585,7 +601,7 @@ void setup() {
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
   batterystr = readBatteryEndStr(deviceName);
-  batteryLowSheep();
+
   if (rtcSendCount == -1) {
     unsigned long endTm = millis() + 20000;
     while (endTm > millis()) {
@@ -594,6 +610,8 @@ void setup() {
     }
     rtcSendCount = 0;
   }
+  batteryLowSheep(0.1);
+
   if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) == 0) {
     meshGpsInfoFun(true);
     strcpy(needSendGpsStr, getGpsInfoStr().c_str());
@@ -663,7 +681,7 @@ void loop() {
       if (timeSynFlage) {  // 接收了同步时间
         if ((nextSendTime - millis()) < get_send_interval_ms() / 2) {
           DEBUG_PRINTLN("⚠️⚠️⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
-                       "要跳过这个窗口将时间后移到下一个周期⚠️⚠️⚠️");
+                        "要跳过这个窗口将时间后移到下一个周期⚠️⚠️⚠️");
           nextSendTime = nextSendTime + get_send_interval_ms();
         }
       }
