@@ -408,7 +408,7 @@ String readBatteryEndStr(String deviceName) {
   delay(10);
   pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
 
-  float batteryVoltage = mvAvg * 5.35 / 1000.0;
+  float batteryVoltage = mvAvg * 5.00 / 1000.0;
 
 //  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
 //                batteryVoltage);
@@ -418,8 +418,8 @@ String readBatteryEndStr(String deviceName) {
   float socRatio = soc / 100.0;
 
   String outStr = String(socRatio, 1) + "|" + String(batteryVoltage, 1);
-//  Serial.print("电量信息：");
-//  Serial.println(outStr);
+ Serial.print("电量信息：");
+ Serial.println(outStr);
 
   return outStr;
 }
