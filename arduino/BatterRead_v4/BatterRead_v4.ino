@@ -15,7 +15,7 @@ String batterystr = "";
 
 
 String readBatteryEndStrCopy(String deviceName) {
-  analogReadResolution(12);
+   analogReadResolution(12);
   pinMode(VBAT_CTRL_PIN, OUTPUT);
 
   // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
@@ -38,18 +38,18 @@ String readBatteryEndStrCopy(String deviceName) {
   delay(10);
   pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
 
-  float batteryVoltage = mvAvg * 5.35 / 1000.0;
+  float batteryVoltage = mvAvg * 5.00 / 1000.0;
 
-  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
-                batteryVoltage);
+ Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
+               batteryVoltage);
 
   int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 100);
   soc = constrain(soc, 0, 100);
   float socRatio = soc / 100.0;
 
-  String outStr = String(socRatio, 1) + "|" + String(batteryVoltage, 1);
-  Serial.print("电量信息：");
-  Serial.println(outStr);
+  String outStr = String(socRatio, 2) + "|" + String(batteryVoltage, 2);
+ Serial.print("电量信息：");
+ Serial.println(outStr);
 
 
 
