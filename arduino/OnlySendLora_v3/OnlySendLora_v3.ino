@@ -281,7 +281,21 @@ void meshCmdType(String infoStr, String tmp) {
       roundTime = rt * 60 * 1000;
       int wEnd = (wStart + wDur) % 24;
       int gEnd = (gStart + gDur) % 24;
-      sprintf(work_time_str, "%02d:00-%02d:00", wStart, wEnd);
+      // 工作时间校验：超过24点截断为23:59，至少持续2小时
+      int wEndRaw = wStart + wDur;
+      int wEndH, wEndM;
+      if (wEndRaw >= 24) {
+        wEndH = 23; wEndM = 59;
+      } else {
+        wEndH = wEndRaw; wEndM = 0;
+      }
+      int wDurationMin = (wEndH * 60 + wEndM) - wStart * 60;
+      if (wDurationMin >= 2 * 60) {
+        sprintf(work_time_str, "%02d:00-%02d:%02d", wStart, wEndH, wEndM);
+      } else {
+        DEBUG_PRINT("⚠️工作时间不足2小时: ");
+        DEBUG_PRINTF("%02d:00-%02d:%02d\n", wStart, wEndH, wEndM);
+      }
       sprintf(gps_time_str, "%02d:00-%02d:00", gStart, gEnd);
       tmp.toCharArray(config_str, sizeof(config_str));
       configConfirmed = true;
