@@ -14,27 +14,23 @@
 
     <!-- 右边：基本信息 -->
     <view class="header-info">
-      <text class="header-title">id: {{deviceInfo.deviceId}}<text wx:if="{{deviceInfo.rename}}">({{deviceInfo.rename}})</text></text>
+      <text class="header-title">{{deviceInfo.rename || deviceInfo.device_key || deviceInfo.deviceId}}</text>
       <view class="header-info-grid">
-        <view class="hi-item">
-          <text class="hi-label">设备编码</text>
-          <text class="hi-value">{{deviceInfo.device_key || '-'}}</text>
-        </view>
         <view class="hi-item">
           <text class="hi-label">绑定牛羊</text>
           <text class="hi-value hi-value-highlight">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
         </view>
         <view class="hi-item">
-          <text class="hi-label">ProductKey</text>
-          <text class="hi-value">{{deviceInfo.ProductKey || '-'}}</text>
+          <text class="hi-label">上报周期</text>
+          <text class="hi-value">{{deviceInfo.reportInterval || '-'}}分钟</text>
         </view>
         <view class="hi-item">
-          <text class="hi-label">DeviceName</text>
-          <text class="hi-value">{{deviceInfo.DeviceName || '-'}}</text>
+          <text class="hi-label">开机时间</text>
+          <text class="hi-value">{{deviceInfo.powerOnTime || '-'}}</text>
         </view>
         <view class="hi-item">
-          <text class="hi-label">记录时间</text>
-          <text class="hi-value">{{deviceInfo.date}} {{deviceInfo.time_part}}</text>
+          <text class="hi-label">GPS上报时间</text>
+          <text class="hi-value">{{deviceInfo.gpsReportTime || '-'}}</text>
         </view>
         <view class="hi-item">
           <text class="hi-label">上次换电</text>

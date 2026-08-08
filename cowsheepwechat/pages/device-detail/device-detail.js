@@ -37,7 +37,9 @@ Page({
     bindNameIndex: 0,
     livestockNames: [],
     // 管理员模式
-    isAdmin: false
+    isAdmin: false,
+    // 设备配置（getDeviceConfigAll）
+    deviceConfig: null
   },
 
   // 按设备名生成稳定的浅色背景色：同一设备始终同色，不同设备不同色
@@ -88,6 +90,7 @@ Page({
     this.setData({ deviceId, isAdmin })
     if (deviceId) {
       this.loadDeviceInfo(deviceId)
+      this.loadDeviceConfig(deviceId)
     }
   },
 
@@ -195,6 +198,96 @@ Page({
       this.setData({ deviceInfo: { ...item, bindName } })
       this.loadTodayRecords(0)
     })
+  },
+
+  // 拉取设备配置（上报周期/开机时间/GPS上报时间等）
+  loadDeviceConfig(deviceId) {
+    if (!deviceId) return
+    const that = this
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'getDeviceConfigAll',
+        info: { deviceId: deviceId }
+      },
+      success: (res) => {
+        console.log('设备配置查询返回:', JSON.stringify(res.data))
+        let rawList = []
+        if (res.data && res.data.data && Array.isArray(res.data.data)) {
+          rawList = res.data.data
+        } else if (Array.isArray(res.data)) {
+          rawList = res.data
+        }
+        if (rawList.length > 0) {
+          // 按 deviceId 匹配当前设备
+          const record = rawList.find(r => {
+            const devId = r.deviceId || (r.primaryKey && r.primaryKey.find(p => p.name === 'deviceId') ? r.primaryKey.find(p => p.name === 'deviceId').value : null)
+            return devId === deviceId
+          })
+          if (record) {
+            const attr = {}
+            if (record.attributes) {
+              record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+            }
+            if (record.primaryKey) {
+              record.primaryKey.forEach(item => { attr[item.name] = item.value })
+            }
+            // 也取直接的属性
+            if (record.lorastr) attr.lorastr = record.lorastr
+            const configLorastr = attr.lorastr || ''
+            // 解析配置：格式 6|v4-16|30,8-6,12-3|1.0|4.2|18
+            // 第3段(按|分)再按,分: 上报周期,开机时间,GPS上报时间
+            let reportInterval = '-'
+            let powerOnTime = '-'
+            let gpsReportTime = '-'
+            if (configLorastr) {
+              const parts = configLorastr.split('|')
+              if (parts.length >= 3 && parts[2]) {
+                const configParts = parts[2].split(',')
+                if (configParts.length >= 1) reportInterval = configParts[0].trim()
+                if (configParts.length >= 2) powerOnTime = this._formatTimeRange(configParts[1].trim())
+                if (configParts.length >= 3) gpsReportTime = this._formatTimeRange(configParts[2].trim())
+              }
+            }
+            // 更新 deviceInfo 中的配置信息
+            if (that.data.deviceInfo) {
+              const updated = { ...that.data.deviceInfo, configLorastr, reportInterval, powerOnTime, gpsReportTime }
+              that.setData({ deviceInfo: updated, deviceConfig: attr })
+            } else {
+              that.setData({ deviceConfig: attr })
+            }
+          } else {
+            // 未匹配到当前设备，清空显示
+            if (that.data.deviceInfo) {
+              const updated = { ...that.data.deviceInfo, reportInterval: '-', powerOnTime: '-', gpsReportTime: '-' }
+              that.setData({ deviceInfo: updated })
+            }
+          }
+        } else {
+          // 无配置数据，清空显示
+          if (that.data.deviceInfo) {
+            const updated = { ...that.data.deviceInfo, reportInterval: '-', powerOnTime: '-', gpsReportTime: '-' }
+            that.setData({ deviceInfo: updated })
+          }
+        }
+      },
+      fail: (err) => {
+        console.error('设备配置查询失败:', err)
+      }
+    })
+  },
+
+  // 格式化时间段："8-6" → "8:00-14:00"
+  _formatTimeRange(raw) {
+    if (!raw || raw === '-') return '-'
+    const match = raw.match(/^(\d+)-(\d+)$/)
+    if (!match) return raw
+    const startH = parseInt(match[1])
+    const durH = parseInt(match[2])
+    const endH = startH + durH
+    const pad = (v) => String(v).padStart(2, '0')
+    return pad(startH) + ':00-' + pad(endH) + ':00'
   },
 
   // 自动加载轨迹记录
