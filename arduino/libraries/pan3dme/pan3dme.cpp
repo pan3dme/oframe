@@ -408,12 +408,12 @@ String readBatteryEndStr(String deviceName) {
   delay(10);
   pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
 
-  float batteryVoltage = mvAvg * 5.00 / 1000.0;
+  float batteryVoltage = mvAvg * 5.20 / 1000.0;
 
 //  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
 //                batteryVoltage);
 
-  int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 100);
+  int soc = map(batteryVoltage * 1000, 3000, 4000, 0, 100);
   soc = constrain(soc, 0, 100);
   float socRatio = soc / 100.0;
 
