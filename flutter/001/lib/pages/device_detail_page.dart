@@ -26,6 +26,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   bool _hasMore = true;
   int _logOffset = 0;
   static const int _logLimit = 10;
+  String _reportInterval = '—'; // 上报周期
+  String _bootTime = '—';       // 开机时间
+  String _locationTime = '—';   // 定位时间
 
   // FC地址
   static const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -34,6 +37,99 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   void initState() {
     super.initState();
     _loadLogs(reset: true);
+    _loadDeviceConfig();
+  }
+
+  /// 加载设备配置数据（getDeviceConfigAll）
+  Future<void> _loadDeviceConfig() async {
+    final deviceId = widget.device['deviceId']?.toString() ?? '';
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'getDeviceConfigAll',
+          'info': {'limit': 99},
+        }),
+      );
+
+      debugPrint('设备配置响应: ${resp.statusCode}');
+
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          final rawRows = json['data'] as List<dynamic>? ?? [];
+          for (final rawRow in rawRows) {
+            final row = rawRow as Map<String, dynamic>;
+            final parsed = <String, dynamic>{};
+
+            final pkList = row['primaryKey'] as List<dynamic>? ?? [];
+            for (final pk in pkList) {
+              final pkMap = pk as Map<String, dynamic>;
+              parsed[pkMap['name'] as String] = pkMap['value'];
+            }
+
+            final attrList = row['attributes'] as List<dynamic>? ?? [];
+            for (final attr in attrList) {
+              final attrMap = attr as Map<String, dynamic>;
+              parsed[attrMap['columnName'] as String] = attrMap['columnValue'];
+            }
+
+            if (parsed['deviceId']?.toString() == deviceId) {
+              final lorastr = parsed['lorastr']?.toString() ?? '';
+              _parseConfigLorastr(lorastr);
+              debugPrint('设备配置匹配: deviceId=$deviceId, lorastr=$lorastr');
+              break;
+            }
+          }
+        } else {
+          debugPrint('设备配置请求错误: ${json['msg']}');
+        }
+      }
+    } catch (e) {
+      debugPrint('加载设备配置失败: $e');
+    }
+  }
+
+  /// 解析设备配置lorastr
+  /// 格式: type|deviceId|30,12-6,12-4|...
+  /// 第三段用逗号分隔: 上报周期(分钟),开机时间(起始-持续),定位时间(起始-持续)
+  void _parseConfigLorastr(String lorastr) {
+    if (lorastr.isEmpty) return;
+    try {
+      final parts = lorastr.split('|');
+      if (parts.length < 3) return;
+      final configStr = parts[2]; // "30,12-6,12-4"
+      final configs = configStr.split(',');
+      if (configs.length < 3) return;
+
+      // 上报周期
+      final interval = configs[0]; // "30"
+      final intervalDisplay = '$interval分钟';
+
+      // 开机时间: "12-6" → 12:00-18:00
+      final bootParts = configs[1].split('-'); // ["12", "6"]
+      final bootStart = int.tryParse(bootParts[0]) ?? 0;
+      final bootDuration = int.tryParse(bootParts[1]) ?? 0;
+      final bootEnd = bootStart + bootDuration;
+      final bootDisplay = '${bootStart.toString().padLeft(2, '0')}:00-${bootEnd.toString().padLeft(2, '0')}:00';
+
+      // 定位时间: "12-4" → 12:00-16:00
+      final locParts = configs[2].split('-'); // ["12", "4"]
+      final locStart = int.tryParse(locParts[0]) ?? 0;
+      final locDuration = int.tryParse(locParts[1]) ?? 0;
+      final locEnd = locStart + locDuration;
+      final locDisplay = '${locStart.toString().padLeft(2, '0')}:00-${locEnd.toString().padLeft(2, '0')}:00';
+
+      setState(() {
+        _reportInterval = intervalDisplay;
+        _bootTime = bootDisplay;
+        _locationTime = locDisplay;
+      });
+      debugPrint('解析配置: 上报周期=$intervalDisplay, 开机时间=$bootDisplay, 定位时间=$locDisplay');
+    } catch (e) {
+      debugPrint('解析设备配置失败: $e, lorastr=$lorastr');
+    }
   }
 
   /// 加载设备日志记录
@@ -365,6 +461,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                                   ? const Color(0xFF66BB6A) 
                                   : Colors.white,
                             ),
+                            _buildInfoRowWhite('上报周期', _reportInterval),
+                            _buildInfoRowWhite('开机时间', _bootTime),
+                            _buildInfoRowWhite('定位时间', _locationTime),
                             _buildInfoRowWhite('上次换电', '—'),
                             const SizedBox(height: 8),
 
