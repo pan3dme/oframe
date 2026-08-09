@@ -25,7 +25,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 8, // 升级到版本8，添加visible列
+      version: 9, // 升级到版本9，添加device_config表
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: _onUpgrade, // 也处理降级情况
@@ -134,6 +134,15 @@ class DBHelper {
         lorastr TEXT,
         time TEXT,
         upDateDevice TEXT,
+        cached_at TEXT
+      )
+    ''');
+
+    // 设备配置缓存表
+    await db.execute('''
+      CREATE TABLE device_config (
+        deviceId TEXT PRIMARY KEY,
+        config_data TEXT,
         cached_at TEXT
       )
     ''');
@@ -259,6 +268,22 @@ class DBHelper {
         print('数据库升级: 已添加 visible 列');
       } catch (e) {
         print('数据库升级: 添加 visible 列时出错: $e');
+      }
+    }
+    
+    if (oldVersion < 9) {
+      // 版本9：添加设备配置缓存表
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS device_config (
+            deviceId TEXT PRIMARY KEY,
+            config_data TEXT,
+            cached_at TEXT
+          )
+        ''');
+        print('数据库升级: 已创建 device_config 表');
+      } catch (e) {
+        print('数据库升级: 创建 device_config 表时出错: $e');
       }
     }
   }
@@ -721,6 +746,35 @@ class DBHelper {
     final value = await getSetting(key);
     if (value == null) return defaultValue;
     return value.toLowerCase() == 'true';
+  }
+
+  /// 保存设备配置数据（覆盖式）
+  Future<void> saveDeviceConfig(String deviceId, Map<String, dynamic> configData) async {
+    final db = await database;
+    await db.insert('device_config', {
+      'deviceId': deviceId,
+      'config_data': jsonEncode(configData),
+      'cached_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    print('保存设备配置: deviceId=$deviceId');
+  }
+
+  /// 获取设备配置数据
+  Future<Map<String, dynamic>?> getDeviceConfig(String deviceId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = await db.query(
+      'device_config',
+      where: 'deviceId = ?',
+      whereArgs: [deviceId],
+    );
+    
+    if (result.isNotEmpty) {
+      final configData = result.first['config_data'] as String?;
+      if (configData != null) {
+        return jsonDecode(configData) as Map<String, dynamic>;
+      }
+    }
+    return null;
   }
 
   /// 关闭数据库

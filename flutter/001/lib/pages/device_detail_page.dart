@@ -69,6 +69,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         final json = jsonDecode(resp.body) as Map<String, dynamic>;
         if (json['status'] == 'success') {
           final rawRows = json['data'] as List<dynamic>? ?? [];
+          // 遍历所有设备配置，全部缓存，并找到当前设备进行解析
           for (final rawRow in rawRows) {
             final row = rawRow as Map<String, dynamic>;
             final parsed = <String, dynamic>{};
@@ -85,19 +86,82 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
               parsed[attrMap['columnName'] as String] = attrMap['columnValue'];
             }
 
-            if (parsed['deviceId']?.toString() == deviceId) {
+            final configDeviceId = parsed['deviceId']?.toString() ?? '';
+            if (configDeviceId.isNotEmpty) {
+              // 缓存所有设备的配置
+              await DBHelper().saveDeviceConfig(configDeviceId, parsed);
+            }
+
+            // 找到当前设备，解析显示
+            if (configDeviceId == deviceId) {
               final lorastr = parsed['lorastr']?.toString() ?? '';
               _parseConfigLorastr(lorastr);
               debugPrint('设备配置匹配: deviceId=$deviceId, lorastr=$lorastr');
-              break;
             }
           }
+          debugPrint('设备配置缓存完成: 共 ${rawRows.length} 条');
         } else {
           debugPrint('设备配置请求错误: ${json['msg']}');
+          // 从缓存加载
+          await _loadDeviceConfigFromCache(deviceId);
         }
       }
     } catch (e) {
-      debugPrint('加载设备配置失败: $e');
+      debugPrint('加载设备配置失败: $e，尝试从缓存加载');
+      // 从缓存加载
+      await _loadDeviceConfigFromCache(deviceId);
+    }
+  }
+
+  /// 从缓存加载设备配置（离线回退）
+  /// 优先从蓝牙缓存中找type=6的记录，找不到再从getDeviceConfigAll缓存中找
+  Future<void> _loadDeviceConfigFromCache(String deviceId) async {
+    // 第一步：从蓝牙缓存中找type=6的记录
+    try {
+      final allBluetoothData = await DBHelper().getBluetoothData();
+      for (final item in allBluetoothData) {
+        final dataStr = item['data'] as String?;
+        if (dataStr == null || dataStr.isEmpty) continue;
+
+        try {
+          final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+          final info = jsonData['info'] as String? ?? '';
+          if (!info.contains('|')) continue;
+
+          final parts = info.split('|');
+          if (parts.length < 3) continue;
+
+          final type = parts[0]; // type在parts[0]
+          final deviceMarker = parts[1]; // 设备标记在parts[1]
+
+          if (type == '6' && deviceMarker == deviceId) {
+            // 找到type=6的匹配记录，info就是lorastr
+            final lorastr = info;
+            _parseConfigLorastr(lorastr);
+            debugPrint('[离线配置] 从蓝牙缓存加载type=6: deviceId=$deviceId, lorastr=$lorastr');
+            return; // 找到就返回，不再查找
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+      debugPrint('[离线配置] 蓝牙缓存中没有type=6的记录');
+    } catch (e) {
+      debugPrint('[离线配置] 蓝牙缓存加载失败: $e');
+    }
+
+    // 第二步：蓝牙缓存没有，从getDeviceConfigAll缓存中找
+    try {
+      final cachedConfig = await DBHelper().getDeviceConfig(deviceId);
+      if (cachedConfig != null) {
+        final lorastr = cachedConfig['lorastr']?.toString() ?? '';
+        _parseConfigLorastr(lorastr);
+        debugPrint('[离线配置] 从getDeviceConfigAll缓存加载: deviceId=$deviceId, lorastr=$lorastr');
+      } else {
+        debugPrint('[离线配置] 两个缓存都没有该设备的配置数据');
+      }
+    } catch (e) {
+      debugPrint('[离线配置] getDeviceConfigAll缓存加载失败: $e');
     }
   }
 
@@ -617,7 +681,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                       icon: Icons.satellite,
                       label: '持续跟踪',
                       onTap: () {
-                        commandController.text = '{"cmd":"follow","value":"30,5","deviceId":"$deviceId"}';
+                        commandController.text = '{"cmd":"follow","value":"30,5"}';
                       },
                     ),
                   ),
@@ -627,7 +691,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                       icon: Icons.settings,
                       label: '配置下发',
                       onTap: () {
-                        commandController.text = '{"cmd":"config","value":"30,8-6,12-3","deviceId":"$deviceId"}';
+                        commandController.text = '{"cmd":"config","value":"10,0-24,12-6"}';
                       },
                     ),
                   ),
@@ -643,12 +707,20 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
           ),
           ElevatedButton(
             onPressed: () {
-              final command = commandController.text.trim();
+              var command = commandController.text.trim();
               if (command.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('请输入指令内容')),
                 );
                 return;
+              }
+              // 如果是JSON格式，自动添加deviceId
+              if (command.startsWith('{') && command.endsWith('}')) {
+                try {
+                  final json = jsonDecode(command) as Map<String, dynamic>;
+                  json['deviceId'] = deviceId;
+                  command = jsonEncode(json);
+                } catch (_) {}
               }
               _sendCommand(deviceId, command);
               Navigator.pop(context);

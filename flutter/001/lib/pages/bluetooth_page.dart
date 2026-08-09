@@ -725,8 +725,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
         }
       } catch (_) {}
       
-      if (typeStr != '1' && typeStr != '2' && typeStr != '3') {
-        print('[蓝牙] 跳过非类型1/2/3数据，不入缓存: type=$typeStr');
+      if (typeStr != '1' && typeStr != '2' && typeStr != '3' && typeStr != '6') {
+        print('[蓝牙] 跳过非类型1/2/3/6数据，不入缓存: type=$typeStr');
         return;
       }
       
