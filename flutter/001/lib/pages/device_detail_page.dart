@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
 import 'device_log_map_page.dart';
+import 'bluetooth_page.dart';
 
 /// 设备详情页面
 class DeviceDetailPage extends StatefulWidget {
@@ -29,6 +30,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   String _reportInterval = '—'; // 上报周期
   String _bootTime = '—';       // 开机时间
   String _locationTime = '—';   // 定位时间
+  bool _isBluetoothConnected = false; // 蓝牙连接状态
 
   // FC地址
   static const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -36,8 +38,16 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   @override
   void initState() {
     super.initState();
+    _checkBluetoothConnection();
     _loadLogs(reset: true);
     _loadDeviceConfig();
+  }
+
+  /// 检查蓝牙连接状态
+  void _checkBluetoothConnection() {
+    setState(() {
+      _isBluetoothConnected = BluetoothPage.isConnected;
+    });
   }
 
   /// 加载设备配置数据（getDeviceConfigAll）
@@ -474,6 +484,49 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                   ),
                 ),
                 // 右上角操作按钮
+                Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: InkWell(
+                    onTap: () {
+                      if (_isBluetoothConnected) {
+                        _showSendCommandDialog();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请连接蓝牙')),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _isBluetoothConnected 
+                            ? const Color(0xFF4CAF50) 
+                            : Colors.grey.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.send, 
+                            size: 16, 
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '指令',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
 
               ],
             ),
@@ -496,6 +549,178 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         ],
       ),
     );
+  }
+
+  /// 显示发送指令对话框
+  void _showSendCommandDialog() {
+    final deviceId = _str(widget.device['deviceId']);
+    final rename = _str(widget.device['rename']);
+    String displayName = deviceId;
+    if (rename != '—') displayName += '($rename)';
+
+    final commandController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('发送指令'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 目标设备
+              const Text(
+                '目标设备',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  displayName,
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // 指令内容
+              const Text(
+                '指令内容',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: commandController,
+                decoration: const InputDecoration(
+                  hintText: '输入指令...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              // 快捷指令
+              const Text(
+                '快捷指令',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              // 第一行：持续跟踪、配置下发
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildQuickCommandButton(
+                      icon: Icons.satellite,
+                      label: '持续跟踪',
+                      onTap: () {
+                        commandController.text = '{"cmd":"follow","value":"30,5","deviceId":"$deviceId"}';
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildQuickCommandButton(
+                      icon: Icons.settings,
+                      label: '配置下发',
+                      onTap: () {
+                        commandController.text = '{"cmd":"config","value":"30,8-6,12-3","deviceId":"$deviceId"}';
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final command = commandController.text.trim();
+              if (command.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('请输入指令内容')),
+                );
+                return;
+              }
+              _sendCommand(deviceId, command);
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1976D2),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('发送指令'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 快捷指令按钮
+  Widget _buildQuickCommandButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: Colors.blue),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 发送指令（通过蓝牙发送）
+  Future<void> _sendCommand(String deviceId, String command) async {
+    try {
+      final success = await BluetoothPage.sendBluetoothData(command);
+      
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('指令发送成功')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('发送失败，请检查蓝牙连接')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('发送指令失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('发送指令失败')),
+        );
+      }
+    }
   }
 
   /// 构建日志列表

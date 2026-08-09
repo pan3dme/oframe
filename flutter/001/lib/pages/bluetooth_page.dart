@@ -18,6 +18,15 @@ class BluetoothPage extends StatefulWidget {
 
   @override
   State<BluetoothPage> createState() => _BluetoothPageState();
+
+  /// 公共静态getter，供其他页面检查蓝牙连接状态
+  static bool get isConnected =>
+      _BluetoothPageState.isConnected;
+
+  /// 公共静态方法，供其他页面通过蓝牙发送数据
+  static Future<bool> sendBluetoothData(String data) async {
+    return await _BluetoothPageState.sendData(data);
+  }
 }
 
 class _BluetoothPageState extends State<BluetoothPage> {
@@ -364,6 +373,26 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
   bool get _isConnected =>
       _connectionState == BluetoothConnectionState.connected;
+
+  /// 公共静态getter，供其他页面检查蓝牙连接状态
+  static bool get isConnected =>
+      _connectionState == BluetoothConnectionState.connected && _connectedDevice != null;
+
+  /// 公共静态方法，供其他页面通过蓝牙发送数据
+  static Future<bool> sendData(String data) async {
+    if (_writeCharacteristic == null) {
+      print('[蓝牙发送] 没有可写的特征值');
+      return false;
+    }
+    try {
+      await _writeCharacteristic!.write(utf8.encode(data));
+      print('[蓝牙发送] 发送成功: $data');
+      return true;
+    } catch (e) {
+      print('[蓝牙发送] 发送失败: $e');
+      return false;
+    }
+  }
 
   // ---- 扫描 ----
   Future<void> _startScan() async {
