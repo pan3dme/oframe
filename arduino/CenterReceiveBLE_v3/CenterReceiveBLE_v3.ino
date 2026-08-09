@@ -205,6 +205,16 @@ void meshCmdInfomsg(String rxValue) {
   if (docCom.containsKey("syncing")) {
     needSync = docCom["syncing"].as<bool>();
     Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
+    String tempStr = docCom["time"].as<String>();
+    if (!haveRightTime() && tempStr.length() > 0) {
+      int y, mo, d, h, mi, s;
+      if (sscanf(tempStr.c_str(), "%d/%d/%d %d:%d:%d", &y, &mo, &d, &h, &mi, &s) == 6) {
+        setCSTTime(y, mo, d, h, mi, s, 0);
+        Serial.println("✅ 已用服务器时间校准: " + tempStr);
+      } else {
+        Serial.println("❌ 时间格式解析失败: " + tempStr);
+      }
+    }
     return;
   }
   if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
@@ -665,7 +675,7 @@ void batteryLowSheep() {
     Serial.println("--->即将进入深度睡眠...");
     Serial.flush();
     esp_deep_sleep_start();
-  } 
+  }
 }
 
 // ========================= 系统初始化 =========================
@@ -736,6 +746,18 @@ void loop() {
     String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, signalRss, "0");
+
+
+    StaticJsonDocument<256> doc;
+    doc["rssi"] = signalRss;
+    doc["snr"] = 0;
+    doc["info"] = dataStr;
+    doc["upDateDevice"] = deviceName;
+    doc["time"] = getCurrentTime(false);
+    doc["ms"] = millis();
+    String jsonData;
+    serializeJson(doc, jsonData);
+    addDataToQueue(jsonData);
   }
 
   // BLE数据同步发送
