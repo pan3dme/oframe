@@ -44,9 +44,9 @@ RTC_DATA_ATTR int rtcResiveIdx = 0;
 RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
 RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
 RTC_DATA_ATTR char lastrelayName[32] = "";             //
-RTC_DATA_ATTR char work_time_str[32] = "00:00-24:59";  // 默认工作时间
-RTC_DATA_ATTR char gps_time_str[32] = "09:09-09:09";   // gps上报时间
-RTC_DATA_ATTR char config_str[32] = "30,8-6,12-3";     // 命令集合
+RTC_DATA_ATTR char work_time_str[32] = "00:00-23:59";  // 默认工作时间
+RTC_DATA_ATTR char gps_time_str[32] = "12:00-18:00";   // gps上报时间
+RTC_DATA_ATTR char config_str[32] = "5,0-24,12-6";     // 命令集合
 
 
 
@@ -285,9 +285,11 @@ void meshCmdType(String infoStr, String tmp) {
       int wEndRaw = wStart + wDur;
       int wEndH, wEndM;
       if (wEndRaw >= 24) {
-        wEndH = 23; wEndM = 59;
+        wEndH = 23;
+        wEndM = 59;
       } else {
-        wEndH = wEndRaw; wEndM = 0;
+        wEndH = wEndRaw;
+        wEndM = 0;
       }
       int wDurationMin = (wEndH * 60 + wEndM) - wStart * 60;
       if (wDurationMin >= 2 * 60) {
@@ -579,8 +581,8 @@ void testSheepFun() {
   printTimeToString("到上报时间还有 ", nextSendTime - millis());
   // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
   if ((waittm) > num6000) {
-    if (configConfirmed) {
-      //确认配置给两秒特殊插入数据，
+    if (configConfirmed || rtcSendCount <= 1) {
+      //确认配置给两秒特殊插入数据， 开机上报当前的配置信息
       configConfirmed = false;
       sendLoraToMid(String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str));
       delay(2000);
