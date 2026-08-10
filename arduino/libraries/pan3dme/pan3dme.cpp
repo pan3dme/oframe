@@ -20,7 +20,8 @@ bool isGpsOn = false;
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
-    0x9875555,      0x9875555,
+    0x9875555,     //0
+    0x9875555,     //2
     0xC0CBBE1B5BF8, // v4    no oled
     0x9875555,
     0x545C82697090, // v4    4
@@ -37,7 +38,7 @@ uint64_t allowedDevices[] = {
     0x9875555,
     0x6809A21B5BF8, // v4    16
     0x9875555,
-    0x28003A04A7AC, // v3    18
+    0x2800, // v3    18
     0x9875555,
     0xD4A284697090, // v4    20
     0x9875555,
@@ -46,7 +47,7 @@ uint64_t allowedDevices[] = {
     0xE436A21B5BF8, // v4    24  dtu
     0x9875555,
     0x20A161F61B44, // v4 NOLED   26
-    0x9875555,
+    0x28003A04A7AC, // v3   中继dtu   27
     0x20A261F61B44,//  v4 NOLED   28
     0x9875555 // 等待添加
 };

@@ -12,7 +12,6 @@
 #include <BLEUtils.h>
 #include <pan3dme.h>
 #include <time.h>
-#include "esp_task_wdt.h"
 HardwareSerial *dtuSerial;
 // ========================= BLE全局对象 =========================
 bool needSync = false;
@@ -235,17 +234,6 @@ void meshCmdInfomsg(String rxValue) {
           Serial.print("❌ROLA进入休眠-");
         }
 
- 
-
-
-      } else if (cmd == "ledsw") {
-        int sw = tmp.toInt();
-        if (sw == 1) {
-          Serial.print("✅开led 灯-");
-        } else {
-
-          Serial.print("❌关led 灯-");
-        }
       } else if (cmd == "debug") {
         int sw = tmp.toInt();
         if (sw == 1) {
@@ -266,12 +254,6 @@ void meshCmdInfomsg(String rxValue) {
         if (power > 10 && power <= 28) {
           initRadio(power);
         }
-
-      } else if (cmd == "refrishgps") {
-        // int valueNum = docCom["value"].as<int>();
-        // Serial.print("刷新中继连接所有 设备GPS valueNum=");
-        // Serial.println(valueNum);
-        // mustrefrishgpsTime = millis() + valueNum * 60 * 1000;
       } else {
         Serial.println(
           "❌❌❌下发的对象就是中继， 还没有设计指令功能❌❌❌");
@@ -711,14 +693,7 @@ void setup() {
   initRadio(22);
   initBLE();
 
-  // 启用任务看门狗，30秒超时自动重启
-  esp_task_wdt_config_t wdtConfig = {
-    .timeout_ms = 30 * 1000,
-    .idle_core_mask = 0,
-    .trigger_panic = true  // 超时触发重启并打印原因
-  };
-  esp_task_wdt_init(&wdtConfig);
-  esp_task_wdt_add(NULL);  // 监控主循环任务
+  // 看门狗由系统/库已初始化，无需重复配置
 
   Serial.println("✅ 系统启动完成   进入监听状态");
   Radio.Rx(0);
@@ -803,6 +778,5 @@ void loop() {
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();
-  esp_task_wdt_reset();  // 喂狗：告诉看门狗系统还活着
-  delay(100);
+    delay(100);
 }
