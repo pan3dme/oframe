@@ -30,7 +30,7 @@ String deviceCacheId[DEVICE_CACHE_MAX];
 String deviceCacheMsg[DEVICE_CACHE_MAX];
 int deviceCacheCount = 0;
 
-bool debugLog = false;
+bool debugLog = true;
  
 int rtcSendCount = 0;
 String batterystr = "";
