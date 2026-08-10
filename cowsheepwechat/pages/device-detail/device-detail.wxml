@@ -139,13 +139,6 @@
       <view class="edit-pic-placeholder" wx:else>📡 点击选图</view>
     </view>
 
-    <!-- 设备编码 -->
-    <view class="modal-label">设备编码</view>
-    <input class="modal-input"
-      value="{{editDeviceCode}}"
-      placeholder="请输入设备编码"
-      bindinput="onEditDeviceCodeInput" />
-
     <!-- 别名 -->
     <view class="modal-label">别名</view>
     <input class="modal-input"

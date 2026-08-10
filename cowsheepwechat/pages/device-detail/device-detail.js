@@ -414,7 +414,6 @@ Page({
     this.setData({
       showEditModal: true,
       editOldDeviceKey: info.deviceId,
-      editDeviceCode: info.deviceid || '',
       editRename: info.rename || '',
       editProductKey: info.ProductKey || '',
       editDeviceName: info.DeviceName || '',
@@ -423,10 +422,6 @@ Page({
       editPicFilePath: '',
       editVisible: info.visible === true || info.visible === 'true' || info.visible === 1
     })
-  },
-
-  onEditDeviceCodeInput(e) {
-    this.setData({ editDeviceCode: e.detail.value })
   },
 
   onEditRenameInput(e) {
@@ -472,7 +467,6 @@ Page({
 
   onEditConfirm() {
     const oldKey = this.data.editOldDeviceKey
-    const deviceid = this.data.editDeviceCode.trim()
     const rename = this.data.editRename.trim()
     const ProductKey = this.data.editProductKey.trim()
     const DeviceName = this.data.editDeviceName.trim()
@@ -484,29 +478,29 @@ Page({
 
     if (picFilePath) {
       wx.showLoading({ title: '压缩上传...' })
-      const objectKey = 'device/' + (deviceid || oldKey) + '_' + Date.now() + '.jpg'
+      const objectKey = 'device/' + oldKey + '_' + Date.now() + '.jpg'
       compressImage(picFilePath).then((compressedPath) => {
         return uploadToOSS(compressedPath, objectKey, 'device/')
       }).then((ossUrl) => {
-        this._doEditConfirm(oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, ossUrl)
+        this._doEditConfirm(oldKey, rename, ProductKey, DeviceName, DeviceSecret, visible, ossUrl)
       }).catch((err) => {
         wx.hideLoading()
         console.error('OSS 上传失败:', err)
         wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
       })
     } else {
-      this._doEditConfirm(oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, this.data.editPicurl)
+      this._doEditConfirm(oldKey, rename, ProductKey, DeviceName, DeviceSecret, visible, this.data.editPicurl)
     }
   },
 
-  _doEditConfirm(oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl) {
+  _doEditConfirm(oldKey, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl) {
     wx.showLoading({ title: '更新中...' })
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
         action: 'updateDevice',
-        info: { deviceId: oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl }
+        info: { deviceId: oldKey,  rename, ProductKey, DeviceName, DeviceSecret, visible, picurl }
       },
       success: (res) => {
         wx.hideLoading()
