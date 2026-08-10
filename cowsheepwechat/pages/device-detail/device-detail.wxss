@@ -526,6 +526,9 @@ page {
 .rec-icon-lora.type-5 {
   background: #8E24AA;
 }
+.rec-icon-lora.type-6 {
+  background: #607D8B;
+}
 
 /* 类型标签 */
 .type-tag {

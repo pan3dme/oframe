@@ -414,7 +414,7 @@ Page({
     this.setData({
       showEditModal: true,
       editOldDeviceKey: info.deviceId,
-      editDeviceCode: info.device_key || '',
+      editDeviceCode: info.deviceid || '',
       editRename: info.rename || '',
       editProductKey: info.ProductKey || '',
       editDeviceName: info.DeviceName || '',
@@ -472,7 +472,7 @@ Page({
 
   onEditConfirm() {
     const oldKey = this.data.editOldDeviceKey
-    const device_key = this.data.editDeviceCode.trim()
+    const deviceid = this.data.editDeviceCode.trim()
     const rename = this.data.editRename.trim()
     const ProductKey = this.data.editProductKey.trim()
     const DeviceName = this.data.editDeviceName.trim()
@@ -484,29 +484,29 @@ Page({
 
     if (picFilePath) {
       wx.showLoading({ title: '压缩上传...' })
-      const objectKey = 'device/' + (device_key || oldKey) + '_' + Date.now() + '.jpg'
+      const objectKey = 'device/' + (deviceid || oldKey) + '_' + Date.now() + '.jpg'
       compressImage(picFilePath).then((compressedPath) => {
         return uploadToOSS(compressedPath, objectKey, 'device/')
       }).then((ossUrl) => {
-        this._doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, ossUrl)
+        this._doEditConfirm(oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, ossUrl)
       }).catch((err) => {
         wx.hideLoading()
         console.error('OSS 上传失败:', err)
         wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
       })
     } else {
-      this._doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, this.data.editPicurl)
+      this._doEditConfirm(oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, this.data.editPicurl)
     }
   },
 
-  _doEditConfirm(oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl) {
+  _doEditConfirm(oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl) {
     wx.showLoading({ title: '更新中...' })
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
         action: 'updateDevice',
-        info: { deviceId: oldKey, device_key, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl }
+        info: { deviceId: oldKey, deviceid, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl }
       },
       success: (res) => {
         wx.hideLoading()
@@ -897,7 +897,7 @@ Page({
       }
 
       // 解析 lorastr 类型：格式为 type|deviceId|data
-      // 1=定位  2=对时  3=电量
+      // 1=定位  2=对时  3=电量  5=跟踪  6=设置
       let msgType = '-'
       if (lorastr && lorastr !== '-') {
         const parts = lorastr.split('|')

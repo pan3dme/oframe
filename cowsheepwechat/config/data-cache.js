@@ -106,7 +106,7 @@ function _parseDeviceRecords(data) {
       })
     }
     const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
-    const device_key = attr.device_key || record.device_key || ''
+    const deviceid = attr.deviceid || record.deviceid || ''
     const rename = attr.rename || record.rename || ''
     const lorastr = attr.lorastr || record.lorastr || '-'
     const link_cowsheep_id = attr.link_cowsheep_id || record.link_cowsheep_id || ''
@@ -117,7 +117,7 @@ function _parseDeviceRecords(data) {
     const visible = attr.visible === true || attr.visible === 'true' || attr.visible === 1 || attr.visible === '1'
     const rawTime = attr.time || record.time || '-'
     const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-    return { deviceId, device_key, rename, lorastr, link_cowsheep_id, picurl, ProductKey, DeviceName, DeviceSecret, visible, date: date || '-', time_part: time_part || '', rawTime }
+    return { deviceId, deviceid, rename, lorastr, link_cowsheep_id, picurl, ProductKey, DeviceName, DeviceSecret, visible, date: date || '-', time_part: time_part || '', rawTime }
   })
   records.sort((a, b) => {
     const ta = new Date(a.rawTime).getTime()

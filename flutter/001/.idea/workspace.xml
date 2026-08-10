@@ -4,9 +4,7 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="23757db1-545f-4159-b9f4-9d576a399c12" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/../../arduino/CenterReceiveBLE_v3/CenterReceiveBLE_v3.ino" beforeDir="false" afterPath="$PROJECT_DIR$/../../arduino/CenterReceiveBLE_v3/CenterReceiveBLE_v3.ino" afterDir="false" />
-    </list>
+    <list default="true" id="23757db1-545f-4159-b9f4-9d576a399c12" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
