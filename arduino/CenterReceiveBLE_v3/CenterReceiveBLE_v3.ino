@@ -31,7 +31,8 @@ String deviceCacheId[DEVICE_CACHE_MAX];
 String deviceCacheMsg[DEVICE_CACHE_MAX];
 int deviceCacheCount = 0;
 
-int recelveIdx = 1;
+bool debugLog = false;
+ 
 int rtcSendCount = 0;
 String batterystr = "";
 String deviceName = "x-x";
@@ -234,14 +235,7 @@ void meshCmdInfomsg(String rxValue) {
           Serial.print("❌ROLA进入休眠-");
         }
 
-      } else if (cmd == "relaytimeloc") {
-        recelveIdx = tmp.toInt();
-        if (recelveIdx == 0) {
-          Serial.print("❌不下发对时-");
-        } else {
-          Serial.print("✅中继下发位置");
-          Serial.println(recelveIdx);
-        }
+ 
 
 
       } else if (cmd == "ledsw") {
@@ -251,6 +245,15 @@ void meshCmdInfomsg(String rxValue) {
         } else {
 
           Serial.print("❌关led 灯-");
+        }
+      } else if (cmd == "debug") {
+        int sw = tmp.toInt();
+        if (sw == 1) {
+          debugLog = true;
+          Serial.print("✅开debugLog");
+        } else {
+          debugLog = false;
+          Serial.print("❌关debugLog");
         }
 
       } else if (cmd == "relayreboot") {
@@ -564,10 +567,7 @@ String needSyncTimeDeviceid;
 long down_syn_time = 0;
 // ========================= 下发指令 =========================
 void sendDownInfo(String loraStr, String deviceId) {
-  if (recelveIdx == 0) {
-    Serial.println("❌不下发指令，用于测试，中继互不干扰的测试");
-    return;
-  }
+
 
   String dataStr = "";
   String selectCmdStr = getGpsTargetByDeviceid(deviceId);
@@ -601,7 +601,7 @@ void sendDownInfo(String loraStr, String deviceId) {
 
   } else {
     needSyncTimeDeviceid = deviceId;
-    down_syn_time = millis() + 2000 * recelveIdx;
+    down_syn_time = millis() + 2000 ;
   }
 }
 
@@ -640,8 +640,9 @@ void processLoraData() {
   if (firstPipeIndex > 0) {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
-    sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
-
+    if ((messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_UP_GPS || messageType == MSG_TYPE_CONFIG) || debugLog) {
+      sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
+    }
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_GPS) {
 
       if (mustrefrishgpsTime > millis()) {
