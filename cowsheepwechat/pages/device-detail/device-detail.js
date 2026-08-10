@@ -187,6 +187,7 @@ Page({
   _loadBindName(item) {
     if (!item.link_cowsheep_id) {
       this.setData({ deviceInfo: { ...item, bindName: '' } })
+      this._updateDormant()
       this.loadTodayRecords(0)
       return
     }
@@ -196,8 +197,21 @@ Page({
       const found = list.find(v => v.cowsheepId === item.link_cowsheep_id)
       if (found) bindName = found.name
       this.setData({ deviceInfo: { ...item, bindName } })
+      this._updateDormant()
       this.loadTodayRecords(0)
     })
+  },
+
+  // 根据已加载的 deviceConfig 和 deviceInfo 重新计算 isDormant
+  _updateDormant() {
+    const deviceConfig = this.data.deviceConfig
+    const deviceInfo = this.data.deviceInfo
+    if (deviceConfig && deviceInfo) {
+      const configLorastr = deviceConfig.lorastr || ''
+      const rawTime = deviceInfo.rawTime || ''
+      const isDormant = this._isDormantNow(configLorastr, rawTime)
+      this.setData({ 'deviceInfo.isDormant': isDormant })
+    }
   },
 
   // 拉取设备配置（上报周期/开机时间/GPS上报时间等）
@@ -252,7 +266,10 @@ Page({
             }
             // 更新 deviceInfo 中的配置信息
             if (that.data.deviceInfo) {
-              const updated = { ...that.data.deviceInfo, configLorastr, reportInterval, powerOnTime, gpsReportTime }
+              // 判断是否在休眠时间内（含最后上报时间>1小时的判断）
+              const rawTime = that.data.deviceInfo.rawTime || ''
+              const isDormant = that._isDormantNow(configLorastr, rawTime)
+              const updated = { ...that.data.deviceInfo, configLorastr, reportInterval, powerOnTime, gpsReportTime, isDormant }
               that.setData({ deviceInfo: updated, deviceConfig: attr })
             } else {
               that.setData({ deviceConfig: attr })
@@ -288,6 +305,42 @@ Page({
     const endH = startH + durH
     const pad = (v) => String(v).padStart(2, '0')
     return pad(startH) + ':00-' + pad(endH) + ':00'
+  },
+
+  // 根据设备配置lorastr和最后上报时间判断当前是否休眠
+  // 规则：最后上报时间超过1小时 → 直接判定为休眠；否则按配置的工作时间段判断
+  _isDormantNow(configLorastr, rawTime) {
+    // 如果最后上报时间超过1小时，直接判定为休眠
+    if (rawTime) {
+      const lastTime = new Date(rawTime).getTime()
+      if (!isNaN(lastTime)) {
+        const oneHourAgo = Date.now() - 3600000
+        if (lastTime < oneHourAgo) {
+          return true
+        }
+      }
+    }
+    // 如果上报时间在1小时内，按配置的开机时间段判断
+    if (!configLorastr) return false
+    const parts = configLorastr.split('|')
+    if (parts.length < 3 || !parts[2]) return false
+    const configParts = parts[2].split(',')
+    if (configParts.length < 2 || !configParts[1]) return false
+    const powerRaw = configParts[1].trim()
+    const match = powerRaw.match(/^(\d+)-(\d+)$/)
+    if (!match) return false
+    const startH = parseInt(match[1])
+    const durH = parseInt(match[2])
+    const endH = startH + durH
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const startMinutes = startH * 60
+    const endMinutes = endH * 60
+    if (endH > startH) {
+      return currentMinutes < startMinutes || currentMinutes >= endMinutes
+    } else {
+      return currentMinutes < startMinutes && currentMinutes >= endMinutes
+    }
   },
 
   // 自动加载轨迹记录

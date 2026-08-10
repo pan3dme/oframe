@@ -14,7 +14,10 @@
 
     <!-- 右边：基本信息 -->
     <view class="header-info">
-      <text class="header-title">{{deviceInfo.rename || deviceInfo.device_key || deviceInfo.deviceId}}</text>
+      <view class="header-title-row">
+        <text class="header-title">{{deviceInfo.rename || deviceInfo.device_key || deviceInfo.deviceId}}</text>
+        <text class="header-dormant-tag" wx:if="{{deviceInfo.isDormant}}">已休眠</text>
+      </view>
       <view class="header-info-grid">
         <view class="hi-item">
           <text class="hi-label">绑定牛羊</text>

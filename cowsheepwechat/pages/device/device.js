@@ -13,7 +13,9 @@ Page({
     isAdmin: false,
     singleLineRecord: false,
     showAllDevices: false,
-    refresherTriggered: false
+    refresherTriggered: false,
+    // 设备配置休眠状态映射 deviceId -> { isDormant, powerOnTime }
+    deviceConfigMap: {}
   },
 
   _readSettings() {
@@ -44,13 +46,111 @@ Page({
     this._readSettings()
   },
 
+  // ========== 获取设备配置（工作时间判断休眠） ==========
+  fetchDeviceConfigAll(forceRefresh, callback) {
+    const that = this
+    wx.request({
+      url: API_DEVICE_URL,
+      method: 'POST',
+      data: {
+        action: 'getDeviceConfigAll',
+        info: {}
+      },
+      success: (res) => {
+        console.log('设备配置All查询返回:', JSON.stringify(res.data))
+        let rawList = []
+        if (res.data && res.data.data && Array.isArray(res.data.data)) {
+          rawList = res.data.data
+        } else if (Array.isArray(res.data)) {
+          rawList = res.data
+        }
+        // 构建 deviceId → { isDormant, powerOnTime } 映射
+        const configMap = {}
+        rawList.forEach(record => {
+          const attr = {}
+          if (record.attributes) {
+            record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+          }
+          if (record.primaryKey) {
+            record.primaryKey.forEach(item => { attr[item.name] = item.value })
+          }
+          if (record.lorastr) attr.lorastr = record.lorastr
+          const deviceId = attr.deviceId || (record.primaryKey && record.primaryKey.find(p => p.name === 'deviceId') ? record.primaryKey.find(p => p.name === 'deviceId').value : null)
+          if (!deviceId) return
+
+          const configLorastr = attr.lorastr || ''
+          const result = that._checkWorkingHours(configLorastr)
+          configMap[deviceId] = result
+        })
+        that.setData({ deviceConfigMap: configMap })
+        if (callback) callback(configMap)
+      },
+      fail: (err) => {
+        console.error('设备配置All查询失败:', err)
+        if (callback) callback({})
+      }
+    })
+  },
+
+  // 根据配置lorastr判断当前是否在工作时间内
+  // lorastr格式: 6|v4-16|30,8-6,12-3|1.0|4.2|18
+  // 第3段(按|分)再按,分: 上报周期,开机时间(工作时间),GPS上报时间
+  // 开机时间格式: "8-6" 表示8:00开始持续6小时，即8:00-14:00
+  _checkWorkingHours(configLorastr) {
+    const result = { isDormant: false, powerOnTime: '-' }
+    if (!configLorastr) return result
+
+    const parts = configLorastr.split('|')
+    if (parts.length < 3 || !parts[2]) return result
+
+    const configParts = parts[2].split(',')
+    if (configParts.length < 2 || !configParts[1]) return result
+
+    const powerRaw = configParts[1].trim()
+    result.powerOnTime = this._formatTimeRange(powerRaw)
+
+    const match = powerRaw.match(/^(\d+)-(\d+)$/)
+    if (!match) return result
+
+    const startH = parseInt(match[1])
+    const durH = parseInt(match[2])
+    const endH = startH + durH
+
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const startMinutes = startH * 60
+    const endMinutes = endH * 60
+
+    // 判断是否在范围内（支持跨天，如 22-6 = 22:00-04:00）
+    if (endH > startH) {
+      // 当天内：startH ~ endH
+      result.isDormant = currentMinutes < startMinutes || currentMinutes >= endMinutes
+    } else {
+      // 跨天：如 22:00 到次日 04:00
+      result.isDormant = currentMinutes < startMinutes && currentMinutes >= endMinutes
+    }
+    return result
+  },
+
+  // 格式化时间段："8-6" → "8:00-14:00"
+  _formatTimeRange(raw) {
+    if (!raw || raw === '-') return '-'
+    const match = raw.match(/^(\d+)-(\d+)$/)
+    if (!match) return raw
+    const startH = parseInt(match[1])
+    const durH = parseInt(match[2])
+    const endH = startH + durH
+    const pad = (v) => String(v).padStart(2, '0')
+    return pad(startH) + ':00-' + pad(endH) + ':00'
+  },
+
   // ========== 获取设备列表 ==========
   fetchDeviceList(forceRefresh, onComplete) {
-    let deviceData, livestockData, lotData, syncData
+    let deviceData, livestockData, lotData, syncData, configMapData
     let done = 0
     const merge = () => {
       done++
-      if (done < 4) return
+      if (done < 5) return
 
       const nameMap = {}
       if (livestockData && livestockData.livestockList) {
@@ -123,6 +223,26 @@ Page({
 
         const timeInfo = this._calcRelativeTime(displayTime)
 
+        // 从配置表获取休眠状态，如果最后上报时间>1小时也直接判定休眠
+        const cfg = (configMapData && configMapData[item.deviceId]) || { isDormant: false, powerOnTime: '-' }
+        let isDormant = cfg.isDormant
+        let withinOneHour = false
+        if (displayTime && displayTime !== '-') {
+          const lastTime = new Date(displayTime).getTime()
+          if (!isNaN(lastTime)) {
+            const oneHourAgo = Date.now() - 3600000
+            if (lastTime < oneHourAgo) {
+              isDormant = true
+            } else {
+              withinOneHour = true
+            }
+          }
+        }
+        // 最后记录为对时且在1小时内，不显示已休眠，改为显示时间
+        if (lastRecordType === 'time' && withinOneHour) {
+          isDormant = false
+        }
+
         return {
           ...item,
           date: displayDate,
@@ -132,9 +252,12 @@ Page({
           relativeTime: timeInfo.text,
           timeColor: timeInfo.color,
           timeBgColor: timeInfo.bgColor,
+          dotColor: timeInfo.color,
           lastRecordType,
           battery,
-          batteryColor: (battery && parseFloat(battery) < 0.6) ? '#f44336' : '#333'
+          batteryColor: (battery && parseFloat(battery) < 0.6) ? '#f44336' : '#333',
+          isDormant: isDormant,
+          powerOnTime: cfg.powerOnTime
         }
       })
 
@@ -168,6 +291,7 @@ Page({
     dataCache.getLivestockList((data) => { livestockData = data; merge() }, forceRefresh)
     dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
     dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, forceRefresh)
+    this.fetchDeviceConfigAll(forceRefresh, (configMap) => { configMapData = configMap; merge() })
   },
 
   refreshDeviceList() {
