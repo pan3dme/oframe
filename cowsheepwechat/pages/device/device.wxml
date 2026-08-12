@@ -16,7 +16,7 @@
       <view class="item-status-signal" style="color:{{item.isDormant ? '#999999' : '#4caf50'}}"><view class="sig-bar sig-1"></view><view class="sig-bar sig-2"></view><view class="sig-bar sig-3"></view><view class="sig-bar sig-4"></view></view>
       <view class="item-info">
         <view class="item-line-one">
-          <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}<text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text></text>
+          <text class="item-name-compact" style="{{item.isDormant ? 'color:#999999;' : ''}}">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}<text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text></text>
           <view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps" style="background:{{item.dotColor}}"></view>
           <view wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon-clock" style="color:{{item.timeColor}}"></view>
           <text class="item-time-compact" wx:if="{{item.relativeTime}}" style="color:{{item.timeColor}};background:{{item.timeBgColor}}">{{item.relativeTime}}</text>
@@ -34,7 +34,7 @@
       <image class="item-device-pic" wx:if="{{item.picurl}}" src="{{item.picurl}}" mode="aspectFill" />
       <view class="item-avatar-placeholder" wx:else>📡</view>
       <view class="item-info">
-        <view class="item-name">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}<text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text><view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps" style="background:{{item.dotColor}}"></view><view wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon-clock" style="color:{{item.timeColor}}"></view></view>
+        <view class="item-name"><text style="{{item.isDormant ? 'color:#999999;' : ''}}">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}</text><text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text><view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps" style="background:{{item.dotColor}}"></view><view wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon-clock" style="color:{{item.timeColor}}"></view></view>
         <view class="item-meta" wx:if="{{!item.deviceid}}">
           <text class="item-time" style="color:#ff9800;">请输入唯一编码</text>
         </view>

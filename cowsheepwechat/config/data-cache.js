@@ -386,12 +386,19 @@ function _parseDeviceSyncRecords(data) {
     }
     const deviceId = attr.deviceId || attr.deviceid || ''
     const rawTime = attr.time || record.time || '-'
+    // 电量从 lorastr 中提取（第4段，索引3），如 "2|v3-18|2026/8/10 23:13:33|1.0|4.2|0" 中 1.0
+    let battery = ''
+    const lorastr = attr.lorastr || record.lorastr || ''
+    if (lorastr) {
+      const parts = String(lorastr).split('|')
+      if (parts.length > 3) battery = parts[3]
+    }
     if (deviceId && rawTime && rawTime !== '-') {
       const existing = map[deviceId]
       const newTime = new Date(rawTime).getTime()
       if (!existing || (newTime > new Date(existing.rawTime || '').getTime())) {
         const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-        map[deviceId] = { rawTime, date: date || '-', time_part: time_part || '' }
+        map[deviceId] = { rawTime, date: date || '-', time_part: time_part || '', battery }
       }
     }
   })
