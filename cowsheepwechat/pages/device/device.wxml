@@ -13,13 +13,13 @@
   <view class="list-panel" wx:if="{{deviceList.length > 0 && singleLineRecord}}">
     <view class="list-item list-item-compact" wx:for="{{deviceList}}" wx:key="deviceId" bindtap="onTapDevice" data-deviceid="{{item.deviceId}}">
       <text class="item-index">{{index + 1}}</text>
+      <view class="item-status-signal" style="color:{{item.isDormant ? '#999999' : '#4caf50'}}"><view class="sig-bar sig-1"></view><view class="sig-bar sig-2"></view><view class="sig-bar sig-3"></view><view class="sig-bar sig-4"></view></view>
       <view class="item-info">
         <view class="item-line-one">
           <text class="item-name-compact">{{item.deviceId}}{{item.rename ? ' (' + item.rename + ')' : ''}}<text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text></text>
           <view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps" style="background:{{item.dotColor}}"></view>
           <view wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon-clock" style="color:{{item.timeColor}}"></view>
-          <text class="item-dormant-tag" wx:if="{{item.isDormant}}">已休眠</text>
-          <text class="item-time-compact" wx:elif="{{item.relativeTime}}" style="color:{{item.timeColor}};background:{{item.timeBgColor}}">{{item.relativeTime}}</text>
+          <text class="item-time-compact" wx:if="{{item.relativeTime}}" style="color:{{item.timeColor}};background:{{item.timeBgColor}}">{{item.relativeTime}}</text>
           <text class="item-time-compact" wx:else style="color:#999;background:#f5f5f5">{{item.date && item.date !== '-' ? item.date + ' ' + item.time_part : '暂无数据'}}</text>
         </view>
       </view>
@@ -30,6 +30,7 @@
   <view class="list-panel" wx:elif="{{deviceList.length > 0}}">
     <view class="list-item" wx:for="{{deviceList}}" wx:key="deviceId" data-deviceid="{{item.deviceId}}" bindtap="onTapDevice">
       <text class="item-index">{{index + 1}}</text>
+      <view class="item-status-signal" style="color:{{item.isDormant ? '#999999' : '#4caf50'}}"><view class="sig-bar sig-1"></view><view class="sig-bar sig-2"></view><view class="sig-bar sig-3"></view><view class="sig-bar sig-4"></view></view>
       <image class="item-device-pic" wx:if="{{item.picurl}}" src="{{item.picurl}}" mode="aspectFill" />
       <view class="item-avatar-placeholder" wx:else>📡</view>
       <view class="item-info">
@@ -39,11 +40,7 @@
         </view>
         <view class="item-id" wx:if="{{item.link_cowsheep_id}}">绑定牛羊: {{item.bindName || item.link_cowsheep_id}}</view>
         <view class="item-id" wx:else style="color:#ccc;">未绑定牛羊</view>
-        <view class="item-meta" wx:if="{{item.isDormant}}">
-          <text class="item-dormant-tag">已休眠</text>
-          <text class="item-worktime" wx:if="{{item.powerOnTime && item.powerOnTime !== '-'}}">(工作时间: {{item.powerOnTime}})</text>
-        </view>
-        <view class="item-meta" wx:else>
+        <view class="item-meta">
           <text class="item-time">{{item.date && item.date !== '-' ? item.date + ' ' + item.time_part : ''}}</text>
           <text class="item-relative" wx:if="{{item.relativeTime}}" style="color:{{item.timeColor}}">（{{item.relativeTime}}）</text>
         </view>

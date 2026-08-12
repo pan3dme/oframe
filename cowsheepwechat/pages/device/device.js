@@ -92,18 +92,24 @@ Page({
     })
   },
 
-  // 根据配置lorastr判断当前是否在工作时间内
+  // 根据配置lorastr判断当前是否在工作时间内，同时提取上报周期（分钟）
   // lorastr格式: 6|v4-16|30,8-6,12-3|1.0|4.2|18
   // 第3段(按|分)再按,分: 上报周期,开机时间(工作时间),GPS上报时间
   // 开机时间格式: "8-6" 表示8:00开始持续6小时，即8:00-14:00
   _checkWorkingHours(configLorastr) {
-    const result = { isDormant: false, powerOnTime: '-' }
+    const result = { isDormant: false, powerOnTime: '-', reportInterval: 30 }
     if (!configLorastr) return result
 
     const parts = configLorastr.split('|')
     if (parts.length < 3 || !parts[2]) return result
 
     const configParts = parts[2].split(',')
+    if (configParts.length < 1) return result
+
+    // 上报周期（分钟），第3段第1项
+    const intervalNum = parseInt(configParts[0].trim(), 10)
+    if (intervalNum > 0) result.reportInterval = intervalNum
+
     if (configParts.length < 2 || !configParts[1]) return result
 
     const powerRaw = configParts[1].trim()
@@ -114,20 +120,21 @@ Page({
 
     const startH = parseInt(match[1])
     const durH = parseInt(match[2])
-    const endH = startH + durH
+    const rawEndH = startH + durH
 
     const now = new Date()
     const currentMinutes = now.getHours() * 60 + now.getMinutes()
     const startMinutes = startH * 60
-    const endMinutes = endH * 60
+    const endMinutes = rawEndH * 60
 
-    // 判断是否在范围内（支持跨天，如 22-6 = 22:00-04:00）
-    if (endH > startH) {
-      // 当天内：startH ~ endH
+    // 判断是否在范围内（支持跨天，如 22-6 = 22:00 到次日 04:00）
+    if (rawEndH <= 24) {
+      // 当天内：startH 点 到 rawEndH 点
       result.isDormant = currentMinutes < startMinutes || currentMinutes >= endMinutes
     } else {
-      // 跨天：如 22:00 到次日 04:00
-      result.isDormant = currentMinutes < startMinutes && currentMinutes >= endMinutes
+      // 跨天：rawEndH 折算到次日，如 28 → 次日 04:00
+      const wrapEndMinutes = endMinutes - 24 * 60
+      result.isDormant = currentMinutes >= wrapEndMinutes && currentMinutes < startMinutes
     }
     return result
   },
@@ -221,27 +228,10 @@ Page({
           lastRecordType = 'time'
         }
 
-        const timeInfo = this._calcRelativeTime(displayTime)
-
-        // 从配置表获取休眠状态，如果最后上报时间>1小时也直接判定休眠
-        const cfg = (configMapData && configMapData[item.deviceId]) || { isDormant: false, powerOnTime: '-' }
-        let isDormant = cfg.isDormant
-        let withinOneHour = false
-        if (displayTime && displayTime !== '-') {
-          const lastTime = new Date(displayTime).getTime()
-          if (!isNaN(lastTime)) {
-            const oneHourAgo = Date.now() - 3600000
-            if (lastTime < oneHourAgo) {
-              isDormant = true
-            } else {
-              withinOneHour = true
-            }
-          }
-        }
-        // 最后记录为对时且在1小时内，不显示已休眠，改为显示时间
-        if (lastRecordType === 'time' && withinOneHour) {
-          isDormant = false
-        }
+        // 休眠状态完全由设备配置 lorastr 中的工作时间决定：区间内=活跃(绿)，区间外=休眠(灰)
+        const cfg = (configMapData && configMapData[item.deviceId]) || { isDormant: false, powerOnTime: '-', reportInterval: 30 }
+        const isDormant = cfg.isDormant
+        const timeInfo = this._calcRelativeTime(displayTime, cfg.reportInterval, isDormant)
 
         return {
           ...item,
@@ -306,8 +296,10 @@ Page({
   },
 
   // 计算相对时间：返回 { text, color, bgColor }
-  // 超过1天→灰色，超过10分钟→红色，其他→默认蓝色
-  _calcRelativeTime(rawTime) {
+  // 颜色按设备配置的上报周期（分钟）判断：
+  //   < 1个周期 → 绿色；1~2个周期 → 红色；> 2个周期 → 灰色
+  //   若在 1~2 周期区间但不在工作时间内（休眠中），红色降级为灰色
+  _calcRelativeTime(rawTime, reportInterval, isDormant) {
     const empty = { text: '', color: '', bgColor: '' }
     if (!rawTime || rawTime === '-') return empty
     const t = new Date(rawTime).getTime()
@@ -327,14 +319,22 @@ Page({
     else if (day < 365) text = Math.floor(day / 30) + '个月前'
     else text = Math.floor(day / 365) + '年前'
 
-    // 颜色规则：超过2小时灰色，30分钟~2小时红色，小于30分钟绿色
+    // 颜色规则：按配置上报周期判断，默认周期30分钟
+    // <1个周期 绿色；1~2个周期 红色；>2个周期 灰色
+    // 在1~2周期区间内但不在工作时间（休眠中），红色降级为灰色
+    const period = (typeof reportInterval === 'number' && reportInterval > 0) ? reportInterval : 30
     let color, bgColor
-    if (hour >= 2) {
+    if (min >= period * 2) {
       color = '#999'
       bgColor = '#f5f5f5'
-    } else if (min >= 30) {
-      color = '#f44336'
-      bgColor = '#ffebee'
+    } else if (min >= period) {
+      if (isDormant) {
+        color = '#999'
+        bgColor = '#f5f5f5'
+      } else {
+        color = '#f44336'
+        bgColor = '#ffebee'
+      }
     } else {
       color = '#4caf50'
       bgColor = '#e8f5e9'

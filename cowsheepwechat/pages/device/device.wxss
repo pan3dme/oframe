@@ -262,7 +262,7 @@ page {
   width: 56rpx;
   text-align: center;
   flex-shrink: 0;
-  margin-right: 14rpx;
+  margin-right: 6rpx;
 }
 
 .item-avatar-placeholder {
@@ -333,7 +333,29 @@ page {
   align-self: center;
 }
 
-/* 时间类型时钟图标，使用 currentColor 跟随时间颜色 */
+/* 设备状态信号图标（排序序号与设备信息之间）：活跃绿色、休眠灰色，4条竖线信号格，颜色由内联 style/currentColor 控制 */
+.item-status-signal {
+  display: flex;
+  align-items: flex-end;
+  gap: 3rpx;
+  height: 20rpx;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.sig-bar {
+  width: 4rpx;
+  border-radius: 2rpx;
+  background: currentColor;
+}
+
+.sig-1 { height: 6rpx; }
+.sig-2 { height: 10rpx; }
+.sig-3 { height: 14rpx; }
+.sig-4 { height: 18rpx; }
+
+/* 对时类型时钟图标，使用 currentColor 跟随时间颜色 */
 .item-type-icon-clock {
   width: 22rpx;
   height: 22rpx;
@@ -488,22 +510,6 @@ page {
   font-size: 28rpx;
   color: #bbb;
   padding: 40rpx 0;
-}
-
-/* 休眠状态标签 */
-.item-dormant-tag {
-  font-size: 24rpx;
-  color: #999;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin-left: 24rpx;
-}
-
-.item-worktime {
-  font-size: 22rpx;
-  color: #999;
-  margin-left: 8rpx;
 }
 
 /* 设备图片预览 */
