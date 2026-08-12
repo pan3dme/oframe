@@ -625,6 +625,11 @@ void testSheepFun() {
     }
 
 
+    if (sleepTime > 24 * 60 * 60 * 1000 * 1000ULL) {
+      ESP.restart();
+      //重启
+    }
+
 
     // esp_deep_sleep(sleepTime);
     esp_sleep_enable_timer_wakeup(sleepTime);
