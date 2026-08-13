@@ -138,6 +138,7 @@ Page({
   onQuickSyncTime() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'follow', value: '30,5' }), quickSelected: 15 })
   },
+
   onQuickTxPower() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'txpower', value: 20 }), quickSelected: 16 })
   },
@@ -145,7 +146,83 @@ Page({
     this.setData({ cmdText: JSON.stringify({ cmd: 'minbattery', value: 50 }), quickSelected: 17 })
   },
   onQuickConfig() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'config', value: '10,0-24,12-6' }), quickSelected: 18 })
+    const device = this.data.deviceList[this.data.deviceIndex]
+    if (!device) {
+      wx.showToast({ title: '请先选择目标设备', icon: 'none' })
+      return
+    }
+
+    this.setData({ quickSelected: 18 })
+    wx.showLoading({ title: '查询设备配置...' })
+
+    const that = this
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'getDeviceConfigAll',
+        info: { deviceId: device.deviceId }
+      },
+      timeout: 8000,
+      success: (res) => {
+        wx.hideLoading()
+        console.log('[DTU指令] getDeviceConfigAll 返回:', JSON.stringify(res.data))
+
+        let rawList = []
+        if (res.data && res.data.data && Array.isArray(res.data.data)) {
+          rawList = res.data.data
+        } else if (Array.isArray(res.data)) {
+          rawList = res.data
+        }
+
+        if (rawList.length > 0) {
+          // 按 deviceId 匹配当前设备
+          const record = rawList.find(r => {
+            const devId = r.deviceId || (r.primaryKey && r.primaryKey.find(p => p.name === 'deviceId') ? r.primaryKey.find(p => p.name === 'deviceId').value : null)
+            return devId === device.deviceId
+          })
+
+          if (record) {
+            const attr = {}
+            if (record.attributes) {
+              record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+            }
+            if (record.primaryKey) {
+              record.primaryKey.forEach(item => { attr[item.name] = item.value })
+            }
+            if (record.lorastr) attr.lorastr = record.lorastr
+
+            const configLorastr = attr.lorastr || ''
+            if (configLorastr) {
+              // lorastr 格式: 6|v4-16|30,8-6,12-3|1.0|4.2|18
+              // 第3段(按|分)是配置值: 上报周期,开机时间,GPS上报时间
+              const parts = configLorastr.split('|')
+              if (parts.length >= 3 && parts[2]) {
+                that.setData({
+                  cmdText: JSON.stringify({ cmd: 'config', value: parts[2] })
+                })
+                that.addLog('info', '已加载设备配置: ' + parts[2])
+                return
+              }
+            }
+          }
+        }
+
+        // 未找到配置，使用默认值
+        that.setData({
+          cmdText: JSON.stringify({ cmd: 'config', value: '10,0-24,12-6' })
+        })
+        wx.showToast({ title: '未找到设备配置，使用默认值', icon: 'none', duration: 2000 })
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('[DTU指令] getDeviceConfigAll 失败:', err)
+        that.setData({
+          cmdText: JSON.stringify({ cmd: 'config', value: '10,0-24,12-6' })
+        })
+        wx.showToast({ title: '查询配置失败，使用默认值', icon: 'none', duration: 2000 })
+      }
+    })
   },
 
   onWorkStartChange(e) {

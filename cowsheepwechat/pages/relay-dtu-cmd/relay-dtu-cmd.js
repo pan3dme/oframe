@@ -21,6 +21,11 @@ Page({
     workStartTime: '00:00',
     workEndTime: '23:59',
 
+    // Debug开关状态
+    debugValue: 0,
+    // Lora开关状态
+    loraSwValue: 0,
+
     // 发送日志
     sendLog: []
   },
@@ -92,9 +97,6 @@ Page({
   },
 
   // ========== 快捷按钮 ==========
-  onQuickRefreshGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'refrishgps', value: 30 }), quickSelected: 2 })
-  },
 
   // ========== 工作时间快捷按钮 ==========
   onQuickWorkTime() {
@@ -104,13 +106,23 @@ Page({
     this.setData({ cmdText: JSON.stringify({ cmd: 'txpower', value: 20 }), quickSelected: 16 })
   },
   onQuickLoraSw() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'lorasw', value: 1 }), quickSelected: 17 })
+    const newVal = this.data.loraSwValue === 0 ? 1 : 0
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'lorasw', value: newVal }),
+      quickSelected: 17,
+      loraSwValue: newVal
+    })
   },
   onQuickRelayReboot() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'relayreboot', value: 1 }), quickSelected: 18 })
   },
-  onQuickRelayTimeLoc() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'relaytimeloc', value: 1 }), quickSelected: 19 })
+  onQuickDebug() {
+    const newVal = this.data.debugValue === 0 ? 1 : 0
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'debug', value: newVal }),
+      quickSelected: 4,
+      debugValue: newVal
+    })
   },
 
   onWorkStartChange(e) {

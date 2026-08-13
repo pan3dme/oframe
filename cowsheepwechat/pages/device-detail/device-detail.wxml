@@ -14,7 +14,10 @@
 
     <!-- 右边：基本信息 -->
     <view class="header-info">
-      <text class="header-title">{{deviceInfo.rename || deviceInfo.device_key || deviceInfo.deviceId}}</text>
+      <view class="header-title-row">
+        <text class="header-title">{{deviceInfo.deviceid || deviceInfo.deviceId}}<block wx:if="{{deviceInfo.rename}}"> ({{deviceInfo.rename}})</block></text>
+        <text class="header-dormant-tag" wx:if="{{deviceInfo.isDormant}}">已休眠</text>
+      </view>
       <view class="header-info-grid">
         <view class="hi-item">
           <text class="hi-label">绑定牛羊</text>
@@ -80,7 +83,7 @@
             <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}</text>
           </view>
           <view class="rec-row rec-row-content">
-            <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType}}</text>
+            <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType === '6' ? '设置' : item.msgType}}</text>
             <text class="rec-val rec-val-lora">{{item.lorastr}}</text>
             <text class="rec-tap-arrow" wx:if="{{item.msgType === '1' || item.msgType === '5'}}">›</text>
           </view>
@@ -135,13 +138,6 @@
       <image class="edit-pic-img" wx:if="{{editPicurl}}" src="{{editPicurl}}" mode="aspectFill" />
       <view class="edit-pic-placeholder" wx:else>📡 点击选图</view>
     </view>
-
-    <!-- 设备编码 -->
-    <view class="modal-label">设备编码</view>
-    <input class="modal-input"
-      value="{{editDeviceCode}}"
-      placeholder="请输入设备编码"
-      bindinput="onEditDeviceCodeInput" />
 
     <!-- 别名 -->
     <view class="modal-label">别名</view>

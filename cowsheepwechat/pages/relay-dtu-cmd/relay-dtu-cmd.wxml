@@ -18,12 +18,11 @@
     <!-- 快捷按钮 -->
     <view class="quick-label">快捷指令</view>
     <view class="quick-row">
-      <button class="quick-btn {{quickSelected === 2 ? 'quick-active' : ''}}" bindtap="onQuickRefreshGps">📍 中继刷定位</button>
       <button class="quick-btn {{quickSelected === 14 ? 'quick-active' : ''}}" bindtap="onQuickWorkTime">🕐 工作时间</button>
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
-      <button class="quick-btn {{quickSelected === 17 ? 'quick-active' : ''}}" bindtap="onQuickLoraSw">🔘 开关LORA</button>
+      <button class="quick-btn {{quickSelected === 17 ? 'quick-active' : ''}}" bindtap="onQuickLoraSw">🔘 开关LORA({{loraSwValue}})</button>
       <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickRelayReboot">🔄 重启中继</button>
-      <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickRelayTimeLoc">📍 中继下发位置</button>
+      <button class="quick-btn {{quickSelected === 4 ? 'quick-active' : ''}}" bindtap="onQuickDebug">🐛 开关Debug</button>
     </view>
   </view>
 

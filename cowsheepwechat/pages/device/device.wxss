@@ -262,7 +262,7 @@ page {
   width: 56rpx;
   text-align: center;
   flex-shrink: 0;
-  margin-right: 14rpx;
+  margin-right: 6rpx;
 }
 
 .item-avatar-placeholder {
@@ -323,14 +323,73 @@ page {
 }
 
 .item-type-dot-gps {
-  background: #07c160;
-  box-shadow: 0 0 8rpx rgba(7, 193, 96, 0.5);
+  /* background 由 inline style 动态设置 */
+  box-shadow: 0 0 8rpx rgba(0, 0, 0, 0.2);
 }
 
 .item-type-icon {
   font-size: 24rpx;
   margin-left: 6rpx;
   align-self: center;
+}
+
+/* 设备状态信号图标（排序序号与设备信息之间）：活跃绿色、休眠灰色，4条竖线信号格，颜色由内联 style/currentColor 控制 */
+.item-status-signal {
+  display: flex;
+  align-items: flex-end;
+  gap: 3rpx;
+  height: 20rpx;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.sig-bar {
+  width: 4rpx;
+  border-radius: 2rpx;
+  background: currentColor;
+}
+
+.sig-1 { height: 6rpx; }
+.sig-2 { height: 10rpx; }
+.sig-3 { height: 14rpx; }
+.sig-4 { height: 18rpx; }
+
+/* 对时类型时钟图标，使用 currentColor 跟随时间颜色 */
+.item-type-icon-clock {
+  width: 22rpx;
+  height: 22rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 50%;
+  margin-left: 6rpx;
+  position: relative;
+  box-sizing: border-box;
+  color: inherit;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.item-type-icon-clock::before,
+.item-type-icon-clock::after {
+  content: '';
+  position: absolute;
+  background: currentColor;
+  border-radius: 1rpx;
+  left: 50%;
+  top: 50%;
+  transform-origin: 0 50%;
+}
+
+.item-type-icon-clock::before {
+  width: 5rpx;
+  height: 2rpx;
+  transform: translate(0, -50%) rotate(-90deg);
+}
+
+.item-type-icon-clock::after {
+  width: 4rpx;
+  height: 2rpx;
+  transform: translate(0, -50%) rotate(0deg);
 }
 
 .item-meta {

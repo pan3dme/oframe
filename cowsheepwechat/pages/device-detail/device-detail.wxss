@@ -78,7 +78,27 @@ page {
   color: #fff;
   word-break: break-all;
   line-height: 1.5;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: center;
   margin-bottom: 14rpx;
+}
+
+.header-dormant-tag {
+  font-size: 22rpx;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+  background: rgba(255, 255, 255, 0.25);
+  padding: 4rpx 14rpx;
+  border-radius: 6rpx;
+  border: 2rpx solid rgba(255, 255, 255, 0.4);
 }
 
 .header-info-grid {
@@ -505,6 +525,9 @@ page {
 }
 .rec-icon-lora.type-5 {
   background: #8E24AA;
+}
+.rec-icon-lora.type-6 {
+  background: #607D8B;
 }
 
 /* 类型标签 */
