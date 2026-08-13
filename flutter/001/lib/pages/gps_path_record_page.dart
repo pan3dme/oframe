@@ -32,7 +32,7 @@ class _GpsPathRecordPageState extends State<GpsPathRecordPage> {
   final List<LatLng> _displayedGcj02Points = [];
 
   // 最小记录距离（米）
-  static const double _minRecordDistance = 5.0;
+  static const double _minRecordDistance = 8.0;
   // 最少记录点数
   static const int _minPointCount = 3;
 
@@ -152,7 +152,7 @@ class _GpsPathRecordPageState extends State<GpsPathRecordPage> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('开始记录路径，请移动至少5米以记录下一个点'),
+        content: Text('开始记录路径，请移动至少8米以记录下一个点'),
         duration: Duration(seconds: 2),
       ),
     );
