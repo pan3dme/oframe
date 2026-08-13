@@ -777,6 +777,20 @@ class DBHelper {
     return null;
   }
 
+  /// 获取所有设备配置数据
+  Future<List<Map<String, dynamic>>> getAllDeviceConfig() async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = await db.query('device_config');
+    final List<Map<String, dynamic>> configs = [];
+    for (final row in result) {
+      final configData = row['config_data'] as String?;
+      if (configData != null) {
+        configs.add(jsonDecode(configData) as Map<String, dynamic>);
+      }
+    }
+    return configs;
+  }
+
   /// 关闭数据库
   Future<void> close() async {
     final db = await database;

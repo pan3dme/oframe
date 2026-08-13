@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
-import '../main.dart'; // 导入全局 routeObserver
 import 'device_detail_page.dart'; // 导入设备详情页面
 
 /// FC 地址常量
@@ -15,70 +14,34 @@ class DeviceManagePage extends StatefulWidget {
   State<DeviceManagePage> createState() => _DeviceManagePageState();
 }
 
-class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
+class _DeviceManagePageState extends State<DeviceManagePage> {
   List<Map<String, dynamic>> _data = [];
   Map<String, Map<String, dynamic>> _deviceLotMap = {}; // 设备LOT数据映射
   Map<String, Map<String, dynamic>> _deviceSyncMap = {}; // 设备对时表数据映射
   Map<String, String> _bluetoothTimeMap = {}; // 蓝牙缓存中每个设备的最新时间
   Map<String, String> _bluetoothTypeMap = {}; // 蓝牙缓存中每个设备最新记录的类型
+  Map<String, Map<String, dynamic>> _deviceConfigMap = {}; // 设备配置数据映射(getDeviceConfigAll)
+  Map<String, List<int>> _deviceWorkHoursMap = {}; // 设备开机时间映射: deviceId -> [startHour, duration]
+  Map<String, int> _deviceIntervalMap = {}; // 设备上报周期映射(分钟): deviceId -> intervalMinutes
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
-  int _refreshCounter = 0; // 刷新计数器，用于强制重新渲染图片
+
   
   // 编辑表单控制器
   final TextEditingController _deviceKeyController = TextEditingController();
   final TextEditingController _renameController = TextEditingController();
   
-  // 单行显示设置
-  bool _singleLineDisplay = false;
+
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
     _loadData();
   }
   
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // 订阅路由事件，监听页面可见性
-    final route = ModalRoute.of(context);
-    if (route is PageRoute) {
-      routeObserver.subscribe(this, route);
-    }
-  }
-  
-  @override
-  void dispose() {
-    // 取消订阅
-    routeObserver.unsubscribe(this);
-    super.dispose();
-  }
-  
-  /// 当页面从后台返回前台时调用
-  @override
-  void didPopNext() {
-    debugPrint('[设备管理] 页面从后台返回，重新加载设置');
-    _loadSettings();
-  }
-  
-  /// 加载设置
-  Future<void> _loadSettings() async {
-    try {
-      final singleLine = await DBHelper().getBoolSetting(
-        'single_line_display',
-        defaultValue: false,
-      );
-      
-      setState(() {
-        _singleLineDisplay = singleLine;
-      });
-    } catch (e) {
-      debugPrint('[设备管理] 加载设置失败: $e');
-    }
-  }
+
+
 
   Future<void> _loadData() async {
     // 先尝试加载缓存数据
@@ -95,6 +58,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
     
     // 加载蓝牙缓存中的设备时间（离线模式补充）
     await _loadBluetoothTimeData();
+    
+    // 加载设备配置数据（获取开机时间）
+    await _loadDeviceConfigData();
   }
 
   /// 从缓存加载数据
@@ -317,6 +283,208 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
     }
   }
 
+  /// 加载设备配置数据（获取开机时间）
+  Future<void> _loadDeviceConfigData() async {
+    try {
+      // 从缓存加载配置数据
+      final cachedConfigs = await DBHelper().getAllDeviceConfig();
+      if (cachedConfigs.isNotEmpty) {
+        final configMap = <String, Map<String, dynamic>>{};
+        final workHoursMap = <String, List<int>>{};
+        final intervalMap = <String, int>{};
+        for (final config in cachedConfigs) {
+          final deviceId = config['deviceId']?.toString() ?? '';
+          if (deviceId.isNotEmpty) {
+            configMap[deviceId] = config;
+            final lorastr = config['lorastr']?.toString() ?? '';
+            // 解析开机时间
+            final workHours = _parseWorkHours(lorastr);
+            if (workHours != null) {
+              workHoursMap[deviceId] = workHours;
+            }
+            // 解析上报周期
+            final interval = _parseReportInterval(lorastr);
+            if (interval != null) {
+              intervalMap[deviceId] = interval;
+            }
+          }
+        }
+        setState(() {
+          _deviceConfigMap = configMap;
+          _deviceWorkHoursMap = workHoursMap;
+          _deviceIntervalMap = intervalMap;
+        });
+        debugPrint('从缓存加载设备配置数据: ${cachedConfigs.length} 条');
+      }
+      
+      // 从网络加载配置数据
+      await _loadDeviceConfigFromNetwork();
+    } catch (e) {
+      debugPrint('加载设备配置数据失败: $e');
+    }
+  }
+
+  /// 从网络加载设备配置数据
+  Future<void> _loadDeviceConfigFromNetwork() async {
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'getDeviceConfigAll',
+          'info': {'limit': 99},
+        }),
+      );
+
+      debugPrint('设备配置FC响应状态: ${resp.statusCode}');
+
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          final rawRows = json['data'] as List<dynamic>? ?? [];
+          final configMap = <String, Map<String, dynamic>>{};
+          final workHoursMap = <String, List<int>>{};
+          final intervalMap = <String, int>{};
+          
+          for (final rawRow in rawRows) {
+            final parsed = _parseOtsRow(rawRow);
+            final deviceId = parsed['deviceId']?.toString() ?? '';
+            if (deviceId.isNotEmpty) {
+              await DBHelper().saveDeviceConfig(deviceId, parsed);
+              configMap[deviceId] = parsed;
+              final lorastr = parsed['lorastr']?.toString() ?? '';
+              // 解析开机时间
+              final workHours = _parseWorkHours(lorastr);
+              if (workHours != null) {
+                workHoursMap[deviceId] = workHours;
+              }
+              // 解析上报周期
+              final interval = _parseReportInterval(lorastr);
+              if (interval != null) {
+                intervalMap[deviceId] = interval;
+              }
+            }
+          }
+          
+          setState(() {
+            _deviceConfigMap = configMap;
+            _deviceWorkHoursMap = workHoursMap;
+            _deviceIntervalMap = intervalMap;
+          });
+          
+          debugPrint('从网络加载设备配置数据: ${rawRows.length} 条，已缓存');
+        } else {
+          debugPrint('设备配置请求错误: ${json['msg']}');
+        }
+      }
+    } catch (e) {
+      debugPrint('设备配置请求失败: $e');
+    }
+  }
+
+  /// 解析lorastr中的开机时间
+  /// 格式: type|deviceId|30,12-6,12-4|...
+  /// 第三段按逗号分割: 上报周期,开机时间(起始-持续),定位时间(起始-持续)
+  /// 返回 [startHour, duration] 或 null
+  List<int>? _parseWorkHours(String lorastr) {
+    if (lorastr.isEmpty) return null;
+    try {
+      final parts = lorastr.split('|');
+      if (parts.length < 3) return null;
+      final configStr = parts[2]; // "30,12-6,12-4"
+      final configs = configStr.split(',');
+      if (configs.length < 3) return null;
+      
+      // 开机时间: "12-6" -> startHour=12, duration=6
+      final bootParts = configs[1].split('-');
+      if (bootParts.length < 2) return null;
+      final startHour = int.tryParse(bootParts[0]);
+      final duration = int.tryParse(bootParts[1]);
+      if (startHour == null || duration == null) return null;
+      
+      return [startHour, duration];
+    } catch (e) {
+      debugPrint('解析开机时间失败: $e, lorastr=$lorastr');
+    }
+    return null;
+  }
+
+  /// 解析lorastr中的上报周期（分钟）
+  /// 格式: type|deviceId|30,12-6,12-4|...
+  /// 第三段第一个值即上报周期，如"30"表示30分钟
+  int? _parseReportInterval(String lorastr) {
+    if (lorastr.isEmpty) return null;
+    try {
+      final parts = lorastr.split('|');
+      if (parts.length < 3) return null;
+      final configStr = parts[2]; // "30,12-6,12-4"
+      final configs = configStr.split(',');
+      if (configs.isEmpty) return null;
+      return int.tryParse(configs[0]);
+    } catch (e) {
+      debugPrint('解析上报周期失败: $e, lorastr=$lorastr');
+    }
+    return null;
+  }
+
+  /// 根据上报周期计算时间颜色级别
+  /// 返回: 0=绿色(≤1周期), 1=红色(1~2周期), 2=灰色(>2周期)
+  int _getTimeColorLevel(String timeRaw, String deviceId) {
+    if (timeRaw == '—' || timeRaw.isEmpty) return 2;
+    final intervalMinutes = _deviceIntervalMap[deviceId];
+    if (intervalMinutes == null || intervalMinutes <= 0) return 0; // 无周期数据，默认绿色
+    
+    try {
+      if (timeRaw.contains(' ')) {
+        final parts = timeRaw.split(' ');
+        if (parts.length >= 2) {
+          final dateParts = parts[0].replaceAll('/', '-').split('-');
+          final timeParts = parts[1].split(':');
+          if (dateParts.length >= 3 && timeParts.length >= 2) {
+            final deviceTime = DateTime(
+              int.parse(dateParts[0]),
+              int.parse(dateParts[1]),
+              int.parse(dateParts[2]),
+              int.parse(timeParts[0]),
+              int.parse(timeParts[1]),
+              timeParts.length >= 3 ? int.parse(timeParts[2]) : 0,
+            );
+            final diffMinutes = DateTime.now().difference(deviceTime).inMinutes;
+            if (diffMinutes <= intervalMinutes) return 0; // ≤1周期：绿色
+            if (diffMinutes <= intervalMinutes * 2) return 1; // 1~2周期：红色
+            return 2; // >2周期：灰色
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('计算时间颜色失败: $e');
+    }
+    return 2; // 默认灰色
+  }
+
+  /// 判断设备是否在工作时间内
+  bool _isDeviceWorking(String deviceId) {
+    final workHours = _deviceWorkHoursMap[deviceId];
+    if (workHours == null) return true; // 没有配置数据，默认显示为工作中
+    
+    final startHour = workHours[0];
+    final duration = workHours[1];
+    final now = DateTime.now();
+    final currentHour = now.hour;
+    
+    // 计算工作结束时间
+    final endHour = (startHour + duration) % 24;
+    
+    // 判断当前时间是否在工作时间内
+    if (startHour < endHour) {
+      // 不跨天，例如 12-18
+      return currentHour >= startHour && currentHour < endHour;
+    } else {
+      // 跨天，例如 20-6
+      return currentHour >= startHour || currentHour < endHour;
+    }
+  }
+
   /// 从网络加载数据
   Future<void> _loadFromNetwork() async {
     try {
@@ -347,9 +515,6 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
             _filterVisibleDevices(); // 过滤visible=true
             _sortDevices(); // 排序
             _isLoading = false;
-            _isFromCache = false;
-            _loadStatus = ''; // 清除所有提示
-            _refreshCounter++; // 增加刷新计数，强制重新渲染图片
           });
           
           debugPrint('从网络加载设备数据: ${parsedData.length} 条，已缓存');
@@ -528,19 +693,26 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                   
                                   final deviceId = _str(item, 'deviceId');
                                   final rename = _str(item, 'rename');
-                                  final deviceKey = _str(item, 'device_key');
-                                  final linkCowSheepId = _str(item, 'link_cowsheep_id');
-                                  final picurl = _str(item, 'picurl');
-                                  final hasImage = picurl != '—' && picurl.isNotEmpty;
                                   
                                   // 获取设备LOT数据
                                   final deviceLot = _deviceLotMap[deviceId];
                                   final lotTimeRaw = deviceLot != null ? _str(deviceLot, 'time') : '—';
-                                  final upDateDevice = deviceLot != null ? _str(deviceLot, 'upDateDevice') : '—';
                                   
                                   // 获取设备对时表数据
                                   final deviceSync = _deviceSyncMap[deviceId];
                                   final syncTimeRaw = deviceSync != null ? _str(deviceSync, 'time') : '—';
+                                  
+                                  // 从对时表lorastr中提取电量（第4个字段）
+                                  String batteryLevel = '';
+                                  if (deviceSync != null) {
+                                    final lorastr = deviceSync['lorastr']?.toString() ?? '';
+                                    if (lorastr.isNotEmpty) {
+                                      final loraParts = lorastr.split('|');
+                                      if (loraParts.length >= 4) {
+                                        batteryLevel = loraParts[3];
+                                      }
+                                    }
+                                  }
                                   
                                   // 获取蓝牙缓存时间
                                   final bluetoothTimeRaw = _bluetoothTimeMap[deviceId] ?? '—';
@@ -584,233 +756,117 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
                                   
                                   // 计算相对时间
                                   String timeAgo = _calcTimeAgo(finalTimeRaw);
-                                  bool isRecent = _isRecentTime(finalTimeRaw);
+                                  // 根据上报周期计算颜色级别: 0=绿, 1=红, 2=灰
+                                  int timeColorLevel = _getTimeColorLevel(finalTimeRaw, deviceId);
                                   
                                   // 图标：LOT表→绿点，对时表→时钟
                                   bool showGreenDot = !timeFromSync;
                                   
-                                  // 构建显示名称：deviceId (rename) (upDateDevice)
+                                  // 判断设备是否在工作时间内
+                                  bool isWorking = _isDeviceWorking(deviceId);
+                                  
+                                  // 构建显示名称：deviceId (rename)
                                   String displayName = deviceId;
                                   if (rename != '—') displayName += ' ($rename)';
 
-                            // 根据单行显示设置选择不同的显示方式
-                            if (_singleLineDisplay) {
-                              return Column(
-                                children: [
-                                  if (index > 0)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 56),
-                                      child: Divider(height: 1, color: Colors.grey[200]),
-                                    ),
-                                  InkWell(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => DeviceDetailPage(
-                                            device: item,
-                                            deviceLot: deviceLot,
+                            // 单行显示：序号 + 设备名 + 状态图标 + 时间标签
+                            return Column(
+                              children: [
+                                if (index > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 56),
+                                    child: Divider(height: 1, color: Colors.grey[200]),
+                                  ),
+                                InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => DeviceDetailPage(
+                                          device: item,
+                                          deviceLot: deviceLot,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    child: Row(
+                                      children: [
+                                        // 序号
+                                        SizedBox(
+                                          width: 28,
+                                          child: Text(
+                                            '${index + 1}',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey[500],
+                                            ),
                                           ),
                                         ),
-                                      );
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                      child: Row(
-                                        children: [
-                                          // 序号
-                                          SizedBox(
-                                            width: 28,
-                                            child: Text(
-                                              '${index + 1}',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.grey[500],
-                                              ),
+                                        const SizedBox(width: 4),
+                                        // 设备名称
+                                        Expanded(
+                                          child: Text(
+                                            displayName,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: isWorking ? const Color(0xFF333333) : Colors.grey[400],
                                             ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                          const SizedBox(width: 4),
-                                          // 设备名称
-                                          Expanded(
-                                            child: Text(
-                                              displayName,
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFF333333),
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          // 状态图标：颜色跟随时间
-                                          showGreenDot
-                                              ? Icon(Icons.circle, size: 10, color: isRecent ? const Color(0xFF2ECC71) : Colors.grey[500])
-                                              : Icon(Icons.access_time, size: 18, color: isRecent ? const Color(0xFF2ECC71) : Colors.grey[500]),
-                                          const SizedBox(width: 8),
-                                          // 时间标签
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: isRecent
-                                                  ? const Color(0xFFE8F8F0)
-                                                  : Colors.grey[100],
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              timeAgo.isNotEmpty ? timeAgo : '—',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                                color: isRecent
-                                                    ? const Color(0xFF2ECC71)
-                                                    : Colors.grey[500],
-                                              ),
+                                        ),
+                                        // 电量
+                                        if (batteryLevel.isNotEmpty) ...[
+                                         
+                                          Text(
+                                            '${batteryLevel}',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey[600],
                                             ),
                                           ),
                                         ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            } else {
-                              // 正常显示模式：图片 + 三行信息 + 按钮
-                              return GestureDetector(
-                                onTap: () {
-                                  // 点击跳转到详情页
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => DeviceDetailPage(
-                                        device: item,
-                                        deviceLot: deviceLot,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Card(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.center,
-                                      children: [
-                                        // 第一列：图片（圆角）
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(10),
-                                          child: hasImage
-                                              ? Image.network(
-                                                  picurl,
-                                                  key: ValueKey('device_${deviceId}_$_refreshCounter'),
-                                                  width: 80,
-                                                  height: 80,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (context, error, stackTrace) {
-                                                    return _buildImagePlaceholderSmall();
-                                                  },
-                                                )
-                                              : _buildImagePlaceholderSmall(),
-                                        ),
-                                        
-                                        const SizedBox(width: 12),
-                                        
-                                        // 第二列：三行信息
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              // 第一行：deviceId (rename)
-                                              Text(
-                                                displayName,
-                                                style: const TextStyle(
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 6),
-                                              // 第二行：time
-                                              Text(
-                                                timeAgo.isNotEmpty ? timeAgo : finalTimeRaw,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.grey[700],
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 6),
-                                              // 第三行：link_cowsheep_id
-                                              Row(
-                                                children: [
-                                                  Icon(
-                                                    Icons.pets,
-                                                    size: 14,
-                                                    color: linkCowSheepId != '—' ? Colors.green : Colors.grey,
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  Expanded(
-                                                    child: Text(
-                                                      linkCowSheepId != '—' ? linkCowSheepId : '未绑定',
-                                                      style: TextStyle(
-                                                        fontSize: 13,
-                                                        color: linkCowSheepId != '—' ? Colors.green[700] : Colors.grey,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
+                                        const SizedBox(width: 8),
+                                        // 状态图标：颜色跟随时间
+                                        showGreenDot
+                                            ? Icon(Icons.circle, size: 10, color: timeColorLevel == 0 ? const Color(0xFF2ECC71) : timeColorLevel == 1 ? Colors.red : Colors.grey[500])
+                                            : Icon(Icons.access_time, size: 18, color: timeColorLevel == 0 ? const Color(0xFF2ECC71) : timeColorLevel == 1 ? Colors.red : Colors.grey[500]),
+                                        const SizedBox(width: 8),
+                                        // 时间标签
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: timeColorLevel == 0
+                                                ? const Color(0xFFE8F8F0)
+                                                : timeColorLevel == 1
+                                                    ? const Color(0xFFFDEDEC)
+                                                    : Colors.grey[100]!,
+                                            borderRadius: BorderRadius.circular(4),
                                           ),
-                                        ),
-                                        
-                                        const SizedBox(width: 1),
-                                        
-                                        // 第三列：两个图标（编辑 + 连接）
-                                        Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            IconButton(
-                                              icon: const Icon(Icons.edit, color: Colors.blue, size: 24),
-                                              padding: EdgeInsets.zero,
-                                              constraints: const BoxConstraints(),
-                                              onPressed: () {
-                                                _showEditDialog(item);
-                                              },
+                                          child: Text(
+                                            timeAgo.isNotEmpty ? timeAgo : '—',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: timeColorLevel == 0
+                                                  ? const Color(0xFF2ECC71)
+                                                  : timeColorLevel == 1
+                                                      ? Colors.red
+                                                      : Colors.grey[500],
                                             ),
-                                            const SizedBox(height: 8),
-                                            IconButton(
-                                              icon: Icon(
-                                                Icons.link,
-                                                color: linkCowSheepId != '—' ? Colors.green : Colors.orange,
-                                                size: 24,
-                                              ),
-                                              padding: EdgeInsets.zero,
-                                              constraints: const BoxConstraints(),
-                                              onPressed: () {
-                                                // 连接功能
-                                              },
-                                            ),
-                                          ],
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                 ),
-                              );
-                            }
+                              ],
+                            );
                           },
                         ),
                       ),
@@ -889,63 +945,6 @@ class _DeviceManagePageState extends State<DeviceManagePage> with RouteAware {
     return '';
   }
 
-  /// 判断是否为近期时间（30分钟内）
-  bool _isRecentTime(String timeRaw) {
-    if (timeRaw == '—' || timeRaw.isEmpty) return false;
-    try {
-      if (timeRaw.contains(' ')) {
-        final parts = timeRaw.split(' ');
-        if (parts.length >= 2) {
-          final dateParts = parts[0].replaceAll('/', '-').split('-');
-          final timeParts = parts[1].split(':');
-          if (dateParts.length >= 3 && timeParts.length >= 2) {
-            final deviceTime = DateTime(
-              int.parse(dateParts[0]),
-              int.parse(dateParts[1]),
-              int.parse(dateParts[2]),
-              int.parse(timeParts[0]),
-              int.parse(timeParts[1]),
-              timeParts.length >= 3 ? int.parse(timeParts[2]) : 0,
-            );
-            return DateTime.now().difference(deviceTime).inMinutes <= 30;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('判断近期时间失败: $e');
-    }
-    return false;
-  }
-
-  /// 信息行组件
-  Widget _infoRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.grey[500]),
-          const SizedBox(width: 8),
-          Text('$label: ', style: TextStyle(fontSize: 14, color: Colors.grey[700])),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 图片占位符（小尺寸，80x80）
-  Widget _buildImagePlaceholderSmall() {
-    return Container(
-      width: 80,
-      height: 80,
-      decoration: BoxDecoration(
-        color: Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(Icons.image_not_supported, size: 32, color: Colors.grey[400]),
-    );
-  }
 
   /// 显示编辑对话框
   void _showEditDialog(Map<String, dynamic> item) {
