@@ -881,8 +881,11 @@ class DBHelper {
     final List<Map<String, dynamic>> configs = [];
     for (final row in result) {
       final configData = row['config_data'] as String?;
+      final cachedAt = row['cached_at'] as String?;
       if (configData != null) {
-        configs.add(jsonDecode(configData) as Map<String, dynamic>);
+        final parsed = jsonDecode(configData) as Map<String, dynamic>;
+        parsed['_cached_at'] = cachedAt ?? ''; // 附带缓存时间用于比较
+        configs.add(parsed);
       }
     }
     return configs;

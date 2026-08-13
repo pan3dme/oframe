@@ -116,8 +116,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   }
 
   /// 从缓存加载设备配置（离线回退）
-  /// 同时检查蓝牙缓存(type=6)和getDeviceConfigAll缓存(device_config表)
-  /// 比较两者的缓存时间，取更新的数据
+  /// 断网时同时检查蓝牙缓存(type=6)和device_config表缓存
+  /// 比较cached_at时间，取更新的数据
   Future<void> _loadDeviceConfigFromCache(String deviceId) async {
     String? bluetoothLorastr;
     String? bluetoothCachedAt;
@@ -139,66 +139,49 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
           final parts = info.split('|');
           if (parts.length < 3) continue;
 
-          final type = parts[0]; // type在parts[0]
-          final deviceMarker = parts[1]; // 设备标记在parts[1]
+          final type = parts[0];
+          final deviceMarker = parts[1];
 
           if (type == '6' && deviceMarker == deviceId) {
-            // 找到type=6的匹配记录，取最新的（列表已按cached_at DESC排序）
-            final candidateLorastr = info;
-            final candidateCachedAt = item['cached_at'] as String? ?? '';
-            // 如果还没找到，或者这条更新，则更新
-            if (bluetoothLorastr == null || candidateCachedAt.compareTo(bluetoothCachedAt ?? '') > 0) {
-              bluetoothLorastr = candidateLorastr;
-              bluetoothCachedAt = candidateCachedAt;
-            }
+            bluetoothLorastr = info;
+            bluetoothCachedAt = item['cached_at'] as String? ?? '';
+            break; // 列表已按cached_at DESC，第一条就是最新
           }
         } catch (_) {
           continue;
         }
       }
-      if (bluetoothLorastr != null) {
-        debugPrint('[离线配置] 蓝牙缓存找到type=6: deviceId=$deviceId, lorastr=$bluetoothLorastr, cached_at=$bluetoothCachedAt');
-      } else {
-        debugPrint('[离线配置] 蓝牙缓存中没有type=6的记录');
-      }
     } catch (e) {
       debugPrint('[离线配置] 蓝牙缓存加载失败: $e');
     }
 
-    // 第二步：从getDeviceConfigAll缓存(device_config表)中找
+    // 第二步：从device_config表缓存中找
     try {
       final cachedConfig = await DBHelper().getDeviceConfig(deviceId);
       if (cachedConfig != null) {
         configLorastr = cachedConfig['lorastr']?.toString() ?? '';
         configCachedAt = await DBHelper().getDeviceConfigCachedAt(deviceId);
-        debugPrint('[离线配置] getDeviceConfigAll缓存: deviceId=$deviceId, lorastr=$configLorastr, cached_at=$configCachedAt');
-      } else {
-        debugPrint('[离线配置] getDeviceConfigAll缓存中没有该设备配置');
       }
     } catch (e) {
-      debugPrint('[离线配置] getDeviceConfigAll缓存加载失败: $e');
+      debugPrint('[离线配置] 表缓存加载失败: $e');
     }
 
-    // 第三步：比较两个缓存源的时间，取更新的
+    // 第三步：比较时间，取更新的
     if (bluetoothLorastr != null && configLorastr != null) {
-      // 两个都有，比较cached_at时间
+      // 两个都有，比较cached_at
       final btTime = bluetoothCachedAt ?? '';
       final cfgTime = configCachedAt ?? '';
       if (btTime.compareTo(cfgTime) > 0) {
-        // 蓝牙缓存更新
         _parseConfigLorastr(bluetoothLorastr);
-        debugPrint('[离线配置] 蓝牙缓存更新(bt=$btTime > config=$cfgTime)，使用蓝牙数据');
+        debugPrint('[离线配置] 蓝牙更新(bt=$btTime > cfg=$cfgTime)，使用蓝牙数据');
       } else {
-        // 表缓存更新或相同
         _parseConfigLorastr(configLorastr);
-        debugPrint('[离线配置] 表缓存更新(config=$cfgTime >= bt=$btTime)，使用表缓存数据');
+        debugPrint('[离线配置] 表缓存更新(cfg=$cfgTime >= bt=$btTime)，使用表缓存数据');
       }
     } else if (bluetoothLorastr != null) {
-      // 只有蓝牙缓存
       _parseConfigLorastr(bluetoothLorastr);
-      debugPrint('[离线配置] 仅有蓝牙缓存数据，使用蓝牙数据');
+      debugPrint('[离线配置] 仅有蓝牙数据，使用蓝牙数据');
     } else if (configLorastr != null) {
-      // 只有表缓存
       _parseConfigLorastr(configLorastr);
       debugPrint('[离线配置] 仅有表缓存数据，使用表缓存数据');
     } else {

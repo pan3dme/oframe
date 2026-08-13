@@ -286,7 +286,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   /// 加载设备配置数据（获取开机时间）
   Future<void> _loadDeviceConfigData() async {
     try {
-      // 从缓存加载配置数据
+      // 先从表缓存加载配置数据（作为基础数据）
       final cachedConfigs = await DBHelper().getAllDeviceConfig();
       if (cachedConfigs.isNotEmpty) {
         final configMap = <String, Map<String, dynamic>>{};
@@ -297,12 +297,10 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
           if (deviceId.isNotEmpty) {
             configMap[deviceId] = config;
             final lorastr = config['lorastr']?.toString() ?? '';
-            // 解析开机时间
             final workHours = _parseWorkHours(lorastr);
             if (workHours != null) {
               workHoursMap[deviceId] = workHours;
             }
-            // 解析上报周期
             final interval = _parseReportInterval(lorastr);
             if (interval != null) {
               intervalMap[deviceId] = interval;
@@ -317,15 +315,133 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         debugPrint('从缓存加载设备配置数据: ${cachedConfigs.length} 条');
       }
       
-      // 从网络加载配置数据
-      await _loadDeviceConfigFromNetwork();
+      // 尝试从网络加载配置数据
+      final networkSuccess = await _loadDeviceConfigFromNetwork();
+      
+      // 网络失败（断网）时，用蓝牙缓存与表缓存比较时间，取更新的
+      if (!networkSuccess) {
+        await _mergeBluetoothConfigData();
+      }
     } catch (e) {
       debugPrint('加载设备配置数据失败: $e');
+      // 异常情况也尝试蓝牙缓存兜底
+      await _mergeBluetoothConfigData();
+    }
+  }
+
+  /// 断网时从蓝牙缓存加载type=6配置数据，与表缓存比较时间，取更新的
+  Future<void> _mergeBluetoothConfigData() async {
+    try {
+      final allBluetoothData = await DBHelper().getBluetoothData();
+      if (allBluetoothData.isEmpty) {
+        debugPrint('[配置合并] 蓝牙缓存为空，保留表缓存数据');
+        return;
+      }
+
+      // 找每个设备最新的type=6记录及其cached_at
+      final deviceBtLorastrMap = <String, String>{}; // deviceId -> lorastr
+      final deviceBtCachedAtMap = <String, String>{}; // deviceId -> cached_at
+
+      for (final item in allBluetoothData) {
+        final dataStr = item['data'] as String?;
+        if (dataStr == null || dataStr.isEmpty) continue;
+
+        try {
+          final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+          final info = jsonData['info'] as String? ?? '';
+          if (!info.contains('|')) continue;
+
+          final parts = info.split('|');
+          if (parts.length < 3) continue;
+
+          final type = parts[0];
+          final deviceMarker = parts[1];
+
+          if (type == '6' && deviceMarker.isNotEmpty) {
+            final candidateCachedAt = item['cached_at'] as String? ?? '';
+            // 保留最新的
+            if (!deviceBtLorastrMap.containsKey(deviceMarker) ||
+                candidateCachedAt.compareTo(deviceBtCachedAtMap[deviceMarker] ?? '') > 0) {
+              deviceBtLorastrMap[deviceMarker] = info;
+              deviceBtCachedAtMap[deviceMarker] = candidateCachedAt;
+            }
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+
+      if (deviceBtLorastrMap.isEmpty) {
+        debugPrint('[配置合并] 蓝牙缓存中没有type=6的记录，保留表缓存数据');
+        return;
+      }
+
+      debugPrint('[配置合并] 蓝牙缓存找到 ${deviceBtLorastrMap.length} 个设备的type=6配置');
+
+      // 与表缓存比较时间，取更新的
+      final workHoursMap = <String, List<int>>{};
+      final intervalMap = <String, int>{};
+      int btCount = 0;
+      int cacheCount = 0;
+
+      // 处理蓝牙有数据的设备：比较时间取更新的
+      for (final entry in deviceBtLorastrMap.entries) {
+        final deviceId = entry.key;
+        final btLorastr = entry.value;
+        final btCachedAt = deviceBtCachedAtMap[deviceId] ?? '';
+        final configCachedAt = _deviceConfigMap[deviceId]?['_cached_at']?.toString() ?? '';
+
+        if (btCachedAt.compareTo(configCachedAt) > 0) {
+          // 蓝牙更新，使用蓝牙数据
+          final workHours = _parseWorkHours(btLorastr);
+          if (workHours != null) workHoursMap[deviceId] = workHours;
+          final interval = _parseReportInterval(btLorastr);
+          if (interval != null) intervalMap[deviceId] = interval;
+          btCount++;
+          debugPrint('[配置合并] 设备$deviceId: 蓝牙更新(bt=$btCachedAt > cfg=$configCachedAt)');
+        } else if (_deviceConfigMap.containsKey(deviceId)) {
+          // 表缓存更新，保留表缓存数据
+          final existingWorkHours = _deviceWorkHoursMap[deviceId];
+          if (existingWorkHours != null) workHoursMap[deviceId] = existingWorkHours;
+          final existingInterval = _deviceIntervalMap[deviceId];
+          if (existingInterval != null) intervalMap[deviceId] = existingInterval;
+          cacheCount++;
+          debugPrint('[配置合并] 设备$deviceId: 表缓存更新(cfg=$configCachedAt >= bt=$btCachedAt)');
+        } else {
+          // 表缓存没有，使用蓝牙数据
+          final workHours = _parseWorkHours(btLorastr);
+          if (workHours != null) workHoursMap[deviceId] = workHours;
+          final interval = _parseReportInterval(btLorastr);
+          if (interval != null) intervalMap[deviceId] = interval;
+          btCount++;
+          debugPrint('[配置合并] 设备$deviceId: 表缓存无数据，使用蓝牙');
+        }
+      }
+
+      // 处理蓝牙没有的设备，保留表缓存
+      for (final entry in _deviceWorkHoursMap.entries) {
+        final deviceId = entry.key;
+        if (!deviceBtLorastrMap.containsKey(deviceId)) {
+          workHoursMap[deviceId] = entry.value;
+          final interval = _deviceIntervalMap[deviceId];
+          if (interval != null) intervalMap[deviceId] = interval;
+          cacheCount++;
+        }
+      }
+
+      setState(() {
+        _deviceWorkHoursMap = workHoursMap;
+        _deviceIntervalMap = intervalMap;
+      });
+      debugPrint('[配置合并] 完成: 蓝牙${btCount}个, 表缓存${cacheCount}个');
+    } catch (e) {
+      debugPrint('[配置合并] 蓝牙配置合并失败: $e');
     }
   }
 
   /// 从网络加载设备配置数据
-  Future<void> _loadDeviceConfigFromNetwork() async {
+  /// 返回是否成功
+  Future<bool> _loadDeviceConfigFromNetwork() async {
     try {
       final resp = await http.post(
         Uri.parse(_deviceFcUrl),
@@ -353,12 +469,10 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
               await DBHelper().saveDeviceConfig(deviceId, parsed);
               configMap[deviceId] = parsed;
               final lorastr = parsed['lorastr']?.toString() ?? '';
-              // 解析开机时间
               final workHours = _parseWorkHours(lorastr);
               if (workHours != null) {
                 workHoursMap[deviceId] = workHours;
               }
-              // 解析上报周期
               final interval = _parseReportInterval(lorastr);
               if (interval != null) {
                 intervalMap[deviceId] = interval;
@@ -373,12 +487,16 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
           });
           
           debugPrint('从网络加载设备配置数据: ${rawRows.length} 条，已缓存');
+          return true;
         } else {
           debugPrint('设备配置请求错误: ${json['msg']}');
+          return false;
         }
       }
+      return false;
     } catch (e) {
-      debugPrint('设备配置请求失败: $e');
+      debugPrint('设备配置请求失败(断网): $e');
+      return false;
     }
   }
 
