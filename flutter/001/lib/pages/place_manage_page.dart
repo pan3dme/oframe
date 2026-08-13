@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../utils/db_helper.dart';
 import 'map_pick_location_page.dart';
 
 /// FC 地址常量
@@ -17,6 +18,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
   List<Map<String, dynamic>> _places = [];
   bool _isLoading = true;
   String _errorMessage = '';
+  bool _isUsingCache = false; // 是否正在使用缓存数据
 
   @override
   void initState() {
@@ -24,13 +26,31 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
     _loadPlaces();
   }
 
-  /// 加载地名列表
+  /// 加载地名列表（先缓存后网络）
   Future<void> _loadPlaces() async {
     setState(() {
-      _isLoading = true;
+      _isLoading = _places.isEmpty; // 只有首次无数据时显示loading
       _errorMessage = '';
+      _isUsingCache = false;
     });
 
+    // 第一步：先从本地缓存加载，立即显示
+    try {
+      final cachedRawPlaces = await DBHelper().getAllPlaces();
+      if (cachedRawPlaces.isNotEmpty) {
+        final cachedPlaces = cachedRawPlaces.map((e) => _parsePlace(e)).toList();
+        setState(() {
+          _places = cachedPlaces;
+          _isLoading = false;
+          _isUsingCache = true;
+        });
+        debugPrint('[地名管理] 从缓存加载: ${cachedPlaces.length}条');
+      }
+    } catch (e) {
+      debugPrint('[地名管理] 缓存加载失败: $e');
+    }
+
+    // 第二步：尝试从网络加载最新数据
     try {
       final resp = await http.post(
         Uri.parse(_placeFcUrl),
@@ -42,27 +62,50 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
         final json = jsonDecode(resp.body) as Map<String, dynamic>;
         if (json['status'] == 'success') {
           final data = json['data'] as List<dynamic>;
-          final places = data.map((e) => _parsePlace(e as Map<String, dynamic>)).toList();
+          // 保存原始数据到缓存
+          final rawList = data.map((e) => e as Map<String, dynamic>).toList();
+          await DBHelper().savePlaces(rawList);
+          // 解析并显示
+          final places = rawList.map((e) => _parsePlace(e)).toList();
           setState(() {
             _places = places;
             _isLoading = false;
+            _isUsingCache = false;
           });
-          debugPrint('[地名管理] 加载成功: ${places.length}条');
+          debugPrint('[地名管理] 网络加载成功: ${places.length}条，已缓存');
+          return;
         } else {
+          if (_places.isNotEmpty) {
+            setState(() { _isUsingCache = true; });
+            debugPrint('[地名管理] 网络返回失败，使用缓存数据');
+            return;
+          }
           setState(() {
             _errorMessage = json['msg'] ?? '加载失败';
             _isLoading = false;
           });
+          return;
         }
       } else {
+        if (_places.isNotEmpty) {
+          setState(() { _isUsingCache = true; });
+          return;
+        }
         setState(() {
           _errorMessage = 'HTTP错误: ${resp.statusCode}';
           _isLoading = false;
         });
+        return;
       }
     } catch (e) {
+      // 网络异常，使用缓存数据
+      if (_places.isNotEmpty) {
+        setState(() { _isUsingCache = true; });
+        debugPrint('[地名管理] 网络异常，使用缓存数据: $e');
+        return;
+      }
       setState(() {
-        _errorMessage = '加载失败: $e';
+        _errorMessage = '网络连接失败，且无缓存数据';
         _isLoading = false;
       });
     }
@@ -140,6 +183,32 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
                 )
               : Column(
                   children: [
+                    // 缓存提示横幅
+                    if (_isUsingCache)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        color: const Color(0xFFFFF3CD),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.cloud_off, size: 16, color: Color(0xFF856404)),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                '当前显示缓存数据，连接网络后将自动更新',
+                                style: TextStyle(fontSize: 12, color: Color(0xFF856404)),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: _loadPlaces,
+                              child: const Text(
+                                '刷新',
+                                style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     // 顶部信息栏
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
