@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
 import 'device_log_map_page.dart';
+import 'device_trajectory_page.dart';
 import 'bluetooth_page.dart';
 
 /// 设备详情页面
@@ -115,8 +116,14 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   }
 
   /// 从缓存加载设备配置（离线回退）
-  /// 优先从蓝牙缓存中找type=6的记录，找不到再从getDeviceConfigAll缓存中找
+  /// 同时检查蓝牙缓存(type=6)和getDeviceConfigAll缓存(device_config表)
+  /// 比较两者的缓存时间，取更新的数据
   Future<void> _loadDeviceConfigFromCache(String deviceId) async {
+    String? bluetoothLorastr;
+    String? bluetoothCachedAt;
+    String? configLorastr;
+    String? configCachedAt;
+
     // 第一步：从蓝牙缓存中找type=6的记录
     try {
       final allBluetoothData = await DBHelper().getBluetoothData();
@@ -136,33 +143,66 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
           final deviceMarker = parts[1]; // 设备标记在parts[1]
 
           if (type == '6' && deviceMarker == deviceId) {
-            // 找到type=6的匹配记录，info就是lorastr
-            final lorastr = info;
-            _parseConfigLorastr(lorastr);
-            debugPrint('[离线配置] 从蓝牙缓存加载type=6: deviceId=$deviceId, lorastr=$lorastr');
-            return; // 找到就返回，不再查找
+            // 找到type=6的匹配记录，取最新的（列表已按cached_at DESC排序）
+            final candidateLorastr = info;
+            final candidateCachedAt = item['cached_at'] as String? ?? '';
+            // 如果还没找到，或者这条更新，则更新
+            if (bluetoothLorastr == null || candidateCachedAt.compareTo(bluetoothCachedAt ?? '') > 0) {
+              bluetoothLorastr = candidateLorastr;
+              bluetoothCachedAt = candidateCachedAt;
+            }
           }
         } catch (_) {
           continue;
         }
       }
-      debugPrint('[离线配置] 蓝牙缓存中没有type=6的记录');
+      if (bluetoothLorastr != null) {
+        debugPrint('[离线配置] 蓝牙缓存找到type=6: deviceId=$deviceId, lorastr=$bluetoothLorastr, cached_at=$bluetoothCachedAt');
+      } else {
+        debugPrint('[离线配置] 蓝牙缓存中没有type=6的记录');
+      }
     } catch (e) {
       debugPrint('[离线配置] 蓝牙缓存加载失败: $e');
     }
 
-    // 第二步：蓝牙缓存没有，从getDeviceConfigAll缓存中找
+    // 第二步：从getDeviceConfigAll缓存(device_config表)中找
     try {
       final cachedConfig = await DBHelper().getDeviceConfig(deviceId);
       if (cachedConfig != null) {
-        final lorastr = cachedConfig['lorastr']?.toString() ?? '';
-        _parseConfigLorastr(lorastr);
-        debugPrint('[离线配置] 从getDeviceConfigAll缓存加载: deviceId=$deviceId, lorastr=$lorastr');
+        configLorastr = cachedConfig['lorastr']?.toString() ?? '';
+        configCachedAt = await DBHelper().getDeviceConfigCachedAt(deviceId);
+        debugPrint('[离线配置] getDeviceConfigAll缓存: deviceId=$deviceId, lorastr=$configLorastr, cached_at=$configCachedAt');
       } else {
-        debugPrint('[离线配置] 两个缓存都没有该设备的配置数据');
+        debugPrint('[离线配置] getDeviceConfigAll缓存中没有该设备配置');
       }
     } catch (e) {
       debugPrint('[离线配置] getDeviceConfigAll缓存加载失败: $e');
+    }
+
+    // 第三步：比较两个缓存源的时间，取更新的
+    if (bluetoothLorastr != null && configLorastr != null) {
+      // 两个都有，比较cached_at时间
+      final btTime = bluetoothCachedAt ?? '';
+      final cfgTime = configCachedAt ?? '';
+      if (btTime.compareTo(cfgTime) > 0) {
+        // 蓝牙缓存更新
+        _parseConfigLorastr(bluetoothLorastr);
+        debugPrint('[离线配置] 蓝牙缓存更新(bt=$btTime > config=$cfgTime)，使用蓝牙数据');
+      } else {
+        // 表缓存更新或相同
+        _parseConfigLorastr(configLorastr);
+        debugPrint('[离线配置] 表缓存更新(config=$cfgTime >= bt=$btTime)，使用表缓存数据');
+      }
+    } else if (bluetoothLorastr != null) {
+      // 只有蓝牙缓存
+      _parseConfigLorastr(bluetoothLorastr);
+      debugPrint('[离线配置] 仅有蓝牙缓存数据，使用蓝牙数据');
+    } else if (configLorastr != null) {
+      // 只有表缓存
+      _parseConfigLorastr(configLorastr);
+      debugPrint('[离线配置] 仅有表缓存数据，使用表缓存数据');
+    } else {
+      debugPrint('[离线配置] 两个缓存都没有该设备的配置数据');
     }
   }
 
@@ -557,44 +597,55 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                 Positioned(
                   right: 16,
                   bottom: 16,
-                  child: InkWell(
-                    onTap: () {
-                      if (_isBluetoothConnected) {
-                        _showSendCommandDialog();
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('请连接蓝牙')),
-                        );
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _isBluetoothConnected 
-                            ? const Color(0xFF4CAF50) 
-                            : Colors.grey.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.send, 
-                            size: 16, 
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 查看轨迹按钮
+                      InkWell(
+                        onTap: () => _openTrajectory(),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2196F3),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.route,
+                            size: 20,
                             color: Colors.white,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '指令',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      // 指令按钮
+                      InkWell(
+                        onTap: () {
+                          if (_isBluetoothConnected) {
+                            _showSendCommandDialog();
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('请连接蓝牙')),
+                            );
+                          }
+                        },
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: _isBluetoothConnected
+                                ? const Color(0xFF4CAF50)
+                                : Colors.grey.withOpacity(0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.send,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
@@ -617,6 +668,21 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 打开今日轨迹页面
+  void _openTrajectory() {
+    final deviceId = _str(widget.device['deviceId']);
+    final deviceName = _str(widget.device['rename']);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DeviceTrajectoryPage(
+          deviceId: deviceId,
+          deviceName: deviceName,
+        ),
       ),
     );
   }

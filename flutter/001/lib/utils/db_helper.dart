@@ -535,6 +535,59 @@ class DBHelper {
     return null;
   }
 
+  /// 根据deviceId读取日志数据
+  Future<List<Map<String, dynamic>>> getLogsByDeviceId(String deviceId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'logs',
+      where: 'deviceId = ?',
+      whereArgs: [deviceId],
+      orderBy: 'time ASC',
+    );
+    return maps;
+  }
+
+  /// 根据deviceId和日期读取日志数据（用于轨迹缓存）
+  Future<List<Map<String, dynamic>>> getLogsByDeviceIdAndDate(String deviceId, String date) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'logs',
+      where: 'deviceId = ? AND time LIKE ?',
+      whereArgs: [deviceId, '$date%'],
+      orderBy: 'time ASC',
+    );
+    return maps;
+  }
+
+  /// 保存设备轨迹日志缓存（按设备+日期覆盖）
+  Future<void> saveTrajectoryCache(String deviceId, String date, List<Map<String, dynamic>> logs) async {
+    final db = await database;
+    final batch = db.batch();
+
+    // 删除该设备当天的旧缓存
+    batch.delete(
+      'logs',
+      where: 'deviceId = ? AND time LIKE ?',
+      whereArgs: [deviceId, '$date%'],
+    );
+
+    // 插入新数据
+    for (final log in logs) {
+      batch.insert('logs', {
+        'deviceId': deviceId,
+        'auto_id': log['auto_id']?.toString() ?? '',
+        'lorastr': log['lorastr']?.toString() ?? '',
+        'time': log['time']?.toString() ?? '',
+        'upDateDevice': log['upDateDevice']?.toString() ?? '',
+        'picurl': log['picurl']?.toString() ?? '',
+        'cached_at': DateTime.now().toIso8601String(),
+      });
+    }
+
+    await batch.commit();
+    debugPrint('[DB] 保存轨迹缓存: deviceId=$deviceId, date=$date, count=${logs.length}');
+  }
+
   /// 保存蓝牙数据
   Future<void> saveBluetoothData(String deviceName, String deviceId, String data, String time) async {
     final db = await database;
@@ -802,6 +855,21 @@ class DBHelper {
       if (configData != null) {
         return jsonDecode(configData) as Map<String, dynamic>;
       }
+    }
+    return null;
+  }
+
+  /// 获取设备配置的缓存时间
+  Future<String?> getDeviceConfigCachedAt(String deviceId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = await db.query(
+      'device_config',
+      columns: ['cached_at'],
+      where: 'deviceId = ?',
+      whereArgs: [deviceId],
+    );
+    if (result.isNotEmpty) {
+      return result.first['cached_at'] as String?;
     }
     return null;
   }
