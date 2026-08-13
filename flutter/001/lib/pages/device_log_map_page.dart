@@ -522,35 +522,53 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                     String safeName = _sanitizeString(name);
                     return Marker(
                       point: LatLng(lat, lng),
-                      width: 60,
-                      height: 40,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
+                          // 绿色圆圈图标（固定在GPS坐标点）
                           Container(
-                            width: 10,
-                            height: 10,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
-                              color: Colors.blue,
+                              color: Colors.green,
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 1.5),
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_drop_down,
+                              color: Colors.white,
+                              size: 18,
                             ),
                           ),
-                          const SizedBox(height: 1),
-                          SizedBox(
-                            width: 60,
-                            child: Text(
-                              safeName.length > 5 ? safeName.substring(0, 5) : safeName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
+                          // 名称标签（向右延伸，不影响图标位置）
+                          Positioned(
+                            left: 30,
+                            top: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
                                 color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                shadows: [
-                                  Shadow(offset: Offset(1, 1), blurRadius: 2, color: Colors.black),
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
+                                  ),
                                 ],
+                              ),
+                              child: Text(
+                                safeName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black87,
+                                ),
                               ),
                             ),
                           ),

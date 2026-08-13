@@ -1435,41 +1435,53 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                     
                     return Marker(
                       point: LatLng(lat, lng),
-                      width: 60,
-                      height: 40,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          // 蓝点
+                          // 绿色圆圈图标（固定在GPS坐标点）
                           Container(
-                            width: 10,
-                            height: 10,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
-                              color: Colors.blue,
+                              color: Colors.green,
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 1.5),
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_drop_down,
+                              color: Colors.white,
+                              size: 18,
                             ),
                           ),
-                          const SizedBox(height: 1),
-                          // 地名文字（居中对齐）
-                          SizedBox(
-                            width: 60,
-                            child: Text(
-                              safeName.length > 5 ? safeName.substring(0, 5) : safeName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
+                          // 名称标签（向右延伸，不影响图标位置）
+                          Positioned(
+                            left: 30,
+                            top: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
                                 color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                shadows: [
-                                  Shadow(
-                                    offset: Offset(1, 1),
-                                    blurRadius: 2,
-                                    color: Colors.black,
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
                                   ),
                                 ],
+                              ),
+                              child: Text(
+                                safeName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black87,
+                                ),
                               ),
                             ),
                           ),
@@ -1478,111 +1490,83 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                     );
                   }).whereType<Marker>().toList(),
                 ),
-              // 显示设备位置（黄点或红点）
+              // 显示设备位置
               if (_showDevices && _devicePositions.isNotEmpty)
                 MarkerLayer(
                   markers: _devicePositions.map((device) {
-                    // 清理设备名称，确保UTF-16安全
                     String safeDeviceName = _sanitizeString(device['name'].toString());
-                    
-                    // 判断数据来源：蓝牙缓存用黄点，LOT数据用红点
                     final fromBluetooth = device['fromBluetooth'] as bool? ?? false;
-                    final markerColor = fromBluetooth ? Colors.yellow : Colors.red;
-                    final markerBgColor = fromBluetooth ? Colors.yellow.shade700 : Colors.red.shade700;
                     
                     return Marker(
                       point: LatLng(device['lat'], device['lng']),
-                      width: 80,
-                      height: 50,
-                      child: fromBluetooth
-                          ? AnimatedBuilder(
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // 绿色圆圈图标（固定在GPS坐标点）
+                          if (fromBluetooth)
+                            AnimatedBuilder(
                               animation: _blinkAnimationController!,
                               builder: (context, child) {
                                 final value = _blinkAnimationController!.value;
-                                final isRed = value >= 0.5; // 后0.5秒变红色
-                                final currentColor = isRed ? Colors.red : Colors.yellow;
-                                final currentBgColor = isRed ? Colors.red.shade700 : Colors.yellow.shade700;
-                                
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    // 圆点（黄红交替）
-                                    Container(
-                                      width: 12,
-                                      height: 12,
-                                      decoration: BoxDecoration(
-                                        color: currentColor,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 2),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    // 设备名称（透明背景，阴影跟随颜色）
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                      child: Text(
-                                        safeDeviceName.length > 8 
-                                          ? safeDeviceName.substring(0, 8) 
-                                          : safeDeviceName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          shadows: [
-                                            Shadow(
-                                              offset: Offset(1, 1),
-                                              blurRadius: 2,
-                                              color: currentBgColor.withOpacity(0.8),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            )
-                          : Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // 圆点（红点不闪烁）
-                                Container(
-                                  width: 12,
-                                  height: 12,
+                                final isRed = value >= 0.5;
+                                final dotColor = isRed ? Colors.red : Colors.green;
+                                return Container(
+                                  width: 24,
+                                  height: 24,
                                   decoration: BoxDecoration(
-                                    color: markerColor,
+                                    color: dotColor,
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.white, width: 2),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                // 设备名称（透明背景）
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                  child: Text(
-                                    safeDeviceName.length > 8 
-                                      ? safeDeviceName.substring(0, 8) 
-                                      : safeDeviceName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      shadows: [
-                                        Shadow(
-                                          offset: Offset(1, 1),
-                                          blurRadius: 2,
-                                          color: markerBgColor.withOpacity(0.8),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
+                                  child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
+                                );
+                              },
+                            )
+                          else
+                            Container(
+                              width: 24,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
                             ),
+                          // 名称标签（向右延伸，不影响图标位置）
+                          Positioned(
+                            left: 30,
+                            top: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                safeDeviceName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     );
                   }).toList(),
                 ),

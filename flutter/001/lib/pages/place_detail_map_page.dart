@@ -348,34 +348,55 @@ class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
                 markers: [
                   Marker(
                     point: _markerPoint,
-                    width: 80,
-                    height: 50,
-                    alignment: Alignment.bottomCenter,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    width: 24,
+                    height: 24,
+                    alignment: Alignment.center,
+                    child: Stack(
+                      clipBehavior: Clip.none,
                       children: [
+                        // 绿色圆圈图标（固定在GPS坐标点）
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          width: 24,
+                          height: 24,
                           decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(4),
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
                           ),
-                          child: Text(
-                            widget.placeName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: const Icon(
+                            Icons.arrow_drop_down,
+                            color: Colors.white,
+                            size: 18,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        const Icon(
-                          Icons.place,
-                          color: Colors.red,
-                          size: 30,
+                        // 名称标签（向右延伸，不影响图标位置）
+                        Positioned(
+                          left: 30,
+                          top: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 3,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              widget.placeName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -458,37 +479,57 @@ class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
                     // 排除自身
                     if (pid == widget.placeId) return null;
                     if (lat == 0 && lng == 0) return null;
-                    // 地名宽度最多5个中文字符
                     String safeName = _sanitizeString(name);
-                    if (safeName.length > 5) safeName = safeName.substring(0, 5);
                     return Marker(
                       point: LatLng(lat, lng),
-                      width: 60,
-                      height: 40,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
+                          // 绿色圆圈图标（固定在GPS坐标点）
                           Container(
-                            width: 10,
-                            height: 10,
+                            width: 24,
+                            height: 24,
                             decoration: BoxDecoration(
-                              color: Colors.blue,
+                              color: Colors.green,
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 1.5),
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_drop_down,
+                              color: Colors.white,
+                              size: 18,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              safeName,
-                              style: const TextStyle(color: Colors.white, fontSize: 10),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          // 名称标签（向右延伸，不影响图标位置）
+                          Positioned(
+                            left: 30,
+                            top: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                safeName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black87,
+                                ),
+                              ),
                             ),
                           ),
                         ],
