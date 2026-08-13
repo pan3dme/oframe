@@ -4,7 +4,7 @@ import 'pages/device_manage_page.dart';
 import 'pages/livestock_manage_page.dart';
 import 'pages/bluetooth_page.dart';
 import 'pages/map_center_page.dart';
-import 'pages/settings_page.dart';
+import 'pages/function_list_page.dart';
 
 // 全局路由观察者，用于监听页面可见性
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
@@ -62,7 +62,7 @@ class _HomePageState extends State<HomePage> {
         children: const [
           DeviceManagePage(),
           BluetoothPage(),
-          SettingsPage(),
+          FunctionListPage(),
           MapCenterPage(),
         ],
       ),
@@ -86,8 +86,8 @@ class _HomePageState extends State<HomePage> {
             label: '蓝牙',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: '设置',
+            icon: Icon(Icons.apps),
+            label: '功能列表',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.map),
