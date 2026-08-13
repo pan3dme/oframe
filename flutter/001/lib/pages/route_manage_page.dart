@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
 import 'gps_path_record_page.dart';
+import 'route_detail_map_page.dart';
 
 /// FC 地址常量
 const String _routeFcUrl = 'https://gpsmoveinfo.cn/fc/route_place';
@@ -19,11 +20,28 @@ class _RouteManagePageState extends State<RouteManagePage> {
   bool _isLoading = true;
   String _errorMessage = '';
   bool _isUsingCache = false; // 是否正在使用缓存数据
+  bool _isAdmin = false; // 是否为管理员模式
 
   @override
   void initState() {
     super.initState();
+    _loadAdminSetting();
     _loadRoutes();
+  }
+
+  /// 加载管理员设置
+  Future<void> _loadAdminSetting() async {
+    try {
+      final isAdmin = await DBHelper().getBoolSetting(
+        'is_admin_mode',
+        defaultValue: false,
+      );
+      setState(() {
+        _isAdmin = isAdmin;
+      });
+    } catch (e) {
+      debugPrint('[道路管理] 加载管理员设置失败: $e');
+    }
   }
 
   /// 加载道路列表（先缓存后网络）
@@ -225,18 +243,19 @@ class _RouteManagePageState extends State<RouteManagePage> {
                             style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                           ),
                           const Spacer(),
-                          ElevatedButton.icon(
-                            onPressed: () => _showAddRouteDialog(),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('新增道路'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2ECC71),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                          if (_isAdmin)
+                            ElevatedButton.icon(
+                              onPressed: () => _showAddRouteDialog(),
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('新增道路'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2ECC71),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -277,118 +296,130 @@ class _RouteManagePageState extends State<RouteManagePage> {
     final level = _getRouteLevel(route);
     final pathText = _getPathText(route);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 1,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 第一行：序号 + 名称 + 等级 + 按钮
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 序号
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[500],
+    return GestureDetector(
+      onTap: () {
+        // 点击卡片打开地图详情页
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RouteDetailMapPage(route: route),
+          ),
+        );
+      },
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        elevation: 1,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 第一行：序号 + 名称 + 等级 + 按钮
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 序号
+                  SizedBox(
+                    width: 28,
+                    child: Text(
+                      '${index + 1}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[500],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                // 名称和ID
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                  const SizedBox(width: 4),
+                  // 名称和ID
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'ID: $id',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue,
+                        const SizedBox(height: 2),
+                        Text(
+                          'ID: $id',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '路径点: $pathText',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey[500],
+                        const SizedBox(height: 2),
+                        Text(
+                          '路径点: $pathText',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // 等级标签
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F8F0),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: const Color(0xFF2ECC71), width: 1),
-                  ),
-                  child: Text(
-                    'Lv.$level',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF2ECC71),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                // 按钮列
-                Column(
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => _showEditRouteDialog(route),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: const BorderSide(color: Colors.blue),
-                      ),
-                      child: const Text(
-                        '编辑',
-                        style: TextStyle(fontSize: 12, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  // 等级标签
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F8F0),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF2ECC71), width: 1),
+                    ),
+                    child: Text(
+                      'Lv.$level',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2ECC71),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    OutlinedButton(
-                      onPressed: () => _confirmDeleteRoute(route),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: const BorderSide(color: Colors.red),
-                      ),
-                      child: const Text(
-                        '删除',
-                        style: TextStyle(fontSize: 12, color: Colors.red),
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 按钮列（仅管理员可见）
+                  if (_isAdmin)
+                    Column(
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => _showEditRouteDialog(route),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            side: const BorderSide(color: Colors.blue),
+                          ),
+                          child: const Text(
+                            '编辑',
+                            style: TextStyle(fontSize: 12, color: Colors.blue),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        OutlinedButton(
+                          onPressed: () => _confirmDeleteRoute(route),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                          child: const Text(
+                            '删除',
+                            style: TextStyle(fontSize: 12, color: Colors.red),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

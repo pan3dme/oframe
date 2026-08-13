@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
 import 'map_pick_location_page.dart';
+import 'place_detail_map_page.dart';
 
 /// FC 地址常量
 const String _placeFcUrl = 'https://gpsmoveinfo.cn/fc/route_place';
@@ -19,11 +20,28 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
   bool _isLoading = true;
   String _errorMessage = '';
   bool _isUsingCache = false; // 是否正在使用缓存数据
+  bool _isAdmin = false; // 是否为管理员模式
 
   @override
   void initState() {
     super.initState();
+    _loadAdminSetting();
     _loadPlaces();
+  }
+
+  /// 加载管理员设置
+  Future<void> _loadAdminSetting() async {
+    try {
+      final isAdmin = await DBHelper().getBoolSetting(
+        'is_admin_mode',
+        defaultValue: false,
+      );
+      setState(() {
+        _isAdmin = isAdmin;
+      });
+    } catch (e) {
+      debugPrint('[地名管理] 加载管理员设置失败: $e');
+    }
   }
 
   /// 加载地名列表（先缓存后网络）
@@ -155,6 +173,41 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
     return gps.isEmpty ? '—' : gps;
   }
 
+  /// 解析GPS坐标
+  List<double>? _parseGps(Map<String, dynamic> place) {
+    final gps = place['gps']?.toString() ?? '';
+    if (gps.isEmpty || !gps.contains(',')) return null;
+    final parts = gps.split(',');
+    if (parts.length < 2) return null;
+    final lat = double.tryParse(parts[0].trim());
+    final lng = double.tryParse(parts[1].trim());
+    if (lat == null || lng == null || lat.abs() < 0.0001 || lng.abs() < 0.0001) return null;
+    return [lat, lng];
+  }
+
+  /// 点击地名卡片，打开地图显示
+  void _openPlaceMap(Map<String, dynamic> place) {
+    final gps = _parseGps(place);
+    if (gps == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该地名没有有效坐标')),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlaceDetailMapPage(
+          placeName: _getPlaceName(place),
+          placeId: _getPlaceId(place),
+          latitude: gps[0],
+          longitude: gps[1],
+          level: _getPlaceLevel(place),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -219,18 +272,19 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
                             style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                           ),
                           const Spacer(),
-                          ElevatedButton.icon(
-                            onPressed: () => _showAddPlaceDialog(),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('新增地名'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2ECC71),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                          if (_isAdmin)
+                            ElevatedButton.icon(
+                              onPressed: () => _showAddPlaceDialog(),
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('新增地名'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2ECC71),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -274,8 +328,11 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 1,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+      child: InkWell(
+        onTap: () => _openPlaceMap(place),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -347,41 +404,43 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // 按钮列
-                Column(
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => _showEditPlaceDialog(place),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: const BorderSide(color: Colors.blue),
+                // 按钮列（仅管理员可见）
+                if (_isAdmin)
+                  Column(
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => _showEditPlaceDialog(place),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: Colors.blue),
+                        ),
+                        child: const Text(
+                          '编辑',
+                          style: TextStyle(fontSize: 12, color: Colors.blue),
+                        ),
                       ),
-                      child: const Text(
-                        '编辑',
-                        style: TextStyle(fontSize: 12, color: Colors.blue),
+                      const SizedBox(height: 4),
+                      OutlinedButton(
+                        onPressed: () => _confirmDeletePlace(place),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: const BorderSide(color: Colors.red),
+                        ),
+                        child: const Text(
+                          '删除',
+                          style: TextStyle(fontSize: 12, color: Colors.red),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    OutlinedButton(
-                      onPressed: () => _confirmDeletePlace(place),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: const BorderSide(color: Colors.red),
-                      ),
-                      child: const Text(
-                        '删除',
-                        style: TextStyle(fontSize: 12, color: Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
           ],
+        ),
         ),
       ),
     );

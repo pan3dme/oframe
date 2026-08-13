@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../utils/coord_transform.dart';
@@ -318,6 +319,23 @@ class _GpsPathRecordPageState extends State<GpsPathRecordPage> {
                 maxNativeZoom: 18,
                 minZoom: 3,
                 maxZoom: 19,
+                tileProvider: FMTCStore('map_cache').getTileProvider(
+                  settings: FMTCTileProviderSettings(),
+                ),
+              ),
+              // 高德卫星图注记层
+              TileLayer(
+                urlTemplate: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}',
+                subdomains: ['1', '2', '3', '4'],
+                userAgentPackageName: 'com.example.fuck001',
+                retinaMode: true,
+                tileSize: 256,
+                maxNativeZoom: 18,
+                minZoom: 3,
+                maxZoom: 19,
+                tileProvider: FMTCStore('map_cache').getTileProvider(
+                  settings: FMTCTileProviderSettings(),
+                ),
               ),
               // 当前位置标记
               if (_currentPosition != null)

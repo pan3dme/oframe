@@ -166,10 +166,9 @@ class _MapPickLocationPageState extends State<MapPickLocationPage> {
               },
             ),
             children: [
-              // 高德卫星地图
+              // 高德卫星影像
               TileLayer(
-                urlTemplate:
-                    'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+                urlTemplate: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
                 subdomains: ['1', '2', '3', '4'],
                 userAgentPackageName: 'com.example.fuck001',
                 retinaMode: true,
@@ -177,6 +176,21 @@ class _MapPickLocationPageState extends State<MapPickLocationPage> {
                 zoomOffset: 0,
                 maxNativeZoom: 18,
                 minZoom: 3,
+                maxZoom: 19,
+                tileProvider: FMTCStore('map_cache').getTileProvider(
+                  settings: FMTCTileProviderSettings(),
+                ),
+              ),
+              // 高德卫星图注记层
+              TileLayer(
+                urlTemplate: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}',
+                subdomains: ['1', '2', '3', '4'],
+                userAgentPackageName: 'com.example.fuck001',
+                retinaMode: true,
+                tileSize: 256,
+                maxNativeZoom: 18,
+                minZoom: 3,
+                maxZoom: 19,
                 tileProvider: FMTCStore('map_cache').getTileProvider(
                   settings: FMTCTileProviderSettings(),
                 ),

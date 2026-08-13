@@ -1231,7 +1231,6 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                 errorImage: const NetworkImage(
                   'https://via.placeholder.com/256/CCCCCC/666666?text=Tile+Error',
                 ),
-                // 瓦片缓存配置 - 使用flutter_map_tile_caching实现离线缓存
                 tileProvider: _isCacheEnabled
                     ? FMTCStore(_cacheStoreName).getTileProvider(
                         settings: FMTCTileProviderSettings(),
@@ -1241,6 +1240,22 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)',
                         },
                       ),
+              ),
+              // 高德卫星图注记层（叠加在卫星图上显示地名标注）
+              TileLayer(
+                urlTemplate: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}',
+                subdomains: ['1', '2', '3', '4'],
+                userAgentPackageName: 'com.example.fuck001',
+                retinaMode: true,
+                tileSize: 256,
+                maxNativeZoom: 18,
+                minZoom: 3,
+                maxZoom: 19,
+                tileProvider: _isCacheEnabled
+                    ? FMTCStore(_cacheStoreName).getTileProvider(
+                        settings: FMTCTileProviderSettings(),
+                      )
+                    : NetworkTileProvider(),
               ),
               // 显示当前位置标记（绿色定位图标）
               if (_currentPosition != null)
