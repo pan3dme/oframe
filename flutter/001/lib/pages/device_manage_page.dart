@@ -515,39 +515,43 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
             _filterVisibleDevices(); // 过滤visible=true
             _sortDevices(); // 排序
             _isLoading = false;
+            _isFromCache = false; // 网络成功，恢复标题
           });
           
           debugPrint('从网络加载设备数据: ${parsedData.length} 条，已缓存');
         } else {
-          // 网络请求返回错误
+          // 网络请求返回错误，有缓存数据则标记断网
           setState(() {
-            _loadStatus = '请求错误: ${json['msg']} ${json['error'] ?? ''}';
             _isLoading = false;
-            // 保持_isFromCache状态不变
+            if (_data.isNotEmpty) {
+              _isFromCache = true;
+            } else {
+              _loadStatus = '请求错误: ${json['msg']} ${json['error'] ?? ''}';
+            }
           });
         }
       } else {
+        // HTTP非200，有缓存数据则标记断网
         setState(() {
-          _loadStatus = 'HTTP ${resp.statusCode}';
           _isLoading = false;
+          if (_data.isNotEmpty) {
+            _isFromCache = true;
+          } else {
+            _loadStatus = 'HTTP ${resp.statusCode}';
+          }
         });
       }
     } catch (e) {
       debugPrint('设备表请求失败: $e');
-      // 网络请求失败，如果有缓存数据则不显示错误
-      if (_data.isEmpty) {
-        setState(() {
-          _loadStatus = '连接失败: $e';
-          _isLoading = false;
-        });
-      } else {
-        // 有缓存数据，网络失败，显示缓存模式
-        setState(() {
+      // 网络请求失败，有缓存数据则标记断网
+      setState(() {
+        _isLoading = false;
+        if (_data.isNotEmpty) {
           _isFromCache = true;
-          _loadStatus = '使用缓存数据（离线模式）';
-          _isLoading = false;
-        });
-      }
+        } else {
+          _loadStatus = '连接失败: $e';
+        }
+      });
     }
   }
 
@@ -617,43 +621,14 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('设备管理'),
+        title: Text(_isFromCache ? '设备管理(断网)' : '设备管理'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // 状态提示条
-                if (_loadStatus.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    color: _isFromCache ? Colors.blue.shade100 : Colors.red.shade100,
-                    child: Row(
-                      children: [
-                        Icon(
-                          _isFromCache ? Icons.cloud_off : Icons.error_outline,
-                          color: _isFromCache ? Colors.blue : Colors.red,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _loadStatus,
-                            style: const TextStyle(fontSize: 13),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (_isFromCache)
-                          IconButton(
-                            icon: const Icon(Icons.refresh, size: 20),
-                            onPressed: _loadData,
-                            tooltip: '刷新',
-                          ),
-                      ],
-                    ),
-                  ),
+
                 // 顶部信息栏：设备计数
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),

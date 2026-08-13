@@ -212,7 +212,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('地名管理'),
+        title: Text(_isUsingCache ? '地名管理(断网)' : '地名管理'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: _isLoading
@@ -236,32 +236,6 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
                 )
               : Column(
                   children: [
-                    // 缓存提示横幅
-                    if (_isUsingCache)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        color: const Color(0xFFFFF3CD),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.cloud_off, size: 16, color: Color(0xFF856404)),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                '当前显示缓存数据，连接网络后将自动更新',
-                                style: TextStyle(fontSize: 12, color: Color(0xFF856404)),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: _loadPlaces,
-                              child: const Text(
-                                '刷新',
-                                style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     // 顶部信息栏
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
