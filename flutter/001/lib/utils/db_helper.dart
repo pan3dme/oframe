@@ -611,6 +611,81 @@ class DBHelper {
     return maps;
   }
 
+  /// 从蓝牙缓存获取指定设备指定日期的GPS轨迹点（type 1和5）
+  /// 用于断网时轨迹回退
+  Future<List<Map<String, dynamic>>> getBluetoothGpsForTrajectory(String deviceMarker, String date) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'bluetooth_data',
+      orderBy: 'cached_at ASC',
+    );
+
+    debugPrint('[轨迹蓝牙] 查询参数: deviceMarker=$deviceMarker, date=$date');
+    debugPrint('[轨迹蓝牙] bluetooth_data表总记录数: ${maps.length}');
+
+    // 生成多种日期格式用于匹配蓝牙数据中的time字段
+    // date格式: "2026-08-13"（横线补零）
+    // 蓝牙time格式: "2026/8/13 13:12:44"（斜线不补零）
+    final dateParts = date.split('-');
+    final year = dateParts[0];
+    final month = int.tryParse(dateParts[1])?.toString() ?? dateParts[1];
+    final day = int.tryParse(dateParts[2])?.toString() ?? dateParts[2];
+    final slashDate = '$year/$month/$day'; // "2026/8/13"
+    debugPrint('[轨迹蓝牙] 匹配日期: dash=$date, slash=$slashDate');
+
+    // 统计各阶段过滤数量
+    int skipEmpty = 0, skipNoPipe = 0, skipShort = 0;
+    int skipType = 0, skipDevice = 0, skipDate = 0;
+    int matchType15 = 0;
+
+    final result = <Map<String, dynamic>>[];
+    for (final item in maps) {
+      final dataStr = item['data'] as String?;
+      if (dataStr == null || dataStr.isEmpty) { skipEmpty++; continue; }
+
+      try {
+        final jsonData = jsonDecode(dataStr) as Map<String, dynamic>;
+        final info = jsonData['info'] as String? ?? '';
+        if (!info.contains('|')) { skipNoPipe++; continue; }
+
+        final parts = info.split('|');
+        if (parts.length < 3) { skipShort++; continue; }
+
+        final type = parts[0];
+        final marker = parts[1];
+
+        // 记录type 1/5的设备标记，用于调试
+        if (type == '1' || type == '5') {
+          matchType15++;
+          if (result.length < 3) {
+            debugPrint('[轨迹蓝牙] type=$type, marker=$marker(目标=$deviceMarker), time=${item['time']}, info=$info');
+          }
+        }
+
+        // 只取type 1(GPS)和5(跟踪)，且匹配设备
+        if (type != '1' && type != '5') { skipType++; continue; }
+        if (marker != deviceMarker) { skipDevice++; continue; }
+
+        final timeStr = item['time'] as String? ?? '';
+        // 兼容两种日期格式：横线格式和斜线格式
+        if (!timeStr.startsWith(date) && !timeStr.startsWith(slashDate)) { skipDate++; continue; }
+
+        result.add({
+          'lorastr': info,
+          'time': timeStr,
+        });
+      } catch (e) {
+        debugPrint('[轨迹蓝牙] 解析异常: $e');
+        continue;
+      }
+    }
+
+    debugPrint('[轨迹蓝牙] 过滤统计: 空数据=$skipEmpty, 无分隔符=$skipNoPipe, 字段不足=$skipShort, '
+        '类型不符=$skipType, 设备不符=$skipDevice, 日期不符=$skipDate');
+    debugPrint('[轨迹蓝牙] type1/5总数=$matchType15, 最终匹配=${result.length}条');
+    return result;
+  }
+
   /// 清空蓝牙数据
   Future<void> clearBluetoothData() async {
     final db = await database;

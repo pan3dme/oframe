@@ -218,11 +218,46 @@ class _DeviceTrajectoryPageState extends State<DeviceTrajectoryPage> {
   }
 
   /// 从缓存加载轨迹数据（断网回退）
+  /// 优先从蓝牙缓存取type 1/5的GPS数据，没有再回退到logs缓存
   Future<void> _loadFromCacheFallback(String curdate) async {
+    // 第一步：优先从蓝牙缓存取type 1和5的GPS数据
+    try {
+      final btGpsData = await DBHelper().getBluetoothGpsForTrajectory(widget.deviceId, curdate);
+      if (btGpsData.isNotEmpty) {
+        final rawRows = btGpsData.map((item) {
+          return {
+            'primaryKey': <dynamic>[],
+            'attributes': <dynamic>[
+              {'columnName': 'lorastr', 'columnValue': item['lorastr']},
+              {'columnName': 'time', 'columnValue': item['time']},
+            ],
+          };
+        }).toList();
+
+        final parsedPoints = _parseTrajectoryRows(rawRows);
+        setState(() {
+          _points = parsedPoints;
+          _isLoading = false;
+          _errorMessage = '';
+        });
+
+        debugPrint('[轨迹] 从蓝牙缓存加载 ${parsedPoints.length} 个GPS点(type 1/5)');
+
+        if (parsedPoints.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _fitMapToBounds();
+          });
+        }
+        return; // 蓝牙缓存有数据，直接返回
+      }
+    } catch (e) {
+      debugPrint('[轨迹] 蓝牙缓存加载失败: $e');
+    }
+
+    // 第二步：蓝牙缓存无数据，回退到logs缓存表
     try {
       final cachedLogs = await DBHelper().getLogsByDeviceIdAndDate(widget.deviceId, curdate);
       if (cachedLogs.isNotEmpty) {
-        // 将缓存数据转换为与API返回相同的格式供解析
         final rawRows = cachedLogs.map((log) {
           return {
             'primaryKey': <dynamic>[],
@@ -240,7 +275,7 @@ class _DeviceTrajectoryPageState extends State<DeviceTrajectoryPage> {
           _errorMessage = '';
         });
 
-        debugPrint('[轨迹] 从缓存加载 ${parsedPoints.length} 个GPS点');
+        debugPrint('[轨迹] 从logs缓存加载 ${parsedPoints.length} 个GPS点');
 
         if (parsedPoints.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {

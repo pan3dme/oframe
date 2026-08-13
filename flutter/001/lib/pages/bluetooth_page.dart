@@ -701,7 +701,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
 
   Future<void> _saveAndRefreshCache(String data) async {
     try {
-      // 只缓存类型1(GPS)、2(对时)、3(电量)的数据，其它类型不入缓存
+      // 只缓存类型1(GPS)、2(对时)、3(电量)、5(跟踪GPS)、6(配置)的数据，其它类型不入缓存
       String typeStr = '';
       try {
         final jsonData = jsonDecode(data) as Map<String, dynamic>;
@@ -711,8 +711,8 @@ class _BluetoothPageState extends State<BluetoothPage> {
         }
       } catch (_) {}
       
-      if (typeStr != '1' && typeStr != '2' && typeStr != '3' && typeStr != '6') {
-        print('[蓝牙] 跳过非类型1/2/3/6数据，不入缓存: type=$typeStr');
+      if (typeStr != '1' && typeStr != '2' && typeStr != '3' && typeStr != '5' && typeStr != '6') {
+        print('[蓝牙] 跳过非类型1/2/3/5/6数据，不入缓存: type=$typeStr');
         return;
       }
       
