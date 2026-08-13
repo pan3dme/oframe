@@ -53,6 +53,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
   List<Map<String, dynamic>> _cachedBluetoothData = []; // 缓存的蓝牙数据
   bool _isUploading = false; // 是否正在上传
   bool _autoUpload = false; // 是否开启自动上传
+  bool _uploadOffline = false; // 上传断网状态
   bool _scanCompleted = false; // 扫描是否已完成
   String? _filterType; // 数据过滤类型: null=全部, '1'=GPS, '2'=对时, '3'=电量
   
@@ -243,44 +244,29 @@ class _BluetoothPageState extends State<BluetoothPage> {
             final json = jsonDecode(resp.body) as Map<String, dynamic>;
             if (json['status'] == 'success') {
               print('[蓝牙上传] 成功上传: deviceId=$deviceId');
+              if (_uploadOffline) {
+                setState(() => _uploadOffline = false);
+              }
               await DBHelper().deleteBluetoothDataById(dataId);
               await _loadCachedBluetoothData();
             } else {
-              print('[蓝牙上传] 上传失败: ${json['msg']}');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('上传失败: ${json['msg']}'),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+              print('[蓝牙上传] 上传失败: ${json['msg']}，稍后重试');
+              if (!_uploadOffline) {
+                setState(() => _uploadOffline = true);
               }
               await Future.delayed(const Duration(seconds: 3));
             }
           } else {
-            print('[蓝牙上传] HTTP错误: ${resp.statusCode}');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('HTTP错误: ${resp.statusCode}'),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
+            print('[蓝牙上传] HTTP错误: ${resp.statusCode}，稍后重试');
+            if (!_uploadOffline) {
+              setState(() => _uploadOffline = true);
             }
             await Future.delayed(const Duration(seconds: 3));
           }
         } catch (e) {
-          print('[蓝牙上传] 上传失败（可能断网）: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('上传失败（可能断网）: $e'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
-              ),
-            );
+          print('[蓝牙上传] 上传失败（可能断网）: $e，稍后重试');
+          if (!_uploadOffline) {
+            setState(() => _uploadOffline = true);
           }
           await Future.delayed(const Duration(seconds: 5));
         }
@@ -1167,6 +1153,17 @@ class _BluetoothPageState extends State<BluetoothPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('蓝牙'),
+            if (_uploadOffline) ...[
+              const SizedBox(width: 6),
+              const Text(
+                '(断网)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.red,
+                ),
+              ),
+            ],
             const SizedBox(width: 8),
             Icon(
               _isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,

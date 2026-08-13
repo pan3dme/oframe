@@ -765,14 +765,42 @@ class _RouteManagePageState extends State<RouteManagePage> {
   void _showEditRouteDialog(Map<String, dynamic> route) {
     final nameController = TextEditingController(text: _getRouteName(route));
     final levelController = TextEditingController(text: _getRouteLevel(route).toString());
+    final existingRoadinfo = route['roadinfo']?.toString() ?? '';
+    final int existingPointCount = existingRoadinfo.isEmpty
+        ? 0
+        : existingRoadinfo.split(',').length ~/ 2;
+
+    _showEditRouteDialogWithData(
+      nameController.text,
+      levelController.text,
+      existingRoadinfo,
+      existingPointCount,
+      _getRouteId(route),
+    );
+  }
+
+  /// 带数据的编辑道路弹框（支持从GPS路径页返回后恢复）
+  void _showEditRouteDialogWithData(
+    String initName,
+    String initLevel,
+    String initRoadinfo,
+    int initPointCount,
+    String routeId,
+  ) {
+    final nameController = TextEditingController(text: initName);
+    final levelController = TextEditingController(text: initLevel);
+    // 用 ValueNotifier 跟踪最新的 roadinfo，确保保存时拿到最新值
+    final roadinfoNotifier = ValueNotifier<String>(initRoadinfo);
+    final pointCountNotifier = ValueNotifier<int>(initPointCount);
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('编辑道路'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
                 controller: nameController,
@@ -792,17 +820,110 @@ class _RouteManagePageState extends State<RouteManagePage> {
                 ),
                 keyboardType: TextInputType.number,
               ),
+              const SizedBox(height: 16),
+              // 重新获取路径按钮
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(dialogContext);
+                        final result = await Navigator.push<Map<String, dynamic>>(
+                          context,
+                          MaterialPageRoute(builder: (_) => const GpsPathRecordPage()),
+                        );
+                        if (result != null && mounted) {
+                          final newRoadinfo = result['roadinfo'] as String? ?? '';
+                          final newCount = result['pointCount'] as int? ?? 0;
+                          _showEditRouteDialogWithData(
+                            nameController.text,
+                            levelController.text,
+                            newRoadinfo,
+                            newCount,
+                            routeId,
+                          );
+                        } else if (mounted) {
+                          // 用户取消了，保留原数据
+                          _showEditRouteDialogWithData(
+                            nameController.text,
+                            levelController.text,
+                            roadinfoNotifier.value,
+                            pointCountNotifier.value,
+                            routeId,
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.gps_fixed, size: 18),
+                      label: const Text('重新获取路径'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFF2ECC71)),
+                        foregroundColor: const Color(0xFF2ECC71),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 路径信息显示
+              ValueListenableBuilder<String>(
+                valueListenable: roadinfoNotifier,
+                builder: (context, val, _) {
+                  if (val.isEmpty) {
+                    return const Text(
+                      '尚未获取路径坐标',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    );
+                  }
+                  return ValueListenableBuilder<int>(
+                    valueListenable: pointCountNotifier,
+                    builder: (context, count, _) => Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F8F0),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF2ECC71)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.check_circle, color: Color(0xFF2ECC71), size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                '已记录 $count 个坐标点',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF2ECC71),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            val.length > 60 ? '${val.substring(0, 60)}...' : val,
+                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ],
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           ElevatedButton(
             onPressed: () {
-              final id = _getRouteId(route);
               final name = nameController.text.trim();
               final level = levelController.text.trim();
               if (name.isEmpty) {
@@ -811,8 +932,8 @@ class _RouteManagePageState extends State<RouteManagePage> {
                 );
                 return;
               }
-              Navigator.pop(context);
-              _updateRoute(id, name, level);
+              Navigator.pop(dialogContext);
+              _updateRoute(routeId, name, level, roadinfoNotifier.value);
             },
             child: const Text('保存'),
           ),
@@ -822,8 +943,8 @@ class _RouteManagePageState extends State<RouteManagePage> {
   }
 
   /// 更新道路
-  Future<void> _updateRoute(String id, String name, String level) async {
-    debugPrint('[道路管理] 更新道路: id=$id, name=$name, level=$level');
+  Future<void> _updateRoute(String id, String name, String level, String roadinfo) async {
+    debugPrint('[道路管理] 更新道路: id=$id, name=$name, level=$level, roadinfo=$roadinfo');
 
     try {
       final resp = await http.post(
@@ -835,6 +956,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
             'route_id': id,
             'roadname': name,
             'level': level,
+            'roadinfo': roadinfo,
           },
         }),
       );
