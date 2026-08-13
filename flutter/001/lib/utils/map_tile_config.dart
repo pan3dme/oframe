@@ -31,8 +31,8 @@ class MapTileConfig {
   /// 最小缩放级别
   static const double minZoom = 3.0;
 
-  /// 最大缩放级别
-  static const double maxZoom = 19.0;
+  /// 最大缩放级别（允许放大到20级，超出瓦片原生级别时自动放大上一级瓦片）
+  static const double maxZoom = 20.0;
 
   /// 从数据库加载 token（每个地图页面 initState 时调用）
   static Future<void> loadToken() async {

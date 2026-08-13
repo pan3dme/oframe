@@ -176,7 +176,7 @@ class _MapPickLocationPageState extends State<MapPickLocationPage> {
                 zoomOffset: 0,
                 maxNativeZoom: 18,
                 minZoom: 3,
-                maxZoom: 19,
+                maxZoom: 20,
                 tileProvider: FMTCStore('map_cache').getTileProvider(
                   settings: FMTCTileProviderSettings(),
                 ),
@@ -190,7 +190,7 @@ class _MapPickLocationPageState extends State<MapPickLocationPage> {
                 tileSize: 256,
                 maxNativeZoom: 18,
                 minZoom: 3,
-                maxZoom: 19,
+                maxZoom: 20,
                 tileProvider: FMTCStore('map_cache').getTileProvider(
                   settings: FMTCTileProviderSettings(),
                 ),

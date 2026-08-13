@@ -321,7 +321,7 @@ class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
                 zoomOffset: 0,
                 maxNativeZoom: 18,
                 minZoom: 3,
-                maxZoom: 19,
+                maxZoom: 20,
                 errorImage: const NetworkImage(
                   'https://via.placeholder.com/256/CCCCCC/666666?text=Tile+Error',
                 ),
@@ -338,7 +338,7 @@ class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
                 tileSize: 256,
                 maxNativeZoom: 18,
                 minZoom: 3,
-                maxZoom: 19,
+                maxZoom: 20,
                 tileProvider: FMTCStore('map_cache').getTileProvider(
                   settings: FMTCTileProviderSettings(),
                 ),
@@ -354,12 +354,12 @@ class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        // 绿色圆圈图标（固定在GPS坐标点）
+                        // 红色圆圈图标（固定在GPS坐标点）
                         Container(
                           width: 24,
                           height: 24,
                           decoration: BoxDecoration(
-                            color: Colors.green,
+                            color: Colors.red,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
                           ),
@@ -488,12 +488,12 @@ class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          // 绿色圆圈图标（固定在GPS坐标点）
+                          // 红色圆圈图标（固定在GPS坐标点）
                           Container(
                             width: 24,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: Colors.green,
+                              color: Colors.red,
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                             ),

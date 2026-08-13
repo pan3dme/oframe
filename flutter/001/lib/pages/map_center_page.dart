@@ -1226,7 +1226,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                 // 加载优化
                 maxNativeZoom: 18,
                 minZoom: 3,
-                maxZoom: 19,
+                maxZoom: 20,
                 // 错误处理
                 errorImage: const NetworkImage(
                   'https://via.placeholder.com/256/CCCCCC/666666?text=Tile+Error',
@@ -1250,7 +1250,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                 tileSize: 256,
                 maxNativeZoom: 18,
                 minZoom: 3,
-                maxZoom: 19,
+                maxZoom: 20,
                 tileProvider: _isCacheEnabled
                     ? FMTCStore(_cacheStoreName).getTileProvider(
                         settings: FMTCTileProviderSettings(),
@@ -1441,12 +1441,12 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          // 绿色圆圈图标（固定在GPS坐标点）
+                          // 红色圆圈图标（固定在GPS坐标点）
                           Container(
                             width: 24,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: Colors.green,
+                              color: Colors.red,
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                             ),
