@@ -57,6 +57,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
       final cachedRawPlaces = await DBHelper().getAllPlaces();
       if (cachedRawPlaces.isNotEmpty) {
         final cachedPlaces = cachedRawPlaces.map((e) => _parsePlace(e)).toList();
+        _sortPlaces(cachedPlaces);
         setState(() {
           _places = cachedPlaces;
           _isLoading = false;
@@ -85,6 +86,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
           await DBHelper().savePlaces(rawList);
           // 解析并显示
           final places = rawList.map((e) => _parsePlace(e)).toList();
+          _sortPlaces(places);
           setState(() {
             _places = places;
             _isLoading = false;
@@ -127,6 +129,18 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
         _isLoading = false;
       });
     }
+  }
+
+  /// 按ID排序地名列表（ID格式: id + 时间戳数字）
+  void _sortPlaces(List<Map<String, dynamic>> places) {
+    places.sort((a, b) {
+      final idA = _getPlaceId(a);
+      final idB = _getPlaceId(b);
+      // 提取id后的数字部分进行比较
+      final numA = int.tryParse(idA.replaceFirst('id', '')) ?? 0;
+      final numB = int.tryParse(idB.replaceFirst('id', '')) ?? 0;
+      return numA.compareTo(numB);
+    });
   }
 
   /// 解析地名数据

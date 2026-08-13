@@ -25,7 +25,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 9, // 升级到版本9，添加device_config表
+      version: 10, // 升级到版本10，添加pending_operations表
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: _onUpgrade, // 也处理降级情况
@@ -144,6 +144,17 @@ class DBHelper {
         deviceId TEXT PRIMARY KEY,
         config_data TEXT,
         cached_at TEXT
+      )
+    ''');
+
+    // 待提交操作表（离线操作队列）
+    await db.execute('''
+      CREATE TABLE pending_operations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_type TEXT NOT NULL,
+        operation_data TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        retry_count INTEGER DEFAULT 0
       )
     ''');
   }
@@ -284,6 +295,24 @@ class DBHelper {
         print('数据库升级: 已创建 device_config 表');
       } catch (e) {
         print('数据库升级: 创建 device_config 表时出错: $e');
+      }
+    }
+
+    if (oldVersion < 10) {
+      // 版本10：添加待提交操作表
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS pending_operations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_type TEXT NOT NULL,
+            operation_data TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            retry_count INTEGER DEFAULT 0
+          )
+        ''');
+        print('数据库升级: 已创建 pending_operations 表');
+      } catch (e) {
+        print('数据库升级: 创建 pending_operations 表时出错: $e');
       }
     }
   }
@@ -789,6 +818,49 @@ class DBHelper {
       }
     }
     return configs;
+  }
+
+  // ==================== 待提交操作（离线操作队列）====================
+
+  /// 添加待提交操作
+  Future<void> addPendingOperation(String operationType, Map<String, dynamic> operationData) async {
+    final db = await database;
+    await db.insert('pending_operations', {
+      'operation_type': operationType,
+      'operation_data': jsonEncode(operationData),
+      'created_at': DateTime.now().toIso8601String(),
+      'retry_count': 0,
+    });
+    debugPrint('[DB] 添加待提交操作: type=$operationType');
+  }
+
+  /// 获取所有待提交操作（按创建时间升序）
+  Future<List<Map<String, dynamic>>> getPendingOperations() async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = await db.query(
+      'pending_operations',
+      orderBy: 'created_at ASC',
+    );
+    return result.map((row) => {
+      'id': row['id'],
+      'operation_type': row['operation_type'],
+      'operation_data': jsonDecode(row['operation_data'] as String) as Map<String, dynamic>,
+      'created_at': row['created_at'],
+      'retry_count': row['retry_count'],
+    }).toList();
+  }
+
+  /// 删除待提交操作
+  Future<void> deletePendingOperation(int id) async {
+    final db = await database;
+    await db.delete('pending_operations', where: 'id = ?', whereArgs: [id]);
+    debugPrint('[DB] 删除待提交操作: id=$id');
+  }
+
+  /// 更新待提交操作的重试次数
+  Future<void> updatePendingOperationRetryCount(int id, int retryCount) async {
+    final db = await database;
+    await db.update('pending_operations', {'retry_count': retryCount}, where: 'id = ?', whereArgs: [id]);
   }
 
   /// 关闭数据库

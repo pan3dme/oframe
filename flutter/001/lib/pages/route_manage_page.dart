@@ -17,15 +17,24 @@ class RouteManagePage extends StatefulWidget {
 
 class _RouteManagePageState extends State<RouteManagePage> {
   List<Map<String, dynamic>> _routes = [];
+  List<Map<String, dynamic>> _displayRoutes = []; // 合并后的显示列表（服务器 + 待提交新增项）
   bool _isLoading = true;
   String _errorMessage = '';
   bool _isUsingCache = false; // 是否正在使用缓存数据
   bool _isAdmin = false; // 是否为管理员模式
+  List<Map<String, dynamic>> _pendingOps = []; // 待提交操作队列
+  bool _isSyncing = false; // 是否正在同步待提交操作
 
   @override
   void initState() {
     super.initState();
     _loadAdminSetting();
+    _initData();
+  }
+
+  /// 初始化数据：先加载待提交操作，再加载道路列表
+  Future<void> _initData() async {
+    await _loadPendingOperations();
     _loadRoutes();
   }
 
@@ -45,7 +54,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
   }
 
   /// 加载道路列表（先缓存后网络）
-  Future<void> _loadRoutes() async {
+  Future<void> _loadRoutes({bool autoSyncPending = true}) async {
     setState(() {
       _isLoading = _routes.isEmpty; // 只有首次无数据时显示loading
       _errorMessage = '';
@@ -57,11 +66,13 @@ class _RouteManagePageState extends State<RouteManagePage> {
       final cachedRawRoutes = await DBHelper().getAllRoutes();
       if (cachedRawRoutes.isNotEmpty) {
         final cachedRoutes = cachedRawRoutes.map((e) => _parseRoute(e)).toList();
+          _sortRoutes(cachedRoutes);
         setState(() {
           _routes = cachedRoutes;
           _isLoading = false;
           _isUsingCache = true;
         });
+        _buildDisplayList();
         debugPrint('[道路管理] 从缓存加载: ${cachedRoutes.length}条');
       }
     } catch (e) {
@@ -85,12 +96,18 @@ class _RouteManagePageState extends State<RouteManagePage> {
           await DBHelper().saveRoutes(rawList);
           // 解析并显示
           final routes = rawList.map((e) => _parseRoute(e)).toList();
+          _sortRoutes(routes);
           setState(() {
             _routes = routes;
             _isLoading = false;
             _isUsingCache = false;
           });
+          _buildDisplayList();
           debugPrint('[道路管理] 网络加载成功: ${routes.length}条，已缓存');
+          // 网络成功后自动处理待提交操作
+          if (autoSyncPending && _pendingOps.isNotEmpty) {
+            _processPendingOperations();
+          }
           return;
         } else {
           // 网络返回失败，如果有缓存则用缓存
@@ -128,6 +145,169 @@ class _RouteManagePageState extends State<RouteManagePage> {
         _isLoading = false;
       });
     }
+  }
+
+  /// 加载待提交操作队列
+  Future<void> _loadPendingOperations() async {
+    try {
+      final ops = await DBHelper().getPendingOperations();
+      // 只加载道路相关的待提交操作
+      final routeOps = ops.where((op) =>
+        op['operation_type'] == 'addRoad' ||
+        op['operation_type'] == 'updateRoad' ||
+        op['operation_type'] == 'deleteRoad'
+      ).toList();
+      setState(() {
+        _pendingOps = routeOps;
+      });
+      _buildDisplayList();
+      debugPrint('[道路管理] 加载待提交操作: ${routeOps.length}条');
+    } catch (e) {
+      debugPrint('[道路管理] 加载待提交操作失败: $e');
+    }
+  }
+
+  /// 构建合并显示列表：服务器道路 + 待提交新增项（过滤掉待删除项）
+  void _buildDisplayList() {
+    // 收集待删除的route_id
+    final pendingDeleteIds = <String>{};
+    for (final op in _pendingOps) {
+      if (op['operation_type'] == 'deleteRoad') {
+        final routeId = (op['operation_data'] as Map<String, dynamic>)['route_id']?.toString() ?? '';
+        if (routeId.isNotEmpty) pendingDeleteIds.add(routeId);
+      }
+    }
+
+    // 收集待提交的addRoad，转为道路格式
+    final pendingAddRoutes = <Map<String, dynamic>>[];
+    for (final op in _pendingOps) {
+      if (op['operation_type'] == 'addRoad') {
+        final data = op['operation_data'] as Map<String, dynamic>;
+        pendingAddRoutes.add({
+          'route_id': data['route_id'] ?? '',
+          'roadname': data['roadname'] ?? '未命名',
+          'level': data['level'] ?? '1',
+          'roadinfo': data['roadinfo'] ?? '',
+          '_isPending': true,
+          '_pendingOpId': op['id'],
+          '_pendingOpType': 'addRoad',
+        });
+      }
+    }
+
+    // 服务器道路（过滤掉待删除的）+ 待提交新增项
+    final display = <Map<String, dynamic>>[];
+
+    // 添加服务器道路（标记是否有待提交操作）
+    for (final route in _routes) {
+      final id = _getRouteId(route);
+      if (pendingDeleteIds.contains(id)) {
+        // 有待删除操作的，不显示在列表中
+        continue;
+      }
+      // 检查是否有待更新操作
+      final hasPendingUpdate = _pendingOps.any((op) =>
+        op['operation_type'] == 'updateRoad' &&
+        (op['operation_data'] as Map<String, dynamic>)['route_id'] == id
+      );
+      final routeCopy = Map<String, dynamic>.from(route);
+      routeCopy['_isPending'] = false;
+      routeCopy['_hasPendingUpdate'] = hasPendingUpdate;
+      display.add(routeCopy);
+    }
+
+    // 添加待提交新增项
+    display.addAll(pendingAddRoutes);
+
+    // 排序：服务器道路按ID排序，待提交新增项排在最后
+    final serverRoutes = display.where((r) => r['_isPending'] != true).toList();
+    final pendingRoutes = display.where((r) => r['_isPending'] == true).toList();
+    _sortRoutes(serverRoutes);
+    // 待提交项按创建时间排序（已通过pendingOps顺序保证）
+
+    setState(() {
+      _displayRoutes = [...serverRoutes, ...pendingRoutes];
+    });
+  }
+
+  /// 处理待提交操作队列（网络可用时调用）
+  Future<void> _processPendingOperations() async {
+    if (_pendingOps.isEmpty) return;
+    setState(() { _isSyncing = true; });
+    debugPrint('[道路管理] 开始处理待提交操作: ${_pendingOps.length}条');
+
+    final List<int> succeededIds = [];
+
+    for (final op in _pendingOps) {
+      final opId = op['id'] as int;
+      final opType = op['operation_type'] as String;
+      final opData = op['operation_data'] as Map<String, dynamic>;
+
+      try {
+        final resp = await http.post(
+          Uri.parse(_routeFcUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'action': opType, 'info': opData}),
+        );
+
+        if (resp.statusCode == 200) {
+          final json = jsonDecode(resp.body) as Map<String, dynamic>;
+          if (json['status'] == 'success') {
+            succeededIds.add(opId);
+            debugPrint('[道路管理] 待提交操作成功: type=$opType, id=$opId');
+          } else {
+            // 服务器返回失败，也移除（避免无限重试错误数据）
+            succeededIds.add(opId);
+            debugPrint('[道路管理] 待提交操作被服务器拒绝: ${json['msg']}');
+          }
+        } else {
+          // HTTP错误，保留下次重试
+          await DBHelper().updatePendingOperationRetryCount(opId, (op['retry_count'] as int? ?? 0) + 1);
+          debugPrint('[道路管理] 待提交操作HTTP错误: ${resp.statusCode}');
+        }
+      } catch (e) {
+        // 网络异常，保留下次重试
+        await DBHelper().updatePendingOperationRetryCount(opId, (op['retry_count'] as int? ?? 0) + 1);
+        debugPrint('[道路管理] 待提交操作网络异常: $e');
+        break; // 网络不通，停止后续提交
+      }
+    }
+
+    // 删除成功的操作
+    for (final id in succeededIds) {
+      await DBHelper().deletePendingOperation(id);
+    }
+
+    if (succeededIds.isNotEmpty) {
+      debugPrint('[道路管理] 已同步${succeededIds.length}条操作');
+    }
+
+    // 重新加载待提交列表和道路列表
+    await _loadPendingOperations();
+    await _loadRoutes(autoSyncPending: false);
+    setState(() { _isSyncing = false; });
+
+    if (mounted && succeededIds.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已同步${succeededIds.length}条待提交操作'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 按ID排序道路列表（ID格式: id + 时间戳数字）
+  void _sortRoutes(List<Map<String, dynamic>> routes) {
+    routes.sort((a, b) {
+      final idA = _getRouteId(a);
+      final idB = _getRouteId(b);
+      // 提取id后的数字部分进行比较
+      final numA = int.tryParse(idA.replaceFirst('id', '')) ?? 0;
+      final numB = int.tryParse(idB.replaceFirst('id', '')) ?? 0;
+      return numA.compareTo(numB);
+    });
   }
 
   /// 解析道路数据
@@ -213,10 +393,32 @@ class _RouteManagePageState extends State<RouteManagePage> {
                       child: Row(
                         children: [
                           Text(
-                            '共 ${_routes.length} 条道路',
+                            '共 ${_displayRoutes.length} 条道路',
                             style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                           ),
                           const Spacer(),
+                          // 待同步指示
+                          if (_pendingOps.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.orange),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.cloud_off, size: 14, color: Colors.orange),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_pendingOps.length}条待提交',
+                                    style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_pendingOps.isNotEmpty) const SizedBox(width: 8),
                           if (_isAdmin)
                             ElevatedButton.icon(
                               onPressed: () => _showAddRouteDialog(),
@@ -233,9 +435,29 @@ class _RouteManagePageState extends State<RouteManagePage> {
                         ],
                       ),
                     ),
+                    // 同步按钮（有待提交操作时显示）
+                    if (_pendingOps.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _isSyncing ? null : _processPendingOperations,
+                            icon: _isSyncing
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.cloud_upload, size: 18),
+                            label: Text(_isSyncing ? '同步中...' : '立即同步所有待提交操作'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange,
+                              side: const BorderSide(color: Colors.orange),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ),
+                      ),
                     // 道路列表
                     Expanded(
-                      child: _routes.isEmpty
+                      child: _displayRoutes.isEmpty
                           ? const Center(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -250,9 +472,9 @@ class _RouteManagePageState extends State<RouteManagePage> {
                               onRefresh: _loadRoutes,
                               child: ListView.builder(
                                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                                itemCount: _routes.length,
+                                itemCount: _displayRoutes.length,
                                 itemBuilder: (context, index) {
-                                  final route = _routes[index];
+                                  final route = _displayRoutes[index];
                                   return _buildRouteCard(route, index);
                                 },
                               ),
@@ -269,10 +491,12 @@ class _RouteManagePageState extends State<RouteManagePage> {
     final id = _getRouteId(route);
     final level = _getRouteLevel(route);
     final pathText = _getPathText(route);
+    final isPending = route['_isPending'] == true;
+    final hasPendingUpdate = route['_hasPendingUpdate'] == true;
 
     return GestureDetector(
       onTap: () {
-        // 点击卡片打开地图详情页
+        // 点击卡片打开地图详情页（待提交项也可查看）
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -283,6 +507,13 @@ class _RouteManagePageState extends State<RouteManagePage> {
       child: Card(
         margin: const EdgeInsets.only(bottom: 8),
         elevation: 1,
+        // 待提交项使用橙色边框
+        shape: isPending
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.orange, width: 1.5),
+              )
+            : null,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -300,7 +531,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey[500],
+                        color: isPending ? Colors.orange : Colors.grey[500],
                       ),
                     ),
                   ),
@@ -310,12 +541,46 @@ class _RouteManagePageState extends State<RouteManagePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              name,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (isPending) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.orange),
+                                ),
+                                child: const Text(
+                                  '待提交',
+                                  style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                            if (hasPendingUpdate) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.blue),
+                                ),
+                                child: const Text(
+                                  '待更新',
+                                  style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -343,16 +608,16 @@ class _RouteManagePageState extends State<RouteManagePage> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8F8F0),
+                      color: isPending ? Colors.orange[50] : const Color(0xFFE8F8F0),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF2ECC71), width: 1),
+                      border: Border.all(color: isPending ? Colors.orange : const Color(0xFF2ECC71), width: 1),
                     ),
                     child: Text(
                       'Lv.$level',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF2ECC71),
+                        color: isPending ? Colors.orange : const Color(0xFF2ECC71),
                       ),
                     ),
                   ),
@@ -361,22 +626,23 @@ class _RouteManagePageState extends State<RouteManagePage> {
                   if (_isAdmin)
                     Column(
                       children: [
-                        OutlinedButton(
-                          onPressed: () => _showEditRouteDialog(route),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            side: const BorderSide(color: Colors.blue),
+                        if (!isPending)
+                          OutlinedButton(
+                            onPressed: () => _showEditRouteDialog(route),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              side: const BorderSide(color: Colors.blue),
+                            ),
+                            child: const Text(
+                              '编辑',
+                              style: TextStyle(fontSize: 12, color: Colors.blue),
+                            ),
                           ),
-                          child: const Text(
-                            '编辑',
-                            style: TextStyle(fontSize: 12, color: Colors.blue),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
+                        if (!isPending) const SizedBox(height: 4),
                         OutlinedButton(
-                          onPressed: () => _confirmDeleteRoute(route),
+                          onPressed: () => _handleDeleteRoute(route),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             minimumSize: Size.zero,
@@ -397,6 +663,38 @@ class _RouteManagePageState extends State<RouteManagePage> {
         ),
       ),
     );
+  }
+
+  /// 处理删除：区分待提交项和服务器道路
+  void _handleDeleteRoute(Map<String, dynamic> route) {
+    final isPending = route['_isPending'] == true;
+    if (isPending) {
+      // 待提交项，直接从队列移除
+      _deletePendingItem(route);
+    } else {
+      // 服务器道路，走正常删除流程
+      _confirmDeleteRoute(route);
+    }
+  }
+
+  /// 删除待提交项（直接从队列移除，不再提交）
+  Future<void> _deletePendingItem(Map<String, dynamic> route) async {
+    final pendingOpId = route['_pendingOpId'] as int?;
+    final name = _getRouteName(route);
+    if (pendingOpId != null) {
+      await DBHelper().deletePendingOperation(pendingOpId);
+      debugPrint('[道路管理] 已移除待提交项: $name, opId=$pendingOpId');
+    }
+    await _loadPendingOperations();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已移除待提交项 "$name"'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   /// 显示新增道路对话框
@@ -716,6 +1014,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
   /// 新增道路
   Future<void> _addRoute(String name, String level, String roadinfo) async {
     debugPrint('[道路管理] 新增道路: name=$name, level=$level, roadinfo=$roadinfo');
+    final routeId = 'id${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
 
     try {
       final resp = await http.post(
@@ -724,7 +1023,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
         body: jsonEncode({
           'action': 'addRoad',
           'info': {
-            'route_id': 'id${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
+            'route_id': routeId,
             'roadname': name,
             'level': level,
             'roadinfo': roadinfo,
@@ -742,6 +1041,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
             );
             _loadRoutes();
           }
+          return;
         } else {
           debugPrint('[道路管理] 新增失败: ${json['msg']}');
           if (mounted) {
@@ -751,13 +1051,32 @@ class _RouteManagePageState extends State<RouteManagePage> {
           }
         }
       }
+      // 如果走到这里，说明服务器返回了非success状态，缓存到待提交
+      await _savePendingAddRoute(routeId, name, level, roadinfo);
     } catch (e) {
-      debugPrint('[道路管理] 新增失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('新增失败: $e'), backgroundColor: Colors.red),
-        );
-      }
+      debugPrint('[道路管理] 新增失败(网络异常): $e');
+      // 网络异常，缓存到待提交队列
+      await _savePendingAddRoute(routeId, name, level, roadinfo);
+    }
+  }
+
+  /// 保存待提交的新增道路操作
+  Future<void> _savePendingAddRoute(String routeId, String name, String level, String roadinfo) async {
+    await DBHelper().addPendingOperation('addRoad', {
+      'route_id': routeId,
+      'roadname': name,
+      'level': level,
+      'roadinfo': roadinfo,
+    });
+    await _loadPendingOperations();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('网络异常，已保存到待提交队列，可在列表中查看'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -971,6 +1290,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
             );
             _loadRoutes();
           }
+          return;
         } else {
           debugPrint('[道路管理] 更新失败: ${json['msg']}');
           if (mounted) {
@@ -980,13 +1300,32 @@ class _RouteManagePageState extends State<RouteManagePage> {
           }
         }
       }
+      // 服务器异常，缓存到待提交
+      await _savePendingUpdateRoute(id, name, level, roadinfo);
     } catch (e) {
-      debugPrint('[道路管理] 更新失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('更新失败: $e'), backgroundColor: Colors.red),
-        );
-      }
+      debugPrint('[道路管理] 更新失败(网络异常): $e');
+      // 网络异常，缓存到待提交队列
+      await _savePendingUpdateRoute(id, name, level, roadinfo);
+    }
+  }
+
+  /// 保存待提交的更新道路操作
+  Future<void> _savePendingUpdateRoute(String id, String name, String level, String roadinfo) async {
+    await DBHelper().addPendingOperation('updateRoad', {
+      'route_id': id,
+      'roadname': name,
+      'level': level,
+      'roadinfo': roadinfo,
+    });
+    await _loadPendingOperations();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('网络异常，修改已保存到待提交队列，可在列表中查看'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -1024,6 +1363,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
   /// 删除道路
   Future<void> _deleteRoute(Map<String, dynamic> route) async {
     final id = _getRouteId(route);
+    final name = _getRouteName(route);
     debugPrint('[道路管理] 删除道路: $id');
 
     try {
@@ -1046,6 +1386,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
             );
             _loadRoutes();
           }
+          return;
         } else {
           debugPrint('[道路管理] 删除失败: ${json['msg']}');
           if (mounted) {
@@ -1055,13 +1396,29 @@ class _RouteManagePageState extends State<RouteManagePage> {
           }
         }
       }
+      // 服务器异常，缓存到待提交
+      await _savePendingDeleteRoute(id, name);
     } catch (e) {
-      debugPrint('[道路管理] 删除失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('删除失败: $e'), backgroundColor: Colors.red),
-        );
-      }
+      debugPrint('[道路管理] 删除失败(网络异常): $e');
+      // 网络异常，缓存到待提交队列
+      await _savePendingDeleteRoute(id, name);
+    }
+  }
+
+  /// 保存待提交的删除道路操作
+  Future<void> _savePendingDeleteRoute(String routeId, String name) async {
+    await DBHelper().addPendingOperation('deleteRoad', {
+      'route_id': routeId,
+    });
+    await _loadPendingOperations();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('网络异常，删除已保存到待提交队列，可在列表中查看'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 }
