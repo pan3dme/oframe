@@ -23,16 +23,6 @@ Page({
     cmdText: '',
     quickSelected: 0,  // 当前选中快捷按钮
 
-    // 工作时间弹框
-    showWorkTimeModal: false,
-    workStartTime: '00:00',
-    workEndTime: '23:59',
-
-    // 定位时间弹框
-    showGpsTimeModal: false,
-    gpsStartTime: '00:00',
-    gpsEndTime: '23:59',
-
     // 发送日志
     sendLog: []
   },
@@ -123,18 +113,11 @@ Page({
   onQuickReportGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'upgps', value: 0 }), quickSelected: 5 })
   },
-  onQuickReport30Min() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'setinterval', value: 30 }), quickSelected: 7 })
-  },
 
   onQuickNormalMode() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 0 }), quickSelected: 12 })
   },
 
-  // ========== 工作时间快捷按钮 ==========
-  onQuickWorkTime() {
-    this.setData({ showWorkTimeModal: true, quickSelected: 14 })
-  },
   onQuickSyncTime() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'follow', value: '30,5' }), quickSelected: 15 })
   },
@@ -223,92 +206,6 @@ Page({
         wx.showToast({ title: '查询配置失败，使用默认值', icon: 'none', duration: 2000 })
       }
     })
-  },
-
-  onWorkStartChange(e) {
-    this.setData({ workStartTime: e.detail.value })
-  },
-
-  onWorkEndChange(e) {
-    this.setData({ workEndTime: e.detail.value })
-  },
-
-  onWorkTimeConfirm() {
-    const start = this.data.workStartTime  // HH:mm
-    const end = this.data.workEndTime      // HH:mm
-
-    // 转成分钟数进行比较
-    const [sh, sm] = start.split(':').map(Number)
-    const [eh, em] = end.split(':').map(Number)
-    const startMin = sh * 60 + sm
-    const endMin = eh * 60 + em
-
-    // 验证：开始时间必须小于结束时间
-    if (startMin >= endMin) {
-      wx.showToast({ title: '开始时间必须小于结束时间', icon: 'none' })
-      return
-    }
-
-    // 验证：时间窗口不能小于5小时（300分钟）
-    if (endMin - startMin < 300) {
-      wx.showToast({ title: '工作时间窗口不能小于5小时', icon: 'none' })
-      return
-    }
-
-    // 格式: HH:mm-HH:mm
-    const value = start + '-' + end
-    this.setData({
-      cmdText: JSON.stringify({ cmd: 'worktime', value: value }),
-      showWorkTimeModal: false
-    })
-  },
-
-  onWorkTimeCancel() {
-    this.setData({ showWorkTimeModal: false })
-  },
-
-  // ========== 定位时间快捷按钮 ==========
-  onQuickGpsTime() {
-    this.setData({ showGpsTimeModal: true, quickSelected: 3 })
-  },
-
-  onGpsStartChange(e) {
-    this.setData({ gpsStartTime: e.detail.value })
-  },
-
-  onGpsEndChange(e) {
-    this.setData({ gpsEndTime: e.detail.value })
-  },
-
-  onGpsTimeConfirm() {
-    const start = this.data.gpsStartTime
-    const end = this.data.gpsEndTime
-
-    const [sh, sm] = start.split(':').map(Number)
-    const [eh, em] = end.split(':').map(Number)
-    const startMin = sh * 60 + sm
-    const endMin = eh * 60 + em
-
-    if (startMin >= endMin) {
-      wx.showToast({ title: '开始时间必须小于结束时间', icon: 'none' })
-      return
-    }
-
-    // 时间窗口不能小于1小时（60分钟）
-    if (endMin - startMin < 60) {
-      wx.showToast({ title: '定位时间窗口不能小于1小时', icon: 'none' })
-      return
-    }
-
-    const value = start + '-' + end
-    this.setData({
-      cmdText: JSON.stringify({ cmd: 'gpstime', value: value }),
-      showGpsTimeModal: false
-    })
-  },
-
-  onGpsTimeCancel() {
-    this.setData({ showGpsTimeModal: false })
   },
 
   // ========== 发送指令 ==========

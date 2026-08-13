@@ -43,7 +43,7 @@ RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
 RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
 RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
-RTC_DATA_ATTR char lastrelayName[32] = "";             //
+RTC_DATA_ATTR char lastrelayName[10] = "";             //
 RTC_DATA_ATTR char work_time_str[16] = "00:00-23:59";  // 默认工作时间
 RTC_DATA_ATTR char gps_time_str[16] = "12:00-18:00";   // gps上报时间
 RTC_DATA_ATTR char config_str[16] = "5,0-24,12-6";     // 命令集合
@@ -56,13 +56,18 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 // 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
 // work_time_str格式: "05:02-10:59" 表示工作时段 05:02 ~ 10:59
 uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
-  // 1. 解析工作时间窗口
+  // 1. 用isTimeInRange判断是否在工作时间（支持跨午夜）
+  bool inWorkTime = isTimeInRange(getCurrentTimestampMs(), work_time_str);
+  if (inWorkTime || !haveRightTime()) {
+    DEBUG_PRINTLN("✅ 当前在工作时间内，按原计划休眠");
+    return (uint64_t)sleepMs * 1000ULL;
+  }
+
+  // 2. 不在工作时间内，解析开始时间计算等待
   int startH = 0, startM = 0, endH = 0, endM = 0;
   sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
   int startMinutes = startH * 60 + startM;
-  int endMinutes = endH * 60 + endM;
 
-  // 2. 获取当前时间
   struct timeval tv;
   gettimeofday(&tv, nullptr);
   time_t now = tv.tv_sec;
@@ -73,20 +78,11 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
   DEBUG_PRINTF("    工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
                startH, startM, endH, endM, t.tm_hour, t.tm_min);
 
-  // 3. 判断是否在工作时间内
-  bool inWorkTime = (nowMinutes >= startMinutes && nowMinutes <= endMinutes);
-  if (inWorkTime || !haveRightTime()) {
-    DEBUG_PRINTLN("✅ 当前在工作时间内，按原计划休眠");
-    return (uint64_t)sleepMs * 1000ULL;
-  }
-
-  // 4. 不在工作时间内，计算到下次工作开始的秒数
+  // 3. 计算到下次工作开始的分钟数
   int waitMinutes = 0;
   if (nowMinutes < startMinutes) {
-    // 当前在工作时间之前，等到今天的工作开始
     waitMinutes = startMinutes - nowMinutes;
   } else {
-    // 当前已过工作时间，等到明天的工作开始
     waitMinutes = (24 * 60 - nowMinutes) + startMinutes;
   }
 
@@ -250,34 +246,15 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
   timeSynFlage = true;
 }
 void meshCmdType(String infoStr, String tmp) {
-  if (infoStr.indexOf("worktime") != -1) {
-    // 11|v4-10|work_time|05:02-10:59
-    int h1, m1, h2, m2;
-    if (sscanf(tmp.c_str(), "%d:%d-%d:%d", &h1, &m1, &h2, &m2) == 4 && h1 >= 0 && h1 <= 24 && m1 >= 0 && m1 <= 59 && h2 >= 0 && h2 <= 24 && m2 >= 0 && m2 <= 59) {
-      DEBUG_PRINT("✅✅设置工作时间：");
-      tmp.toCharArray(work_time_str, sizeof(work_time_str));
-      DEBUG_PRINTLN(work_time_str);
-    } else {
-      DEBUG_PRINT("❌工作时间格式错误：");
-      DEBUG_PRINTLN(tmp);
-    }
-  } else if (infoStr.indexOf("gpstime") != -1) {
-    // 11|v4-10|gps_time|05:02-10:59
-    int h1, m1, h2, m2;
-    if (sscanf(tmp.c_str(), "%d:%d-%d:%d", &h1, &m1, &h2, &m2) == 4 && h1 >= 0 && h1 <= 24 && m1 >= 0 && m1 <= 59 && h2 >= 0 && h2 <= 24 && m2 >= 0 && m2 <= 59) {
-      DEBUG_PRINT("✅✅设置gps时间：");
-      tmp.toCharArray(gps_time_str, sizeof(gps_time_str));
-      DEBUG_PRINTLN(gps_time_str);
-    } else {
-      DEBUG_PRINT("❌gps时间格式错误：");
-      DEBUG_PRINTLN(tmp);
-    }
-
-  } else if (infoStr.indexOf("config") != -1) {
+  if (infoStr.indexOf("config") != -1) {
     // tmp格式: "30,8-6,12-3"
     // 第1段: roundTime(分钟)  第2段: work起始小时-持续时长  第3段: gps起始小时-持续时长
     int rt = 0, wStart = 0, wDur = 0, gStart = 0, gDur = 0;
     if (sscanf(tmp.c_str(), "%d,%d-%d,%d-%d", &rt, &wStart, &wDur, &gStart, &gDur) == 5) {
+      if (rt < 5 || rt > 120) {
+        DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
+        return;
+      }
       roundTime = rt * 60 * 1000;
       int wEnd = (wStart + wDur) % 24;
       int gEnd = (gStart + gDur) % 24;
@@ -307,12 +284,10 @@ void meshCmdType(String infoStr, String tmp) {
       DEBUG_PRINT(work_time_str);
       DEBUG_PRINT(" gps=");
       DEBUG_PRINTLN(gps_time_str);
-
     } else {
       DEBUG_PRINT("❌全局配置格式错误：");
       DEBUG_PRINTLN(tmp);
     }
-
   } else if (infoStr.indexOf("minbattery") != -1) {
     int modeVal = tmp.toInt();
     if (modeVal >= 10 && modeVal <= 80) {
@@ -320,28 +295,14 @@ void meshCmdType(String infoStr, String tmp) {
       minBatteryVolage = modeVal * 0.01;
       DEBUG_PRINTLN(minBatteryVolage);
     }
-
   } else if (infoStr.indexOf("sendmode") != -1) {
     // 11|v4-10|sendmode|1|0
     int modeVal = tmp.toInt();
     if (modeVal >= 0 && modeVal <= 2) {
       DEBUG_PRINT("✅✅设置工作模式：");
-
     } else {
       DEBUG_PRINT("❌工作模式值错误(需0/1/2)：");
       DEBUG_PRINTLN(modeVal);
-    }
-  } else if (infoStr.indexOf("setinterval") != -1) {
-    // 11|v4-10|setinterval|30
-    int intervalVal = tmp.toInt();
-    if (intervalVal > 1 && intervalVal <= 60) {
-      DEBUG_PRINT("✅✅设置上报周期：");
-      roundTime = intervalVal * 60 * 1000;
-      DEBUG_PRINT("修改上报时间周末roundTime");
-      DEBUG_PRINTLN(roundTime);
-    } else {
-      DEBUG_PRINT("❌上报周期值错误(需6-60)：");
-      DEBUG_PRINTLN(intervalVal);
     }
   } else if (infoStr.indexOf("txpower") != -1) {
     DEBUG_PRINT("✅✅修改发射功率：");
@@ -593,7 +554,7 @@ void testSheepFun() {
     batteryLowSheep(minBatteryVolage);
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
-    DEBUG_PRINT("秒进入睡眠");
+    DEBUG_PRINTLN("秒进入睡眠");
     hideOLED();
     delay(1000);
     // 05:02|10:59
@@ -750,7 +711,7 @@ void loop() {
         strcpy(needSendGpsStr, "");
       } else {
 
-        sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(true));
+        sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false));
       }
     }
   }

@@ -181,12 +181,9 @@ Page({
         const lotRec = lotMap[item.deviceId]
         const syncInfo = syncMap[item.deviceId]
 
-        // 从最新LOT记录的 lorastr 提取电量（第4段，索引3）
+        // 电量仅从同步时间表（device_sync）取
         let battery = ''
-        if (lotRec && lotRec.lorastr) {
-          const parts = lotRec.lorastr.split('|')
-          if (parts.length > 3) battery = parts[3]
-        }
+        if (syncInfo && syncInfo.battery) battery = syncInfo.battery
 
         // 对比设备表、LOT表(最后定位)、同步时间表三者的时间，取最新的显示
         let displayTime = item.rawTime
@@ -245,7 +242,7 @@ Page({
           dotColor: timeInfo.color,
           lastRecordType,
           battery,
-          batteryColor: (battery && parseFloat(battery) < 0.6) ? '#f44336' : '#333',
+          batteryColor: isDormant ? '#999999' : (battery && parseFloat(battery) < 0.6) ? '#f44336' : '#333',
           isDormant: isDormant,
           powerOnTime: cfg.powerOnTime
         }
