@@ -8,28 +8,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/coord_transform.dart';
 import '../utils/db_helper.dart';
 
-/// 设备日志定位地图页面（卫星地图显示单条记录的GPS坐标）
-class DeviceLogMapPage extends StatefulWidget {
-  final double latitude;
-  final double longitude;
-  final String time;
-  final String deviceId;
-  final String type;
+/// 地名详情地图页面（卫星地图显示单个地名的位置）
+class PlaceDetailMapPage extends StatefulWidget {
+  final String placeName;
+  final String placeId;
+  final double latitude;  // WGS-84 纬度
+  final double longitude; // WGS-84 经度
+  final int level;
 
-  const DeviceLogMapPage({
+  const PlaceDetailMapPage({
     super.key,
+    required this.placeName,
+    required this.placeId,
     required this.latitude,
     required this.longitude,
-    required this.time,
-    required this.deviceId,
-    required this.type,
+    required this.level,
   });
 
   @override
-  State<DeviceLogMapPage> createState() => _DeviceLogMapPageState();
+  State<PlaceDetailMapPage> createState() => _PlaceDetailMapPageState();
 }
 
-class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
+class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
   final MapController _mapController = MapController();
   String _mapStatus = '地图加载中...';
 
@@ -45,9 +45,14 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
   int _maxAvailableLevel = 1;
   String? _lastRoutePlaceFetchDate;
 
+  late LatLng _markerPoint; // GCJ-02 坐标
+
   @override
   void initState() {
     super.initState();
+    // WGS-84 转 GCJ-02
+    final gcj02 = CoordTransform.wgs84ToGcj02(widget.latitude, widget.longitude);
+    _markerPoint = LatLng(gcj02[0], gcj02[1]);
     _restoreLastFetchDate();
   }
 
@@ -57,18 +62,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       final saved = prefs.getString('last_route_place_fetch_date');
       if (saved != null) setState(() { _lastRoutePlaceFetchDate = saved; });
     } catch (_) {}
-  }
-
-  /// 类型颜色
-  Color get _typeColor {
-    switch (widget.type) {
-      case '1':
-        return const Color(0xFF4CAF50);
-      case '5':
-        return const Color(0xFF2196F3);
-      default:
-        return const Color(0xFF4CAF50);
-    }
   }
 
   /// 清理字符串确保UTF-16安全
@@ -88,11 +81,9 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
     setState(() { _isLoadingRoutePlace = true; });
     try {
       await _loadFromCache();
-      debugPrint('[道路地名] 缓存加载后: allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}, displayedRoute=${_displayedRouteData.length}, displayedPlace=${_displayedPlaceData.length}');
       final shouldFetch = await _shouldFetchFromNetwork();
       if (shouldFetch) {
         await _loadFromNetwork();
-        debugPrint('[道路地名] 网络加载后: allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}');
         final now = DateTime.now();
         final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
         setState(() { _lastRoutePlaceFetchDate = today; });
@@ -135,11 +126,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       await Future.wait([_loadRouteData(), _loadPlaceData()]);
     } catch (e) {
       debugPrint('[道路地名] 网络加载失败: $e');
-      if (_allRouteData.isEmpty && _allPlaceData.isEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('网络连接失败: $e')),
-        );
-      }
     }
   }
 
@@ -177,7 +163,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
 
   void _calculateMaxLevel() {
     int maxLevel = 1;
-    // 检查道路数据中的最大level
     for (final route in _allRouteData) {
       try {
         final attributes = route['attributes'] as List<dynamic>?;
@@ -193,7 +178,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
         }
       } catch (_) {}
     }
-    // 检查地名数据中的最大level
     for (final place in _allPlaceData) {
       try {
         final attributes = place['attributes'] as List<dynamic>?;
@@ -210,7 +194,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       } catch (_) {}
     }
     setState(() { _maxAvailableLevel = maxLevel; });
-    debugPrint('[Level计算] 数据中最大level值为: $_maxAvailableLevel');
   }
 
   void _filterDataByLevel() {
@@ -251,14 +234,12 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
         return level <= _currentLevel;
       }).toList();
     }
-    debugPrint('[Level过滤] 当前level=$_currentLevel, 全部道路=${_allRouteData.length}, 显示道路=${_displayedRouteData.length}, 全部地名=${_allPlaceData.length}, 显示地名=${_displayedPlaceData.length}');
   }
 
+  /// 切换道路和地名显示
   void _toggleRouteAndPlace() async {
-    debugPrint('[Toggle] 开始切换: showRouteAndPlace=$_showRouteAndPlace, currentLevel=$_currentLevel, maxLevel=$_maxAvailableLevel, allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}, isLoading=$_isLoadingRoutePlace');
     if (_allRouteData.isEmpty && _allPlaceData.isEmpty && !_isLoadingRoutePlace) {
       await _loadRouteAndPlaceData();
-      debugPrint('[Toggle] 加载完成: allRoute=${_allRouteData.length}, allPlace=${_allPlaceData.length}');
       if (_allRouteData.isNotEmpty || _allPlaceData.isNotEmpty) {
         _calculateMaxLevel();
         setState(() {
@@ -267,18 +248,14 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
           _filterDataByLevel();
           _updateLevelStatus();
         });
-        debugPrint('[Toggle] 首次显示: displayedRoute=${_displayedRouteData.length}, displayedPlace=${_displayedPlaceData.length}');
-      } else {
-        debugPrint('[Toggle] 数据为空，无法显示');
       }
       return;
     }
-    debugPrint('[Toggle] 切换后: showRouteAndPlace=$_showRouteAndPlace, currentLevel=$_currentLevel');
+
     setState(() {
       if (!_showRouteAndPlace) {
         _showRouteAndPlace = true;
         _currentLevel = 1;
-        _filterDataByLevel();
       } else {
         if (_currentLevel < _maxAvailableLevel) {
           _currentLevel++;
@@ -289,12 +266,11 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       }
       _updateLevelStatus();
     });
-    debugPrint('[Toggle] 切换完成: displayedRoute=${_displayedRouteData.length}, displayedPlace=${_displayedPlaceData.length}');
   }
 
   void _updateLevelStatus() {
-    final text = _currentLevel == 0 ? '隐藏所有' : '显示级别≤$_currentLevel';
-    setState(() { _levelStatus = text; });
+    String levelText = _currentLevel == 0 ? '隐藏所有' : '显示级别≤$_currentLevel';
+    setState(() { _levelStatus = levelText; });
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) setState(() { _levelStatus = ''; });
     });
@@ -302,36 +278,36 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
 
   @override
   Widget build(BuildContext context) {
-    // WGS-84 坐标转 GCJ-02（火星坐标，高德卫星图使用）
-    final gcj02Coord = CoordTransform.wgs84ToGcj02(widget.latitude, widget.longitude);
-    final markerPoint = LatLng(gcj02Coord[0], gcj02Coord[1]);
+    final wgs84Text = '${widget.latitude.toStringAsFixed(6)}, ${widget.longitude.toStringAsFixed(6)}';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: const Text('定位详情'),
-        backgroundColor: const Color(0xFF16213E),
-        foregroundColor: Colors.white,
-        elevation: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.placeName, style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 2),
+            Text(
+              'ID: ${widget.placeId}  |  Lv.${widget.level}',
+              style: const TextStyle(fontSize: 10, color: Colors.white70),
+            ),
+          ],
+        ),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Stack(
         children: [
-          // 卫星地图
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: markerPoint,
+              initialCenter: _markerPoint,
               initialZoom: 16.0,
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.pinchZoom |
-                    InteractiveFlag.drag |
-                    InteractiveFlag.flingAnimation |
-                    InteractiveFlag.pinchMove,
+                flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag | InteractiveFlag.flingAnimation | InteractiveFlag.pinchMove,
               ),
               onMapReady: () {
-                setState(() {
-                  _mapStatus = '';
-                });
+                setState(() { _mapStatus = ''; });
               },
             ),
             children: [
@@ -367,88 +343,71 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                   settings: FMTCTileProviderSettings(),
                 ),
               ),
-              // 坐标圆点（独立层，位置始终固定）
+              // 地名标记（带名称）
               MarkerLayer(
                 markers: [
                   Marker(
-                    point: markerPoint,
+                    point: _markerPoint,
                     width: 24,
                     height: 24,
-                    alignment: Alignment.bottomCenter,
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: _typeColor,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _typeColor.withValues(alpha: 0.4),
-                            blurRadius: 5,
-                            spreadRadius: 1,
+                    alignment: Alignment.center,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // 红色圆圈图标（固定在GPS坐标点）
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.arrow_drop_down,
-                        color: Colors.white,
-                        size: 18,
-                      ),
+                          child: const Icon(
+                            Icons.arrow_drop_down,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                        // 名称标签（向右延伸，不影响图标位置）
+                        Positioned(
+                          left: 30,
+                          top: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 3,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              widget.placeName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-
-              // 显示道路标记（调试用）
-              if (_showRouteAndPlace && _displayedRouteData.isNotEmpty)
-                MarkerLayer(
-                  markers: _displayedRouteData.map((route) {
-                    String name = '';
-                    List<LatLng> roadPoints = [];
-                    try {
-                      final attributes = route['attributes'] as List<dynamic>?;
-                      if (attributes != null) {
-                        for (final attr in attributes) {
-                          final attrMap = attr as Map<String, dynamic>;
-                          final columnName = attrMap['columnName']?.toString() ?? '';
-                          final columnValue = attrMap['columnValue']?.toString() ?? '';
-                          if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                              debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
-                            }
-                          } else if (columnName == 'roadname') {
-                            name = _sanitizeString(columnValue);
-                          }
-                        }
-                      }
-                    } catch (e) {
-                      debugPrint('[道路] 解析失败: $e');
-                    }
-                    if (roadPoints.isEmpty) return null;
-                    return Marker(
-                      point: roadPoints.first,
-                      width: 1,
-                      height: 1,
-                      child: Container(),
-                    );
-                  }).whereType<Marker>().toList(),
-                ),
               // 显示道路线条
               if (_showRouteAndPlace && _displayedRouteData.isNotEmpty)
                 PolylineLayer(
                   polylines: _displayedRouteData.map((route) {
                     List<LatLng> roadPoints = [];
-                    String name = '';
                     try {
                       final attributes = route['attributes'] as List<dynamic>?;
                       if (attributes != null) {
@@ -468,8 +427,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                                 }
                               }
                             }
-                          } else if (columnName == 'roadname') {
-                            name = _sanitizeString(columnValue);
                           }
                         }
                       }
@@ -483,13 +440,14 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                     );
                   }).toList(),
                 ),
-              // 显示地名标记
+              // 显示地名标记（排除自身）
               if (_showRouteAndPlace && _displayedPlaceData.isNotEmpty)
                 MarkerLayer(
                   markers: _displayedPlaceData.map((place) {
                     double lat = 0;
                     double lng = 0;
                     String name = '';
+                    String pid = '';
                     try {
                       final attributes = place['attributes'] as List<dynamic>?;
                       if (attributes != null) {
@@ -506,18 +464,20 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                                 final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
                                 lat = gcj02Coord[0];
                                 lng = gcj02Coord[1];
-                                debugPrint('[地名坐标转换] WGS-84: ($wgs84Lat, $wgs84Lng) -> GCJ-02: ($lat, $lng)');
                               }
                             }
                           } else if (columnName == 'name') {
                             name = _sanitizeString(columnValue);
+                          } else if (columnName == 'placeid') {
+                            pid = columnValue;
                           }
                         }
                       }
                     } catch (e) {
-                      debugPrint('[地名] 解析失败: $e, 原始数据: $place');
+                      debugPrint('[地名] 解析失败: $e');
                     }
-                    debugPrint('[地名标记] 名称: $name, 坐标: ($lat, $lng)');
+                    // 排除自身
+                    if (pid == widget.placeId) return null;
                     if (lat == 0 && lng == 0) return null;
                     String safeName = _sanitizeString(name);
                     return Marker(
@@ -579,7 +539,6 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                 ),
             ],
           ),
-
           // 地图状态提示
           if (_mapStatus.isNotEmpty)
             Center(
@@ -589,53 +548,38 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  _mapStatus,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                ),
+                child: Text(_mapStatus, style: const TextStyle(color: Colors.white, fontSize: 14)),
               ),
             ),
-
           // Level状态提示
           if (_levelStatus.isNotEmpty)
             Positioned(
-              top: 16,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _levelStatus,
-                    style: const TextStyle(color: Colors.white, fontSize: 13),
-                  ),
+              top: 12,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(6),
                 ),
+                child: Text(_levelStatus, style: const TextStyle(color: Colors.white, fontSize: 12)),
               ),
             ),
-
-          // 左下角道路地名切换按钮
+          // 右下角：道路地名切换按钮
           Positioned(
-            left: 16,
+            right: 16,
             bottom: 16,
             child: FloatingActionButton.small(
-              heroTag: 'log_map_route_place_fab',
+              heroTag: 'place_map_route_place_fab',
               onPressed: _toggleRouteAndPlace,
               backgroundColor: _showRouteAndPlace ? Colors.blue : Colors.white,
               child: _isLoadingRoutePlace
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
-                    )
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue))
                   : Icon(
-                      _showRouteAndPlace ? Icons.visibility : Icons.visibility_off,
-                      color: _showRouteAndPlace ? Colors.white : Colors.black54,
+                      _showRouteAndPlace ? Icons.layers : Icons.layers_clear,
+                      color: _showRouteAndPlace ? Colors.white : Colors.grey,
+                      size: 20,
                     ),
-              tooltip: _showRouteAndPlace ? '隐藏道路和地名' : '显示道路和地名',
             ),
           ),
         ],

@@ -31,6 +31,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   String _bootTime = '—';       // 开机时间
   String _locationTime = '—';   // 定位时间
   bool _isBluetoothConnected = false; // 蓝牙连接状态
+  bool _isFromCache = false; // 标记是否使用缓存数据（断网）
 
   // FC地址
   static const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -277,6 +278,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             _hasMore = parsedLogs.length >= _logLimit;
             _isLoadingLogs = false;
             _isLoadingMore = false;
+            _isFromCache = false; // 网络成功，恢复标题
           });
           
           debugPrint('加载日志: ${parsedLogs.length} 条，总计 ${_logs.length} 条');
@@ -296,7 +298,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       }
     } catch (e) {
       debugPrint('加载日志失败(网络): $e，尝试从蓝牙缓存加载');
-      // 网络失败，从蓝牙缓存加载
+      // 网络失败，标记断网
+      setState(() {
+        _isFromCache = true;
+      });
+      // 从蓝牙缓存加载
       await _loadLogsFromBluetoothCache(deviceId, reset: reset);
     }
   }
@@ -456,7 +462,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('设备详情'),
+        title: Text(_isFromCache ? '设备详情(断网)' : '设备详情'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Column(
