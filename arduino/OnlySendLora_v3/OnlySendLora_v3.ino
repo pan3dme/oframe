@@ -440,7 +440,7 @@ void printTimeToString(String str, unsigned long ms) {
   DEBUG_PRINT(remMs);
   DEBUG_PRINTLN("毫秒");
 }
-int seacthTm = 180000;
+int seacthTm = 180000; //3分钟提前搜星
 void meshGpsInfoFun(bool closeGps = true) {
   if (!getGpsStatus()) {
     initPanGPS();
@@ -454,7 +454,7 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool gpsReliable = isReliableGPS();
     bool ellitesNum = gps.satellites.value() >= 6;
 
-    bool timeoutOk = (millis() - startAttemptTime < seacthTm);
+    bool timeoutOk = (millis() - startAttemptTime )< seacthTm;
     // Serial.print(".");
     // Serial.println(getCurrentTime());
     showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
@@ -559,6 +559,7 @@ void testSheepFun() {
     delay(1000);
     // 05:02|10:59
     uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
+    //判断下个时间段是否需要开启GPS是的话就提前搜星
     if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) == 0) {
       DEBUG_PRINTLN("工作模式上报GPS，需要提前开启GPS");
       if (sleepTime > (seacthTm * 1000ULL)) {
