@@ -25,7 +25,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 10, // 升级到版本10，添加pending_operations表
+      version: 11, // 升级到版本11，添加DeviceName列
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onDowngrade: _onUpgrade, // 也处理降级情况
@@ -43,6 +43,7 @@ class DBHelper {
         rename TEXT,
         picurl TEXT,
         ProductKey TEXT,
+        DeviceName TEXT,
         visible INTEGER,
         cached_at TEXT
       )
@@ -315,6 +316,16 @@ class DBHelper {
         print('数据库升级: 创建 pending_operations 表时出错: $e');
       }
     }
+
+    if (oldVersion < 11) {
+      // 版本11：设备表添加DeviceName列
+      try {
+        await db.execute('ALTER TABLE devices ADD COLUMN DeviceName TEXT');
+        print('数据库升级: 已添加 DeviceName 列');
+      } catch (e) {
+        print('数据库升级: 添加 DeviceName 列时出错: $e');
+      }
+    }
   }
 
   /// 保存设备数据（覆盖式）
@@ -334,6 +345,7 @@ class DBHelper {
         'rename': device['rename'],
         'picurl': device['picurl'],
         'ProductKey': device['ProductKey'],
+        'DeviceName': device['DeviceName'],
         'visible': device['visible'] == true ? 1 : (device['visible'] == 'true' ? 1 : 0),
         'cached_at': DateTime.now().toIso8601String(),
       });

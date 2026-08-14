@@ -36,13 +36,13 @@ class _FunctionListPageState extends State<FunctionListPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // 第一行：最近10条记录、上报设备LORA、设备管理
+            // 第一行：云端记录、上报设备LORA、设备管理
             Row(
               children: [
                 _buildFunctionButton(
                   context,
-                  icon: Icons.history,
-                  label: '最近10条记录',
+                  icon: Icons.cloud,
+                  label: '云端记录',
                   color: Colors.blue,
                   onTap: () {
                     Navigator.push(

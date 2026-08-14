@@ -14,7 +14,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final DBHelper _dbHelper = DBHelper();
 
   bool _isAdmin = false; // 是否为管理员模式
-  bool _bluetoothSoundEnabled = false; // 是否开启蓝牙接收声音
+  bool _bluetoothSoundEnabled = true; // 是否开启蓝牙接收声音
   final TextEditingController _tokenController = TextEditingController();
   bool _isLoading = true;
 
@@ -34,7 +34,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
       final bluetoothSound = await _dbHelper.getBoolSetting(
         'bluetooth_sound_enabled',
-        defaultValue: false,
+        defaultValue: true,
       );
 
       final savedToken = await _dbHelper.getSetting('tianditu_token');

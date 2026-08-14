@@ -245,6 +245,10 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       for (final device in devices) {
         final deviceId = device['deviceId'] as String;
         final rename = device['rename'];
+        final productKey = device['ProductKey']?.toString() ?? '';
+        
+        // 跳过中继设备（有ProductKey的设备）
+        if (productKey.isNotEmpty) continue;
         
         // 构造显示名称：deviceId + (rename)
         String displayName;
@@ -450,6 +454,10 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       for (final device in devices) {
         final deviceId = device['deviceId'] as String;
         final rename = device['rename'];
+        final productKey = device['ProductKey']?.toString() ?? '';
+        
+        // 跳过中继设备（有ProductKey的设备）
+        if (productKey.isNotEmpty) continue;
         
         // 构造显示名称：deviceId + (rename)
         String displayName;
