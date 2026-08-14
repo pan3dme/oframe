@@ -114,17 +114,35 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
         if (json['status'] == 'success') {
           final data = json['data'];
           if (data is List && data.isNotEmpty) {
-            // 取RSSI最优（值最大，信号最强）的记录
-            Map<String, dynamic>? best;
-            double bestRssi = double.negativeInfinity;
+            // 解析OTS格式：从attributes中提取rssi和upDateDevice
+            Map<String, dynamic>? bestRelayDevice;
+            double bestAbsRssi = double.infinity;
+
             for (final item in data) {
-              final rssi = double.tryParse(item['rssi']?.toString() ?? '') ?? double.negativeInfinity;
-              if (rssi > bestRssi) {
-                bestRssi = rssi;
-                best = item as Map<String, dynamic>;
+              final attrs = item['attributes'] as List<dynamic>? ?? [];
+              String? rssiStr;
+              String? upDateDeviceStr;
+              for (final attr in attrs) {
+                final name = attr['columnName']?.toString() ?? '';
+                final value = attr['columnValue'];
+                if (name == 'rssi') rssiStr = value?.toString();
+                if (name == 'upDateDevice') upDateDeviceStr = value?.toString();
+              }
+
+              final rssi = double.tryParse(rssiStr ?? '') ?? double.infinity;
+              final absRssi = rssi.abs();
+              if (absRssi < bestAbsRssi && upDateDeviceStr != null && upDateDeviceStr.isNotEmpty) {
+                bestAbsRssi = absRssi;
+                // 用upDateDevice匹配本地中继设备
+                final matched = _relayDevices.firstWhere(
+                  (d) => d['deviceId']?.toString() == upDateDeviceStr,
+                  orElse: () => <String, dynamic>{},
+                );
+                bestRelayDevice = matched.isNotEmpty ? matched : null;
+                debugPrint('[DTU] 候选中继: $upDateDeviceStr, rssi=$rssi, abs=$absRssi, 匹配=${matched.isNotEmpty}');
               }
             }
-            return best;
+            return bestRelayDevice;
           }
         }
       }
