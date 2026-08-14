@@ -111,7 +111,7 @@ page {
   align-items: center;
 }
 .hi-label {
-  width: 190rpx;
+  width: 130rpx;
   font-size: 28rpx;
   color: rgba(255, 255, 255, 0.65);
   flex-shrink: 0;

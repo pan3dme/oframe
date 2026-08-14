@@ -2,6 +2,7 @@
 const API_URL = getApp().globalData.api_device_Url
 const API_COWSHEEP_URL = getApp().globalData.api_cowsheep_Url
 const dataCache = require('../../config/data-cache.js')
+const batterySwap = require('../../config/battery-swap.js')
 const { compressImage } = require('../../utils/image-compress.js')
 const { uploadToOSS } = require('../../utils/oss-upload.js')
 
@@ -88,9 +89,11 @@ Page({
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)
     } catch (e) { /* ignore */ }
     this.setData({ deviceId, isAdmin })
+    this._swapTime = ''
     if (deviceId) {
       this.loadDeviceInfo(deviceId)
       this.loadDeviceConfig(deviceId)
+      this.loadSwapTime(deviceId)
     }
   },
 
@@ -185,8 +188,10 @@ Page({
   },
 
   _loadBindName(item) {
+    const swapTime = this._swapTime || ''
+    const swapTimeRel = this._swapTimeTs ? batterySwap.formatRelativeTime(this._swapTimeTs) : ''
     if (!item.link_cowsheep_id) {
-      this.setData({ deviceInfo: { ...item, bindName: '' } })
+      this.setData({ deviceInfo: { ...item, bindName: '', swapTime, swapTimeRel } })
       this._updateDormant()
       this.loadTodayRecords(0)
       return
@@ -196,10 +201,39 @@ Page({
       const list = (livestockData && livestockData.livestockList) ? livestockData.livestockList : []
       const found = list.find(v => v.cowsheepId === item.link_cowsheep_id)
       if (found) bindName = found.name
-      this.setData({ deviceInfo: { ...item, bindName } })
+      this.setData({ deviceInfo: { ...item, bindName, swapTime, swapTimeRel } })
       this._updateDormant()
       this.loadTodayRecords(0)
     })
+  },
+
+  // 分析并缓存最近换电时间（对时记录电量跳升检测）
+  loadSwapTime(deviceId) {
+    const that = this
+    const apply = (swap) => {
+      const timeStr = swap ? (swap.timeStr || '') : ''
+      const ts = swap && swap.time ? swap.time : (timeStr ? new Date(timeStr).getTime() : 0)
+      that._swapTime = timeStr
+      that._swapTimeTs = ts
+      const rel = batterySwap.formatRelativeTime(ts)
+      if (that.data.deviceInfo) {
+        that.setData({ 'deviceInfo.swapTime': timeStr, 'deviceInfo.swapTimeRel': rel })
+      }
+    }
+    // 缓存中的结果同步返回，可先展示
+    const cached = batterySwap.getLastSwap(deviceId, (latest) => {
+      apply(latest)
+    })
+    apply(cached)
+  },
+
+  // 页面重新展示时刷新相对时间（如返回前台）
+  onShow() {
+    if (!this._swapTimeTs) return
+    const rel = batterySwap.formatRelativeTime(this._swapTimeTs)
+    if (this.data.deviceInfo) {
+      this.setData({ 'deviceInfo.swapTimeRel': rel })
+    }
   },
 
   // 根据已加载的 deviceConfig 和 deviceInfo 重新计算 isDormant

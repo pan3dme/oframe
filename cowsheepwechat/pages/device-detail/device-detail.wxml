@@ -16,13 +16,8 @@
     <view class="header-info">
       <view class="header-title-row">
         <text class="header-title">{{deviceInfo.deviceid || deviceInfo.deviceId}}<block wx:if="{{deviceInfo.rename}}"> ({{deviceInfo.rename}})</block></text>
-        <text class="header-dormant-tag" wx:if="{{deviceInfo.isDormant}}">已休眠</text>
       </view>
       <view class="header-info-grid">
-        <view class="hi-item">
-          <text class="hi-label">绑定牛羊</text>
-          <text class="hi-value hi-value-highlight">{{deviceInfo.bindName || deviceInfo.link_cowsheep_id || '未绑定'}}</text>
-        </view>
         <view class="hi-item">
           <text class="hi-label">上报周期</text>
           <text class="hi-value">{{deviceInfo.reportInterval || '-'}}分钟</text>
@@ -32,12 +27,12 @@
           <text class="hi-value">{{deviceInfo.powerOnTime || '-'}}</text>
         </view>
         <view class="hi-item">
-          <text class="hi-label">GPS上报时间</text>
+          <text class="hi-label">GPS时间</text>
           <text class="hi-value">{{deviceInfo.gpsReportTime || '-'}}</text>
         </view>
         <view class="hi-item">
           <text class="hi-label">上次换电</text>
-          <text class="hi-value">{{deviceInfo.chargeTime || '-'}}</text>
+          <text class="hi-value {{deviceInfo.swapTimeRel ? 'hi-value-highlight' : ''}}">{{deviceInfo.swapTimeRel || '-'}}</text>
           <view class="send-cmd-link" bindtap="onSendCmdTap">
             <text class="send-cmd-icon">📤</text>
           </view>
