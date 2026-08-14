@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
 import 'device_log_map_page.dart';
 import 'device_trajectory_page.dart';
+import 'device_dtu_command_page.dart';
 import 'bluetooth_page.dart';
 
 /// 设备详情页面
@@ -604,11 +605,29 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                       // 指令按钮
                       InkWell(
                         onTap: () {
-                          if (_isBluetoothConnected) {
-                            _showSendCommandDialog();
+                          if (_isFromCache) {
+                            // 断网状态：使用蓝牙指令对话框
+                            if (_isBluetoothConnected) {
+                              _showSendCommandDialog();
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('请连接蓝牙')),
+                              );
+                            }
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('请连接蓝牙')),
+                            // 非断网状态：打开DTU指令页面
+                            final deviceId = _str(widget.device['deviceId']);
+                            final rename = _str(widget.device['rename']);
+                            final deviceKey = _str(widget.device['device_key']);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DeviceDtuCommandPage(
+                                  deviceId: deviceId,
+                                  deviceName: rename,
+                                  deviceKey: deviceKey,
+                                ),
+                              ),
                             );
                           }
                         },
@@ -616,12 +635,12 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: _isBluetoothConnected
+                            color: (!_isFromCache || _isBluetoothConnected)
                                 ? const Color(0xFF4CAF50)
                                 : Colors.grey.withOpacity(0.5),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
+                          child: const Icon(
                             Icons.send,
                             size: 20,
                             color: Colors.white,
