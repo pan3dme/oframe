@@ -29,6 +29,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
   String _relayMode = '自动';
   String _selectedRelayDeviceId = '';
   bool _isSending = false;
+  String _currentConfigValue = ''; // 当前设备配置值（从缓存读取的lorastr配置段）
 
   // 设备列表
   List<Map<String, dynamic>> _targetDevices = []; // ProductKey为空的设备
@@ -72,6 +73,8 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
         _selectedTargetDevice = currentDevice;
         _selectedDevice = _formatDeviceName(currentDevice);
       });
+      // 加载当前设备的配置
+      _loadCurrentConfig(widget.deviceId);
     } catch (e) {
       debugPrint('[DTU指令] 加载设备列表失败: $e');
     }
@@ -87,6 +90,34 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
     if (rename.isNotEmpty) name += '($rename)';
     name += productKey.isEmpty ? ' [无密钥]' : ' [$productKey]';
     return name;
+  }
+
+  /// 从本地缓存加载设备当前配置值
+  Future<void> _loadCurrentConfig(String deviceId) async {
+    try {
+      final config = await DBHelper().getDeviceConfig(deviceId);
+      if (config == null) {
+        debugPrint('[DTU] 本地无设备配置缓存，使用默认配置');
+        return;
+      }
+      final lorastr = config['lorastr']?.toString() ?? '';
+      if (lorastr.isEmpty) return;
+
+      // lorastr格式: type|deviceId|30,12-6,12-4|... 或纯配置段 "10,0-24,12-6"
+      String configStr = lorastr;
+      if (lorastr.contains('|')) {
+        final parts = lorastr.split('|');
+        if (parts.length >= 3) {
+          configStr = parts[2]; // 取第三段配置值
+        }
+      }
+      setState(() {
+        _currentConfigValue = configStr;
+      });
+      debugPrint('[DTU] 加载设备当前配置: deviceId=$deviceId, config=$configStr');
+    } catch (e) {
+      debugPrint('[DTU] 加载设备配置失败: $e');
+    }
   }
 
   @override
@@ -340,6 +371,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
                         _selectedTargetDevice = device;
                         _selectedDevice = _formatDeviceName(device);
                       });
+                      _loadCurrentConfig(deviceId);
                       Navigator.pop(context);
                     },
                     child: Container(
@@ -649,7 +681,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
                   label: '上报GPS',
                   iconColor: Colors.red,
                   onTap: () {
-                    _commandController.text = '{"cmd":"gps","value":"1"}';
+                    _commandController.text = '{"cmd":"upgps","value":"0"}';
                   },
                 ),
                 const SizedBox(width: 8),
@@ -681,7 +713,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
                   label: '发射功率',
                   iconColor: Colors.purple,
                   onTap: () {
-                    _commandController.text = '{"cmd":"power","value":"5"}';
+                    _commandController.text = '{"cmd":"power","value":"20"}';
                   },
                 ),
                 const SizedBox(width: 8),
@@ -690,7 +722,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
                   label: '最低电量',
                   iconColor: Colors.green,
                   onTap: () {
-                    _commandController.text = '{"cmd":"minBattery","value":"20"}';
+                    _commandController.text = '{"cmd":"minBattery","value":"50"}';
                   },
                 ),
                 const SizedBox(width: 8),
@@ -699,7 +731,10 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
                   label: '配置下发',
                   iconColor: Colors.green,
                   onTap: () {
-                    _commandController.text = '{"cmd":"config","value":"10,0-24,12-6"}';
+                    final configValue = _currentConfigValue.isNotEmpty
+                        ? _currentConfigValue
+                        : '10,0-24,12-6';
+                    _commandController.text = '{"cmd":"config","value":"$configValue"}';
                   },
                 ),
               ],

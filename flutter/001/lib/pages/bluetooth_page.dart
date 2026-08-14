@@ -59,7 +59,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
   
   // 声音/震动控制
   static const _soundChannel = MethodChannel('com.app/sound');
-  bool _soundEnabled = false; // 是否开启声音
+  bool _soundEnabled = true; // 是否开启声音
   
   // 为每条数据生成随机背景色（使用固定种子保证同一索引颜色不变）
   Color _getRandomLightColor(int index) {
@@ -115,7 +115,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
   Future<void> _loadSoundSettings() async {
     final enabled = await DBHelper().getBoolSetting(
       'bluetooth_sound_enabled',
-      defaultValue: false,
+      defaultValue: true,
     );
     setState(() {
       _soundEnabled = enabled;

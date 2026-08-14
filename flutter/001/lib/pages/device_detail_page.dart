@@ -32,6 +32,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   String _reportInterval = '—'; // 上报周期
   String _bootTime = '—';       // 开机时间
   String _locationTime = '—';   // 定位时间
+  String _rawConfigValue = '';  // 原始配置值（用于配置下发指令）
   bool _isBluetoothConnected = false; // 蓝牙连接状态
   bool _isFromCache = false; // 标记是否使用缓存数据（断网）
 
@@ -224,6 +225,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         _reportInterval = intervalDisplay;
         _bootTime = bootDisplay;
         _locationTime = locDisplay;
+        _rawConfigValue = configStr; // 保存原始配置值
       });
       debugPrint('解析配置: 上报周期=$intervalDisplay, 开机时间=$bootDisplay, 定位时间=$locDisplay');
     } catch (e) {
@@ -757,7 +759,10 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                       icon: Icons.settings,
                       label: '配置下发',
                       onTap: () {
-                        commandController.text = '{"cmd":"config","value":"10,0-24,12-6"}';
+                        final configValue = _rawConfigValue.isNotEmpty
+                            ? _rawConfigValue
+                            : '10,0-24,12-6';
+                        commandController.text = '{"cmd":"config","value":"$configValue"}';
                       },
                     ),
                   ),
