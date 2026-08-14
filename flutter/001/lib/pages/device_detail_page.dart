@@ -472,7 +472,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     final deviceId = _str(widget.device['deviceId']);
     final rename = _str(widget.device['rename']);
     final deviceKey = _str(widget.device['device_key']);
-    final linkCowSheepId = _str(widget.device['link_cowsheep_id']);
     final productKey = _str(widget.device['ProductKey']);
     final picurl = widget.device['picurl']?.toString() ?? '';
     
@@ -558,13 +557,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                             ),
                             const SizedBox(height: 8),
 
-                            _buildInfoRowWhite(
-                              '绑定牛羊',
-                              linkCowSheepId == '—' ? '未绑定' : linkCowSheepId,
-                              valueColor: linkCowSheepId == '—' 
-                                  ? const Color(0xFF66BB6A) 
-                                  : Colors.white,
-                            ),
                             _buildInfoRowWhite('上报周期', _reportInterval),
                             _buildInfoRowWhite('开机时间', _bootTime),
                             _buildInfoRowWhite('定位时间', _locationTime),
@@ -989,6 +981,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         return (label: '对时', color: const Color(0xFF4CAF50));
       case 5:
         return (label: '跟踪', color: const Color(0xFFFF9800));
+      case 6:
+        return (label: '配置', color: const Color(0xFF9C27B0));
       default:
         return (label: type.toString(), color: Colors.grey);
     }

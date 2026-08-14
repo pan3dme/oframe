@@ -522,7 +522,10 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
         foregroundColor: Colors.black,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -563,7 +566,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
             // 中继转发设备（默认自动，可选有ProductKey的设备）
             _buildSectionCard(
@@ -610,7 +613,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
             // 指令内容
             _buildSectionCard(
@@ -624,19 +627,19 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
                   border: OutlineInputBorder(),
                   contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 ),
-                maxLines: 4,
+                maxLines: 2,
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
 
             // 快捷指令
             const Text(
               '快捷指令',
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
 
             // 第一行：上报GPS、上报模式、位置跟踪
             Row(
@@ -702,7 +705,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
               ],
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
             // 发送指令按钮
             SizedBox(
@@ -736,6 +739,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -748,7 +752,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -782,7 +786,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           child,
         ],
       ),
