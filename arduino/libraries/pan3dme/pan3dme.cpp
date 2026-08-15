@@ -20,9 +20,9 @@ bool isGpsOn = false;
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
-    0x6809A21B5BF8,     //0
-    0x9875555,        //2
-    0xC0CBBE1B5BF8, // v4    2 
+    0x6809A21B5BF8, // 0
+    0x9875555,      // 2
+    0xC0CBBE1B5BF8, // v4    2
     0x9875555,
     0x545C82697090, // v4    4
     0x9875555,
@@ -48,8 +48,8 @@ uint64_t allowedDevices[] = {
     0x9875555,
     0x20A161F61B44, // v4 NOLED   26
     0x28003A04A7AC, // v3   中继dtu   27
-    0x20A261F61B44,//  v4 NOLED   28
-    0x9875555 // 等待添加
+    0x20A261F61B44, //  v4 NOLED   28
+    0x9875555       // 等待添加
 };
 const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);
 
@@ -167,9 +167,11 @@ void gpsEncode() {
     //    Serial.println(getGpsInfoStr());
   }
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
-    if (haveRightTime()) {
-        return;
-    }
+  if (!haveRightTime()) {
+    upDataGpsTimeToCs();
+  }
+}
+void upDataGpsTimeToCs() {
   if (gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025) {
 
     int year = gps.date.year();
@@ -411,16 +413,16 @@ String readBatteryEndStr(String deviceName) {
 
   float batteryVoltage = mvAvg * 5.20 / 1000.0;
 
-//  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
-//                batteryVoltage);
+  //  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
+  //                batteryVoltage);
 
   int soc = map(batteryVoltage * 1000, 3000, 4000, 0, 100);
   soc = constrain(soc, 0, 100);
   float socRatio = soc / 100.0;
 
   String outStr = String(socRatio, 1) + "|" + String(batteryVoltage, 1);
- Serial.print("电量信息：");
- Serial.println(outStr);
+  Serial.print("电量信息：");
+  Serial.println(outStr);
 
   return outStr;
 }
@@ -473,7 +475,6 @@ String getCurrentTime(bool includeMillis) {
   }
   return String(buf);
 }
- 
 
 // 获取当前时间戳（毫秒级）
 long long getCurrentTimestampMs() {
@@ -491,19 +492,17 @@ void setTimeFromTimestamp(long long epochMs) {
 }
 
 // 将毫秒时间戳转为可读时间并打印
-void printTimestampMs(long long epochMs, const char* label) {
+void printTimestampMs(long long epochMs, const char *label) {
   time_t sec = (time_t)(epochMs / 1000LL);
   int ms = (int)(epochMs % 1000LL);
   struct tm t;
   localtime_r(&sec, &t);
-  DEBUG_PRINTF("%s%4d/%d/%d %02d:%02d:%02d.%03d\n",
-                label,
-                t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-                t.tm_hour, t.tm_min, t.tm_sec, ms);
+  DEBUG_PRINTF("%s%4d/%d/%d %02d:%02d:%02d.%03d\n", label, t.tm_year + 1900,
+               t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, ms);
 }
 
 // 将毫秒差值打印为 N小时N分N秒N毫秒
-void printDurationMs(long long diffMs, const char* label) {
+void printDurationMs(long long diffMs, const char *label) {
   bool negative = diffMs < 0;
   if (negative) {
     diffMs = -diffMs;
@@ -512,9 +511,8 @@ void printDurationMs(long long diffMs, const char* label) {
   long long minutes = (diffMs % 3600000LL) / 60000LL;
   long long seconds = (diffMs % 60000LL) / 1000LL;
   long long millis = diffMs % 1000LL;
-  DEBUG_PRINTF("%s%s%lld小时%lld分%lld秒%lld毫秒\n",
-                label, negative ? "-" : "",
-                hours, minutes, seconds, millis);
+  DEBUG_PRINTF("%s%s%lld小时%lld分%lld秒%lld毫秒\n", label, negative ? "-" : "",
+               hours, minutes, seconds, millis);
 }
 
 // 从LoRa对时信息设置时间2026/07/14 23:23:10.513
@@ -562,22 +560,23 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
   Radio.SetTxConfig(MODEM_LORA, txPower, 0, LORA_BW, LORA_SF, LORA_CR,
                     PREAMBLE_LENGTH, false, true, 0, 0, false, 1000);
 
-    DEBUG_PRINT("✅ 当前lora频段");
-    DEBUG_PRINT(LORA_FREQ);
-    DEBUG_PRINT(" 发射功率");
-    DEBUG_PRINTLN(txPower);
-    DEBUG_PRINTLN("✅ LoRa 初始化完成");
+  DEBUG_PRINT("✅ 当前lora频段");
+  DEBUG_PRINT(LORA_FREQ);
+  DEBUG_PRINT(" 发射功率");
+  DEBUG_PRINTLN(txPower);
+  DEBUG_PRINTLN("✅ LoRa 初始化完成");
 }
 
 // 判断时间戳是否在指定时段内
 // timestampMs: 毫秒时间戳
 // timeRangeStr 格式: "H:M-H:M" 如 "05:02-10:59" 或 "0:0-24:59"
-bool isTimeInRange(long long timestampMs, const char* timeRangeStr) {
+bool isTimeInRange(long long timestampMs, const char *timeRangeStr) {
   int startH = 0, startM = 0, endH = 0, endM = 0;
-  if (sscanf(timeRangeStr, "%d:%d-%d:%d", &startH, &startM, &endH, &endM) != 4) {
+  if (sscanf(timeRangeStr, "%d:%d-%d:%d", &startH, &startM, &endH, &endM) !=
+      4) {
     DEBUG_PRINT("❌ isTimeInRange 解析失败: ");
     DEBUG_PRINTLN(timeRangeStr);
-    return true;  // 解析失败默认在范围内，避免阻止业务
+    return true; // 解析失败默认在范围内，避免阻止业务
   }
 
   // 将时间戳转为本地时间的时和分

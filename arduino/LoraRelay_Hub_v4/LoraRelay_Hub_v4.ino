@@ -6,7 +6,7 @@
 // 调试开关：在 include pan3dme.h 之前定义，覆盖默认值
 // 1=开发模式（输出所有调试信息） 0=正式模式（仅输出关键信息）
 
-
+#include <ArduinoJson.h>
 #include "Arduino.h"
 #include "LoRaWan_APP.h"
 #include <pan3dme.h>
@@ -19,7 +19,7 @@ int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
-
+HardwareSerial *dtuSerial;
 
 bool timeSynFlage = false;
 
@@ -385,11 +385,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   }
 }
 //发送LORA到中继
-void sendLoraToMid(String dataStr, bool addBatter) {
-  if (addBatter == true) {
-    dataStr += "|" + batterystr;
-  }
-  dataStr += "|" + String(rtcSendCount++);
+void sendLoraToSave(String dataStr) {
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
     DEBUG_PRINTLN("⚠️ 数据过长，已截断");
@@ -543,79 +539,54 @@ void batteryLowSheep(float minValue) {
 }
 
 unsigned long num6000 = 5000;  // 暂时提前20秒开机
-void testSheepFun() {
-  unsigned long waittm = nextSendTime - millis();
-  printTimeToString("到上报时间还有 ", nextSendTime - millis());
-  // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
-  if ((waittm) > num6000) {
-    if (configConfirmed || rtcSendCount <= 1) {
-      //确认配置给两秒特殊插入数据， 开机上报当前的配置信息
-      configConfirmed = false;
-      sendLoraToMid(String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str), false);
-      delay(2000);
-      waittm = nextSendTime - millis();
-    }
+ 
+void receiveDtuData() {
+  String raw = "";
 
-
-    batteryLowSheep(minBatteryVolage);
-    DEBUG_PRINT("距离上报时间超过 ");
-    DEBUG_PRINT(num6000 / 1000);
-    DEBUG_PRINTLN("秒进入睡眠");
-    hideOLED();
-    delay(1000);
-    // 05:02|10:59
-    uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
-    //判断下个时间段是否需要开启GPS是的话就提前搜星
-    if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) == 0) {
-      DEBUG_PRINTLN("工作模式上报GPS，需要提前开启GPS");
-      if (sleepTime > (seacthTm * 1000ULL)) {
-        sleepTime = sleepTime - (seacthTm * 1000ULL);
-      } else {
-        //小于时间周期，10秒就马上重启
-        sleepTime = 10 * 1000 * 1000ULL;
-      }
-    }
-    // 根据每小时偏差补偿休眠期间的时钟漂移
-    if (hourlyDriftMsTemp != 0) {
-      long long sleepMs = (long long)(sleepTime / 1000ULL);
-      long long driftCompMs = hourlyDriftMsTemp * sleepMs / 3600000LL;
-      long long currentMs = getCurrentTimestampMs();
-      long long adjustedMs = currentMs + driftCompMs;
-
-      lastDriftCompMs = driftCompMs;
-
-      DEBUG_PRINTF("每小时偏差: %lld 毫秒\n", hourlyDriftMsTemp);
-      DEBUG_PRINTF("休眠时长: %llu 微秒\n", sleepTime);
-      DEBUG_PRINTF("休眠期间预估偏差: %lld 毫秒\n", driftCompMs);
-      printTimestampMs(currentMs, "补偿前时间: ");
-      setTimeFromTimestamp(adjustedMs);
-      printTimestampMs(adjustedMs, "补偿后时间: ");
-    }
-
-
-    if (sleepTime > 24 * 60 * 60 * 1000 * 1000ULL) {
-      ESP.restart();
-      //重启
-    }
-
-
-    // esp_deep_sleep(sleepTime);
-    esp_sleep_enable_timer_wakeup(sleepTime);
-    DEBUG_PRINTLN("--->即将进入深度睡眠...");
-    // 计算并打印预计开机时间
-    {
-      uint64_t wakeUpSec = sleepTime / 1000000ULL;
-      time_t now = time(nullptr);
-      time_t wakeTime = now + (time_t)wakeUpSec;
-      struct tm wt;
-      localtime_r(&wakeTime, &wt);
-      DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
-                   wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
-    }
-    Serial.flush();
-    esp_deep_sleep_start();
-    DEBUG_PRINTLN("我已经睡着了...");
+  if (dtuSerial->available() <= 0) {
+    return;
   }
+  // 1. 读取本次全部数据（限制最大长度防止内存耗尽）
+  int rawLen = 0;
+  while (dtuSerial->available() > 0 && rawLen < 1024) {
+    raw += (char)dtuSerial->read();
+    rawLen++;
+    delay(2);  // 等待下一个字节
+  }
+  // 丢弃超出部分
+  while (dtuSerial->available() > 0) {
+    dtuSerial->read();
+  }
+
+  dtuSerial->flush();
+  Serial.print("dtu 返回 -");
+  Serial.println(raw);
+
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, raw);
+
+  if (error) {
+    Serial.print("JSON 解析失败: ");
+    Serial.println(error.f_str());
+    return;
+  }
+
+  // ---------- 先判断有没有 lorainfo ----------
+  if (!doc.containsKey("params")) {
+    Serial.println("错误：缺少 params 对象");
+    return;
+  }
+
+  if (!doc["params"].containsKey("lorainfo")) {
+    Serial.println("错误：params 中缺少 lorainfo 字段");
+    return;
+  }
+
+  // 到这里说明 lorainfo 一定存在
+  String lorainfo = doc["params"]["lorainfo"].as<String>();
+  Serial.print("lorainfo 存在，值为: ");
+  Serial.println(lorainfo);
+  sendLoraToSave(lorainfo);
 }
 // ==================== 系统初始化 ====================
 void setup() {
@@ -625,106 +596,21 @@ void setup() {
   deviceName = makeDivceName();
   batterystr = readBatteryEndStr(deviceName);
 
-  if (rtcSendCount == -1) {
-    unsigned long endTm = millis() + 20000;
-    while (endTm > millis()) {
-      delay(1000);
-      DEBUG_PRINT("x");
-    }
-    rtcSendCount = 0;
-  }
-  batteryLowSheep(0.1);
+#if defined(WIFI_LORA_32_V4)
+  // Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
+  Serial2.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  dtuSerial = &Serial2;
+  Serial.println("✅ v4 板子 DTU");
+  delay(1000);
+#endif
 
-  if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) == 0) {
-    meshGpsInfoFun(true);
-    strcpy(needSendGpsStr, getGpsInfoStr().c_str());
-    nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
-    testSheepFun();
-  }
+
   initLora();
 }
 // ==================== 主循环 ====================
 void loop() {
   Radio.IrqProcess();
-  if (typeindex == FLAG_TYPE_3) {
-    Radio.Sleep();  // IrqProcess已完成，安全Sleep
-    if (millis() < gpsWorkStat) {
-      DEBUG_PRINTLN("准备跟踪GPS位置");
-      delay(1000);  // 上报LORA需要2秒钟间隔
-      return;
-    }
-    unsigned long gpsFollowStartm = millis();
-    DEBUG_PRINT("gps持续准备上报位置:");
-    DEBUG_PRINT(millis() - gpsWorkStat);
-    DEBUG_PRINT("-");
-    DEBUG_PRINTLN(gpsWorkTime);
-    showOLED();
-    DEBUG_PRINT("获取GPS ");
-    printCurrentTime();
-    meshGpsInfoFun(false);
-    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + getGpsInfoStr(), false);
-    delay(2000);  // 上报LORA需要2秒钟间隔
-    hideOLED();
-    Radio.Sleep();
-    if ((millis() - gpsWorkStat) > gpsWorkTime) {
-      DEBUG_PRINTLN("结束GPS上报");
-      if (getGpsStatus()) {
-        setGpsEnable(false);
-        delay(100);
-      }
-      nextSendTime = 0;
-      typeindex = FLAG_TYPE_0;
-    } else {
-      printTimeToString("延时 ", gpsWorkInterval);
-      printTimeToString("还会持续", gpsWorkTime - (millis() - gpsWorkStat));
-      if (gpsWorkInterval > (millis() - gpsFollowStartm)) {
-        delay(gpsWorkInterval - (millis() - gpsFollowStartm));  // 延时设定时间
-      }
-    }
-    return;
-  } else if (typeindex == FLAG_TYPE_2) {
-    delay(100);
-    DEBUG_PRINT(".");
-    if (inRxEndTime < millis()) {
-      DEBUG_PRINT(rtcResiveIdx);
-      DEBUG_PRINT("-");
-      DEBUG_PRINT(rtcSendCount);
-      // 回到普通模式，准备可以休眠
-      nextSendTime = 0;
-      typeindex = FLAG_TYPE_0;
-      DEBUG_PRINTLN("");
-    }
-    return;
-  } else if (typeindex == FLAG_TYPE_1) {
-    delay(100);
-    return;
-  } else if (typeindex == FLAG_TYPE_0) {
-    if (rtcSendCount == 0) {
-      nextSendTime = millis() - 1;
-    }
-    if (nextSendTime == 0) {
-      nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
-      if (timeSynFlage) {  // 接收了同步时间
-        if ((nextSendTime - millis()) < get_send_interval_ms() / 2) {
-          DEBUG_PRINTLN("⚠️⚠️⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
-                        "要跳过这个窗口将时间后移到下一个周期⚠️⚠️⚠️");
-          nextSendTime = nextSendTime + get_send_interval_ms();
-        }
-      }
-      testSheepFun();
-    }
-    if (nextSendTime < millis()) {
-
-      typeindex = FLAG_TYPE_1;
-      if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) > 0) {
-        sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + needSendGpsStr, false);
-        strcpy(needSendGpsStr, "");
-      } else {
-
-        sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false), true);
-      }
-    }
-  }
-  printCurrentTime();
-  delay(10);
+  receiveDtuData();
+  // printCurrentTime();
+  delay(1000);
 }

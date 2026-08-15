@@ -31,7 +31,7 @@ String deviceCacheMsg[DEVICE_CACHE_MAX];
 int deviceCacheCount = 0;
 
 bool debugLog = true;
- 
+
 int rtcSendCount = 0;
 String batterystr = "";
 String deviceName = "x-x";
@@ -405,7 +405,7 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
                          "\"snr\":"
                 + snr + "}"
                         "}";
-  // Serial.println("上报报文：" + json);
+  Serial.println("上报报文：" + json);
   dtuSerial->println(json);
 }
 // 接收 Serial2 (DTU) 数据，拆分多个拼接JSON并提取cominfo
@@ -583,7 +583,7 @@ void sendDownInfo(String loraStr, String deviceId) {
 
   } else {
     needSyncTimeDeviceid = deviceId;
-    down_syn_time = millis() + 2000 ;
+    down_syn_time = millis() + 2000;
   }
 }
 
@@ -681,10 +681,10 @@ void setup() {
   delay(1000);
 #endif
 #if defined(WIFI_LORA_32_V4)
-  Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
+  // Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
+  Serial2.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   dtuSerial = &Serial2;
   Serial.println("✅ v4 板子 DTU");
-  // dtuSerial->println("V4 DTU TEST");
   delay(1000);
 #endif
 
@@ -778,5 +778,5 @@ void loop() {
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();
-    delay(100);
+  delay(100);
 }

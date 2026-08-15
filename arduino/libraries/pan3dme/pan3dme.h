@@ -124,6 +124,7 @@ void setTimeFromTimestamp(long long epochMs); // 通过时间戳（毫秒）设�
 void printTimestampMs(long long epochMs, const char* label); // 将时间戳转为可读时间并打印
 void printDurationMs(long long diffMs, const char* label); // 将毫秒差值打印为 N小时N分N秒N毫秒
 bool hasValidTime();
+void upDataGpsTimeToCs();
 void setTimeFromLora(String timeStr);
 int getDevicesIdx();
 int getTotalDevices(); // 获取设备总数
