@@ -5,11 +5,10 @@
 #include <ArduinoJson.h>
 #include "Arduino.h"
 #include "LoRaWan_APP.h"
-#include <pan3dme.h>           // 提供 initPanRadio, makeDivceName 等基础函数
+#include <pan3dme.h>  // 提供 initPanRadio, makeDivceName 等基础函数
 
 
-#define LORA_FREQ 433000000 // 433MHz 国内通用863 863   923  928   915
-#define LORA_SF 11          // 扩频因子
+
 
 // ==================== 全局变量 ====================
 String deviceName;
@@ -54,7 +53,7 @@ void initLora() {
   radioEvents.RxError = OnRxError;
 
   // 使用默认功率（22dBm），如需调整可改
-  initPanRadio(&radioEvents, 22,433000000,10);
+  initPanRadio(&radioEvents, 22, 433000000, 10);
 }
 
 // ==================== 发送 LoRa 数据 ====================
@@ -64,12 +63,18 @@ void sendLoraToSave(String dataStr) {
     DEBUG_PRINTLN("⚠️ 数据过长，已截断");
     sendData[BUFFER_SIZE - 1] = '\0';
   }
-  DEBUG_PRINT("发送 LoRa: ");
+  DEBUG_PRINT("发送 LoRa:");
   DEBUG_PRINTLN(sendData);
   Radio.Send((uint8_t *)sendData, strlen(sendData));
   delay(100);
 }
-
+int countChar(String s, char c) {
+  int cnt = 0;
+  for (int i = 0; i < s.length(); i++) {
+    if (s[i] == c) cnt++;
+  }
+  return cnt;
+}
 // ==================== 从 DTU 接收并解析 JSON ====================
 void receiveDtuData() {
   if (dtuSerial->available() <= 0) return;
@@ -85,33 +90,15 @@ void receiveDtuData() {
   while (dtuSerial->available() > 0) dtuSerial->read();
   dtuSerial->flush();
 
-  Serial.print("DTU 返回: ");
+  Serial.print("DTU 返回 : ");
   Serial.println(raw);
 
-  JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, raw);
-  if (error) {
-    Serial.print("JSON 解析失败: ");
-    Serial.println(error.f_str());
-    return;
+  if (countChar(raw, '|') >= 2) {
+    // 转发给 LoRa
+    sendLoraToSave(raw);
+  } else {
+    Serial.println("raw 格式无效，丢弃");
   }
-
-  // ----- 判断是否存在 params.lorainfo -----
-  if (!doc.containsKey("params")) {
-    Serial.println("错误：缺少 params 对象");
-    return;
-  }
-  if (!doc["params"].containsKey("lorainfo")) {
-    Serial.println("错误：params 中缺少 lorainfo 字段");
-    return;
-  }
-
-  String lorainfo = doc["params"]["lorainfo"].as<String>();
-  Serial.print("lorainfo 存在，值为: ");
-  Serial.println(lorainfo);
-
-  // 转发给 LoRa
-  sendLoraToSave(lorainfo);
 }
 
 // ==================== setup ====================
@@ -119,7 +106,7 @@ void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
-  deviceName = makeDivceName();          // 从 pan3dme 获取设备名（若无需可注释）
+  deviceName = makeDivceName();  // 从 pan3dme 获取设备名（若无需可注释）
   Serial.println("设备名: " + deviceName);
 
 #if defined(WIFI_LORA_32_V4)
@@ -136,7 +123,7 @@ void setup() {
 
 // ==================== loop ====================
 void loop() {
-  Radio.IrqProcess();        // 处理 LoRa 中断事件
-  receiveDtuData();          // 检查并处理 DTU 数据
-  delay(1000);               // 每1秒检查一次，可根据需求调整
+  Radio.IrqProcess();  // 处理 LoRa 中断事件
+  receiveDtuData();    // 检查并处理 DTU 数据
+  delay(1000);         // 每1秒检查一次，可根据需求调整
 }

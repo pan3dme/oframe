@@ -17,6 +17,8 @@ unsigned long syncedMillis = 0; // 同步时的本地毫秒计数
 
 bool isGpsOn = false;
 
+unsigned long rolaHz = 915000000; // 同步时的本地毫秒计数
+
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
@@ -45,7 +47,7 @@ uint64_t allowedDevices[] = {
     0x3CB7A21B5BF8, // v4    22
     0x9875555,
     0xE436A21B5BF8, // v4    24  dtu
-    0x9875555,
+    0xF89A3604A7AC, //V3     35   三角 433
     0x20A161F61B44, // v4 NOLED   26
     0x28003A04A7AC, // v3   中继dtu   27
     0x20A261F61B44, //  v4 NOLED   28
@@ -318,9 +320,11 @@ String makeDivceName() {
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
                         BLECharacteristicCallbacks *charCallbacks) {
 
+                          
+
   BLECallbacks cbs;
 
-  BLEDevice::init("牛羊GPS" + deviceName + "-" + (LORA_FREQ / 1000000));
+  BLEDevice::init("牛羊GPS" + deviceName + "-" + (rolaHz / 1000000));
   cbs.pServer = BLEDevice::createServer();
   cbs.pServer->setCallbacks(serverCallbacks);
 
@@ -550,9 +554,9 @@ bool hasValidTime() { return syncedEpoch > 0; }
 
 void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,int  swNum){
 // void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
-
+rolaHz=hzFreq;
   Radio.Init(radioEvents);
-  Radio.SetChannel(hzFreq);
+  Radio.SetChannel(rolaHz);
 
   Radio.SetRxConfig(MODEM_LORA, LORA_BW, LORA_SF, LORA_CR, 0, PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
@@ -562,9 +566,11 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,i
                     PREAMBLE_LENGTH, false, true, 0, 0, false, 1000);
 
   DEBUG_PRINT("✅ 当前lora频段");
-  DEBUG_PRINT(hzFreq);
+  DEBUG_PRINT(rolaHz);
   DEBUG_PRINT(" 发射功率");
-  DEBUG_PRINTLN(txPower);
+  DEBUG_PRINT(txPower);
+  DEBUG_PRINT(" SF");
+  DEBUG_PRINTLN(swNum);
   DEBUG_PRINTLN("✅ LoRa 初始化完成");
 }
 

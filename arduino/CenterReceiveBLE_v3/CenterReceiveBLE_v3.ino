@@ -14,6 +14,7 @@
 #include <time.h>
 HardwareSerial *dtuSerial;
 // ========================= BLE全局对象 =========================
+bool linkHub = true;
 bool needSync = false;
 BLECharacteristic *pCharacteristic = NULL;
 static RadioEvents_t RadioEvents;
@@ -352,7 +353,8 @@ void initRadio(int power) {
   RadioEvents.RxError = OnRxError;
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
-  initPanRadio(&RadioEvents, power);
+  // initPanRadio(&RadioEvents, power,433000000,10);
+  initPanRadio(&RadioEvents, power, 915000000, 11);
   Radio.Rx(0);
 }
 
@@ -390,6 +392,11 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 // ========================= DTU上报 =========================
 // 通过串口2将LoRa数据上报给DTU
 void sendLoraInfoUseDtu(String str, String rssi, String snr) {
+  if (linkHub) {
+    Serial.println("中继转发lora：" + str);
+    dtuSerial->println(str);
+    return;
+  }
   String json = "{"
                 "\"id\":"
                 + String(millis()) + ","
@@ -435,6 +442,7 @@ void receiveDtuData() {
   // 解析DTU返回的网络时间: config,nettime,ok,2026,7,31,1,50,6,5
   // 格式: 年,月,日,时,分,秒,毫秒
   if (raw.indexOf("config,csq,ok,") != -1) {
+    linkHub = false;
     int lastComma = raw.lastIndexOf(',');
     if (lastComma != -1) {
       String valueStr = raw.substring(lastComma + 1);
@@ -447,6 +455,7 @@ void receiveDtuData() {
     }
   }
   if (raw.indexOf("config,nettime,ok,") != -1) {
+    linkHub = false;
     String timePart =
       raw.substring(raw.indexOf("config,nettime,ok,") + 18);  // 跳过前缀
     int ntYear = 0, ntMon = 0, ntDay = 0, ntH = 0, ntM = 0, ntS = 0, ntMs = 0;
