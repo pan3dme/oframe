@@ -548,10 +548,11 @@ void setTimeFromLora(String timeStr) {
 // 判断是否有有效时间
 bool hasValidTime() { return syncedEpoch > 0; }
 
-void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
+void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,int  swNum){
+// void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
 
   Radio.Init(radioEvents);
-  Radio.SetChannel(LORA_FREQ);
+  Radio.SetChannel(hzFreq);
 
   Radio.SetRxConfig(MODEM_LORA, LORA_BW, LORA_SF, LORA_CR, 0, PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, true, 0, 0, false, false);
@@ -561,7 +562,7 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
                     PREAMBLE_LENGTH, false, true, 0, 0, false, 1000);
 
   DEBUG_PRINT("✅ 当前lora频段");
-  DEBUG_PRINT(LORA_FREQ);
+  DEBUG_PRINT(hzFreq);
   DEBUG_PRINT(" 发射功率");
   DEBUG_PRINTLN(txPower);
   DEBUG_PRINTLN("✅ LoRa 初始化完成");

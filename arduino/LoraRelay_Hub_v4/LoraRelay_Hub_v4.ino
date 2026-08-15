@@ -1,157 +1,51 @@
 /*
- * Heltec ESP32 LoRa 纯发送程序
- * 功能：每隔10秒自动发送一次LoRa数据
+ * 精简版：DTU（串口2）接收 JSON，提取 lorainfo 后通过 LoRa 转发
  */
-
-// 调试开关：在 include pan3dme.h 之前定义，覆盖默认值
-// 1=开发模式（输出所有调试信息） 0=正式模式（仅输出关键信息）
 
 #include <ArduinoJson.h>
 #include "Arduino.h"
 #include "LoRaWan_APP.h"
-#include <pan3dme.h>
+#include <pan3dme.h>           // 提供 initPanRadio, makeDivceName 等基础函数
+
+
+#define LORA_FREQ 433000000 // 433MHz 国内通用863 863   923  928   915
+#define LORA_SF 11          // 扩频因子
 
 // ==================== 全局变量 ====================
-String deviceName;           // 设备名称
-char sendData[BUFFER_SIZE];  // 发送数据缓存
-// LoRa发射时间管理
-int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
-int totalDevices = 0;            // 设备总数（从pan3dme获取）
-unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
-
+String deviceName;
+char sendData[BUFFER_SIZE];
 HardwareSerial *dtuSerial;
 
-bool timeSynFlage = false;
+RadioEvents_t radioEvents;
 
-String batterystr = "";
-
-unsigned long gpsWorkTime = 0;
-unsigned long gpsWorkInterval = 0;
-unsigned long gpsWorkStat = 0;
-int typeindex = FLAG_TYPE_0;
-
-RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
-RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
-RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
-RTC_DATA_ATTR float minBatteryVolage = 0.4;     //设置电量小于0.4就间隔一天
-RTC_DATA_ATTR int loraTxPower = 22;
-RTC_DATA_ATTR int16_t lastRssi = 0;
-RTC_DATA_ATTR int8_t lastSnr = 0;
-
-RTC_DATA_ATTR bool configConfirmed = false;
-RTC_DATA_ATTR int rtcSendCount = -1;
-RTC_DATA_ATTR int rtcResiveIdx = 0;
-RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
-RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
-RTC_DATA_ATTR char lastrelayName[10] = "";             //
-RTC_DATA_ATTR char work_time_str[16] = "00:00-23:59";  // 默认工作时间
-RTC_DATA_ATTR char gps_time_str[16] = "12:00-18:00";   // gps上报时间
-RTC_DATA_ATTR char config_str[16] = "5,0-24,12-6";     // 命令集合
-
-
-
-RadioEvents_t radioEvents;                             // LoRa事件回调
-void printTimeToString(String str, unsigned long ms);  // 前向声明
-
-// 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
-// work_time_str格式: "05:02-10:59" 表示工作时段 05:02 ~ 10:59
-uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
-  // 1. 用isTimeInRange判断是否在工作时间（支持跨午夜）
-  bool inWorkTime = isTimeInRange(getCurrentTimestampMs(), work_time_str);
-  if (inWorkTime || !haveRightTime()) {
-    DEBUG_PRINTLN("✅ 当前在工作时间内，按原计划休眠");
-    return (uint64_t)sleepMs * 1000ULL;
-  }
-
-  // 2. 不在工作时间内，解析开始时间计算等待
-  int startH = 0, startM = 0, endH = 0, endM = 0;
-  sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
-  int startMinutes = startH * 60 + startM;
-
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);
-  time_t now = tv.tv_sec;
-  struct tm t;
-  localtime_r(&now, &t);
-  int nowMinutes = t.tm_hour * 60 + t.tm_min;
-
-  DEBUG_PRINTF("    工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
-               startH, startM, endH, endM, t.tm_hour, t.tm_min);
-
-  // 3. 计算到下次工作开始的分钟数
-  int waitMinutes = 0;
-  if (nowMinutes < startMinutes) {
-    waitMinutes = startMinutes - nowMinutes;
-  } else {
-    waitMinutes = (24 * 60 - nowMinutes) + startMinutes;
-  }
-
-  uint64_t adjustedUs = (uint64_t)waitMinutes * 60 * 1000000ULL;
-  DEBUG_PRINTF("❌ 当前不在工作时间，%d分钟后开始工作，休眠%llu秒\n",
-               waitMinutes, adjustedUs / 1000000ULL);
-  return adjustedUs;
+// ==================== LoRa 回调 ====================
+void onSendDone(void) {
+  DEBUG_PRINTLN("✅ LoRa 发送完成");
 }
 
-unsigned long get_send_interval_ms() {
-  if (roundTime == 0) {
-    return SEND_INTERVAL_MS;
-  } else {
-    return roundTime;
-  }
-}
-float getSlotDuration() {
-  return get_send_interval_ms() / 30 / 1000;  // 30台设备现在是30分钟
+void onSendTimeout(void) {
+  DEBUG_PRINTLN("❌ LoRa 发送超时");
 }
 
-// ==================== 计算下次发送时间 (修正版) ====================
-unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
-  if (deviceIndex < 0 || totalDevices == 0) {
-    deviceIndex = getDevicesIdx();
-    totalDevices = getTotalDevices();
-    DEBUG_PRINTF("设备索引: %d, 总设备数: %d\n", deviceIndex, totalDevices);
-  }
-  if (deviceIndex < 0 || totalDevices <= 0) {
-    DEBUG_PRINTLN("⚠️ 设备未认证，使用默认间隔");
-    return millis() + intervalSeconds * 1000;
-  }
-
-  // 1. 获取当前时间
-  String timeStr = getCurrentTime(true);
-  int hour = 0, minute = 0, second = 0;
-  sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
-  unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
-
-  // 2. 计算基础参数
-  unsigned long mySlotOffset =
-    (unsigned long)((deviceIndex + 0.5) * getSlotDuration());  // 我在周期内的偏移量
-
-  // 3. 核心修复逻辑：计算到下一个时隙的等待时间
-  unsigned long cyclesPassed = currentSeconds / intervalSeconds;
-  unsigned long lastTargetSeconds =
-    cyclesPassed * intervalSeconds + mySlotOffset;
-
-  long secondsDiff = 0;
-  if (lastTargetSeconds < currentSeconds) {
-    secondsDiff = intervalSeconds - (currentSeconds - lastTargetSeconds);
-  } else {
-    secondsDiff = lastTargetSeconds - currentSeconds;
-  }
-  if (secondsDiff < 0) {
-    secondsDiff += intervalSeconds;
-  }
-
-  unsigned long delayMillis = secondsDiff * 1000;
-  unsigned long minutes = delayMillis / 60000;
-  unsigned long seconds = (delayMillis % 60000) / 1000;
-
-  DEBUG_PRINTF("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
-               timeStr.c_str(), deviceIndex, getSlotDuration(), minutes,
-               seconds);
-
-  return millis() + delayMillis;
+void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+  // 仅简单打印接收到的数据（如需处理可扩展）
+  if (size >= BUFFER_SIZE) return;
+  char buf[BUFFER_SIZE];
+  memcpy(buf, payload, size);
+  buf[size] = '\0';
+  DEBUG_PRINT("接收到 LoRa 数据: ");
+  DEBUG_PRINTLN(buf);
 }
 
-// ==================== LoRa模块初始化 ====================
+void OnRxTimeout(void) {
+  DEBUG_PRINTLN("⚠️ LoRa 接收超时");
+}
+
+void OnRxError(void) {
+  DEBUG_PRINTLN("❌ LoRa 接收错误");
+}
+
+// ==================== LoRa 初始化 ====================
 void initLora() {
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
@@ -159,458 +53,90 @@ void initLora() {
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
 
-
-  if (rtcSendCount == rtcResiveIdx) {
-    if (abs(lastRssi) > 90 || lastRssi == 0) {
-      initPanRadio(&radioEvents, loraTxPower);
-    } else {
-      initPanRadio(&radioEvents, 15);
-    }
-  } else {
-    //没有收到下行包，就最大功率发射
-    initPanRadio(&radioEvents, 28);
-  }
-}
-void OnRxTimeout(void) {
-  DEBUG_PRINTLN("⚠️ Radio接收超时!");
-  Radio.Rx(0);
+  // 使用默认功率（22dBm），如需调整可改
+  initPanRadio(&radioEvents, 22,433000000,10);
 }
 
-void OnRxError(void) {
-  // 接收到错误，相当于有多个中继打架，暂做标记
-  rtcResiveIdx = rtcSendCount;
-  DEBUG_PRINTLN("❌ Radio接收错误!");
-}
-String extractDeviceIdFromInfo(String infoStr) {
-  int first = infoStr.indexOf('|');
-  if (first == -1) {
-    return "";
-  }
-  int second = infoStr.indexOf('|', first + 1);
-  if (second == -1) {
-    return infoStr.substring(first + 1);
-  }
-  return infoStr.substring(first + 1, second);
-}
-bool isMyDeviceInList(String infoStr, String targetDevice) {
-  String id = extractDeviceIdFromInfo(infoStr);
-  return id.equals(targetDevice);
-}
-void meshSynTime(String infoStr, int firstPipeIndex) {
-  int secondPipeIndex = infoStr.indexOf('|', firstPipeIndex + 1);
-  if (secondPipeIndex < 0) {
-    DEBUG_PRINTLN("❌ SYN_TIME格式错误：缺少第二个分隔符");
-    return;
-  }
-  String timeStr = infoStr.substring(secondPipeIndex + 1);
-  int timePipeIdx = timeStr.indexOf('|');
-  if (timePipeIdx < 0) {
-    DEBUG_PRINTLN("❌ SYN_TIME格式错误：时间字段后缺少分隔符");
-    return;
-  }
-  timeStr = timeStr.substring(0, timePipeIdx);
-  DEBUG_PRINT("本机时间");
-  DEBUG_PRINTLN(getCurrentTime(true));
-
-  int lastPipeIdx = infoStr.lastIndexOf('|');
-  String relayName = infoStr.substring(lastPipeIdx + 1);
-  if (relayName.length() > 0) {
-    DEBUG_PRINT("中继名: ");
-    DEBUG_PRINTLN(relayName);
-    if (lastSendTimeTemp > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
-      DEBUG_PRINTLN("---中继和上次相对，那开始计算晶震偏移:----- ");
-      long long ds =
-        getCurrentTimestampMs() + lastDriftCompMs - lastSendTimeTemp;
-
-      printDurationMs(ds, "本机周期: ");
-      long long diff_ms = mathTimeDiffmstimeFromLora(timeStr) + lastDriftCompMs;
-      printDurationMs(diff_ms, "当前偏差: ");
-      // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
-      if (ds > 0) {
-        long long hourlyDriftMs = diff_ms * 3600000LL / ds;
-        DEBUG_PRINT("每小时偏差: ");
-        DEBUG_PRINT(hourlyDriftMs);
-        DEBUG_PRINTLN(" 毫秒");
-        printDurationMs(hourlyDriftMs, "每小时偏差: ");
-        // 每小时小于60秒的偏差才通过，防止出乱子
-        if (abs(hourlyDriftMs) < 60000) {
-          hourlyDriftMsTemp = hourlyDriftMs;
-        }
-      }
-    }
-    strcpy(lastrelayName, relayName.c_str());
-  }
-
-  setTimeFromLora(timeStr);
-  lastSendTimeTemp = getCurrentTimestampMs();
-  timeSynFlage = true;
-}
-void meshCmdType(String infoStr, String tmp) {
-  if (infoStr.indexOf("config") != -1) {
-    // tmp格式: "30,8-6,12-3"
-    // 第1段: roundTime(分钟)  第2段: work起始小时-持续时长  第3段: gps起始小时-持续时长
-    int rt = 0, wStart = 0, wDur = 0, gStart = 0, gDur = 0;
-    if (sscanf(tmp.c_str(), "%d,%d-%d,%d-%d", &rt, &wStart, &wDur, &gStart, &gDur) == 5) {
-      if (rt < 5 || rt > 120) {
-        DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
-        return;
-      }
-      roundTime = rt * 60 * 1000;
-      int wEnd = (wStart + wDur) % 24;
-      int gEnd = (gStart + gDur) % 24;
-      // 工作时间校验：超过24点截断为23:59，至少持续2小时
-      int wEndRaw = wStart + wDur;
-      int wEndH, wEndM;
-      if (wEndRaw >= 24) {
-        wEndH = 23;
-        wEndM = 59;
-      } else {
-        wEndH = wEndRaw;
-        wEndM = 0;
-      }
-      int wDurationMin = (wEndH * 60 + wEndM) - wStart * 60;
-      if (wDurationMin >= 2 * 60) {
-        sprintf(work_time_str, "%02d:00-%02d:%02d", wStart, wEndH, wEndM);
-      } else {
-        DEBUG_PRINT("⚠️工作时间不足2小时: ");
-        DEBUG_PRINTF("%02d:00-%02d:%02d\n", wStart, wEndH, wEndM);
-      }
-      sprintf(gps_time_str, "%02d:00-%02d:00", gStart, gEnd);
-      tmp.toCharArray(config_str, sizeof(config_str));
-      configConfirmed = true;
-      DEBUG_PRINT("✅✅全局配置 roundTime=");
-      DEBUG_PRINT(roundTime);
-      DEBUG_PRINT(" work=");
-      DEBUG_PRINT(work_time_str);
-      DEBUG_PRINT(" gps=");
-      DEBUG_PRINTLN(gps_time_str);
-    } else {
-      DEBUG_PRINT("❌全局配置格式错误：");
-      DEBUG_PRINTLN(tmp);
-    }
-  } else if (infoStr.indexOf("minbattery") != -1) {
-    int modeVal = tmp.toInt();
-    if (modeVal >= 10 && modeVal <= 80) {
-      DEBUG_PRINT("✅✅设置最底工作电量：");
-      minBatteryVolage = modeVal * 0.01;
-      DEBUG_PRINTLN(minBatteryVolage);
-    }
-  } else if (infoStr.indexOf("sendmode") != -1) {
-    // 11|v4-10|sendmode|1|0
-    int modeVal = tmp.toInt();
-    if (modeVal >= 0 && modeVal <= 2) {
-      DEBUG_PRINT("✅✅设置工作模式：");
-    } else {
-      DEBUG_PRINT("❌工作模式值错误(需0/1/2)：");
-      DEBUG_PRINTLN(modeVal);
-    }
-  } else if (infoStr.indexOf("txpower") != -1) {
-    DEBUG_PRINT("✅✅修改发射功率：");
-    if (tmp.toInt() >= 10 && tmp.toInt() <= 28) {
-      loraTxPower = tmp.toInt();
-    }
-  } else if (infoStr.indexOf("upgps") != -1) {
-
-    DEBUG_PRINT("✅✅时时定位改成只跟踪1分钟，正好利用现有机制");
-    typeindex = FLAG_TYPE_3;
-    gpsWorkStat = millis() + 5000;    // 延时5秒
-    gpsWorkTime = 1 * 60 * 1000;      // 跟踪时间
-    gpsWorkInterval = 1 * 60 * 1000;  // 跟踪上报间隔
-
-  } else if (infoStr.indexOf("follow") != -1) {
-    // 11|v4-10|follow|30,5
-    int commaIndex = tmp.indexOf(',');
-    if (commaIndex != -1) {
-      String firstStr = tmp.substring(0, commaIndex);
-      String secondStr = tmp.substring(commaIndex + 1);
-      int firstNum = firstStr.toInt();
-      int secondNum = secondStr.toInt();
-      DEBUG_PRINTLN(firstNum);   // 输出 30
-      DEBUG_PRINTLN(secondNum);  // 输出 5
-      if (firstNum > 5 && firstNum < 60 && secondNum > 0 && secondNum <= firstNum) {
-        DEBUG_PRINT("✅✅上报GPS坐标：");
-        typeindex = FLAG_TYPE_3;
-        gpsWorkStat = millis() + 5000;            // 延时5秒
-        gpsWorkTime = firstNum * 60 * 1000;       // 跟踪时间
-        gpsWorkInterval = secondNum * 60 * 1000;  // 跟踪上报间隔
-      }
-
-    } else {
-      // 没有逗号的处理逻辑
-      DEBUG_PRINTLN("没有找到逗号");
-    }
-
-  } else {
-    DEBUG_PRINTLN("❌❌❌❌ 需要补充功能列表");
-    return;
-  }
-}
-// LoRa接收回调
-void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
-  if (size >= BUFFER_SIZE) {
-    return;
-  }
-  lastRssi = rssi;
-  lastSnr = snr;
-  char buf[BUFFER_SIZE];
-  memcpy(buf, payload, size);
-  buf[size] = '\0';
-  DEBUG_PRINTLN("");
-  DEBUG_PRINT("接收：");
-  DEBUG_PRINTLN(buf);
-
-  DEBUG_PRINT(" rssi：");
-  DEBUG_PRINT(lastRssi);
-  DEBUG_PRINT(" snr");
-  DEBUG_PRINTLN(lastSnr);
-
-
-  // 检查是否为GPS高频指令（5|v4-6,...）且目标是当前设备
-  String infoStr(buf);
-  int firstPipeIndex = infoStr.indexOf('|');
-  if (firstPipeIndex <= 0) {
-    return;
-  }
-  // 标记接收窗口信息 记录下IDX然后用于判断是否握手成功
-  rtcResiveIdx = rtcSendCount;
-  int messageType = infoStr.substring(0, firstPipeIndex).toInt();
-  int lastPipe = infoStr.lastIndexOf('|');
-  String tmp = infoStr.substring(lastPipe + 1);  // 从最后一个'|'后取到末尾
-  if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
-    meshCmdType(infoStr, tmp);
-  }
-
-  if (messageType == MSG_TYPE_SYN_TIME && isMyDeviceInList(infoStr, deviceName)) {
-    meshSynTime(infoStr, firstPipeIndex);
-  }
-}
-//发送LORA到中继
+// ==================== 发送 LoRa 数据 ====================
 void sendLoraToSave(String dataStr) {
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
     DEBUG_PRINTLN("⚠️ 数据过长，已截断");
     sendData[BUFFER_SIZE - 1] = '\0';
   }
-  DEBUG_PRINT("发送：");
-  DEBUG_PRINT(sendData);
-  DEBUG_PRINT("  len:");
-  DEBUG_PRINTLN(strlen(sendData));
+  DEBUG_PRINT("发送 LoRa: ");
+  DEBUG_PRINTLN(sendData);
   Radio.Send((uint8_t *)sendData, strlen(sendData));
   delay(100);
 }
-// ==================== 构建并发送数据包 ====================
 
-// 结果接收窗口
-unsigned long inRxEndTime = 0;
-// ==================== LoRa发送完成回调 ====================
-void onSendDone(void) {
-  // Radio.Sleep();
-  DEBUG_PRINT("✅ 发送完成");
-  if (typeindex == FLAG_TYPE_1) {
-    DEBUG_PRINTLN("定时上报信息");
-    inRxEndTime = millis() + 4000;  // 4秒后结束接收窗口
-    typeindex = FLAG_TYPE_2;
-    Radio.Rx(0);
-  } else if (typeindex == FLAG_TYPE_2) {
-    DEBUG_PRINTLN("重复上报时间信息");
-  } else if (typeindex == FLAG_TYPE_3) {
-    DEBUG_PRINTLN("Gps上报完成");
-  }
-}
-
-// ==================== LoRa发送超时回调 ====================
-void onSendTimeout(void) {
-  // Radio.Sleep();  // 中断中不应操作Radio硬件，移到loop处理
-  DEBUG_PRINTLN("❌ 发送超时");
-  typeindex = FLAG_TYPE_0;
-}
-
-void printTimeToString(String str, unsigned long ms) {
-  int totalSec = ms / 1000;
-  int min = totalSec / 60;
-  int sec = totalSec % 60;
-  int remMs = ms % 1000;
-  DEBUG_PRINT(str);
-  DEBUG_PRINT(min);
-  DEBUG_PRINT("分");
-  DEBUG_PRINT(sec);
-  DEBUG_PRINT("秒");
-  DEBUG_PRINT(remMs);
-  DEBUG_PRINTLN("毫秒");
-}
-int seacthTm = 240000;  //5分钟提前搜星
-void meshGpsInfoFun(bool closeGps = true) {
-  if (!getGpsStatus()) {
-    initPanGPS();
-  }
-  unsigned long startAttemptTime = millis();
-  int skipnum = 0;
-  while (true) {
-    gpsEncode();
-    bool hasLocValid = gps.location.isValid();
-    bool yearOk = (gps.date.year() > 2025);
-    bool gpsReliable = isReliableGPS();
-    bool ellitesNum = gps.satellites.value() >= 6;
-
-    bool timeoutOk = (millis() - startAttemptTime) < seacthTm;
-    // Serial.print(".");
-    // Serial.println(getCurrentTime());
-    showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
-                       String(skipnum++));
-    DEBUG_PRINT(hasLocValid ? "✅" : "❌");
-    DEBUG_PRINT("定位数据:");
-    if (hasLocValid) {
-      DEBUG_PRINT(getGpsInfoStr());
-    }
-    DEBUG_PRINT(yearOk ? "✅" : "❌");
-    DEBUG_PRINT(" 年份>2025:");
-
-    DEBUG_PRINT(gpsReliable ? "✅" : "❌");
-    DEBUG_PRINT(" GPS可靠:");
-
-    DEBUG_PRINT(ellitesNum ? "✅" : "❌");
-    DEBUG_PRINT(" 卫星数量:");
-    DEBUG_PRINT(gps.satellites.value());
-    DEBUG_PRINT("   ");
-
-    DEBUG_PRINT(timeoutOk ? "" : "❌");
-    DEBUG_PRINT("搜星时间:(");
-    int sec = (millis() - startAttemptTime) / 1000;
-    DEBUG_PRINT(sec);
-    DEBUG_PRINT("秒)    ");
-    DEBUG_PRINTLN(getCurrentTime(true));
-
-
-
-    bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
-    if (allPass) {
-      DEBUG_PRINTLN("==== GPS全部条件满足，退出搜星循环 ====");
-      upDataGpsTimeToCs();
-      strcpy(lastrelayName, "");
-      timeSynFlage = true;
-
-      break;
-    }
-    if (!timeoutOk) {
-      DEBUG_PRINT("==== 搜星 ");
-      DEBUG_PRINT(seacthTm / 1000);
-      DEBUG_PRINTLN(" 秒超时，强制退出 ====");
-      break;
-    }
-    delay(1000);
-  }
-  DEBUG_PRINTLN(getGpsInfoStr());
-  if (closeGps) {
-    setGpsEnable(false);
-  }
-}
-String lastPrintTimeStr = "";  // 存储上次打印的时间字符串（不含毫秒）
-void printCurrentTime() {
-  String nowStr = getCurrentTime(true);
-  int dotIndex = nowStr.indexOf('.');
-  String nowSecStr =
-    (dotIndex != -1) ? nowStr.substring(0, dotIndex) : nowStr;  // 去掉毫秒
-  if (lastPrintTimeStr != nowSecStr) {
-    DEBUG_PRINTLN(nowStr);  // 或者只打印秒级字符串
-    lastPrintTimeStr = nowSecStr;
-  }
-  if (!haveRightTime()) {
-    // Serial.println("❌当前时间还没对时成功");
-  }
-}
-//电量不足进入24小时休眠
-void batteryLowSheep(float minValue) {
-  int separatorIndex = batterystr.indexOf('|');
-  String firstPart = batterystr.substring(0, separatorIndex);
-  float value = firstPart.toFloat();
-  if (value <= minValue) {
-    DEBUG_PRINTLN("❌❌❌电压过底电压过底电压过底❌❌❌");
-    DEBUG_PRINTLN("电压过底，休眠24个小时");
-    unsigned long endTm = millis() + 30000;
-    while (endTm > millis()) {
-      delay(1000);
-      DEBUG_PRINT("❌");
-    }
-    esp_sleep_enable_timer_wakeup(24 * 60 * 60 * 1000 * 1000ULL);
-    DEBUG_PRINTLN("--->即将进入深度睡眠...");
-    Serial.flush();
-    esp_deep_sleep_start();
-  }
-}
-
-unsigned long num6000 = 5000;  // 暂时提前20秒开机
- 
+// ==================== 从 DTU 接收并解析 JSON ====================
 void receiveDtuData() {
-  String raw = "";
+  if (dtuSerial->available() <= 0) return;
 
-  if (dtuSerial->available() <= 0) {
-    return;
-  }
-  // 1. 读取本次全部数据（限制最大长度防止内存耗尽）
+  String raw = "";
   int rawLen = 0;
   while (dtuSerial->available() > 0 && rawLen < 1024) {
     raw += (char)dtuSerial->read();
     rawLen++;
-    delay(2);  // 等待下一个字节
+    delay(2);
   }
   // 丢弃超出部分
-  while (dtuSerial->available() > 0) {
-    dtuSerial->read();
-  }
-
+  while (dtuSerial->available() > 0) dtuSerial->read();
   dtuSerial->flush();
-  Serial.print("dtu 返回 -");
+
+  Serial.print("DTU 返回: ");
   Serial.println(raw);
 
   JsonDocument doc;
   DeserializationError error = deserializeJson(doc, raw);
-
   if (error) {
     Serial.print("JSON 解析失败: ");
     Serial.println(error.f_str());
     return;
   }
 
-  // ---------- 先判断有没有 lorainfo ----------
+  // ----- 判断是否存在 params.lorainfo -----
   if (!doc.containsKey("params")) {
     Serial.println("错误：缺少 params 对象");
     return;
   }
-
   if (!doc["params"].containsKey("lorainfo")) {
     Serial.println("错误：params 中缺少 lorainfo 字段");
     return;
   }
 
-  // 到这里说明 lorainfo 一定存在
   String lorainfo = doc["params"]["lorainfo"].as<String>();
   Serial.print("lorainfo 存在，值为: ");
   Serial.println(lorainfo);
+
+  // 转发给 LoRa
   sendLoraToSave(lorainfo);
 }
-// ==================== 系统初始化 ====================
+
+// ==================== setup ====================
 void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  randomSeed(analogRead(0));
-  deviceName = makeDivceName();
-  batterystr = readBatteryEndStr(deviceName);
+
+  deviceName = makeDivceName();          // 从 pan3dme 获取设备名（若无需可注释）
+  Serial.println("设备名: " + deviceName);
 
 #if defined(WIFI_LORA_32_V4)
-  // Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
+  // 根据硬件调整引脚，此处使用 V4 默认 GPS 引脚（RX=38, TX=39）
+  // Serial2.begin(115200, SERIAL_8N1, 38, 39);
   Serial2.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   dtuSerial = &Serial2;
-  Serial.println("✅ v4 板子 DTU");
-  delay(1000);
+  Serial.println("✅ DTU 串口初始化完成 (Serial2)");
 #endif
 
-
   initLora();
+  Serial.println("✅ 系统启动完成");
 }
-// ==================== 主循环 ====================
+
+// ==================== loop ====================
 void loop() {
-  Radio.IrqProcess();
-  receiveDtuData();
-  // printCurrentTime();
-  delay(1000);
+  Radio.IrqProcess();        // 处理 LoRa 中断事件
+  receiveDtuData();          // 检查并处理 DTU 数据
+  delay(1000);               // 每1秒检查一次，可根据需求调整
 }

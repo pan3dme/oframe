@@ -116,7 +116,7 @@ bool isReliableGPS();
 void setGpsEnable(bool value);
 bool getGpsStatus();
 void gpsEncode(); // GPS对象
-void initPanRadio(RadioEvents_t *radioEvents, int txPower);
+void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,int  swNum);
 String getGpsInfoStr();
 String getCurrentTime(bool includeMillis);
 long long getCurrentTimestampMs();  // 获取当前时间戳（毫秒）
