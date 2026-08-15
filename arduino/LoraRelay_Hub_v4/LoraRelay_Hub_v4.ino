@@ -63,7 +63,7 @@ void sendLoraToSave(String dataStr) {
     DEBUG_PRINTLN("⚠️ 数据过长，已截断");
     sendData[BUFFER_SIZE - 1] = '\0';
   }
-  DEBUG_PRINT("发送 LoRa:");
+  DEBUG_PRINT("发送 LoRa: ");
   DEBUG_PRINTLN(sendData);
   Radio.Send((uint8_t *)sendData, strlen(sendData));
   delay(100);
