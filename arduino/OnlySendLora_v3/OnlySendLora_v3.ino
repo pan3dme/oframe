@@ -160,16 +160,7 @@ void initLora() {
   radioEvents.RxError = OnRxError;
 
 
-  if (rtcSendCount == rtcResiveIdx) {
-    if (abs(lastRssi) > 90 || lastRssi == 0) {
-      initPanRadio(&radioEvents, loraTxPower);
-    } else {
-      initPanRadio(&radioEvents, 15);
-    }
-  } else {
-    //没有收到下行包，就最大功率发射
-    initPanRadio(&radioEvents, 28);
-  }
+  initPanRadio(&radioEvents, 22, 915000000, 11);
 }
 void OnRxTimeout(void) {
   DEBUG_PRINTLN("⚠️ Radio接收超时!");
