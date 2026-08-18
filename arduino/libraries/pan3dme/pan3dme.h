@@ -3,6 +3,7 @@
 
 #include "Arduino.h"
 #include <time.h>
+#include <cstdint>
 
 #include "HT_SSD1306Wire.h"
 #include "HT_TinyGPS++.h"
@@ -37,7 +38,7 @@ typedef enum {
   MSG_TYPE_CONFIG = 6,    // 时间戳的下发对时
   MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
   MSG_TYPE_TIME_REALY = 8,    // 补发对时信息
-  MSG_TYPE_COM = 11 // 下载指令到设备
+  MSG_TYPE_COM = 9 // 下载指令到设备
 } MessageType_t;
 
 
@@ -73,7 +74,7 @@ extern unsigned long syncedMillis;
 #define GPS_ANT_EN 42 // GPS天线电源使能
 
 // ==================== LoRa 通信参数 ====================
-#define LORA_FREQ 915000000 // 433MHz 国内通用863 863   923  928   915
+// #define LORA_FREQ 915000000 // 433MHz 国内通用863 863   923  928   915
 //#define TX_POWER 22         // 发射功率
 #define LORA_BW 0           // 125kHz 带宽
 #define LORA_SF 11          // 扩频因子
@@ -119,10 +120,14 @@ void gpsEncode(); // GPS对象
 void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,int  swNum);
 String getGpsInfoStr();
 String getCurrentTime(bool includeMillis);
-long long getCurrentTimestampMs();  // 获取当前时间戳（毫秒）
-void setTimeFromTimestamp(long long epochMs); // 通过时间戳（毫秒）设置系统时间
-void printTimestampMs(long long epochMs, const char* label); // 将时间戳转为可读时间并打印
-void printDurationMs(long long diffMs, const char* label); // 将毫秒差值打印为 N小时N分N秒N毫秒
+// long long getCurrentTimestampMs();  // 获取当前时间戳（毫秒）
+long long getCurrentTimestampSec(); // 获取当前时间戳（秒）
+uint32_t getTodaySecond(); 
+// void setTimeFromTimestamp(long long epochMs); // 通过时间戳（毫秒）设置系统时间
+void setTimeFromTimestampSec(long long epochMs); // 通过时间戳（秒）设置系统时间
+long long mathTimeDiffmsFromSec(long long epochSec) ;
+void printTimestampSec(long long epochSec, const char *label) ;
+void printDurationSec(long long diffMs, const char* label); // 将秒打印为 N小时N分N秒N毫秒
 bool hasValidTime();
 void upDataGpsTimeToCs();
 void setTimeFromLora(String timeStr);
@@ -130,7 +135,7 @@ int getDevicesIdx();
 int getTotalDevices(); // 获取设备总数
 String makeDivceName();
 String readBatteryEndStr(String deviceName);
-long long mathTimeDiffmstimeFromLora(String timeStr);
-bool isTimeInRange(long long timestampMs, const char* timeRangeStr);  // 判断时间戳是否在指定时段内（格式 "H:M-H:M"）
+bool isTimeInRange(long long timestampSec, const char *timeRangeStr);  // 判断时间戳是否在指定时段内（格式 "H:M-H:M"）
 
 #endif
+

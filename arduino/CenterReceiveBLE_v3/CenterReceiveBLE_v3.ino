@@ -464,25 +464,8 @@ void receiveDtuData() {
     Serial.printf("DTU网络时间: %4d/%d/%d %02d:%02d:%02d.%03d\n", ntYear, ntMon,
                   ntDay, ntH, ntM, ntS, ntMs);
 
-    long long localEpochMs = getCurrentTimestampMs();
 
-    // 计算DTU时间戳
-    struct tm dtuTm = { 0 };
-    dtuTm.tm_year = ntYear - 1900;
-    dtuTm.tm_mon = ntMon - 1;
-    dtuTm.tm_mday = ntDay;
-    dtuTm.tm_hour = ntH;
-    dtuTm.tm_min = ntM;
-    dtuTm.tm_sec = ntS;
-    dtuTm.tm_isdst = 0;
-    long long dtuEpochMs = (long long)mktime(&dtuTm) * 1000LL + ntMs;
-    long long diffMs = dtuEpochMs - localEpochMs;
 
-    printTimestampMs(localEpochMs, "本机时间: ");
-    printTimestampMs(dtuEpochMs, "DTU时间: ");
-    Serial.printf("时间差: %lld 毫秒 (%s)\n", diffMs >= 0 ? diffMs : -diffMs,
-                  diffMs >= 0 ? "DTU快" : "本机快");
-    printDurationMs(diffMs >= 0 ? diffMs : -diffMs, "时间差: ");
 
     setCSTTime(ntYear, ntMon, ntDay, ntH, ntM, ntS, ntMs);
     return;
@@ -592,7 +575,7 @@ void sendDownInfo(String loraStr, String deviceId) {
 
   } else {
     needSyncTimeDeviceid = deviceId;
-    down_syn_time = millis() + 2000;
+    down_syn_time = millis() + 1500;
   }
 }
 
@@ -728,7 +711,7 @@ void loop() {
     // 测试电量
     batterystr = readBatteryEndStr(deviceName);
     batteryLowSheep();
-    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTime(false) + "|" + batterystr;
+    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTimestampSec() + "|" + batterystr;
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, signalRss, "0");
 
@@ -775,11 +758,7 @@ void loop() {
     }
   }
   if (down_syn_time < millis() && needSyncTimeDeviceid.length() > 0) {
-    String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + needSyncTimeDeviceid;
-    dataStr += "|" + getCurrentTime(true) + "|" + deviceName;
-
-
-
+    String dataStr = String(MSG_TYPE_SYN_TIME) +  "|" + String(getCurrentTimestampSec()) + "|" + String(getDevicesIdx());
     sendLoraToDeviceid(dataStr);
     needSyncTimeDeviceid = "";
   }

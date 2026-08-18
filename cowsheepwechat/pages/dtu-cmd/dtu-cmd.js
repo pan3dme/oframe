@@ -182,7 +182,7 @@ Page({
               const parts = configLorastr.split('|')
               if (parts.length >= 3 && parts[2]) {
                 that.setData({
-                  cmdText: JSON.stringify({ cmd: 'config', value: parts[2] })
+                  cmdText: JSON.stringify({ cmd: 'A', value: parts[2] })
                 })
                 that.addLog('info', '已加载设备配置: ' + parts[2])
                 return
@@ -193,7 +193,7 @@ Page({
 
         // 未找到配置，使用默认值
         that.setData({
-          cmdText: JSON.stringify({ cmd: 'config', value: '10,0-24,12-6' })
+          cmdText: JSON.stringify({ cmd: 'A', value: '10,0-24,12-6' })
         })
         wx.showToast({ title: '未找到设备配置，使用默认值', icon: 'none', duration: 2000 })
       },
@@ -201,7 +201,7 @@ Page({
         wx.hideLoading()
         console.error('[DTU指令] getDeviceConfigAll 失败:', err)
         that.setData({
-          cmdText: JSON.stringify({ cmd: 'config', value: '10,0-24,12-6' })
+          cmdText: JSON.stringify({ cmd: 'A', value: '10,0-24,12-6' })
         })
         wx.showToast({ title: '查询配置失败，使用默认值', icon: 'none', duration: 2000 })
       }

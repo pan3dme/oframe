@@ -47,7 +47,7 @@ uint64_t allowedDevices[] = {
     0x3CB7A21B5BF8, // v4    22
     0x9875555,
     0xE436A21B5BF8, // v4    24  dtu
-    0xF89A3604A7AC, //V3     35   三角 433
+    0xF89A3604A7AC, // V3     35   三角 433
     0x20A161F61B44, // v4 NOLED   26
     0x28003A04A7AC, // v3   中继dtu   27
     0x20A261F61B44, //  v4 NOLED   28
@@ -320,8 +320,6 @@ String makeDivceName() {
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
                         BLECharacteristicCallbacks *charCallbacks) {
 
-                          
-
   BLECallbacks cbs;
 
   BLEDevice::init("牛羊GPS" + deviceName + "-" + (rolaHz / 1000000));
@@ -354,41 +352,6 @@ void showDisplayBy4Area(String a, String b, String c, String d) {
   factory_display_my.drawString(0, 48, d); // 行3
   factory_display_my.display();
 #endif
-}
-
-// 安全更新（您自己调用）
-long long mathTimeDiffms(int year, int mon, int day, int h, int m, int s,
-                         int ms) {
-  struct tm t = {0};
-  t.tm_year = year - 1900;
-  t.tm_mon = mon - 1;
-  t.tm_mday = day;
-  t.tm_hour = h;
-  t.tm_min = m;
-  t.tm_sec = s;
-  t.tm_isdst = 0;
-  time_t new_sec = mktime(&t);
-
-  struct timeval now_tv;
-  gettimeofday(&now_tv, NULL);
-  time_t now_sec = now_tv.tv_sec;
-  long now_usec = now_tv.tv_usec;
-  long now_ms = now_usec / 1000;
-  // 计算偏差（毫秒）
-  long long new_ms_total = (long long)new_sec * 1000LL + ms;
-  long long now_ms_total = (long long)now_sec * 1000LL + now_ms;
-  long long diff_ms = new_ms_total - now_ms_total;
-
-  DEBUG_PRINT("时间偏差 (new - current): ");
-  if (diff_ms >= 0) {
-    DEBUG_PRINT("+");
-  }
-  DEBUG_PRINT(diff_ms / 1000);
-  DEBUG_PRINT("s ");
-  DEBUG_PRINT(diff_ms % 1000);
-  DEBUG_PRINTLN("ms");
-
-  return diff_ms;
 }
 
 String readBatteryEndStr(String deviceName) {
@@ -428,25 +391,7 @@ String readBatteryEndStr(String deviceName) {
   Serial.print("电量信息：");
   Serial.println(outStr);
 
-  return outStr;
-}
-
-// 从LoRa对时信息设置时间2026/07/14 23:23:10.513
-long long mathTimeDiffmstimeFromLora(String timeStr) {
-  int year, month, day, hour, minute, second, millis = 0;
-  // 尝试解析带毫秒
-  if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d.%d", &year, &month, &day,
-             &hour, &minute, &second, &millis) == 7) {
-    // 解析成功，millis已赋值
-  } else if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day,
-                    &hour, &minute, &second) == 6) {
-    millis = 0; // 无毫秒
-  } else {
-    DEBUG_PRINT("❌ LoRa对时解析失败: ");
-    DEBUG_PRINTLN(timeStr);
-    return 0;
-  }
-  return mathTimeDiffms(year, month, day, hour, minute, second, millis);
+  return String(socRatio, 1);
 }
 
 bool haveRightTime() {
@@ -487,6 +432,21 @@ long long getCurrentTimestampMs() {
   return (long long)tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
+long long getCurrentTimestampSec() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  return (long long)tv.tv_sec; // tv_sec 本身就是秒数
+}
+uint32_t getTodaySecond() {
+  time_t now = time(nullptr);
+  struct tm local_tm;
+  localtime_r(&now, &local_tm);
+
+  // 当天已经过去的秒 = 时*3600 + 分*60 + 秒
+  uint32_t sec =
+      local_tm.tm_hour * 3600 + local_tm.tm_min * 60 + local_tm.tm_sec;
+  return sec;
+}
 // 通过时间戳（毫秒）设置系统时间
 void setTimeFromTimestamp(long long epochMs) {
   struct timeval new_tv;
@@ -494,29 +454,36 @@ void setTimeFromTimestamp(long long epochMs) {
   new_tv.tv_usec = (suseconds_t)((epochMs % 1000LL) * 1000);
   settimeofday(&new_tv, NULL);
 }
-
-// 将毫秒时间戳转为可读时间并打印
-void printTimestampMs(long long epochMs, const char *label) {
-  time_t sec = (time_t)(epochMs / 1000LL);
-  int ms = (int)(epochMs % 1000LL);
-  struct tm t;
-  localtime_r(&sec, &t);
-  DEBUG_PRINTF("%s%4d/%d/%d %02d:%02d:%02d.%03d\n", label, t.tm_year + 1900,
-               t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, ms);
+void setTimeFromTimestampSec(long long epochSec) {
+  struct timeval tv;
+  tv.tv_sec = (time_t)epochSec; // 秒部分
+  tv.tv_usec = 0;               // 微秒清零（无毫秒精度）
+  settimeofday(&tv, NULL);
+}
+long long mathTimeDiffmsFromSec(long long epochSec) {
+  long long nowMs = getCurrentTimestampSec(); // 获取当前秒时间戳
+  return nowMs - epochSec;                    // 返回差值（ms）
 }
 
-// 将毫秒差值打印为 N小时N分N秒N毫秒
-void printDurationMs(long long diffMs, const char *label) {
-  bool negative = diffMs < 0;
+void printTimestampSec(long long epochSec, const char *label) {
+  time_t sec = (time_t)epochSec; // 直接使用秒
+  struct tm t;
+  localtime_r(&sec, &t);
+  DEBUG_PRINTF("%s%4d/%d/%d %02d:%02d:%02d\n", label, t.tm_year + 1900,
+               t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+}
+// 将秒差值打印为 N小时N分N秒
+void printDurationSec(long long diffSec, const char *label) {
+  bool negative = diffSec < 0;
   if (negative) {
-    diffMs = -diffMs;
+    diffSec = -diffSec;
   }
-  long long hours = diffMs / 3600000LL;
-  long long minutes = (diffMs % 3600000LL) / 60000LL;
-  long long seconds = (diffMs % 60000LL) / 1000LL;
-  long long millis = diffMs % 1000LL;
-  DEBUG_PRINTF("%s%s%lld小时%lld分%lld秒%lld毫秒\n", label, negative ? "-" : "",
-               hours, minutes, seconds, millis);
+  long long hours = diffSec / 3600LL;
+  long long minutes = (diffSec % 3600LL) / 60LL;
+  long long seconds = diffSec % 60LL;
+  // 不再输出毫秒
+  DEBUG_PRINTF("%s%s%lld小时%lld分%lld秒\n", label, negative ? "-" : "", hours,
+               minutes, seconds);
 }
 
 // 从LoRa对时信息设置时间2026/07/14 23:23:10.513
@@ -552,9 +519,10 @@ void setTimeFromLora(String timeStr) {
 // 判断是否有有效时间
 bool hasValidTime() { return syncedEpoch > 0; }
 
-void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,int  swNum){
-// void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
-rolaHz=hzFreq;
+void initPanRadio(RadioEvents_t *radioEvents, int txPower, unsigned long hzFreq,
+                  int swNum) {
+  // void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
+  rolaHz = hzFreq;
   Radio.Init(radioEvents);
   Radio.SetChannel(rolaHz);
 
@@ -574,20 +542,17 @@ rolaHz=hzFreq;
   DEBUG_PRINTLN("✅ LoRa 初始化完成");
 }
 
-// 判断时间戳是否在指定时段内
-// timestampMs: 毫秒时间戳
-// timeRangeStr 格式: "H:M-H:M" 如 "05:02-10:59" 或 "0:0-24:59"
-bool isTimeInRange(long long timestampMs, const char *timeRangeStr) {
+bool isTimeInRange(long long timestampSec, const char *timeRangeStr) {
   int startH = 0, startM = 0, endH = 0, endM = 0;
   if (sscanf(timeRangeStr, "%d:%d-%d:%d", &startH, &startM, &endH, &endM) !=
       4) {
     DEBUG_PRINT("❌ isTimeInRange 解析失败: ");
     DEBUG_PRINTLN(timeRangeStr);
-    return true; // 解析失败默认在范围内，避免阻止业务
+    return true; // 解析失败默认在范围内
   }
 
-  // 将时间戳转为本地时间的时和分
-  time_t sec = (time_t)(timestampMs / 1000LL);
+  // 将时间戳转为本地时间的时和分（现在是秒，无需除以1000）
+  time_t sec = (time_t)timestampSec; // 直接转换
   struct tm t;
   localtime_r(&sec, &t);
   int nowMinutes = t.tm_hour * 60 + t.tm_min;
@@ -595,12 +560,10 @@ bool isTimeInRange(long long timestampMs, const char *timeRangeStr) {
   int startMinutes = startH * 60 + startM;
   int endMinutes = endH * 60 + endM;
 
-  // 处理跨午夜的情况（如 22:00-06:00）
+  // 处理跨午夜
   if (startMinutes <= endMinutes) {
-    // 正常情况：如 05:02-10:59
     return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
   } else {
-    // 跨午夜：如 22:00-06:00
     return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
   }
 }
