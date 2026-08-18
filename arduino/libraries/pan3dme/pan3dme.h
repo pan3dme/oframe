@@ -120,10 +120,8 @@ void gpsEncode(); // GPS对象
 void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,int  swNum);
 String getGpsInfoStr();
 String getCurrentTime(bool includeMillis);
-// long long getCurrentTimestampMs();  // 获取当前时间戳（毫秒）
 long long getCurrentTimestampSec(); // 获取当前时间戳（秒）
 uint32_t getTodaySecond(); 
-// void setTimeFromTimestamp(long long epochMs); // 通过时间戳（毫秒）设置系统时间
 void setTimeFromTimestampSec(long long epochMs); // 通过时间戳（秒）设置系统时间
 long long mathTimeDiffmsFromSec(long long epochSec) ;
 void printTimestampSec(long long epochSec, const char *label) ;

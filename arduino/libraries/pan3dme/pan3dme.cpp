@@ -383,15 +383,15 @@ String readBatteryEndStr(String deviceName) {
   //  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
   //                batteryVoltage);
 
-  int soc = map(batteryVoltage * 1000, 3000, 4000, 0, 100);
-  soc = constrain(soc, 0, 100);
+  int soc = map(batteryVoltage * 1000, 3000, 4000, 0, 99);
+  soc = constrain(soc, 0, 99);
   float socRatio = soc / 100.0;
 
   String outStr = String(socRatio, 1) + "|" + String(batteryVoltage, 1);
   Serial.print("电量信息：");
   Serial.println(outStr);
 
-  return String(socRatio, 1);
+  return String(soc);
 }
 
 bool haveRightTime() {
