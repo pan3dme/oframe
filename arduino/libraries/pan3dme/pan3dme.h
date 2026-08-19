@@ -147,4 +147,6 @@ void filterGpsByRect(const char* inBuf, char* outBuf, double baseLat, double bas
 void restoreGpsFromDiff(const char* diffBuf, char* outBuf, double baseLat, double baseLon);
 bool splitPipeSegment(const char* in, char* out, int idx);
 bool replacePipeSegment(const char* src, char* dest, int idx, const char* newVal, size_t destSize);
+bool buildFullTimestampStr(const char* segBuf, char* outBuf, size_t outBufLen);
+
 #endif

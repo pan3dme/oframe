@@ -48,7 +48,7 @@ RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使�
 RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
 RTC_DATA_ATTR char lastrelayName[10] = "";             //
 RTC_DATA_ATTR char work_time_str[16] = "00:00-23:59";  // 默认工作时间
-RTC_DATA_ATTR char gps_time_str[16] = "00:00-23:59";   // gps上报时间
+RTC_DATA_ATTR char gps_time_str[16] = "01:00-02:00";   // gps上报时间
 RTC_DATA_ATTR char config_str[16] = "5,0M,0M";         // 命令集合
 
 

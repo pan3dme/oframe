@@ -618,7 +618,26 @@ void processLoraData() {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
     if ((messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_UP_GPS || messageType == MSG_TYPE_CONFIG) || debugLog) {
-      if (messageType == MSG_TYPE_GPS) {
+      if (messageType == MSG_TYPE_TIME) {
+        char segBuf[32];
+        char tsStr[24];             // 存放unix时间戳字符串
+        char loraOut[BUFFER_SIZE];  //组装完成后的新完整字符串
+        splitPipeSegment(loraStr, segBuf, 2);
+        Serial.print("对时的第二部分 segBuf");
+        Serial.println(segBuf);
+        if (buildFullTimestampStr(segBuf, tsStr, sizeof(tsStr))) {
+          Serial.print("生成时间戳字符串:");
+          Serial.println(tsStr);
+          //用你原来存在的函数
+          replacePipeSegment(loraStr, loraOut, 2, tsStr, sizeof(loraOut));
+          sendLoraInfoUseDtu(loraOut, String(lastRssi), String(lastSnr));
+        } else {
+          Serial.println("时间无效");
+          strncpy(loraOut, loraStr, sizeof(loraOut));
+        }
+
+
+      } else if (messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_UP_GPS) {
         //需要能GPS进行偏移纠正
         char segBuf[32];
         char outBuf[32];
@@ -626,16 +645,16 @@ void processLoraData() {
         splitPipeSegment(loraStr, segBuf, 2);
         restoreGpsFromDiff(segBuf, outBuf, static_gps_lat, static_gps_lon);
         replacePipeSegment(loraStr, loraOut, 2, outBuf, sizeof(loraOut));
-        strcpy(loraStr, loraOut);
-        Serial.println("GPS偏移记算");
-        Serial.print("static_gps_lat：");
-        Serial.print(static_gps_lat);
-        Serial.print("static_gps_lon：");
-        Serial.println(static_gps_lon);
-        Serial.print("outBuf：");
-        Serial.println(outBuf);
-        Serial.print("loraOut");
-        Serial.println(loraOut);
+        // strcpy(loraStr, loraOut);
+        // Serial.println("GPS偏移记算");
+        // Serial.print("static_gps_lat：");
+        // Serial.print(static_gps_lat);
+        // Serial.print("static_gps_lon：");
+        // Serial.println(static_gps_lon);
+        // Serial.print("outBuf：");
+        // Serial.println(outBuf);
+        // Serial.print("loraOut");
+        // Serial.println(loraOut);
         sendLoraInfoUseDtu(loraOut, String(lastRssi), String(lastSnr));
       } else {
         sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));

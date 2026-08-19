@@ -811,3 +811,29 @@ bool replacePipeSegment(const char* src, char* dest, int idx, const char* newVal
     }
     return true;
 }
+// segBuf：上报当日秒偏移，outBuf输出unix时间戳字符串，outBufLen缓冲区大小
+// 返回true成功，false无效
+bool buildFullTimestampStr(const char* segBuf, char* outBuf, size_t outBufLen)
+{
+    uint32_t daySec = atoi(segBuf);
+    if(daySec > 86399) {
+        return false;
+    }
+
+    time_t now = time(nullptr);
+    struct tm local_tm;
+    localtime_r(&now, &local_tm);
+
+    uint32_t h = daySec / 3600;
+    uint32_t m = (daySec % 3600) / 60;
+    uint32_t s = daySec % 60;
+
+    local_tm.tm_hour = h;
+    local_tm.tm_min  = m;
+    local_tm.tm_sec  = s;
+
+    time_t ts = mktime(&local_tm);
+    // 转成数字字符串写入缓冲区
+    snprintf(outBuf, outBufLen, "%llu", (uint64_t)ts);
+    return true;
+}
