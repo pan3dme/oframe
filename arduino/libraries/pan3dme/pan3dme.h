@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <time.h>
 
-
 #include "HT_SSD1306Wire.h"
 #include "HT_TinyGPS++.h"
 #include "LoRaWan_APP.h"
@@ -16,7 +15,7 @@
 
 // ==================== 调试开关 ====================
 // 1=开发模式（输出所有调试信息） 0=正式模式（仅输出关键信息）
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 
 #if DEBUG_MODE
 #define DEBUG_PRINT(x) Serial.print(x)
@@ -97,10 +96,9 @@ extern unsigned long syncedMillis;
 
 const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 5; // 现在设定5分钟一次
 
+static double static_gps_lat = 26.52958;  // 纬度，改成你的值
+static double static_gps_lon = 109.39087; // 经度
 
-static double static_gps_lat  = 26.52958;   // 纬度，改成你的值
-static double static_gps_lon  = 109.39087;  // 经度
- 
 struct BLECallbacks {
   BLEServer *pServer;
   BLECharacteristic *pCharacteristic;
@@ -110,7 +108,7 @@ BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
                         BLECharacteristicCallbacks *charCallbacks);
 
 long long setCSTTime(int year, int mon, int day, int h, int m, int s, int ms);
-bool haveRightTime();
+bool isBoardDateTimeOK();
 void hideOLED();
 void showOLED();
 void openLedByNum(int count, int delayMs);
@@ -131,7 +129,6 @@ long long mathTimeDiffmsFromSec(long long epochSec);
 void printTimestampSec(long long epochSec, const char *label);
 void printDurationSec(long long diffMs,
                       const char *label); // 将秒打印为 N小时N分N秒N毫秒
-bool hasValidTime();
 void upDataGpsTimeToCs();
 void setTimeFromLora(String timeStr);
 int getDevicesIdx();
@@ -143,10 +140,13 @@ int timeWindowToIndex(uint8_t start, uint8_t end);
 bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd);
 String indexToTwoChar(int idx);
 int twoCharToIndex(String str);
-void filterGpsByRect(const char* inBuf, char* outBuf, double baseLat, double baseLon, double latHalf, double lonHalf);
-void restoreGpsFromDiff(const char* diffBuf, char* outBuf, double baseLat, double baseLon);
-bool splitPipeSegment(const char* in, char* out, int idx);
-bool replacePipeSegment(const char* src, char* dest, int idx, const char* newVal, size_t destSize);
-bool buildFullTimestampStr(const char* segBuf, char* outBuf, size_t outBufLen);
+void filterGpsByRect(const char *inBuf, char *outBuf, double baseLat,
+                     double baseLon, double latHalf, double lonHalf);
+void restoreGpsFromDiff(const char *diffBuf, char *outBuf, double baseLat,
+                        double baseLon);
+bool splitPipeSegment(const char *in, char *out, int idx);
+bool replacePipeSegment(const char *src, char *dest, int idx,
+                        const char *newVal, size_t destSize);
+bool buildFullTimestampStr(const char *segBuf, char *outBuf, size_t outBufLen);
 
 #endif

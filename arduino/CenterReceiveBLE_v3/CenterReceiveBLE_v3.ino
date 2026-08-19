@@ -207,7 +207,7 @@ void meshCmdInfomsg(String rxValue) {
     needSync = docCom["syncing"].as<bool>();
     Serial.println(needSync ? "✅ 同步已开启" : "⏹️ 同步已关闭");
     String tempStr = docCom["time"].as<String>();
-    if (!haveRightTime() && tempStr.length() > 0) {
+    if (!isBoardDateTimeOK() && tempStr.length() > 0) {
       int y, mo, d, h, mi, s;
       if (sscanf(tempStr.c_str(), "%d/%d/%d %d:%d:%d", &y, &mo, &d, &h, &mi, &s) == 6) {
         setCSTTime(y, mo, d, h, mi, s, 0);

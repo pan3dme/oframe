@@ -171,7 +171,7 @@ void gpsEncode() {
     //    Serial.println(getGpsInfoStr());
   }
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
-  if (!haveRightTime()) {
+  if (!isBoardDateTimeOK()) {
     upDataGpsTimeToCs();
   }
 }
@@ -396,13 +396,19 @@ String readBatteryEndStr(String deviceName) {
   return String(soc);
 }
 
-bool haveRightTime() {
-  time_t now;
-  struct tm t;
-  time(&now);
-  gmtime_r(&now, &t); // 使用 gmtime_r 得到 UTC，再手动加 8 小时
+ 
+bool isBoardDateTimeOK()
+{
+    time_t now;
+    struct tm t;
+    time(&now);
+    gmtime_r(&now, &t);      // UTC
 
-  return (t.tm_year + 1900) > 2025;
+    t.tm_hour += 8;          // +8小时东八区
+    mktime(&t);              // 处理时间进位
+
+    int year = t.tm_year + 1900;
+    return (year > 2025) && (year < 2030);
 }
 // 获取可用的时间字符串 (优先同步时间，最后默认运行时间)
 String getCurrentTime(bool includeMillis) {
@@ -518,8 +524,7 @@ void setTimeFromLora(String timeStr) {
   setCSTTime(year, month, day, hour, minute, second, millis);
 }
 
-// 判断是否有有效时间
-bool hasValidTime() { return syncedEpoch > 0; }
+ 
 
 void initPanRadio(RadioEvents_t *radioEvents, int txPower, unsigned long hzFreq,
                   int swNum) {

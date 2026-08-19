@@ -60,7 +60,7 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
   // 1. 用isTimeInRange判断是否在工作时间（支持跨午夜）
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
-  if (inWorkTime || !haveRightTime()) {
+  if (inWorkTime || !isBoardDateTimeOK()) {
     DEBUG_PRINTLN("✅ 当前在工作时间内，按原计划休眠");
     return (uint64_t)sleepMs * 1000ULL;
   }
@@ -534,9 +534,7 @@ void printCurrentTime() {
     DEBUG_PRINTLN(nowStr);  // 或者只打印秒级字符串
     lastPrintTimeStr = nowSecStr;
   }
-  if (!haveRightTime()) {
-    // Serial.println("❌当前时间还没对时成功");
-  }
+ 
 }
 //电量不足进入24小时休眠
 void batteryLowSheep(float minValue) {
@@ -648,6 +646,11 @@ void testSheepFun() {
     DEBUG_PRINTLN("我已经睡着了...");
   }
 }
+String mathGpsRectByBaseStr(char *value) {
+  char gpsOutBuf[32];
+  filterGpsByRect(value, gpsOutBuf, rtc_gps_lat, rtc_gps_lon, 0.180, 0.202);
+  return String(gpsOutBuf);
+}
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
@@ -698,7 +701,11 @@ void loop() {
     DEBUG_PRINT("获取GPS ");
     printCurrentTime();
     meshGpsInfoFun(false);
-    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + getGpsInfoStr(), false);
+    // sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + getGpsInfoStr(), false);
+
+    char gpsStr[32];
+    strcpy(gpsStr, getGpsInfoStr().c_str());
+    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr), false);
     delay(2000);  // 上报LORA需要2秒钟间隔
     hideOLED();
 
@@ -753,9 +760,8 @@ void loop() {
 
       typeindex = FLAG_TYPE_1;
       if (isTimeInRange(getCurrentTimestampSec(), gps_time_str) && strlen(needSendGpsStr) > 0) {
-        char gpsOutBuf[32];
-        filterGpsByRect(needSendGpsStr, gpsOutBuf, rtc_gps_lat, rtc_gps_lon, 0.180, 0.202);
-        sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + gpsOutBuf, false);
+
+        sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr), false);
         strcpy(needSendGpsStr, "");
       } else {
 
