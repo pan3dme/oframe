@@ -97,6 +97,10 @@ extern unsigned long syncedMillis;
 
 const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 5; // 现在设定5分钟一次
 
+
+static double static_gps_lat  = 26.52958;   // 纬度，改成你的值
+static double static_gps_lon  = 109.39087;  // 经度
+ 
 struct BLECallbacks {
   BLEServer *pServer;
   BLECharacteristic *pCharacteristic;
@@ -139,5 +143,8 @@ int timeWindowToIndex(uint8_t start, uint8_t end);
 bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd);
 String indexToTwoChar(int idx);
 int twoCharToIndex(String str);
-
+void filterGpsByRect(const char* inBuf, char* outBuf, double baseLat, double baseLon, double latHalf, double lonHalf);
+void restoreGpsFromDiff(const char* diffBuf, char* outBuf, double baseLat, double baseLon);
+bool splitPipeSegment(const char* in, char* out, int idx);
+bool replacePipeSegment(const char* src, char* dest, int idx, const char* newVal, size_t destSize);
 #endif

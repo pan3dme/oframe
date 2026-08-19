@@ -19,6 +19,8 @@ bool isGpsOn = false;
 
 unsigned long rolaHz = 915000000; // 同步时的本地毫秒计数
 
+
+ 
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
@@ -636,4 +638,176 @@ int twoCharToIndex(String str)
   int h = p0 - TIME_DICT;
   int l = p1 - TIME_DICT;
   return h*62 + l;
+}
+
+ 
+/**
+ * @brief 矩形框内输出经纬度差分(系数1e5)，框外原样返回原始字符串
+ * @param inBuf 输入 "lat,lon" 带小数
+ * @param outBuf 输出32字节缓冲区
+ * @param baseLat 基准纬度(小数)
+ * @param baseLon 基准经度(小数)
+ * @param latHalf 纬度半宽(度)
+ * @param lonHalf 经度半宽(度)
+ */
+void filterGpsByRect(const char* inBuf, char* outBuf, double baseLat, double baseLon, double latHalf, double lonHalf)
+{
+    const char* comma = strchr(inBuf, ',');
+    if(comma == nullptr)
+    {
+        strncpy(outBuf, inBuf, 31);
+        outBuf[31] = '\0';
+        return;
+    }
+
+    char latStr[16];
+    strncpy(latStr, inBuf, comma - inBuf);
+    latStr[comma - inBuf] = '\0';
+
+    double srcLat = atof(latStr);
+    double srcLon = atof(comma + 1);
+
+    double latMin = baseLat - latHalf;
+    double latMax = baseLat + latHalf;
+    double lonMin = baseLon - lonHalf;
+    double lonMax = baseLon + lonHalf;
+
+    bool inRect = (srcLat >= latMin && srcLat <= latMax) &&
+                  (srcLon >= lonMin && srcLon <= lonMax);
+
+    if(!inRect)
+    {
+        strncpy(outBuf, inBuf, 31);
+        outBuf[31] = '\0';
+    }
+    else
+    {
+        double dLat = srcLat - baseLat;
+        double dLon = srcLon - baseLon;
+
+        // 系数 100000，示例：‑0.00017 *100000 = -17
+        int32_t deltaLat = (int32_t)(dLat * 100000LL);
+        int32_t deltaLon = (int32_t)(dLon * 100000LL);
+
+        snprintf(outBuf,32,"%ld,%ld", (long)deltaLat, (long)deltaLon);
+    }
+}
+
+/**
+ * @brief 把差分字符串还原回原始带5位小数GPS字符串
+ * @param diffBuf 输入：两种格式
+ *        ①框内差分："-17,-22" 整数差分
+ *        ②框外原始："26.52941,109.39065"原样直接复制
+ * @param outBuf 输出32字节，还原 "lat.xxxxx,lon.xxxxx"
+ * @param baseLat 基准纬度小数
+ * @param baseLon 基准经度小数
+ */
+void restoreGpsFromDiff(const char* diffBuf, char* outBuf, double baseLat, double baseLon)
+{
+    const char* comma = strchr(diffBuf, ',');
+    if(comma == nullptr)
+    {
+        strncpy(outBuf, diffBuf,31);
+        outBuf[31] = '\0';
+        return;
+    }
+
+    // 判断是差分(没有小数点)，还是原始带小数数据
+    bool isDiff = (strchr(diffBuf, '.') == nullptr);
+
+    if(!isDiff)
+    {
+        // 带小数点，属于框外原始数据，直接拷贝
+        strncpy(outBuf, diffBuf,31);
+        outBuf[31] = '\0';
+        return;
+    }
+
+    // 是差分数据，解析deltaLat deltaLon
+    char latStr[16];
+    strncpy(latStr, diffBuf, comma - diffBuf);
+    latStr[comma - diffBuf] = '\0';
+
+    int32_t deltaLat = atoi(latStr);
+    int32_t deltaLon = atoi(comma + 1);
+
+    // 还原公式 base + delta /100000.0
+    double realLat = baseLat + deltaLat / 100000.0;
+    double realLon = baseLon + deltaLon / 100000.0;
+
+    snprintf(outBuf,32,"%.5f,%.5f", realLat, realLon);
+}
+bool splitPipeSegment(const char* in, char* out, int idx)
+{
+    int cur = 0;
+    const char* start = in;
+    const char* p = in;
+
+    while(*p != '\0')
+    {
+        if(*p == '|')
+        {
+            if(cur == idx)
+            {
+                size_t len = p - start;
+                strncpy(out, start, len);
+                out[len] = '\0';
+                return true;
+            }
+            cur++;
+            start = p + 1;
+        }
+        p++;
+    }
+    // 处理最后一段
+    if(cur == idx)
+    {
+        strcpy(out, start);
+        return true;
+    }
+    out[0] = '\0';
+    return false;
+}
+bool replacePipeSegment(const char* src, char* dest, int idx, const char* newVal, size_t destSize)
+{
+    if(destSize == 0) return false;
+    dest[0] = '\0';
+
+    int curIdx = 0;
+    const char* p = src;
+    const char* segStart = src;
+
+    while(*p != '\0')
+    {
+        if(*p == '|')
+        {
+            if(curIdx == idx)
+            {
+                strncat(dest, newVal, destSize - 1 - strlen(dest));
+            }
+            else
+            {
+                size_t segLen = p - segStart;
+                char tmp[64];
+                strncpy(tmp, segStart, segLen);
+                tmp[segLen] = '\0';
+                strncat(dest, tmp, destSize - 1 - strlen(dest));
+            }
+            strncat(dest, "|", destSize - 1 - strlen(dest));
+            curIdx++;
+            segStart = p + 1;
+        }
+        p++;
+    }
+
+    //处理最后一段
+    if(curIdx == idx)
+    {
+        strncat(dest, newVal, destSize - 1 - strlen(dest));
+    }
+    else
+    {
+        strncat(dest, segStart, destSize - 1 - strlen(dest));
+    }
+    return true;
 }

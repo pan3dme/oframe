@@ -615,6 +615,16 @@ void processLoraData() {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
     if ((messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_UP_GPS || messageType == MSG_TYPE_CONFIG) || debugLog) {
+      if (messageType == MSG_TYPE_GPS) {
+        //需要能GPS进行偏移纠正
+        char segBuf[32];
+        char outBuf[32];
+        char loraOut[BUFFER_SIZE];  //组装完成后的新完整字符串
+        splitPipeSegment(loraStr, segBuf, 2);
+        restoreGpsFromDiff(segBuf, outBuf, static_gps_lat, static_gps_lon);
+        replacePipeSegment(loraStr, loraOut, 2, outBuf, sizeof(loraOut));
+        strcpy(loraStr, loraOut);
+      }
       sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
     }
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_GPS) {
@@ -758,7 +768,7 @@ void loop() {
     }
   }
   if (down_syn_time < millis() && needSyncTimeDeviceid.length() > 0) {
-    String dataStr = String(MSG_TYPE_SYN_TIME) +  "|" + String(getCurrentTimestampSec()) + "|" + String(getDevicesIdx());
+    String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + String(getCurrentTimestampSec()) + "|" + String(getDevicesIdx());
     sendLoraToDeviceid(dataStr);
     needSyncTimeDeviceid = "";
   }

@@ -38,6 +38,9 @@ RTC_DATA_ATTR int loraTxPower = 22;
 RTC_DATA_ATTR int16_t lastRssi = 0;
 RTC_DATA_ATTR int8_t lastSnr = 0;
 
+RTC_DATA_ATTR double rtc_gps_lat = 0;  // 纬度，改成你的值
+RTC_DATA_ATTR double rtc_gps_lon = 0;  // 经度
+
 RTC_DATA_ATTR bool configConfirmed = false;
 RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
@@ -45,9 +48,8 @@ RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使�
 RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
 RTC_DATA_ATTR char lastrelayName[10] = "";             //
 RTC_DATA_ATTR char work_time_str[16] = "00:00-23:59";  // 默认工作时间
-RTC_DATA_ATTR char gps_time_str[16] = "12:00-13:00";   // gps上报时间
-RTC_DATA_ATTR char config_str[16] = "5,0M,3O";         // 命令集合
-
+RTC_DATA_ATTR char gps_time_str[16] = "00:00-23:59";   // gps上报时间
+RTC_DATA_ATTR char config_str[16] = "5,0M,0M";         // 命令集合
 
 
 RadioEvents_t radioEvents;                             // LoRa事件回调
@@ -645,6 +647,11 @@ void setup() {
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
   batterystr = readBatteryEndStr(deviceName);
+  if (rtc_gps_lat == 0 || rtc_gps_lon == 0) {
+    //设置中心点坐标
+    rtc_gps_lat = static_gps_lat;
+    rtc_gps_lon = static_gps_lon;
+  }
 
   if (rtcSendCount == -1) {
     unsigned long endTm = millis() + 20000;
@@ -738,7 +745,9 @@ void loop() {
 
       typeindex = FLAG_TYPE_1;
       if (isTimeInRange(getCurrentTimestampSec(), gps_time_str) && strlen(needSendGpsStr) > 0) {
-        sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + needSendGpsStr, false);
+        char gpsOutBuf[32];
+        filterGpsByRect(needSendGpsStr, gpsOutBuf, rtc_gps_lat, rtc_gps_lon, 0.180, 0.202);
+        sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + gpsOutBuf, false);
         strcpy(needSendGpsStr, "");
       } else {
 
