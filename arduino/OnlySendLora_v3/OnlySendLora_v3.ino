@@ -46,7 +46,7 @@ RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
 RTC_DATA_ATTR char lastrelayName[10] = "";             //
 RTC_DATA_ATTR char work_time_str[16] = "00:00-23:59";  // 默认工作时间
 RTC_DATA_ATTR char gps_time_str[16] = "12:00-13:00";   // gps上报时间
-RTC_DATA_ATTR char config_str[16] = "5,0M,3O";     // 命令集合
+RTC_DATA_ATTR char config_str[16] = "5,0M,3O";         // 命令集合
 
 
 
@@ -252,47 +252,7 @@ void meshCmdType(String infoStr, String tmp) {
   DEBUG_PRINT(" thirdField=");
   DEBUG_PRINTLN(thirdField);
   if (thirdField == "B") {
-    // tmp格式: "30,8-6,12-3"
-    // 第1段: roundTime(分钟)  第2段: work起始小时-持续时长  第3段: gps起始小时-持续时长
-    int rt = 0, wStart = 0, wDur = 0, gStart = 0, gDur = 0;
-    if (sscanf(tmp.c_str(), "%d,%d-%d,%d-%d", &rt, &wStart, &wDur, &gStart, &gDur) == 5) {
-      if (rt < 5 || rt > 120) {
-        DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
-        return;
-      }
-      roundTime = rt * 60 * 1000;
-      int wEnd = (wStart + wDur) % 24;
-      int gEnd = (gStart + gDur) % 24;
-      // 工作时间校验：超过24点截断为23:59，至少持续2小时
-      int wEndRaw = wStart + wDur;
-      int wEndH, wEndM;
-      if (wEndRaw >= 24) {
-        wEndH = 23;
-        wEndM = 59;
-      } else {
-        wEndH = wEndRaw;
-        wEndM = 0;
-      }
-      int wDurationMin = (wEndH * 60 + wEndM) - wStart * 60;
-      if (wDurationMin >= 2 * 60) {
-        sprintf(work_time_str, "%02d:00-%02d:%02d", wStart, wEndH, wEndM);
-      } else {
-        DEBUG_PRINT("⚠️工作时间不足2小时: ");
-        DEBUG_PRINTF("%02d:00-%02d:%02d\n", wStart, wEndH, wEndM);
-      }
-      sprintf(gps_time_str, "%02d:00-%02d:00", gStart, gEnd);
-      tmp.toCharArray(config_str, sizeof(config_str));
-      configConfirmed = true;
-      DEBUG_PRINT("✅✅全局配置 roundTime=");
-      DEBUG_PRINT(roundTime);
-      DEBUG_PRINT(" work=");
-      DEBUG_PRINT(work_time_str);
-      DEBUG_PRINT(" gps=");
-      DEBUG_PRINTLN(gps_time_str);
-    } else {
-      DEBUG_PRINT("❌全局配置格式错误：");
-      DEBUG_PRINTLN(tmp);
-    }
+
   } else if (thirdField == "A") {
     //10,1m,38
     int rt;
@@ -308,14 +268,6 @@ void meshCmdType(String infoStr, String tmp) {
       configConfirmed = true;
 
       DEBUG_PRINT("全局配置");
-      DEBUG_PRINTLN(tmp);
-      DEBUG_PRINT("rt=");
-      DEBUG_PRINTLN(rt);
-      DEBUG_PRINT("workstr=");
-      DEBUG_PRINTLN(workstr);
-      DEBUG_PRINT("gpsstr=");
-      DEBUG_PRINTLN(gpsstr);
-
       uint8_t outS, outE;
       if (indexToTimeWindow(twoCharToIndex(workstr), outS, outE)) {
         uint8_t endHour = outE;
