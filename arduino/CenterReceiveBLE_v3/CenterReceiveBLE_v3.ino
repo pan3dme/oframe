@@ -397,17 +397,20 @@ void sendLoraInfoUseDtu(String str, String rssi, String snr) {
     dtuSerial->println(str);
     return;
   }
+  String tmstr = String(getCurrentTimestampSec());
   String json = "{"
-                "\"id\":"
-                + String(millis()) + ","
-                                     "\"version\":\"1.0\","
-                                     "\"method\":\"thing.event.property.post\","
-                                     "\"params\":{"
-                                     "\"lorainfo\":\""
+                // "\"id\":"
+                // + String(millis()) + ","
+                "\"version\":\"1.0\","
+                "\"method\":\"thing.event.property.post\","
+                "\"params\":{"
+                "\"lorainfo\":\""
                 + str + "\","
                         "\"upDateDevice\":\""
                 + deviceName + "\","
-                               "\"rssi\":"
+                               "\"tm\":"
+                + tmstr + ","
+                          "\"rssi\":"
                 + rssi + ","
                          "\"snr\":"
                 + snr + "}"

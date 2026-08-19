@@ -154,14 +154,17 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
 }
 
 // ==================== LoRa模块初始化 ====================
+bool loraInitOk = false;
 void initLora() {
+  if (loraInitOk) {
+    return;
+  }
+  loraInitOk = true;
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
   radioEvents.RxDone = OnRxDone;
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
-
-
   initPanRadio(&radioEvents, 22, 915000000, 11);
 }
 void OnRxTimeout(void) {
@@ -394,6 +397,11 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
 }
 //发送LORA到中继
 void sendLoraToMid(String dataStr, bool addBatter) {
+  if (loraInitOk == false) {
+    initLora();
+    delay(100);
+  }
+
   if (addBatter == true) {
     dataStr += "|" + batterystr;
   }
