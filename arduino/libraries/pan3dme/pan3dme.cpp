@@ -19,8 +19,6 @@ bool isGpsOn = false;
 
 unsigned long rolaHz = 915000000; // 同步时的本地毫秒计数
 
-
- 
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
@@ -356,15 +354,15 @@ void showDisplayBy4Area(String a, String b, String c, String d) {
 #endif
 }
 
-String readBatteryEndStr(String deviceName) {
+int readBatteryEndStr() {
   analogReadResolution(12);
   pinMode(VBAT_CTRL_PIN, OUTPUT);
-
-  // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
-  bool isV4 = deviceName.startsWith("v4-");
+  bool isV4 = false;
+#if defined(WIFI_LORA_32_V4)
+  isV4 = true;
+#endif
   digitalWrite(VBAT_CTRL_PIN, isV4 ? HIGH : LOW);
   delay(10);
-
   const int samples = 10;
   long rawSum = 0;
   long mvSum = 0;
@@ -375,15 +373,10 @@ String readBatteryEndStr(String deviceName) {
   }
   float rawAvg = (float)rawSum / samples;
   float mvAvg = (float)mvSum / samples;
-
   digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
   delay(10);
   pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
-
   float batteryVoltage = mvAvg * 5.20 / 1000.0;
-
-  //  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
-  //                batteryVoltage);
 
   int soc = map(batteryVoltage * 1000, 3000, 4000, 0, 99);
   soc = constrain(soc, 0, 99);
@@ -391,24 +384,25 @@ String readBatteryEndStr(String deviceName) {
 
   String outStr = String(socRatio, 1) + "|" + String(batteryVoltage, 1);
   Serial.print("电量信息：");
-  Serial.println(outStr);
+  Serial.print(outStr);
+  Serial.print(" ");
+  Serial.print(soc);
+  Serial.println("%");
 
-  return String(soc);
+  return soc;
 }
 
- 
-bool isBoardDateTimeOK()
-{
-    time_t now;
-    struct tm t;
-    time(&now);
-    gmtime_r(&now, &t);      // UTC
+bool isBoardDateTimeOK() {
+  time_t now;
+  struct tm t;
+  time(&now);
+  gmtime_r(&now, &t); // UTC
 
-    t.tm_hour += 8;          // +8小时东八区
-    mktime(&t);              // 处理时间进位
+  t.tm_hour += 8; // +8小时东八区
+  mktime(&t);     // 处理时间进位
 
-    int year = t.tm_year + 1900;
-    return (year > 2025) && (year < 2030);
+  int year = t.tm_year + 1900;
+  return (year > 2025) && (year < 2030);
 }
 // 获取可用的时间字符串 (优先同步时间，最后默认运行时间)
 String getCurrentTime(bool includeMillis) {
@@ -524,8 +518,6 @@ void setTimeFromLora(String timeStr) {
   setCSTTime(year, month, day, hour, minute, second, millis);
 }
 
- 
-
 void initPanRadio(RadioEvents_t *radioEvents, int txPower, unsigned long hzFreq,
                   int swNum) {
   // void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
@@ -575,40 +567,39 @@ bool isTimeInRange(long long timestampSec, const char *timeRangeStr) {
   }
 }
 
-int timeWindowToIndex(uint8_t start, uint8_t end)
-{
+int timeWindowToIndex(uint8_t start, uint8_t end) {
   uint8_t realEnd;
-  if(end >= 24){
+  if (end >= 24) {
     realEnd = 23;
-  }else{
+  } else {
     realEnd = end;
   }
 
-  if(start >= realEnd) return -1;
-  //这里删掉 >=3 的判断，只要求 start < realEnd，最小1小时
+  if (start >= realEnd)
+    return -1;
+  // 这里删掉 >=3 的判断，只要求 start < realEnd，最小1小时
 
   int preCount = 0;
-  for(uint8_t s=0; s < start; s++)
-  {
-    //s+1 开始，最小间隔1小时
-    int valid = 23 - (s+1) + 1;
-    if(valid > 0) preCount += valid;
+  for (uint8_t s = 0; s < start; s++) {
+    // s+1 开始，最小间隔1小时
+    int valid = 23 - (s + 1) + 1;
+    if (valid > 0)
+      preCount += valid;
   }
   int curOffset = realEnd - (start + 1);
   return preCount + curOffset;
 }
 
-bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd)
-{
-  if(idx < 0) return false;
+bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd) {
+  if (idx < 0)
+    return false;
   int sum = 0;
-  for(uint8_t s=0; s<=23; s++)
-  {
-    //最小间隔1小时
-    int valid = 23 - (s+1) + 1;
-    if(valid <=0) continue;
-    if(idx < sum + valid)
-    {
+  for (uint8_t s = 0; s <= 23; s++) {
+    // 最小间隔1小时
+    int valid = 23 - (s + 1) + 1;
+    if (valid <= 0)
+      continue;
+    if (idx < sum + valid) {
       outStart = s;
       int off = idx - sum;
       outEnd = s + 1 + off;
@@ -619,33 +610,34 @@ bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd)
   return false;
 }
 
-const char TIME_DICT[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const char TIME_DICT[] =
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-String indexToTwoChar(int idx)
-{
-  if(idx <0 || idx >275) return "XX"; //最大索引275
+String indexToTwoChar(int idx) {
+  if (idx < 0 || idx > 275)
+    return "XX"; // 最大索引275
   int high = idx / 62;
-  int low  = idx % 62;
+  int low = idx % 62;
   String res;
   res += TIME_DICT[high];
   res += TIME_DICT[low];
   return res;
 }
 
-int twoCharToIndex(String str)
-{
-  if(str.length() != 2) return -1;
+int twoCharToIndex(String str) {
+  if (str.length() != 2)
+    return -1;
   char c0 = str[0];
   char c1 = str[1];
-  const char* p0 = strchr(TIME_DICT, c0);
-  const char* p1 = strchr(TIME_DICT, c1);
-  if(p0 == nullptr || p1 == nullptr) return -1;
+  const char *p0 = strchr(TIME_DICT, c0);
+  const char *p1 = strchr(TIME_DICT, c1);
+  if (p0 == nullptr || p1 == nullptr)
+    return -1;
   int h = p0 - TIME_DICT;
   int l = p1 - TIME_DICT;
-  return h*62 + l;
+  return h * 62 + l;
 }
 
- 
 /**
  * @brief 矩形框内输出经纬度差分(系数1e5)，框外原样返回原始字符串
  * @param inBuf 输入 "lat,lon" 带小数
@@ -655,47 +647,43 @@ int twoCharToIndex(String str)
  * @param latHalf 纬度半宽(度)
  * @param lonHalf 经度半宽(度)
  */
-void filterGpsByRect(const char* inBuf, char* outBuf, double baseLat, double baseLon, double latHalf, double lonHalf)
-{
-    const char* comma = strchr(inBuf, ',');
-    if(comma == nullptr)
-    {
-        strncpy(outBuf, inBuf, 31);
-        outBuf[31] = '\0';
-        return;
-    }
+void filterGpsByRect(const char *inBuf, char *outBuf, double baseLat,
+                     double baseLon, double latHalf, double lonHalf) {
+  const char *comma = strchr(inBuf, ',');
+  if (comma == nullptr) {
+    strncpy(outBuf, inBuf, 31);
+    outBuf[31] = '\0';
+    return;
+  }
 
-    char latStr[16];
-    strncpy(latStr, inBuf, comma - inBuf);
-    latStr[comma - inBuf] = '\0';
+  char latStr[16];
+  strncpy(latStr, inBuf, comma - inBuf);
+  latStr[comma - inBuf] = '\0';
 
-    double srcLat = atof(latStr);
-    double srcLon = atof(comma + 1);
+  double srcLat = atof(latStr);
+  double srcLon = atof(comma + 1);
 
-    double latMin = baseLat - latHalf;
-    double latMax = baseLat + latHalf;
-    double lonMin = baseLon - lonHalf;
-    double lonMax = baseLon + lonHalf;
+  double latMin = baseLat - latHalf;
+  double latMax = baseLat + latHalf;
+  double lonMin = baseLon - lonHalf;
+  double lonMax = baseLon + lonHalf;
 
-    bool inRect = (srcLat >= latMin && srcLat <= latMax) &&
-                  (srcLon >= lonMin && srcLon <= lonMax);
+  bool inRect = (srcLat >= latMin && srcLat <= latMax) &&
+                (srcLon >= lonMin && srcLon <= lonMax);
 
-    if(!inRect)
-    {
-        strncpy(outBuf, inBuf, 31);
-        outBuf[31] = '\0';
-    }
-    else
-    {
-        double dLat = srcLat - baseLat;
-        double dLon = srcLon - baseLon;
+  if (!inRect) {
+    strncpy(outBuf, inBuf, 31);
+    outBuf[31] = '\0';
+  } else {
+    double dLat = srcLat - baseLat;
+    double dLon = srcLon - baseLon;
 
-        // 系数 100000，示例：‑0.00017 *100000 = -17
-        int32_t deltaLat = (int32_t)(dLat * 100000LL);
-        int32_t deltaLon = (int32_t)(dLon * 100000LL);
+    // 系数 100000，示例：‑0.00017 *100000 = -17
+    int32_t deltaLat = (int32_t)(dLat * 100000LL);
+    int32_t deltaLon = (int32_t)(dLon * 100000LL);
 
-        snprintf(outBuf,32,"%ld,%ld", (long)deltaLat, (long)deltaLon);
-    }
+    snprintf(outBuf, 32, "%ld,%ld", (long)deltaLat, (long)deltaLon);
+  }
 }
 
 /**
@@ -707,138 +695,123 @@ void filterGpsByRect(const char* inBuf, char* outBuf, double baseLat, double bas
  * @param baseLat 基准纬度小数
  * @param baseLon 基准经度小数
  */
-void restoreGpsFromDiff(const char* diffBuf, char* outBuf, double baseLat, double baseLon)
-{
-    const char* comma = strchr(diffBuf, ',');
-    if(comma == nullptr)
-    {
-        strncpy(outBuf, diffBuf,31);
-        outBuf[31] = '\0';
-        return;
-    }
+void restoreGpsFromDiff(const char *diffBuf, char *outBuf, double baseLat,
+                        double baseLon) {
+  const char *comma = strchr(diffBuf, ',');
+  if (comma == nullptr) {
+    strncpy(outBuf, diffBuf, 31);
+    outBuf[31] = '\0';
+    return;
+  }
 
-    // 判断是差分(没有小数点)，还是原始带小数数据
-    bool isDiff = (strchr(diffBuf, '.') == nullptr);
+  // 判断是差分(没有小数点)，还是原始带小数数据
+  bool isDiff = (strchr(diffBuf, '.') == nullptr);
 
-    if(!isDiff)
-    {
-        // 带小数点，属于框外原始数据，直接拷贝
-        strncpy(outBuf, diffBuf,31);
-        outBuf[31] = '\0';
-        return;
-    }
+  if (!isDiff) {
+    // 带小数点，属于框外原始数据，直接拷贝
+    strncpy(outBuf, diffBuf, 31);
+    outBuf[31] = '\0';
+    return;
+  }
 
-    // 是差分数据，解析deltaLat deltaLon
-    char latStr[16];
-    strncpy(latStr, diffBuf, comma - diffBuf);
-    latStr[comma - diffBuf] = '\0';
+  // 是差分数据，解析deltaLat deltaLon
+  char latStr[16];
+  strncpy(latStr, diffBuf, comma - diffBuf);
+  latStr[comma - diffBuf] = '\0';
 
-    int32_t deltaLat = atoi(latStr);
-    int32_t deltaLon = atoi(comma + 1);
+  int32_t deltaLat = atoi(latStr);
+  int32_t deltaLon = atoi(comma + 1);
 
-    // 还原公式 base + delta /100000.0
-    double realLat = baseLat + deltaLat / 100000.0;
-    double realLon = baseLon + deltaLon / 100000.0;
+  // 还原公式 base + delta /100000.0
+  double realLat = baseLat + deltaLat / 100000.0;
+  double realLon = baseLon + deltaLon / 100000.0;
 
-    snprintf(outBuf,32,"%.5f,%.5f", realLat, realLon);
+  snprintf(outBuf, 32, "%.5f,%.5f", realLat, realLon);
 }
-bool splitPipeSegment(const char* in, char* out, int idx)
-{
-    int cur = 0;
-    const char* start = in;
-    const char* p = in;
+bool splitPipeSegment(const char *in, char *out, int idx) {
+  int cur = 0;
+  const char *start = in;
+  const char *p = in;
 
-    while(*p != '\0')
-    {
-        if(*p == '|')
-        {
-            if(cur == idx)
-            {
-                size_t len = p - start;
-                strncpy(out, start, len);
-                out[len] = '\0';
-                return true;
-            }
-            cur++;
-            start = p + 1;
-        }
-        p++;
-    }
-    // 处理最后一段
-    if(cur == idx)
-    {
-        strcpy(out, start);
+  while (*p != '\0') {
+    if (*p == '|') {
+      if (cur == idx) {
+        size_t len = p - start;
+        strncpy(out, start, len);
+        out[len] = '\0';
         return true;
+      }
+      cur++;
+      start = p + 1;
     }
-    out[0] = '\0';
-    return false;
-}
-bool replacePipeSegment(const char* src, char* dest, int idx, const char* newVal, size_t destSize)
-{
-    if(destSize == 0) return false;
-    dest[0] = '\0';
-
-    int curIdx = 0;
-    const char* p = src;
-    const char* segStart = src;
-
-    while(*p != '\0')
-    {
-        if(*p == '|')
-        {
-            if(curIdx == idx)
-            {
-                strncat(dest, newVal, destSize - 1 - strlen(dest));
-            }
-            else
-            {
-                size_t segLen = p - segStart;
-                char tmp[64];
-                strncpy(tmp, segStart, segLen);
-                tmp[segLen] = '\0';
-                strncat(dest, tmp, destSize - 1 - strlen(dest));
-            }
-            strncat(dest, "|", destSize - 1 - strlen(dest));
-            curIdx++;
-            segStart = p + 1;
-        }
-        p++;
-    }
-
-    //处理最后一段
-    if(curIdx == idx)
-    {
-        strncat(dest, newVal, destSize - 1 - strlen(dest));
-    }
-    else
-    {
-        strncat(dest, segStart, destSize - 1 - strlen(dest));
-    }
+    p++;
+  }
+  // 处理最后一段
+  if (cur == idx) {
+    strcpy(out, start);
     return true;
+  }
+  out[0] = '\0';
+  return false;
+}
+bool replacePipeSegment(const char *src, char *dest, int idx,
+                        const char *newVal, size_t destSize) {
+  if (destSize == 0)
+    return false;
+  dest[0] = '\0';
+
+  int curIdx = 0;
+  const char *p = src;
+  const char *segStart = src;
+
+  while (*p != '\0') {
+    if (*p == '|') {
+      if (curIdx == idx) {
+        strncat(dest, newVal, destSize - 1 - strlen(dest));
+      } else {
+        size_t segLen = p - segStart;
+        char tmp[64];
+        strncpy(tmp, segStart, segLen);
+        tmp[segLen] = '\0';
+        strncat(dest, tmp, destSize - 1 - strlen(dest));
+      }
+      strncat(dest, "|", destSize - 1 - strlen(dest));
+      curIdx++;
+      segStart = p + 1;
+    }
+    p++;
+  }
+
+  // 处理最后一段
+  if (curIdx == idx) {
+    strncat(dest, newVal, destSize - 1 - strlen(dest));
+  } else {
+    strncat(dest, segStart, destSize - 1 - strlen(dest));
+  }
+  return true;
 }
 // segBuf：上报当日秒偏移，outBuf输出unix时间戳字符串，outBufLen缓冲区大小
 // 返回true成功，false无效
-bool buildFullTimestampStr(const char* segBuf, char* outBuf, size_t outBufLen)
-{
-    uint32_t daySec = atoi(segBuf);
-    if(daySec > 86399) {
-        return false;
-    }
+bool buildFullTimestampStr(const char *segBuf, char *outBuf, size_t outBufLen) {
+  uint32_t daySec = atoi(segBuf);
+  if (daySec > 86399) {
+    return false;
+  }
 
-    time_t now = time(nullptr);
-    struct tm local_tm;
-    localtime_r(&now, &local_tm);
+  time_t now = time(nullptr);
+  struct tm local_tm;
+  localtime_r(&now, &local_tm);
 
-    uint32_t h = daySec / 3600;
-    uint32_t m = (daySec % 3600) / 60;
-    uint32_t s = daySec % 60;
+  uint32_t h = daySec / 3600;
+  uint32_t m = (daySec % 3600) / 60;
+  uint32_t s = daySec % 60;
 
-    local_tm.tm_hour = h;
-    local_tm.tm_min  = m;
-    local_tm.tm_sec  = s;
+  local_tm.tm_hour = h;
+  local_tm.tm_min = m;
+  local_tm.tm_sec = s;
 
-    time_t ts = mktime(&local_tm);
-    // 转成数字字符串写入缓冲区
-    snprintf(outBuf, outBufLen, "%llu", (uint64_t)ts);
-    return true;
+  time_t ts = mktime(&local_tm);
+  // 转成数字字符串写入缓冲区
+  snprintf(outBuf, outBufLen, "%llu", (uint64_t)ts);
+  return true;
 }

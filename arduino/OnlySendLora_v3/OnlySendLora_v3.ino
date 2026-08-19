@@ -23,7 +23,7 @@ unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 
 bool timeSynFlage = false;
 
-String batterystr = "";
+int batteryNum = 100;
 
 unsigned long gpsWorkTime = 0;
 unsigned long gpsWorkInterval = 0;
@@ -32,8 +32,8 @@ int typeindex = FLAG_TYPE_0;
 
 RTC_DATA_ATTR long long lastSyncTime = 0;       //
 RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
-RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
-RTC_DATA_ATTR float minBatteryVolage = 0.4;     //设置电量小于0.4就间隔一天
+RTC_DATA_ATTR long long hourlyDriftTemp = 0;  // 每个小时的时间偏差
+
 RTC_DATA_ATTR int loraTxPower = 22;
 RTC_DATA_ATTR int16_t lastRssi = 0;
 RTC_DATA_ATTR int8_t lastSnr = 0;
@@ -107,6 +107,10 @@ float getSlotDuration() {
 
 // ==================== 计算下次发送时间 (修正版) ====================
 unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
+  if (intervalSeconds == 0) {
+    DEBUG_PRINTLN("⚠️ intervalSeconds为0，使用默认值600秒");
+    intervalSeconds = 600;
+  }
   if (deviceIndex < 0 || totalDevices == 0) {
     deviceIndex = getDevicesIdx();
     totalDevices = getTotalDevices();
@@ -230,7 +234,7 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
         printDurationSec(hourlyDriftMs, "每小时偏差: ");
         // 每小时小于3分钟的偏差才通过，防止出乱子
         if (abs(hourlyDriftMs) < 180) {
-          hourlyDriftMsTemp = hourlyDriftMs;
+          hourlyDriftTemp = hourlyDriftMs;
         }
       }
     }
@@ -263,15 +267,18 @@ void meshCmdType(String infoStr, String tmp) {
     int rt;
     char workstr[16];
     char gpsstr[16];
-    if (sscanf(tmp.c_str(), "%d,%[^,],%s", &rt, workstr, gpsstr) == 3) {
+    if (sscanf(tmp.c_str(), "%d,%15[^,],%15s", &rt, workstr, gpsstr) == 3) {
       if (rt < 5 || rt > 120) {
         DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
         return;
       }
       roundTime = rt * 60 * 1000;
-      tmp.toCharArray(config_str, sizeof(config_str));
-      configConfirmed = true;
 
+
+
+      tmp.toCharArray(config_str, sizeof(config_str) - 1);
+      config_str[sizeof(config_str) - 1] = '\0';
+      configConfirmed = true;
       DEBUG_PRINT("全局配置");
       uint8_t outS, outE;
       if (indexToTimeWindow(twoCharToIndex(workstr), outS, outE)) {
@@ -299,11 +306,9 @@ void meshCmdType(String infoStr, String tmp) {
 
   } else if (thirdField == "minbattery") {
     int modeVal = tmp.toInt();
-    if (modeVal >= 10 && modeVal <= 80) {
-      DEBUG_PRINT("✅✅设置最底工作电量：");
-      minBatteryVolage = modeVal * 0.01;
-      DEBUG_PRINTLN(minBatteryVolage);
-    }
+
+    DEBUG_PRINT("✅✅设置最底工作电量：");
+
   } else if (thirdField == "sendmode") {
     // 11|v4-10|sendmode|1|0
     int modeVal = tmp.toInt();
@@ -403,7 +408,7 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   }
 
   if (addBatter == true) {
-    dataStr += "|" + batterystr;
+    dataStr += "|" + String(batteryNum);
   }
   dataStr += "|" + String(rtcSendCount++);
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
@@ -534,14 +539,11 @@ void printCurrentTime() {
     DEBUG_PRINTLN(nowStr);  // 或者只打印秒级字符串
     lastPrintTimeStr = nowSecStr;
   }
- 
 }
-//电量不足进入24小时休眠
-void batteryLowSheep(float minValue) {
-  int separatorIndex = batterystr.indexOf('|');
-  String firstPart = batterystr.substring(0, separatorIndex);
-  float value = firstPart.toFloat();
-  if (value <= minValue) {
+
+void batteryLowSheep(int minValue) {
+
+  if (batteryNum <= minValue) {
     DEBUG_PRINTLN("❌❌❌电压过底电压过底电压过底❌❌❌");
     DEBUG_PRINTLN("电压过底，休眠24个小时");
     unsigned long endTm = millis() + 30000;
@@ -558,7 +560,9 @@ void batteryLowSheep(float minValue) {
 
 unsigned long num6000 = 5000;  // 暂时提前20秒开机
 void testSheepFun() {
-  unsigned long waittm = nextSendTime - millis();
+
+  unsigned long waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
+
   printTimeToString("到上报时间还有 ", nextSendTime - millis());
   // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
   if ((waittm) > num6000) {
@@ -567,11 +571,10 @@ void testSheepFun() {
       configConfirmed = false;
       sendLoraToMid(String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str), false);
       delay(2000);
-      waittm = nextSendTime - millis();
+      waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
     }
 
 
-    batteryLowSheep(minBatteryVolage);
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
     DEBUG_PRINTLN("秒进入睡眠");
@@ -590,10 +593,10 @@ void testSheepFun() {
       }
     }
     // 根据每小时偏差补偿休眠期间的时钟漂移
-    if (hourlyDriftMsTemp != 0) {
+    if (hourlyDriftTemp != 0) {
 
       // 假设 hourlyDriftSec 是每小时偏差（秒），由外部传入
-      long long hourlyDriftSec = hourlyDriftMsTemp;  // 重命名便于理解
+      long long hourlyDriftSec = hourlyDriftTemp;  // 重命名便于理解
 
       // 1. 将休眠微秒转为秒（整数除法，舍去微秒余数）
       long long sleepSec = (long long)(sleepTime / 1000000ULL);
@@ -643,7 +646,7 @@ void testSheepFun() {
     }
     Serial.flush();
     esp_deep_sleep_start();
-    DEBUG_PRINTLN("我已经睡着了...");
+ 
   }
 }
 String mathGpsRectByBaseStr(char *value) {
@@ -657,7 +660,8 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   randomSeed(analogRead(0));
   deviceName = makeDivceName();
-  batterystr = readBatteryEndStr(deviceName);
+  batteryNum = readBatteryEndStr();
+  batteryLowSheep(30);
   if (rtc_gps_lat == 0 || rtc_gps_lon == 0) {
     //设置中心点坐标
     rtc_gps_lat = static_gps_lat;
@@ -672,7 +676,7 @@ void setup() {
     }
     rtcSendCount = 0;
   }
-  batteryLowSheep(0.1);
+
 
   if (isTimeInRange(getCurrentTimestampSec(), gps_time_str) && strlen(needSendGpsStr) == 0) {
     meshGpsInfoFun(true);

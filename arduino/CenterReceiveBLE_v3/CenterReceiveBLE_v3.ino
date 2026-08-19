@@ -34,7 +34,7 @@ int deviceCacheCount = 0;
 bool debugLog = true;
 
 int rtcSendCount = 0;
-String batterystr = "";
+ 
 String deviceName = "x-x";
 // 必须要上报GPS时间段
 long mustrefrishgpsTime = 0;
@@ -676,26 +676,7 @@ void processLoraData() {
     }
     // 3. 下发回复
   }
-}
-void batteryLowSheep() {
-
-  int separatorIndex = batterystr.indexOf('|');
-  String firstPart = batterystr.substring(0, separatorIndex);
-  float value = firstPart.toFloat();  // 可选
-  if (value < 0.1) {
-    Serial.println("电压过底，休眠1个小时");
-    unsigned long endTm = millis() + 30000;
-    while (endTm > millis()) {
-      delay(1000);
-      Serial.print("x");
-    }
-    esp_sleep_enable_timer_wakeup(60 * 60 * 1000 * 1000ULL);
-    Serial.println("--->即将进入深度睡眠...");
-    Serial.flush();
-    esp_deep_sleep_start();
-  }
-}
-
+} 
 // ========================= 系统初始化 =========================
 void setup() {
   Serial.begin(115200);
@@ -703,8 +684,8 @@ void setup() {
   delay(1000);
   deviceName = makeDivceName();
 
-  batterystr = readBatteryEndStr(deviceName);
-  batteryLowSheep();
+ 
+ 
   delay(1000);
 
 
@@ -752,9 +733,9 @@ void loop() {
   if ((lastUpSelfTm) < millis()) {
     lastUpSelfTm = millis() + CENTEN_INTERVAL_MS;
     // 测试电量
-    batterystr = readBatteryEndStr(deviceName);
-    batteryLowSheep();
-    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTimestampSec() + "|" + batterystr;
+    int batteryValue = readBatteryEndStr( );
+ 
+    String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTimestampSec() + "|" + String(batteryValue);
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, signalRss, "0");
 
