@@ -624,8 +624,19 @@ void processLoraData() {
         restoreGpsFromDiff(segBuf, outBuf, static_gps_lat, static_gps_lon);
         replacePipeSegment(loraStr, loraOut, 2, outBuf, sizeof(loraOut));
         strcpy(loraStr, loraOut);
+        Serial.println("GPS偏移记算");
+        Serial.print("static_gps_lat：");
+        Serial.print(static_gps_lat);
+        Serial.print("static_gps_lon：");
+        Serial.println(static_gps_lon);
+        Serial.print("outBuf：");
+        Serial.println(outBuf);
+        Serial.print("loraOut");
+        Serial.println(loraOut);
+        sendLoraInfoUseDtu(loraOut, String(lastRssi), String(lastSnr));
+      } else {
+        sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
       }
-      sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
     }
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_GPS) {
 
