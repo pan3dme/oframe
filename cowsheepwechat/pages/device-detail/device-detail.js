@@ -5,6 +5,7 @@ const dataCache = require('../../config/data-cache.js')
 const batterySwap = require('../../config/battery-swap.js')
 const { compressImage } = require('../../utils/image-compress.js')
 const { uploadToOSS } = require('../../utils/oss-upload.js')
+const timeWindowCodec = require('../../utils/time-window-codec.js')
 
 // DTU 指令转发云函数地址
 const FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
@@ -248,7 +249,7 @@ Page({
     }
   },
 
-  // 拉取设备配置（上报周期/开机时间/GPS上报时间等）
+  // 拉取设备配置（上报周期/开机时间/GPS工作时间等）
   loadDeviceConfig(deviceId) {
     if (!deviceId) return
     const that = this
@@ -284,8 +285,8 @@ Page({
             // 也取直接的属性
             if (record.lorastr) attr.lorastr = record.lorastr
             const configLorastr = attr.lorastr || ''
-            // 解析配置：格式 6|v4-16|30,8-6,12-3|1.0|4.2|18
-            // 第3段(按|分)再按,分: 上报周期,开机时间,GPS上报时间
+            // 解析配置：格式 6|v4-16|30,0M,38|1.0|4.2|18
+            // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间（两位代号，兼容旧格式 8-6）
             let reportInterval = '-'
             let powerOnTime = '-'
             let gpsReportTime = '-'
@@ -294,8 +295,8 @@ Page({
               if (parts.length >= 3 && parts[2]) {
                 const configParts = parts[2].split(',')
                 if (configParts.length >= 1) reportInterval = configParts[0].trim()
-                if (configParts.length >= 2) powerOnTime = this._formatTimeRange(configParts[1].trim())
-                if (configParts.length >= 3) gpsReportTime = this._formatTimeRange(configParts[2].trim())
+                if (configParts.length >= 2) powerOnTime = timeWindowCodec.formatTimeRange(configParts[1].trim())
+                if (configParts.length >= 3) gpsReportTime = timeWindowCodec.formatTimeRange(configParts[2].trim())
               }
             }
             // 更新 deviceInfo 中的配置信息
@@ -329,20 +330,8 @@ Page({
     })
   },
 
-  // 格式化时间段："8-6" → "8:00-14:00"
-  _formatTimeRange(raw) {
-    if (!raw || raw === '-') return '-'
-    const match = raw.match(/^(\d+)-(\d+)$/)
-    if (!match) return raw
-    const startH = parseInt(match[1])
-    const durH = parseInt(match[2])
-    const endH = startH + durH
-    const pad = (v) => String(v).padStart(2, '0')
-    return pad(startH) + ':00-' + pad(endH) + ':00'
-  },
-
   // 根据设备配置lorastr和最后上报时间判断当前是否休眠
-  // 规则：最后上报时间超过1小时 → 直接判定为休眠；否则按配置的工作时间段判断
+  // 规则：最后上报时间超过1小时 → 直接判定为休眠；否则按配置的开机时间段判断
   _isDormantNow(configLorastr, rawTime) {
     // 如果最后上报时间超过1小时，直接判定为休眠
     if (rawTime) {
@@ -354,27 +343,21 @@ Page({
         }
       }
     }
-    // 如果上报时间在1小时内，按配置的开机时间段判断
+    // 如果上报时间在1小时内，按配置的开机时间段判断（两位代号，兼容旧格式 8-6）
     if (!configLorastr) return false
     const parts = configLorastr.split('|')
     if (parts.length < 3 || !parts[2]) return false
     const configParts = parts[2].split(',')
     if (configParts.length < 2 || !configParts[1]) return false
     const powerRaw = configParts[1].trim()
-    const match = powerRaw.match(/^(\d+)-(\d+)$/)
-    if (!match) return false
-    const startH = parseInt(match[1])
-    const durH = parseInt(match[2])
-    const endH = startH + durH
+    const win = timeWindowCodec.parseTimeWindow(powerRaw)
+    if (!win) return false
     const now = new Date()
     const currentMinutes = now.getHours() * 60 + now.getMinutes()
-    const startMinutes = startH * 60
-    const endMinutes = endH * 60
-    if (endH > startH) {
-      return currentMinutes < startMinutes || currentMinutes >= endMinutes
-    } else {
-      return currentMinutes < startMinutes && currentMinutes >= endMinutes
-    }
+    const startMinutes = win.start * 60
+    // end=23 代表 23:59
+    const endMinutes = win.end === 23 ? 23 * 60 + 59 : win.end * 60
+    return currentMinutes < startMinutes || currentMinutes >= endMinutes
   },
 
   // 自动加载轨迹记录

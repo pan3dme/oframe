@@ -567,3 +567,73 @@ bool isTimeInRange(long long timestampSec, const char *timeRangeStr) {
     return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
   }
 }
+
+int timeWindowToIndex(uint8_t start, uint8_t end)
+{
+  uint8_t realEnd;
+  if(end >= 24){
+    realEnd = 23;
+  }else{
+    realEnd = end;
+  }
+
+  if(start >= realEnd) return -1;
+  //这里删掉 >=3 的判断，只要求 start < realEnd，最小1小时
+
+  int preCount = 0;
+  for(uint8_t s=0; s < start; s++)
+  {
+    //s+1 开始，最小间隔1小时
+    int valid = 23 - (s+1) + 1;
+    if(valid > 0) preCount += valid;
+  }
+  int curOffset = realEnd - (start + 1);
+  return preCount + curOffset;
+}
+
+bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd)
+{
+  if(idx < 0) return false;
+  int sum = 0;
+  for(uint8_t s=0; s<=23; s++)
+  {
+    //最小间隔1小时
+    int valid = 23 - (s+1) + 1;
+    if(valid <=0) continue;
+    if(idx < sum + valid)
+    {
+      outStart = s;
+      int off = idx - sum;
+      outEnd = s + 1 + off;
+      return true;
+    }
+    sum += valid;
+  }
+  return false;
+}
+
+const char TIME_DICT[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+String indexToTwoChar(int idx)
+{
+  if(idx <0 || idx >275) return "XX"; //最大索引275
+  int high = idx / 62;
+  int low  = idx % 62;
+  String res;
+  res += TIME_DICT[high];
+  res += TIME_DICT[low];
+  return res;
+}
+
+int twoCharToIndex(String str)
+{
+  if(str.length() != 2) return -1;
+  char c0 = str[0];
+  char c1 = str[1];
+  const char* p0 = strchr(TIME_DICT, c0);
+  const char* p1 = strchr(TIME_DICT, c1);
+  if(p0 == nullptr || p1 == nullptr) return -1;
+  int h = p0 - TIME_DICT;
+  int l = p1 - TIME_DICT;
+  return h*62 + l;
+}

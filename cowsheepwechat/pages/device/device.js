@@ -1,6 +1,7 @@
 // device.js - 设备管理
 const API_DEVICE_URL = getApp().globalData.api_device_Url
 const dataCache = require('../../config/data-cache.js')
+const timeWindowCodec = require('../../utils/time-window-codec.js')
 
 Page({
   data: {
@@ -93,9 +94,9 @@ Page({
   },
 
   // 根据配置lorastr判断当前是否在工作时间内，同时提取上报周期（分钟）
-  // lorastr格式: 6|v4-16|30,8-6,12-3|1.0|4.2|18
-  // 第3段(按|分)再按,分: 上报周期,开机时间(工作时间),GPS上报时间
-  // 开机时间格式: "8-6" 表示8:00开始持续6小时，即8:00-14:00
+  // lorastr格式: 6|v4-16|30,0M,38|1.0|4.2|18
+  // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间
+  // 开机时间/GPS工作时间为两位base62代号（兼容旧格式 "8-6" = 8:00开始持续6小时）
   _checkWorkingHours(configLorastr) {
     const result = { isDormant: false, powerOnTime: '-', reportInterval: 30 }
     if (!configLorastr) return result
@@ -113,42 +114,19 @@ Page({
     if (configParts.length < 2 || !configParts[1]) return result
 
     const powerRaw = configParts[1].trim()
-    result.powerOnTime = this._formatTimeRange(powerRaw)
+    result.powerOnTime = timeWindowCodec.formatTimeRange(powerRaw)
 
-    const match = powerRaw.match(/^(\d+)-(\d+)$/)
-    if (!match) return result
-
-    const startH = parseInt(match[1])
-    const durH = parseInt(match[2])
-    const rawEndH = startH + durH
+    // 时间窗口（仅当天）：区间内=活跃，区间外=休眠
+    const win = timeWindowCodec.parseTimeWindow(powerRaw)
+    if (!win) return result
 
     const now = new Date()
     const currentMinutes = now.getHours() * 60 + now.getMinutes()
-    const startMinutes = startH * 60
-    const endMinutes = rawEndH * 60
-
-    // 判断是否在范围内（支持跨天，如 22-6 = 22:00 到次日 04:00）
-    if (rawEndH <= 24) {
-      // 当天内：startH 点 到 rawEndH 点
-      result.isDormant = currentMinutes < startMinutes || currentMinutes >= endMinutes
-    } else {
-      // 跨天：rawEndH 折算到次日，如 28 → 次日 04:00
-      const wrapEndMinutes = endMinutes - 24 * 60
-      result.isDormant = currentMinutes >= wrapEndMinutes && currentMinutes < startMinutes
-    }
+    const startMinutes = win.start * 60
+    // end=23 代表 23:59
+    const endMinutes = win.end === 23 ? 23 * 60 + 59 : win.end * 60
+    result.isDormant = currentMinutes < startMinutes || currentMinutes >= endMinutes
     return result
-  },
-
-  // 格式化时间段："8-6" → "8:00-14:00"
-  _formatTimeRange(raw) {
-    if (!raw || raw === '-') return '-'
-    const match = raw.match(/^(\d+)-(\d+)$/)
-    if (!match) return raw
-    const startH = parseInt(match[1])
-    const durH = parseInt(match[2])
-    const endH = startH + durH
-    const pad = (v) => String(v).padStart(2, '0')
-    return pad(startH) + ':00-' + pad(endH) + ':00'
   },
 
   // ========== 获取设备列表 ==========

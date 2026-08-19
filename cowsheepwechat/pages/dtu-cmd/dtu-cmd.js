@@ -1,6 +1,7 @@
 // pages/dtu-cmd/dtu-cmd.js
 // DTU发送指令页面：选择设备 → 输入/快捷指令 → HTTP发送到云函数
 const dataCache = require('../../config/data-cache.js')
+const timeWindowCodec = require('../../utils/time-window-codec.js')
 
 // DTU 指令转发云函数地址
 const FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
@@ -24,7 +25,17 @@ Page({
     quickSelected: 0,  // 当前选中快捷按钮
 
     // 发送日志
-    sendLog: []
+    sendLog: [],
+
+    // ===== 配置下发弹框 =====
+    showConfigModal: false,
+    hourRange: (() => { const arr = []; for (let i = 0; i <= 24; i++) arr.push(i); return arr })(),      // 结束时间可选 0-24
+    startHourRange: (() => { const arr = []; for (let i = 0; i <= 23; i++) arr.push(i); return arr })(),  // 开始时间可选 0-23
+    configPeriod: '10',          // 上报周期（5-60）
+    configWorkStart: 0,          // 开机时间开始（小时索引）
+    configWorkEnd: 24,           // 开机时间结束（24=23:59）
+    configGpsStart: 12,          // GPS工作时间开始
+    configGpsEnd: 24             // GPS工作时间结束（24=23:59）
   },
 
   onLoad(options) {
@@ -136,8 +147,10 @@ Page({
     }
 
     this.setData({ quickSelected: 18 })
-    wx.showLoading({ title: '查询设备配置...' })
+    // 打开配置下发弹框（先用默认值）
+    this._openConfigModal(null)
 
+    // 异步查询设备已有配置，用于预填弹框
     const that = this
     wx.request({
       url: API_URL,
@@ -148,8 +161,8 @@ Page({
       },
       timeout: 8000,
       success: (res) => {
-        wx.hideLoading()
         console.log('[DTU指令] getDeviceConfigAll 返回:', JSON.stringify(res.data))
+        if (!that.data.showConfigModal) return // 弹框已被关闭则忽略
 
         let rawList = []
         if (res.data && res.data.data && Array.isArray(res.data.data)) {
@@ -176,36 +189,108 @@ Page({
             if (record.lorastr) attr.lorastr = record.lorastr
 
             const configLorastr = attr.lorastr || ''
-            if (configLorastr) {
-              // lorastr 格式: 6|v4-16|30,8-6,12-3|1.0|4.2|18
-              // 第3段(按|分)是配置值: 上报周期,开机时间,GPS上报时间
-              const parts = configLorastr.split('|')
-              if (parts.length >= 3 && parts[2]) {
-                that.setData({
-                  cmdText: JSON.stringify({ cmd: 'A', value: parts[2] })
-                })
-                that.addLog('info', '已加载设备配置: ' + parts[2])
-                return
-              }
+            const defaults = that._parseLoraConfigToModal(configLorastr)
+            if (defaults) {
+              that._openConfigModal(defaults)
+              that.addLog('info', '已加载设备配置预填弹框: ' + configLorastr)
             }
           }
         }
-
-        // 未找到配置，使用默认值
-        that.setData({
-          cmdText: JSON.stringify({ cmd: 'A', value: '10,0-24,12-6' })
-        })
-        wx.showToast({ title: '未找到设备配置，使用默认值', icon: 'none', duration: 2000 })
       },
       fail: (err) => {
-        wx.hideLoading()
         console.error('[DTU指令] getDeviceConfigAll 失败:', err)
-        that.setData({
-          cmdText: JSON.stringify({ cmd: 'A', value: '10,0-24,12-6' })
-        })
-        wx.showToast({ title: '查询配置失败，使用默认值', icon: 'none', duration: 2000 })
       }
     })
+  },
+
+  // 打开配置下发弹框，defaults 为空时使用默认值 10,0-24,12-24
+  _openConfigModal(defaults) {
+    const d = defaults || {}
+    this.setData({
+      showConfigModal: true,
+      configPeriod: d.configPeriod !== undefined ? d.configPeriod : '10',
+      configWorkStart: d.configWorkStart !== undefined ? d.configWorkStart : 0,
+      configWorkEnd: d.configWorkEnd !== undefined ? d.configWorkEnd : 24,
+      configGpsStart: d.configGpsStart !== undefined ? d.configGpsStart : 12,
+      configGpsEnd: d.configGpsEnd !== undefined ? d.configGpsEnd : 24
+    })
+  },
+
+  // 解析设备配置 lorastr 第3段: 上报周期,开机时间,GPS工作时间 → 弹框默认值
+  // 兼容两位代号（新格式）与 start-duration（旧格式）；无法解析返回 null
+  _parseLoraConfigToModal(lorastr) {
+    const parts = String(lorastr || '').split('|')
+    if (parts.length < 3 || !parts[2]) return null
+    const segs = parts[2].split(',')
+    if (segs.length < 3) return null
+
+    const period = parseInt(segs[0], 10)
+    const workWin = timeWindowCodec.parseTimeWindow(segs[1])
+    const gpsWin = timeWindowCodec.parseTimeWindow(segs[2])
+    if (!workWin || !gpsWin) return null
+
+    // end=23 代表 23:59，弹框结束时间回填为 24（对应"当天最后一刻"）
+    return {
+      configPeriod: String(isNaN(period) || period < 5 ? 10 : (period > 60 ? 60 : period)),
+      configWorkStart: workWin.start,
+      configWorkEnd: workWin.end === 23 ? 24 : workWin.end,
+      configGpsStart: gpsWin.start,
+      configGpsEnd: gpsWin.end === 23 ? 24 : gpsWin.end
+    }
+  },
+
+  // ===== 配置下发弹框交互 =====
+  onConfigPeriodInput(e) {
+    this.setData({ configPeriod: e.detail.value })
+  },
+
+  onConfigWorkStartChange(e) {
+    this.setData({ configWorkStart: parseInt(e.detail.value, 10) })
+  },
+
+  onConfigWorkEndChange(e) {
+    this.setData({ configWorkEnd: parseInt(e.detail.value, 10) })
+  },
+
+  onConfigGpsStartChange(e) {
+    this.setData({ configGpsStart: parseInt(e.detail.value, 10) })
+  },
+
+  onConfigGpsEndChange(e) {
+    this.setData({ configGpsEnd: parseInt(e.detail.value, 10) })
+  },
+
+  onConfigModalCancel() {
+    this.setData({ showConfigModal: false })
+  },
+
+  // 确定：时间窗口编码为两位代号，生成指令内容并填入 cmdText
+  onConfigModalConfirm() {
+    const period = parseInt(this.data.configPeriod, 10)
+    if (isNaN(period) || period < 5 || period > 60) {
+      wx.showToast({ title: '上报周期需在5-60之间', icon: 'none' })
+      return
+    }
+
+    const workCode = timeWindowCodec.encodeTimeWindow(this.data.configWorkStart, this.data.configWorkEnd)
+    if (!workCode) {
+      wx.showToast({ title: '开机时间需为当天整点且持续≥1小时', icon: 'none' })
+      return
+    }
+    const gpsCode = timeWindowCodec.encodeTimeWindow(this.data.configGpsStart, this.data.configGpsEnd)
+    if (!gpsCode) {
+      wx.showToast({ title: 'GPS工作时间需为当天整点且持续≥1小时', icon: 'none' })
+      return
+    }
+
+    // 结构: 周期,开机代号,GPS代号 （如 10,0K,0L）
+    const value = period + ',' + workCode + ',' + gpsCode
+
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'A', value }),
+      showConfigModal: false
+    })
+    this.addLog('info', '已生成配置指令: ' + value)
   },
 
   // ========== 发送指令 ==========

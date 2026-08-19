@@ -2,8 +2,9 @@
 #define pan3dme_h
 
 #include "Arduino.h"
-#include <time.h>
 #include <cstdint>
+#include <time.h>
+
 
 #include "HT_SSD1306Wire.h"
 #include "HT_TinyGPS++.h"
@@ -18,13 +19,13 @@
 #define DEBUG_MODE 1
 
 #if DEBUG_MODE
-  #define DEBUG_PRINT(x)    Serial.print(x)
-  #define DEBUG_PRINTLN(x)  Serial.println(x)
-  #define DEBUG_PRINTF(...) Serial.printf(__VA_ARGS__)
+#define DEBUG_PRINT(x) Serial.print(x)
+#define DEBUG_PRINTLN(x) Serial.println(x)
+#define DEBUG_PRINTF(...) Serial.printf(__VA_ARGS__)
 #else
-  #define DEBUG_PRINT(x)
-  #define DEBUG_PRINTLN(x)
-  #define DEBUG_PRINTF(...)
+#define DEBUG_PRINT(x)
+#define DEBUG_PRINTLN(x)
+#define DEBUG_PRINTF(...)
 #endif
 
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
@@ -34,19 +35,18 @@ typedef enum {
   MSG_TYPE_TIME = 2,        // 对时信息
   MSG_TYPE_BATTERY = 3,     // 电量信息（小数，如0.5、0.1）
   MSG_TYPE_SYN_TIME = 4,    // 下发对时信息
-  MSG_TYPE_UP_GPS = 5,       //   上报GPS坐标
-  MSG_TYPE_CONFIG = 6,    // 时间戳的下发对时
+  MSG_TYPE_UP_GPS = 5,      //   上报GPS坐标
+  MSG_TYPE_CONFIG = 6,      // 时间戳的下发对时
   MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
-  MSG_TYPE_TIME_REALY = 8,    // 补发对时信息
-  MSG_TYPE_COM = 9 // 下载指令到设备
+  MSG_TYPE_TIME_REALY = 8,  // 补发对时信息
+  MSG_TYPE_COM = 9          // 下载指令到设备
 } MessageType_t;
 
-
 typedef enum {
-    FLAG_TYPE_0 = 0,
-    FLAG_TYPE_1 = 1,
-    FLAG_TYPE_2 = 2,
-    FLAG_TYPE_3 = 3
+  FLAG_TYPE_0 = 0,
+  FLAG_TYPE_1 = 1,
+  FLAG_TYPE_2 = 2,
+  FLAG_TYPE_3 = 3
 } FlagType_t;
 
 // 前向声明：在头文件中避免包含过多实现细节
@@ -75,12 +75,12 @@ extern unsigned long syncedMillis;
 
 // ==================== LoRa 通信参数 ====================
 // #define LORA_FREQ 915000000 // 433MHz 国内通用863 863   923  928   915
-//#define TX_POWER 22         // 发射功率
-#define LORA_BW 0           // 125kHz 带宽
-#define LORA_SF 11          // 扩频因子
-#define LORA_CR 1           // 纠错率
-#define PREAMBLE_LENGTH 8   // 前导码
-#define BUFFER_SIZE 48      // 数据缓冲区
+// #define TX_POWER 22         // 发射功率
+#define LORA_BW 0         // 125kHz 带宽
+#define LORA_SF 11        // 扩频因子
+#define LORA_CR 1         // 纠错率
+#define PREAMBLE_LENGTH 8 // 前导码
+#define BUFFER_SIZE 48    // 数据缓冲区
 #define LORA_SYMBOL_TIMEOUT 0
 
 // ======================== BLE 配置 =======================
@@ -105,7 +105,6 @@ struct BLECallbacks {
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
                         BLECharacteristicCallbacks *charCallbacks);
 
- 
 long long setCSTTime(int year, int mon, int day, int h, int m, int s, int ms);
 bool haveRightTime();
 void hideOLED();
@@ -117,15 +116,17 @@ bool isReliableGPS();
 void setGpsEnable(bool value);
 bool getGpsStatus();
 void gpsEncode(); // GPS对象
-void initPanRadio(RadioEvents_t *radioEvents, int txPower,unsigned long hzFreq,int  swNum);
+void initPanRadio(RadioEvents_t *radioEvents, int txPower, unsigned long hzFreq,
+                  int swNum);
 String getGpsInfoStr();
 String getCurrentTime(bool includeMillis);
 long long getCurrentTimestampSec(); // 获取当前时间戳（秒）
-uint32_t getTodaySecond(); 
+uint32_t getTodaySecond();
 void setTimeFromTimestampSec(long long epochMs); // 通过时间戳（秒）设置系统时间
-long long mathTimeDiffmsFromSec(long long epochSec) ;
-void printTimestampSec(long long epochSec, const char *label) ;
-void printDurationSec(long long diffMs, const char* label); // 将秒打印为 N小时N分N秒N毫秒
+long long mathTimeDiffmsFromSec(long long epochSec);
+void printTimestampSec(long long epochSec, const char *label);
+void printDurationSec(long long diffMs,
+                      const char *label); // 将秒打印为 N小时N分N秒N毫秒
 bool hasValidTime();
 void upDataGpsTimeToCs();
 void setTimeFromLora(String timeStr);
@@ -133,7 +134,10 @@ int getDevicesIdx();
 int getTotalDevices(); // 获取设备总数
 String makeDivceName();
 String readBatteryEndStr(String deviceName);
-bool isTimeInRange(long long timestampSec, const char *timeRangeStr);  // 判断时间戳是否在指定时段内（格式 "H:M-H:M"）
+bool isTimeInRange(long long timestampSec, const char *timeRangeStr);
+int timeWindowToIndex(uint8_t start, uint8_t end);
+bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd);
+String indexToTwoChar(int idx);
+int twoCharToIndex(String str);
 
 #endif
-

@@ -45,8 +45,8 @@ RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使�
 RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
 RTC_DATA_ATTR char lastrelayName[10] = "";             //
 RTC_DATA_ATTR char work_time_str[16] = "00:00-23:59";  // 默认工作时间
-RTC_DATA_ATTR char gps_time_str[16] = "12:00-18:00";   // gps上报时间
-RTC_DATA_ATTR char config_str[16] = "5,0-24,12-6";     // 命令集合
+RTC_DATA_ATTR char gps_time_str[16] = "12:00-13:00";   // gps上报时间
+RTC_DATA_ATTR char config_str[16] = "5,0M,3O";     // 命令集合
 
 
 
@@ -223,8 +223,8 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
         DEBUG_PRINT(hourlyDriftMs);
         DEBUG_PRINTLN(" 秒");
         printDurationSec(hourlyDriftMs, "每小时偏差: ");
-        // 每小时小于60秒的偏差才通过，防止出乱子
-        if (abs(hourlyDriftMs) < 60) {
+        // 每小时小于3分钟的偏差才通过，防止出乱子
+        if (abs(hourlyDriftMs) < 180) {
           hourlyDriftMsTemp = hourlyDriftMs;
         }
       }
@@ -251,7 +251,7 @@ void meshCmdType(String infoStr, String tmp) {
   }
   DEBUG_PRINT(" thirdField=");
   DEBUG_PRINTLN(thirdField);
-  if (thirdField == "A") {
+  if (thirdField == "B") {
     // tmp格式: "30,8-6,12-3"
     // 第1段: roundTime(分钟)  第2段: work起始小时-持续时长  第3段: gps起始小时-持续时长
     int rt = 0, wStart = 0, wDur = 0, gStart = 0, gDur = 0;
@@ -293,6 +293,53 @@ void meshCmdType(String infoStr, String tmp) {
       DEBUG_PRINT("❌全局配置格式错误：");
       DEBUG_PRINTLN(tmp);
     }
+  } else if (thirdField == "A") {
+    //10,1m,38
+    int rt;
+    char workstr[16];
+    char gpsstr[16];
+    if (sscanf(tmp.c_str(), "%d,%[^,],%s", &rt, workstr, gpsstr) == 3) {
+      if (rt < 5 || rt > 120) {
+        DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
+        return;
+      }
+      roundTime = rt * 60 * 1000;
+      tmp.toCharArray(config_str, sizeof(config_str));
+      configConfirmed = true;
+
+      DEBUG_PRINT("全局配置");
+      DEBUG_PRINTLN(tmp);
+      DEBUG_PRINT("rt=");
+      DEBUG_PRINTLN(rt);
+      DEBUG_PRINT("workstr=");
+      DEBUG_PRINTLN(workstr);
+      DEBUG_PRINT("gpsstr=");
+      DEBUG_PRINTLN(gpsstr);
+
+      uint8_t outS, outE;
+      if (indexToTimeWindow(twoCharToIndex(workstr), outS, outE)) {
+        uint8_t endHour = outE;
+        uint8_t endMin = 0;
+        if (outE == 23) {
+          endMin = 59;
+        }
+        sprintf(work_time_str, "%02d:00-%02d:%02d", outS, endHour, endMin);
+        DEBUG_PRINT(" work=");
+        DEBUG_PRINT(work_time_str);
+      }
+      if (indexToTimeWindow(twoCharToIndex(gpsstr), outS, outE)) {
+        uint8_t endHour = outE;
+        uint8_t endMin = 0;
+        if (outE == 23) {
+          endMin = 59;
+        }
+        sprintf(gps_time_str, "%02d:00-%02d:%02d", outS, endHour, endMin);
+        DEBUG_PRINT(" gps=");
+        DEBUG_PRINT(gps_time_str);
+      }
+    }
+
+
   } else if (thirdField == "minbattery") {
     int modeVal = tmp.toInt();
     if (modeVal >= 10 && modeVal <= 80) {
