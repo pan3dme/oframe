@@ -42,8 +42,8 @@ Page({
     isAdmin: false,
     // 设备配置（getDeviceConfigAll）
     deviceConfig: null,
-    // 是否显示LORA原始数据（设置页开关控制）
-    showLoraRaw: true
+    // 是否显示转换（设置页开关控制）：开启后对时记录(TYPE=2)显示换算日期时间，关闭显示原始LORA数据
+    showConverted: false
   },
 
   // 按设备名生成稳定的浅色背景色：同一设备始终同色，不同设备不同色
@@ -83,21 +83,40 @@ Page({
     return vividColors[idx]
   },
 
-  // 读取本地设置（管理员、LORA原始数据显示）
+  // 读取本地设置（管理员、LORA显示转换）
   _readSettings() {
     let isAdmin = false
-    let showLoraRaw = true
+    let showConverted = false
     try {
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)
     } catch (e) { /* ignore */ }
     try {
-      const raw = wx.getStorageSync('setting_show_lora_raw')
-      if (raw !== '' && raw !== undefined && raw !== null) {
-        showLoraRaw = raw === true || raw === 'true' || raw === 1 || raw === '1'
+      const conv = wx.getStorageSync('setting_show_converted')
+      if (conv !== '' && conv !== undefined && conv !== null) {
+        showConverted = conv === true || conv === 'true' || conv === 1 || conv === '1'
       }
     } catch (e) { /* ignore */ }
-    this.setData({ isAdmin, showLoraRaw })
+    this.setData({ isAdmin, showConverted })
+    // 开关变化后刷新已加载记录的显示文本（如从设置页返回时）
+    this._refreshDisplayLorastr()
+  },
+
+  // 根据当前"显示转换"开关刷新已加载记录的显示文本
+  // 默认：显示原始LORA数据；开启：对时记录(TYPE=2)显示换算时间，其余类型仍显示原始数据
+  _refreshDisplayLorastr() {
+    const records = this.data.recordList || []
+    if (!records.length) return
+    const showConv = this.data.showConverted
+    let changed = false
+    const updated = records.map(item => {
+      const dl = (showConv && item.msgType === '2') ? this._buildDisplayLorastr(item.lorastr) : item.lorastr
+      if (dl !== item.displayLorastr) changed = true
+      return Object.assign({}, item, { displayLorastr: dl })
+    })
+    if (changed) {
+      this.setData({ recordList: updated })
+    }
   },
 
   onLoad(options) {
@@ -931,8 +950,8 @@ Page({
         msgType = parts[0] || '-'
       }
 
-      // 对时记录：把第3段秒级时间戳替换为日期时间后展示，其余类型保持原始LORA数据不变
-      const displayLorastr = msgType === '2' ? this._buildDisplayLorastr(lorastr) : lorastr
+      // 显示文本：默认显示原始LORA数据；仅当设置"显示转换"时，对时记录(TYPE=2)显示换算时间，其余类型仍保持原始数据
+      const displayLorastr = (this.data.showConverted && msgType === '2') ? this._buildDisplayLorastr(lorastr) : lorastr
 
       return { _key: rawTime + '_' + idx, deviceId, upDateDevice, lorastr, displayLorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
     })

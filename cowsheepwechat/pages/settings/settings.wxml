@@ -32,10 +32,10 @@
 
     <view class="setting-row">
       <view class="setting-left">
-        <text class="setting-icon">📡</text>
-        <text class="setting-label">显示LORA原始数据</text>
+        <text class="setting-icon">🕐</text>
+        <text class="setting-label">显示转换</text>
       </view>
-      <switch checked="{{showLoraRaw}}" bindchange="onShowLoraRawChange" color="#07c160" />
+      <switch checked="{{showConverted}}" bindchange="onShowConvertedChange" color="#07c160" />
     </view>
   </view>
 
