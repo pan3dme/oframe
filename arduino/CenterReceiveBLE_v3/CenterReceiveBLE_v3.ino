@@ -441,6 +441,7 @@ void receiveDtuData() {
   while (dtuSerial->available() > 0 && rawLen < 1024) {
     raw += (char)dtuSerial->read();
     rawLen++;
+    delay(1);
   }
   // 丢弃超出部分
   while (dtuSerial->available() > 0) {
@@ -832,4 +833,5 @@ void loop() {
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();
+  delay(1);
 }
