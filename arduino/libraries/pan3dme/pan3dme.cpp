@@ -366,6 +366,7 @@ int readBatteryEndStr() {
 #endif
   digitalWrite(VBAT_CTRL_PIN, isV4 ? HIGH : LOW);
   delay(10);
+
   const int samples = 10;
   long rawSum = 0;
   long mvSum = 0;
@@ -374,14 +375,19 @@ int readBatteryEndStr() {
     mvSum += analogReadMilliVolts(VBAT_READ_PIN);
     delay(10);
   }
-  float rawAvg = (float)rawSum / samples;
+
   float mvAvg = (float)mvSum / samples;
+
   digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
   delay(10);
   pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
-  float batteryVoltage = mvAvg * 5.20 / 1000.0;
 
-  int soc = map(batteryVoltage * 1000, 3000, 4000, 0, 99);
+  // 这里填你自己算出来的数值
+ 
+  const float divFactor = 5.20;
+  float batteryVoltage = mvAvg * divFactor / 1000.0;
+
+  int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 99);
   soc = constrain(soc, 0, 99);
   float socRatio = soc / 100.0;
 
@@ -394,6 +400,7 @@ int readBatteryEndStr() {
 
   return soc;
 }
+
 
 bool isBoardDateTimeOK() {
   time_t now;

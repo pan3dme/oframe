@@ -707,7 +707,7 @@ void setup() {
     strncpy(work_time_str, "00:00-23:59", sizeof(work_time_str) - 1);
     work_time_str[sizeof(work_time_str) - 1] = '\0';
 
-    strncpy(gps_time_str, "12:00-13:00", sizeof(gps_time_str) - 1);
+    strncpy(gps_time_str, "11:00-12:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
 
     strncpy(config_str, "5,0M,30", sizeof(config_str) - 1);
