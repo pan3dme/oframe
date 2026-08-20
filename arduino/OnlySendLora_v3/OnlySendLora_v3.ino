@@ -31,7 +31,7 @@ int typeindex = FLAG_TYPE_0;
 RTC_DATA_ATTR uint32_t rtcMagic;
 
 RTC_DATA_ATTR long long lastSyncTime;
-RTC_DATA_ATTR long long lastDriftCompMs;
+RTC_DATA_ATTR long long lastDriftCompSec;
 RTC_DATA_ATTR long long hourlyDriftTemp;
 
 RTC_DATA_ATTR int loraTxPower;
@@ -232,21 +232,21 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
     if (lastSyncTime > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
       DEBUG_PRINTLN("---中继和上次相对，那开始计算晶震偏移:----- ");
       long long ds =
-        getCurrentTimestampSec() + lastDriftCompMs - lastSyncTime;
+        getCurrentTimestampSec() + lastDriftCompSec - lastSyncTime;
 
       printDurationSec(ds, "两次对时间隔: ");
-      long long diff_ms = mathTimeDiffmsFromSec(atoll(timeStr.c_str())) + lastDriftCompMs;
+      long long diff_ms = mathTimeDiffmsFromSec(atoll(timeStr.c_str())) + lastDriftCompSec;
       printDurationSec(diff_ms, "当前偏差: ");
       // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
       if (ds > 0) {
-        long long hourlyDriftMs = diff_ms * 3600LL / ds;
+        long long hourlyDriftSec = diff_ms * 3600LL / ds;
         DEBUG_PRINT("每小时偏差: ");
-        DEBUG_PRINT(hourlyDriftMs);
+        DEBUG_PRINT(hourlyDriftSec);
         DEBUG_PRINTLN(" 秒");
-        printDurationSec(hourlyDriftMs, "每小时偏差: ");
+        printDurationSec(hourlyDriftSec, "每小时偏差: ");
         // 每小时小于3分钟的偏差才通过，防止出乱子
-        if (abs(hourlyDriftMs) < 180) {
-          hourlyDriftTemp = hourlyDriftMs;
+        if (abs(hourlyDriftSec) < 180) {
+          hourlyDriftTemp = hourlyDriftSec;
         }
       }
     }
@@ -274,9 +274,7 @@ void meshCmdType(String infoStr, String tmp) {
   }
   DEBUG_PRINT(" thirdField=");
   DEBUG_PRINTLN(thirdField);
-  if (thirdField == "B") {
-
-  } else if (thirdField == "A") {
+  if (thirdField == "A") {
     //10,1m,38
     int rt;
     char workstr[16];
@@ -302,7 +300,8 @@ void meshCmdType(String infoStr, String tmp) {
           endMin = 59;
         }
 
-        snprintf(work_time_str, sizeof(work_time_str), "%02d:00‑%02d:%02d", outS, endHour, endMin);
+
+        snprintf(work_time_str, sizeof(work_time_str), "%02d:00-%02d:%02d", outS, endHour, endMin);
 
         DEBUG_PRINT(" work=");
         DEBUG_PRINT(work_time_str);
@@ -313,14 +312,13 @@ void meshCmdType(String infoStr, String tmp) {
         if (outE == 23) {
           endMin = 59;
         }
-
-        snprintf(gps_time_str, sizeof(gps_time_str), "%02d:00‑%02d:%02d", outS, endHour, endMin);
+        snprintf(gps_time_str, sizeof(gps_time_str), "%02d:00-%02d:%02d", outS, endHour, endMin);
         DEBUG_PRINT(" gps=");
         DEBUG_PRINT(gps_time_str);
       }
+    } else {
+      DEBUG_PRINT("❌配置格式错误 ");
     }
-
-
   } else if (thirdField == "minbattery") {
     int modeVal = tmp.toInt();
 
@@ -348,7 +346,7 @@ void meshCmdType(String infoStr, String tmp) {
     gpsWorkTime = 1 * 60 * 1000;      // 跟踪时间
     gpsWorkInterval = 1 * 60 * 1000;  // 跟踪上报间隔
 
-  } else if (thirdField == "follow") {
+  } else if (thirdField == "B") {
     // 11|v4-10|follow|30,5
     int commaIndex = tmp.indexOf(',');
     if (commaIndex != -1) {
@@ -633,7 +631,7 @@ void testSheepFun() {
 
       // 4. 补偿后的时间戳（秒）
       long long adjustedSec = currentSec + driftCompSec;
-      lastDriftCompMs = driftCompSec;
+      lastDriftCompSec = driftCompSec;
       setTimeFromTimestampSec(adjustedSec);
 
       // 打印调试信息
@@ -680,7 +678,7 @@ void setup() {
   if (rtcMagic != MY_RTC_MAGIC) {
     // ========== 全部出厂默认值写在这里 ==========
     lastSyncTime = 0;
-    lastDriftCompMs = 0;
+    lastDriftCompSec = 0;
     hourlyDriftTemp = 0;
 
     loraTxPower = 22;
@@ -785,7 +783,7 @@ void loop() {
     showOLED();
     DEBUG_PRINT("获取GPS ");
     printCurrentTime();
-    meshGpsInfoFun(false);
+    meshGpsInfoFun(true);
 
 
     char gpsStr[32];
@@ -797,12 +795,8 @@ void loop() {
     delay(2000);  // 上报LORA需要2秒钟间隔
     hideOLED();
 
-    if ((millis() - gpsWorkStat) > gpsWorkTime) {
+    if ((millis() - gpsWorkStat) > gpsWorkTime || gpsWorkInterval == gpsWorkTime) {
       DEBUG_PRINTLN("结束GPS上报");
-      if (getGpsStatus()) {
-        setGpsEnable(false);
-        delay(100);
-      }
       nextSendTime = 0;
       typeindex = FLAG_TYPE_0;
     } else {

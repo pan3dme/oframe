@@ -89,12 +89,12 @@ void initOLED() {
   }
 }
 void hideOLED() {
+  initFinish = false;
   digitalWrite(Vext, HIGH);
   digitalWrite(RST_OLED, LOW);
 }
 void showOLED() {
   initFinish = false;
-  initOLED();
   initOLED();
 }
 
@@ -174,65 +174,69 @@ void gpsEncode() {
   }
 }
 void upDataGpsTimeToCs() {
-  if (gps.time.isValid() && gps.date.isValid() && gps.date.year() >= 2025) {
-
-    int year = gps.date.year();
-    int month = gps.date.month();
-    int day = gps.date.day();
-    int hour = gps.time.hour();
-    int minute = gps.time.minute();
-    int second = gps.time.second();
-
-    // 2. 填入 struct tm（UTC）
-    struct tm utcTm = {0};
-    utcTm.tm_year = year - 1900;
-    utcTm.tm_mon = month - 1;
-    utcTm.tm_mday = day;
-    utcTm.tm_hour = hour;
-    utcTm.tm_min = minute;
-    utcTm.tm_sec = second;
-
-    // 3. 利用 mktime 将 UTC 时间转为 time_t（注意：mktime
-    // 默认按本地时区，所以这里需要先设时区为 UTC）
-    //    ESP32 可以使用 timegm，这里用可移植的方法：
-    //    先设环境变量 TZ=UTC，然后 mktime，但可能影响全局。
-    //    更简便：手动加 8 小时到 tm_hour，然后调用 mktime 自动修正。
-    //    方法：直接给 tm_hour + 8，然后 mktime 会修正所有字段。
-    utcTm.tm_hour += 8; // 变成北京时间的小时数（可能 >=24）
-
-    // 调用 mktime 自动修正日期（注意：mktime 会修改 tm 结构体，并返回 time_t）
-    time_t beijingTime = mktime(&utcTm); // 修正后，utcTm 就是正确的北京时间
-
-    // 4. 此时 utcTm 已被修正，取出年月日时分秒
-    int bj_year = utcTm.tm_year + 1900;
-    int bj_month = utcTm.tm_mon + 1;
-    int bj_day = utcTm.tm_mday;
-    int bj_hour = utcTm.tm_hour;
-    int bj_minute = utcTm.tm_min;
-    int bj_second = utcTm.tm_sec;
-
-    // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
-    long long diff =
-        setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
-    DEBUG_PRINT("✅GPS成功设置一次时间");
-    if (diff >= 0) {
-      DEBUG_PRINT("，时间调快了 ");
-    } else {
-      DEBUG_PRINT("，时间调慢了 ");
-      diff = -diff;
-    }
-    long long diff_sec = diff / 1000000;
-    long long minutes = diff_sec / 60;
-    long long seconds = diff_sec % 60;
-    long long millis = (diff % 1000000) / 1000;
-
-    DEBUG_PRINT(minutes);
-    DEBUG_PRINT("分");
-    DEBUG_PRINT(seconds);
-    DEBUG_PRINT("秒");
-    DEBUG_PRINT(millis);
-    DEBUG_PRINTLN("毫秒");
+  if (isBoardDateTimeOK()) {
+    return;
   }
+  // 新增防护，GPS时间无效直接退出
+  if (!gps.date.isValid() || !gps.time.isValid()) {
+    return;
+  }
+  int year = gps.date.year();
+  int month = gps.date.month();
+  int day = gps.date.day();
+  int hour = gps.time.hour();
+  int minute = gps.time.minute();
+  int second = gps.time.second();
+
+  // 2. 填入 struct tm（UTC）
+  struct tm utcTm = {0};
+  utcTm.tm_year = year - 1900;
+  utcTm.tm_mon = month - 1;
+  utcTm.tm_mday = day;
+  utcTm.tm_hour = hour;
+  utcTm.tm_min = minute;
+  utcTm.tm_sec = second;
+
+  // 3. 利用 mktime 将 UTC 时间转为 time_t（注意：mktime
+  // 默认按本地时区，所以这里需要先设时区为 UTC）
+  //    ESP32 可以使用 timegm，这里用可移植的方法：
+  //    先设环境变量 TZ=UTC，然后 mktime，但可能影响全局。
+  //    更简便：手动加 8 小时到 tm_hour，然后调用 mktime 自动修正。
+  //    方法：直接给 tm_hour + 8，然后 mktime 会修正所有字段。
+  utcTm.tm_hour += 8; // 变成北京时间的小时数（可能 >=24）
+
+  // 调用 mktime 自动修正日期（注意：mktime 会修改 tm 结构体，并返回 time_t）
+  time_t beijingTime = mktime(&utcTm); // 修正后，utcTm 就是正确的北京时间
+
+  // 4. 此时 utcTm 已被修正，取出年月日时分秒
+  int bj_year = utcTm.tm_year + 1900;
+  int bj_month = utcTm.tm_mon + 1;
+  int bj_day = utcTm.tm_mday;
+  int bj_hour = utcTm.tm_hour;
+  int bj_minute = utcTm.tm_min;
+  int bj_second = utcTm.tm_sec;
+
+  // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
+  long long diff =
+      setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
+  DEBUG_PRINT("✅GPS成功设置一次时间");
+  if (diff >= 0) {
+    DEBUG_PRINT("，时间调快了 ");
+  } else {
+    DEBUG_PRINT("，时间调慢了 ");
+    diff = -diff;
+  }
+  long long diff_sec = diff / 1000000;
+  long long minutes = diff_sec / 60;
+  long long seconds = diff_sec % 60;
+  long long millis = (diff % 1000000) / 1000;
+
+  DEBUG_PRINT(minutes);
+  DEBUG_PRINT("分");
+  DEBUG_PRINT(seconds);
+  DEBUG_PRINT("秒");
+  DEBUG_PRINT(millis);
+  DEBUG_PRINTLN("毫秒");
 }
 
 String getGpsInfoStr() {
@@ -255,8 +259,7 @@ bool isReliableGPS() {
   if (gps.satellites.value() < 6)
     return false;
   // 3. HDOP 小于 3.0（可根据需求调整）
-  if (gps.hdop.value() <= 3.0)
-    return false;
+  
   // 4. 数据不陈旧（age < 2 秒）
   if (gps.location.age() > 2000)
     return false;
@@ -397,10 +400,7 @@ bool isBoardDateTimeOK() {
   struct tm t;
   time(&now);
   gmtime_r(&now, &t); // UTC
-
-  t.tm_hour += 8; // +8小时东八区
   mktime(&t);     // 处理时间进位
-
   int year = t.tm_year + 1900;
   return (year > 2025) && (year < 2030);
 }
@@ -463,8 +463,8 @@ void setTimeFromTimestampSec(long long epochSec) {
   settimeofday(&tv, NULL);
 }
 long long mathTimeDiffmsFromSec(long long epochSec) {
-  long long nowMs = getCurrentTimestampSec(); // 获取当前秒时间戳
-  return nowMs - epochSec;                    // 返回差值（ms）
+  long long nowSec = getCurrentTimestampSec(); // 获取当前秒时间戳
+  return nowSec - epochSec;                    // 返回差值（ms）
 }
 
 void printTimestampSec(long long epochSec, const char *label) {
@@ -748,7 +748,8 @@ bool splitPipeSegment(const char *in, char *out, int idx) {
   }
   // 处理最后一段
   if (cur == idx) {
-    strcpy(out, start);
+
+    strncpy(out, start, sizeof(out) - 1);
     return true;
   }
   out[0] = '\0';

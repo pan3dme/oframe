@@ -130,7 +130,7 @@ Page({
   },
 
   onQuickSyncTime() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'follow', value: '30,5' }), quickSelected: 15 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'B', value: '30,5' }), quickSelected: 15 })
   },
 
   onQuickTxPower() {

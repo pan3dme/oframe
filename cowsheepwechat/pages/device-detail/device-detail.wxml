@@ -27,7 +27,7 @@
           <text class="hi-value">{{deviceInfo.powerOnTime || '-'}}</text>
         </view>
         <view class="hi-item">
-          <text class="hi-label">GPS工作时间</text>
+          <text class="hi-label">GPS时间</text>
           <text class="hi-value">{{deviceInfo.gpsReportTime || '-'}}</text>
         </view>
         <view class="hi-item">
