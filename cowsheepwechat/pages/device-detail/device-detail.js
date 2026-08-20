@@ -103,14 +103,16 @@ Page({
   },
 
   // 根据当前"显示转换"开关刷新已加载记录的显示文本
-  // 默认：显示原始LORA数据；开启：对时记录(TYPE=2)显示换算时间，其余类型仍显示原始数据
+  // 默认：显示原始LORA数据；开启：对时记录(TYPE=2)显示换算时间、配置记录(TYPE=6)显示时间窗，其余类型仍显示原始数据
   _refreshDisplayLorastr() {
     const records = this.data.recordList || []
     if (!records.length) return
     const showConv = this.data.showConverted
     let changed = false
     const updated = records.map(item => {
-      const dl = (showConv && item.msgType === '2') ? this._buildDisplayLorastr(item.lorastr) : item.lorastr
+      const dl = (showConv && (item.msgType === '2' || item.msgType === '6'))
+        ? this._buildDisplayLorastr(item.lorastr, item.msgType)
+        : item.lorastr
       if (dl !== item.displayLorastr) changed = true
       return Object.assign({}, item, { displayLorastr: dl })
     })
@@ -950,8 +952,8 @@ Page({
         msgType = parts[0] || '-'
       }
 
-      // 显示文本：默认显示原始LORA数据；仅当设置"显示转换"时，对时记录(TYPE=2)显示换算时间，其余类型仍保持原始数据
-      const displayLorastr = (this.data.showConverted && msgType === '2') ? this._buildDisplayLorastr(lorastr) : lorastr
+      // 显示文本：默认显示原始LORA数据；仅当设置"显示转换"时，对时记录(TYPE=2)与配置记录(TYPE=6)显示换算内容，其余类型仍保持原始数据
+      const displayLorastr = (this.data.showConverted && (msgType === '2' || msgType === '6')) ? this._buildDisplayLorastr(lorastr, msgType) : lorastr
 
       return { _key: rawTime + '_' + idx, deviceId, upDateDevice, lorastr, displayLorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
     })
@@ -966,16 +968,42 @@ Page({
     return records
   },
 
-  // 对时记录显示转换：把第3段秒级时间戳替换为日期时间（按UTC显示）
-  // 如 "2|v4-0|1787230505|93|2" → "2|v4-0|2026-08-20 12:55:05|93|2"
-  // 无法转换时（如已是日期时间字符串）原样返回
-  _buildDisplayLorastr(lorastr) {
+  // 对时/配置记录显示转换：按消息类型分派
+  // TYPE=2 对时：把第3段秒级时间戳替换为日期时间（按UTC显示）
+  //   如 "2|v4-0|1787230505|93|2" → "2|v4-0|2026-08-20 12:55:05|93|2"
+  // TYPE=6 配置：把第3段的工作时间/GPS工作时间代号转换为可读时间窗
+  //   如 "6|v4-26|5,0M,30|1" → "6|v4-26|5,00:00-23:59 10:00-12:00|1"
+  // 无法转换时原样返回
+  _buildDisplayLorastr(lorastr, msgType) {
+    if (!lorastr || lorastr === '-') return lorastr
+    if (msgType === '2') {
+      const parts = String(lorastr).split('|')
+      if (parts.length < 3 || !parts[2]) return lorastr
+      const fmt = this._formatTsToDateTime(parts[2])
+      if (!fmt) return lorastr
+      parts[2] = fmt
+      return parts.join('|')
+    }
+    if (msgType === '6') {
+      return this._formatConfigLorastr(lorastr)
+    }
+    return lorastr
+  },
+
+  // TYPE=6 配置记录转换：第3段格式 "周期,开机时间代号,GPS工作时间代号"
+  // → "周期,工作时间 GPS工作时间"（换算后不再保留原始代号）
+  _formatConfigLorastr(lorastr) {
     if (!lorastr || lorastr === '-') return lorastr
     const parts = String(lorastr).split('|')
     if (parts.length < 3 || !parts[2]) return lorastr
-    const fmt = this._formatTsToDateTime(parts[2])
-    if (!fmt) return lorastr
-    parts[2] = fmt
+    const segs = parts[2].split(',')
+    if (segs.length < 3) return lorastr
+    const workTime = timeWindowCodec.formatTimeRange(segs[1])
+    const gpsTime = timeWindowCodec.formatTimeRange(segs[2])
+    // 解析失败时保留原代号
+    const workDisplay = workTime === '-' ? segs[1] : workTime
+    const gpsDisplay = gpsTime === '-' ? segs[2] : gpsTime
+    parts[2] = segs[0] + ',' + workDisplay + ' ' + gpsDisplay
     return parts.join('|')
   },
 

@@ -483,11 +483,11 @@ page {
 /* RSSI / SNR 行 */
 .rec-row-rssi {
   padding-top: 4rpx;
+  justify-content: space-between;
 }
 .rec-val-rssi {
   font-size: 24rpx;
   flex-shrink: 0;
-  margin-right: 20rpx;
 }
 .rec-val-snr {
   font-size: 24rpx;
