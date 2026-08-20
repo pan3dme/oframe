@@ -34,10 +34,11 @@ int deviceCacheCount = 0;
 bool debugLog = true;
 
 int rtcSendCount = 0;
- 
+
 String deviceName = "x-x";
 // 必须要上报GPS时间段
-long mustrefrishgpsTime = 0;
+
+unsigned long mustrefrishgpsTime = 0;
 
 // ========================= LoRa全局变量 =========================
 char loraStr[BUFFER_SIZE];
@@ -48,7 +49,7 @@ bool loraReceivedFlag = false;
 int16_t lastRssi = 0;
 int8_t lastSnr = 0;
 
-StaticJsonDocument<200> docCom;  // BLE指令解析用（全局复用）
+// BLE指令解析用（全局复用）
 
 // 晶振偏差追踪
 unsigned long lastSyncMillis = 0;  // 上次对时时的 millis()
@@ -100,6 +101,7 @@ void addTargetId(String id) {
   }
 }
 void removeTargetByDeviceId(String deviceId) {
+  StaticJsonDocument<200> docCom;
   for (int i = targetIdCount - 1; i >= 0; i--) {
     deserializeJson(docCom, targetIdList[i]);
     if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
@@ -156,6 +158,7 @@ void addTargetGps(String id) {
   }
 }
 String getGpsTargetByDeviceid(String deviceId) {
+  StaticJsonDocument<200> docCom;
   for (int i = 0; i < targetGpsCount; i++) {
     deserializeJson(docCom, targetGpsList[i]);
     if (docCom.containsKey("deviceId")) {
@@ -168,6 +171,7 @@ String getGpsTargetByDeviceid(String deviceId) {
   return "";
 }
 void removeTargetGpsByDeviceId(String deviceId) {
+  StaticJsonDocument<200> docCom;
   for (int i = targetGpsCount - 1; i >= 0; i--) {
     deserializeJson(docCom, targetGpsList[i]);
     if (docCom.containsKey("cmd") && docCom.containsKey("deviceId")) {
@@ -198,6 +202,7 @@ void removeTargetGps(String id) {
 
 void meshCmdInfomsg(String rxValue) {
   Serial.println(rxValue);
+  StaticJsonDocument<200> docCom;
   DeserializationError error = deserializeJson(docCom, rxValue);
   if (error) {
     Serial.print(" error ");
@@ -377,6 +382,11 @@ void OnRxError(void) {
 }
 // LoRa接收回调（仅拷贝数据+设标记，耗时操作在主循环处理）
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
+  // 上一包还没处理，直接丢弃新包，不操作radio，主循环还在接收状态
+  if (loraReceivedFlag == true) {
+    return;
+  }
+
   if (size < BUFFER_SIZE && size > 0) {
     memcpy(loraStr, payload, size);
     loraStr[size] = '\0';
@@ -431,7 +441,6 @@ void receiveDtuData() {
   while (dtuSerial->available() > 0 && rawLen < 1024) {
     raw += (char)dtuSerial->read();
     rawLen++;
-    delay(2);  // 等待下一个字节
   }
   // 丢弃超出部分
   while (dtuSerial->available() > 0) {
@@ -488,11 +497,16 @@ void receiveDtuData() {
       depth++;
     } else if (c == '}') {
       depth--;
+      if (depth < 0) {
+        depth = 0;
+        start = -1;
+        continue;
+      }
       if (depth == 0 && start >= 0) {
         // 提取一个完整JSON对象
         String jsonStr = raw.substring(start, i + 1);
-
         // 解析并提取cominfo
+        StaticJsonDocument<200> docCom;
         DeserializationError err = deserializeJson(docCom, jsonStr);
         if (err) {
           Serial.print("receiveDtu解析失败: ");
@@ -541,27 +555,25 @@ void sendLoraToDeviceid(String dataStr) {
   Radio.Send((uint8_t *)sendData, strlen(sendData));
 }
 String needSyncTimeDeviceid;
-long down_syn_time = 0;
+unsigned long down_syn_time = 0;
 // ========================= 下发指令 =========================
 void sendDownInfo(String loraStr, String deviceId) {
-
-
   String dataStr = "";
   String selectCmdStr = getGpsTargetByDeviceid(deviceId);
   bool lastCmd = false;
   if (selectCmdStr.length() > 0) {
     lastCmd = true;
-    // Serial.print("❌上次需要上报GPS的信息还没收到过这次重新下发GPS更新指令");
   } else {
     lastCmd = false;
     for (int i = 0; i < targetIdCount; i++) {
-      deserializeJson(docCom, targetIdList[i]);
-      if (docCom.containsKey("deviceId")) {
-        String targetId = docCom["deviceId"].as<String>();
-        if (targetId == deviceId) {  // 只处理发给当前设备的指令
+      StaticJsonDocument<200> tmpDoc;
+      deserializeJson(tmpDoc, targetIdList[i]);
+      if (tmpDoc.containsKey("deviceId")) {
+        String targetId = tmpDoc["deviceId"].as<String>();
+        if (targetId == deviceId) {
           selectCmdStr = targetIdList[i];
           removeTargetId(selectCmdStr);
-          break;  // 找到第一个即停止，或改为处理所有
+          break;
         }
       }
     }
@@ -570,12 +582,15 @@ void sendDownInfo(String loraStr, String deviceId) {
   if (selectCmdStr.length() > 0) {
     Serial.print("✅标记了下发数据");
     Serial.println(selectCmdStr);
-    String cmd = docCom["cmd"].as<String>();
-    String value = docCom["value"].as<String>();
-
-    dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
-    sendLoraToDeviceid(dataStr);
-
+    // 重点：重新解析拿到的selectCmdStr
+    StaticJsonDocument<200> tmpDoc;
+    auto err = deserializeJson(tmpDoc, selectCmdStr);
+    if (!err) {
+      String cmd = tmpDoc["cmd"].as<String>();
+      String value = tmpDoc["value"].as<String>();
+      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
+      sendLoraToDeviceid(dataStr);
+    }
   } else {
     needSyncTimeDeviceid = deviceId;
     down_syn_time = millis() + 1500;
@@ -633,7 +648,8 @@ void processLoraData() {
           sendLoraInfoUseDtu(loraOut, String(lastRssi), String(lastSnr));
         } else {
           Serial.println("时间无效");
-          strncpy(loraOut, loraStr, sizeof(loraOut));
+          strncpy(loraOut, loraStr, sizeof(loraOut) - 1);
+          loraOut[sizeof(loraOut) - 1] = '\0';
         }
 
 
@@ -676,7 +692,7 @@ void processLoraData() {
     }
     // 3. 下发回复
   }
-} 
+}
 // ========================= 系统初始化 =========================
 void setup() {
   Serial.begin(115200);
@@ -684,8 +700,8 @@ void setup() {
   delay(1000);
   deviceName = makeDivceName();
 
- 
- 
+
+
   delay(1000);
 
 
@@ -719,22 +735,48 @@ void setup() {
 unsigned long lastUpSelfTm = 15 * 1000;
 unsigned long nextSyncTm = 10 * 1000;
 unsigned long CENTEN_INTERVAL_MS = 1000 * 60 * 30;
+static unsigned long bleLastSend = 0;
+enum { DTU_IDLE,
+       DTU_SEND_CSQ,
+       DTU_WAIT_CSQ,
+       DTU_SEND_NETTIME,
+       DTU_WAIT_NETTIME } dtuState = DTU_IDLE;
+unsigned long dtuWaitMs = 0;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
 
-  if (nextSyncTm < millis()) {
-    // 请求网络时间
+  // loop内部替换原来nextSyncTm那一段
+  if (nextSyncTm < millis() && dtuState == DTU_IDLE) {
     nextSyncTm = millis() + CENTEN_INTERVAL_MS;
+    dtuState = DTU_SEND_CSQ;
+  }
+  if (dtuState == DTU_SEND_CSQ) {
     dtuSerial->println("config,get,csq");
-    delay(200);
+    dtuWaitMs = millis();
+    dtuState = DTU_WAIT_CSQ;
+  }
+  if (dtuState == DTU_WAIT_CSQ) {
+    // receiveDtuData收到csq应答会自动处理，超时直接往下发第二条
+    if (millis() - dtuWaitMs > 300) {
+      dtuState = DTU_SEND_NETTIME;
+    }
+  }
+  if (dtuState == DTU_SEND_NETTIME) {
     dtuSerial->println("config,get,nettime");
+    dtuWaitMs = millis();
+    dtuState = DTU_WAIT_NETTIME;
+  }
+  if (dtuState == DTU_WAIT_NETTIME) {
+    if (millis() - dtuWaitMs > 500) {
+      dtuState = DTU_IDLE;
+    }
   }
   if ((lastUpSelfTm) < millis()) {
     lastUpSelfTm = millis() + CENTEN_INTERVAL_MS;
     // 测试电量
-    int batteryValue = readBatteryEndStr( );
- 
+    int batteryValue = readBatteryEndStr();
+
     String dataStr = String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getCurrentTimestampSec() + "|" + String(batteryValue);
     dataStr += "|" + String(rtcSendCount++);
     sendLoraInfoUseDtu(dataStr, signalRss, "0");
@@ -753,8 +795,8 @@ void loop() {
   }
 
   // BLE数据同步发送
-  if (needSync && dataCount > 0) {
-    delay(50);
+  if (needSync && dataCount > 0 && (millis() - bleLastSend) > 50) {
+    bleLastSend = millis();
     String jsonData = getAndRemoveFirstData();
     StaticJsonDocument<256> newDoc;
     DeserializationError error = deserializeJson(newDoc, jsonData);
@@ -790,5 +832,4 @@ void loop() {
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();
-  delay(100);
 }
