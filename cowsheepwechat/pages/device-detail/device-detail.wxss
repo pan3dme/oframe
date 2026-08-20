@@ -465,6 +465,12 @@ page {
   flex-shrink: 0;
 }
 
+.rec-val-alias {
+  font-size: 24rpx;
+  font-weight: normal;
+  opacity: 0.85;
+}
+
 .rec-val-lora {
   color: #1565c0;
   font-size: 32rpx;

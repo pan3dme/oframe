@@ -75,7 +75,7 @@
         <view class="record-item" wx:for="{{recordList}}" wx:key="_key" style="background-color:{{item.bgColor}}" bindtap="onRecordTap" data-index="{{index}}">
           <view class="rec-row rec-row-time">
             <text class="rec-val rec-val-time">{{item.date}} {{item.time_part}}</text>
-            <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}</text>
+            <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}<text wx:if="{{item.upDateDeviceAlias}}" class="rec-val-alias">({{item.upDateDeviceAlias}})</text></text>
           </view>
           <view class="rec-row rec-row-content">
             <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType === '6' ? '设置' : item.msgType}}</text>

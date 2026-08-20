@@ -218,6 +218,12 @@ Page({
     dataCache.getDeviceList((deviceData) => {
       if (deviceData && deviceData.recordList) {
         deviceItem = deviceData.recordList.find(v => v.deviceId === deviceId) || null
+        // 缓存全部设备 id -> 别名映射，用于记录列表显示上传设备别名
+        const renameMap = {}
+        deviceData.recordList.forEach(v => {
+          if (v.deviceId) renameMap[v.deviceId] = v.rename || ''
+        })
+        this._deviceRenameMap = renameMap
       }
       merge()
     })
@@ -921,6 +927,7 @@ Page({
       }
       const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
       const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || '-'
+      const upDateDeviceAlias = (this._deviceRenameMap && this._deviceRenameMap[upDateDevice]) || ''
       const lorastr = attr.lorastr || record.lorastr || '-'
       const rawTime = attr.time || record.time || '-'
       const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : '')
@@ -955,7 +962,7 @@ Page({
       // 显示文本：默认显示原始LORA数据；仅当设置"显示转换"时，对时记录(TYPE=2)与配置记录(TYPE=6)显示换算内容，其余类型仍保持原始数据
       const displayLorastr = (this.data.showConverted && (msgType === '2' || msgType === '6')) ? this._buildDisplayLorastr(lorastr, msgType) : lorastr
 
-      return { _key: rawTime + '_' + idx, deviceId, upDateDevice, lorastr, displayLorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
+      return { _key: rawTime + '_' + idx, deviceId, upDateDevice, upDateDeviceAlias, lorastr, displayLorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()
