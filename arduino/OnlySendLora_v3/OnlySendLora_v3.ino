@@ -18,11 +18,7 @@ char sendData[BUFFER_SIZE];  // 发送数据缓存
 int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
-
-
-
 bool timeSynFlage = false;
-
 int batteryNum = 100;
 
 unsigned long gpsWorkTime = 0;
@@ -30,18 +26,20 @@ unsigned long gpsWorkInterval = 0;
 unsigned long gpsWorkStat = 0;
 int typeindex = FLAG_TYPE_0;
 
-RTC_DATA_ATTR long long lastSyncTime = 0;       //
-RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
+RTC_DATA_ATTR long long lastSyncTime = 0;     //
+RTC_DATA_ATTR long long lastDriftCompMs = 0;  //
 RTC_DATA_ATTR long long hourlyDriftTemp = 0;  // 每个小时的时间偏差
 
 RTC_DATA_ATTR int loraTxPower = 22;
 RTC_DATA_ATTR int16_t lastRssi = 0;
 RTC_DATA_ATTR int8_t lastSnr = 0;
 
+
 RTC_DATA_ATTR double rtc_gps_lat = 0;  // 纬度，改成你的值
 RTC_DATA_ATTR double rtc_gps_lon = 0;  // 经度
 
 RTC_DATA_ATTR bool configConfirmed = false;
+RTC_DATA_ATTR bool isNeedGpsWork = false;
 RTC_DATA_ATTR int rtcSendCount = -1;
 RTC_DATA_ATTR int rtcResiveIdx = 0;
 RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
@@ -69,7 +67,6 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
   int startH = 0, startM = 0, endH = 0, endM = 0;
   sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
   int startMinutes = startH * 60 + startM;
-
   struct timeval tv;
   gettimeofday(&tv, nullptr);
   time_t now = tv.tv_sec;
@@ -421,7 +418,6 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   DEBUG_PRINT("  len:");
   DEBUG_PRINTLN(strlen(sendData));
   Radio.Send((uint8_t *)sendData, strlen(sendData));
-  delay(100);
 }
 // ==================== 构建并发送数据包 ====================
 
@@ -546,11 +542,8 @@ void batteryLowSheep(int minValue) {
   if (batteryNum <= minValue) {
     DEBUG_PRINTLN("❌❌❌电压过底电压过底电压过底❌❌❌");
     DEBUG_PRINTLN("电压过底，休眠24个小时");
-    unsigned long endTm = millis() + 30000;
-    while (endTm > millis()) {
-      delay(1000);
-      DEBUG_PRINT("❌");
-    }
+    delay(1000);
+    DEBUG_PRINT("❌");
     esp_sleep_enable_timer_wakeup(24 * 60 * 60 * 1000 * 1000ULL);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     Serial.flush();
@@ -630,8 +623,8 @@ void testSheepFun() {
       //重启
     }
 
-
-    // esp_deep_sleep(sleepTime);
+    //判断是否需要GPS工作
+    isNeedGpsWork = isTimeInRange(getCurrentTimestampSec(), gps_time_str);
     esp_sleep_enable_timer_wakeup(sleepTime);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     // 计算并打印预计开机时间
@@ -646,7 +639,6 @@ void testSheepFun() {
     }
     Serial.flush();
     esp_deep_sleep_start();
- 
   }
 }
 String mathGpsRectByBaseStr(char *value) {
@@ -669,6 +661,7 @@ void setup() {
   }
 
   if (rtcSendCount == -1) {
+    //重新启动不要快速进入休眠，是为了给出时间上传程序
     unsigned long endTm = millis() + 20000;
     while (endTm > millis()) {
       delay(1000);
@@ -678,7 +671,7 @@ void setup() {
   }
 
 
-  if (isTimeInRange(getCurrentTimestampSec(), gps_time_str) && strlen(needSendGpsStr) == 0) {
+  if (isNeedGpsWork && strlen(needSendGpsStr) == 0) {
     meshGpsInfoFun(true);
     strcpy(needSendGpsStr, getGpsInfoStr().c_str());
     nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
@@ -761,14 +754,11 @@ void loop() {
       testSheepFun();
     }
     if (nextSendTime < millis()) {
-
       typeindex = FLAG_TYPE_1;
-      if (isTimeInRange(getCurrentTimestampSec(), gps_time_str) && strlen(needSendGpsStr) > 0) {
-
+      if (strlen(needSendGpsStr) > 0) {
         sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr), false);
         strcpy(needSendGpsStr, "");
       } else {
-
         sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getTodaySecond(), true);
       }
     }
