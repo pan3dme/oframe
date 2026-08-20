@@ -37,7 +37,7 @@ typedef enum {
   MSG_TYPE_UP_GPS = 5,      //   上报GPS坐标
   MSG_TYPE_CONFIG = 6,      // 时间戳的下发对时
   MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
-  MSG_TYPE_TIME_REALY = 8,  // 补发对时信息
+  MSG_TYPE_WARN = 8,  // 警告消息
   MSG_TYPE_COM = 9          // 下载指令到设备
 } MessageType_t;
 
