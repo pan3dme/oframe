@@ -41,7 +41,9 @@ Page({
     // 管理员模式
     isAdmin: false,
     // 设备配置（getDeviceConfigAll）
-    deviceConfig: null
+    deviceConfig: null,
+    // 是否显示LORA原始数据（设置页开关控制）
+    showLoraRaw: true
   },
 
   // 按设备名生成稳定的浅色背景色：同一设备始终同色，不同设备不同色
@@ -81,15 +83,28 @@ Page({
     return vividColors[idx]
   },
 
-  onLoad(options) {
-    const deviceId = options.deviceId || ''
-    // 读取管理员设置
+  // 读取本地设置（管理员、LORA原始数据显示）
+  _readSettings() {
     let isAdmin = false
+    let showLoraRaw = true
     try {
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)
     } catch (e) { /* ignore */ }
-    this.setData({ deviceId, isAdmin })
+    try {
+      const raw = wx.getStorageSync('setting_show_lora_raw')
+      if (raw !== '' && raw !== undefined && raw !== null) {
+        showLoraRaw = raw === true || raw === 'true' || raw === 1 || raw === '1'
+      }
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin, showLoraRaw })
+  },
+
+  onLoad(options) {
+    const deviceId = options.deviceId || ''
+    // 读取管理员设置与LORA显示设置
+    this._readSettings()
+    this.setData({ deviceId })
     this._swapTime = ''
     if (deviceId) {
       this.loadDeviceInfo(deviceId)
@@ -228,8 +243,9 @@ Page({
     apply(cached)
   },
 
-  // 页面重新展示时刷新相对时间（如返回前台）
+  // 页面重新展示时刷新相对时间（如返回前台），并重新读取设置
   onShow() {
+    this._readSettings()
     if (!this._swapTimeTs) return
     const rel = batterySwap.formatRelativeTime(this._swapTimeTs)
     if (this.data.deviceInfo) {
@@ -915,7 +931,10 @@ Page({
         msgType = parts[0] || '-'
       }
 
-      return { _key: rawTime + '_' + idx, deviceId, upDateDevice, lorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
+      // 对时记录：把第3段秒级时间戳替换为日期时间后展示，其余类型保持原始LORA数据不变
+      const displayLorastr = msgType === '2' ? this._buildDisplayLorastr(lorastr) : lorastr
+
+      return { _key: rawTime + '_' + idx, deviceId, upDateDevice, lorastr, displayLorastr, msgType, rssi: finalRssi, snr: finalSnr, date: date || '-', time_part: time_part || '', rawTime, bgColor: this._devicePastel(upDateDevice), deviceColor: this._deviceColor(upDateDevice) }
     })
     records.sort((a, b) => {
       const ta = new Date(a.rawTime).getTime()
@@ -928,5 +947,40 @@ Page({
     return records
   },
 
+  // 对时记录显示转换：把第3段秒级时间戳替换为日期时间（按UTC显示）
+  // 如 "2|v4-0|1787230505|93|2" → "2|v4-0|2026-08-20 12:55:05|93|2"
+  // 无法转换时（如已是日期时间字符串）原样返回
+  _buildDisplayLorastr(lorastr) {
+    if (!lorastr || lorastr === '-') return lorastr
+    const parts = String(lorastr).split('|')
+    if (parts.length < 3 || !parts[2]) return lorastr
+    const fmt = this._formatTsToDateTime(parts[2])
+    if (!fmt) return lorastr
+    parts[2] = fmt
+    return parts.join('|')
+  },
+
+  // 秒级时间戳（兼容13位毫秒）→ "YYYY-MM-DD HH:mm:ss"（UTC时间）；无法转换返回空串
+  _formatTsToDateTime(raw) {
+    if (raw === undefined || raw === null || raw === '') return ''
+    const s = String(raw).trim()
+    let ms = NaN
+    if (/^\d{10}$/.test(s)) {
+      // 秒级时间戳
+      ms = parseInt(s, 10) * 1000
+    } else if (/^\d{13}$/.test(s)) {
+      // 毫秒级时间戳
+      ms = parseInt(s, 10)
+    } else if (/^\d{10}\.\d+$/.test(s)) {
+      // 带小数的秒级时间戳
+      ms = Math.round(parseFloat(s) * 1000)
+    }
+    if (isNaN(ms)) return ''
+    const d = new Date(ms)
+    if (isNaN(d.getTime())) return ''
+    const pad = (n) => String(n).padStart(2, '0')
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) +
+      ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds())
+  },
 
 })

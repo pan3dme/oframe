@@ -29,6 +29,14 @@
       </view>
       <switch checked="{{showAllDevices}}" bindchange="onShowAllDevicesChange" color="#07c160" />
     </view>
+
+    <view class="setting-row">
+      <view class="setting-left">
+        <text class="setting-icon">📡</text>
+        <text class="setting-label">显示LORA原始数据</text>
+      </view>
+      <switch checked="{{showLoraRaw}}" bindchange="onShowLoraRawChange" color="#07c160" />
+    </view>
   </view>
 
   <!-- 权限设置 -->
