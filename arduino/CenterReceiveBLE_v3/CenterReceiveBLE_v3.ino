@@ -578,7 +578,7 @@ void sendDownInfo(String loraStr, String deviceId) {
       String cmd = tmpDoc["cmd"].as<String>();
       String value = tmpDoc["value"].as<String>();
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
-      sendLoraToDeviceid(dataStr,200);
+      sendLoraToDeviceid(dataStr,500);
     }
   } else {
     needSyncTimeDeviceid = deviceId;

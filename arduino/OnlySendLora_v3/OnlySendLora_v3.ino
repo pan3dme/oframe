@@ -535,7 +535,7 @@ void meshGpsInfoFun(bool closeGps = true) {
     if (allPass) {
       DEBUG_PRINTLN("==== GPS全部条件满足，退出搜星循环 ====");
       upDataGpsTimeToCs();
-
+      hourlyDriftTemp = 0;  //自己同步了时间后，就重置晶震偏差
       strncpy(lastrelayName, "", sizeof(lastrelayName) - 1);
       lastrelayName[sizeof(lastrelayName) - 1] = '\0';
 
@@ -624,6 +624,8 @@ void testSheepFun() {
 
       // 假设 hourlyDriftSec 是每小时偏差（秒），由外部传入
       long long hourlyDriftSec = hourlyDriftTemp;  // 重命名便于理解
+      if (hourlyDriftSec > 120) hourlyDriftSec = 120;
+      if (hourlyDriftSec < -120) hourlyDriftSec = -120;
 
       // 1. 将休眠微秒转为秒（整数除法，舍去微秒余数）
       long long sleepSec = (long long)(sleepTime / 1000000ULL);
@@ -631,8 +633,7 @@ void testSheepFun() {
       // 2. 计算休眠期间预估累积偏差（秒）
       //    公式：偏差 = 每小时偏差（秒） * 休眠时长（秒） / 3600（秒/小时）
       long long driftCompSec = hourlyDriftSec * sleepSec / 3600;
-      if (driftCompSec > 120) driftCompSec = 120;
-      if (driftCompSec < -120) driftCompSec = -120;
+
 
       // 3. 获取当前系统时间戳（秒）
       long long currentSec = getCurrentTimestampSec();
@@ -715,10 +716,10 @@ void setup() {
     strncpy(work_time_str, "00:00-23:59", sizeof(work_time_str) - 1);
     work_time_str[sizeof(work_time_str) - 1] = '\0';
 
-    strncpy(gps_time_str, "2:00-5:00", sizeof(gps_time_str) - 1);
+    strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
 
-    strncpy(config_str, "5,0M,0l", sizeof(config_str) - 1);
+    strncpy(config_str, "5,0M,2o", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
 
@@ -732,17 +733,18 @@ void setup() {
   deviceName = makeDivceName();
   batteryNum = readBatteryEndStr();
 
-  if (debugsetupNum > (debugSendNum)) {
-     debugSendNum = debugsetupNum;
+  if (debugsetupNum > (debugSendNum + 1)) {
+    //防止休眠重起两次都还没有任何发包，就重起，还有问题要找，最后应该是不需要这里的代码 和晶震动有关系
+    debugSendNum = debugsetupNum;
     sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|" + debugsetupNum + "|" + debugSendNum, true);
     delay(2000);
     Radio.Sleep();
     ESP.restart();
   }
-  debugsetupNum ++;
+  debugsetupNum++;
 
   if (rtcSendCount == -1) {
-    //重新启动不要快速进入休眠，是为了给出时间上传程序
+    //重新启动不要快速进入休眠，是为了给出时间上传程序 烧入程序等待20秒才可以把程序上传不然很麻烦只为烧入程序
     unsigned long endTm = millis() + 20000;
     while (endTm > millis()) {
       delay(1000);
