@@ -19,6 +19,7 @@ int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
 bool timeSyncFlag = false;
+bool isSleepRestFristSendRolaFlag = true;  //标记启动后的第一条LORA消息
 int batteryNum = 100;
 const uint64_t MAX_SLEEP_US = 4200000000ULL;
 
@@ -117,7 +118,7 @@ float getSlotDuration() {
 }
 
 // ==================== 计算下次发送时间 (修正版) ====================
-unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
+unsigned long calculateNextTime(unsigned long intervalSeconds) {
   if (intervalSeconds == 0) {
     DEBUG_PRINTLN("⚠️ intervalSeconds为0，使用默认值600秒");
     intervalSeconds = 600;
@@ -158,12 +159,19 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   }
 
   unsigned long delayMillis = secondsDiff * 1000;
+
+  if (delayMillis == 0 && isSleepRestFristSendRolaFlag == true) {
+    //这里是特殊处理如果属于休眠重启后如果是第一次获取发射时间并正好为0那么需要后置1秒这样才不会进入无效的重启。不然又会进入休眠
+    delayMillis = 1;
+  }
   unsigned long minutes = delayMillis / 60000;
   unsigned long seconds = (delayMillis % 60000) / 1000;
 
   DEBUG_PRINTF("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
                timeStr.c_str(), deviceIndex, getSlotDuration(), minutes,
                seconds);
+
+
 
   return millis() + delayMillis;
 }
@@ -438,6 +446,7 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   DEBUG_PRINTLN(strlen(sendData));
   Radio.Send((uint8_t *)sendData, strlen(sendData));
   debugSendNum = debugsetupNum;
+  isSleepRestFristSendRolaFlag = false;
 }
 // ==================== 构建并发送数据包 ====================
 
@@ -689,8 +698,8 @@ void setup() {
     debugSendNum = 0;
     debugWarnNum = 0;
 
-    rtc_gps_lat = 0;
-    rtc_gps_lon = 0;
+    rtc_gps_lat = static_gps_lat;
+    rtc_gps_lon = static_gps_lon;
 
     configConfirmed = false;
     isNeedGpsWork = false;
@@ -707,11 +716,13 @@ void setup() {
     strncpy(work_time_str, "00:00-23:59", sizeof(work_time_str) - 1);
     work_time_str[sizeof(work_time_str) - 1] = '\0';
 
-    strncpy(gps_time_str, "11:00-12:00", sizeof(gps_time_str) - 1);
+    strncpy(gps_time_str, "2:00-5:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
 
-    strncpy(config_str, "5,0M,30", sizeof(config_str) - 1);
+    strncpy(config_str, "5,0M,0l", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
+
+
 
     rtcMagic = MY_RTC_MAGIC;
     DEBUG_PRINTLN("INFO: RTC magic invalid -> reset all rtc params");
@@ -738,12 +749,6 @@ void setup() {
     }
   }
 
-  if (rtc_gps_lat == 0 || rtc_gps_lon == 0) {
-    //设置中心点坐标
-    rtc_gps_lat = static_gps_lat;
-    rtc_gps_lon = static_gps_lon;
-  }
-
   if (rtcSendCount == -1) {
     //重新启动不要快速进入休眠，是为了给出时间上传程序
     unsigned long endTm = millis() + 20000;
@@ -758,9 +763,13 @@ void setup() {
     meshGpsInfoFun(true);
     strncpy(needSendGpsStr, getGpsInfoStr().c_str(), sizeof(needSendGpsStr) - 1);
     needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
-
-    //这是当获取GPS可能用的时间比较少还没到上报时间，就判断是否再休眠，不然一直等着不是办法
-    nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
+  }
+  if (rtcSendCount <= 0) {
+    //直接前往上报
+    nextSendTime = millis();
+  } else {
+    //获取设备的上报时间
+    nextSendTime = calculateNextTime(get_send_interval_ms() / 1000);
     testSheepFun();
   }
   initLora();
@@ -825,29 +834,31 @@ void loop() {
     delay(100);
     return;
   } else if (typeindex == FLAG_TYPE_0) {
-    if (rtcSendCount == 0) {
-      //第一次就直接发不用等，只做为了快速进行匹配
-      nextSendTime = millis() - 1;
-    }
-    if (nextSendTime == 0) {
-      nextSendTime = calculateNextSendTime(get_send_interval_ms() / 1000);
-      if (timeSyncFlag) {  // 接收了同步时间
-        if ((nextSendTime - millis()) < get_send_interval_ms() / 2) {
-          DEBUG_PRINTLN("⚠️⚠️⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
-                        "要跳过这个窗口将时间后移到下一个周期⚠️⚠️⚠️");
-          nextSendTime = nextSendTime + get_send_interval_ms();
+
+
+
+    if (isSleepRestFristSendRolaFlag == true) {  //一次重启只会上报一条LORA消息，
+      if (nextSendTime < millis() || rtcSendCount == 0) {
+        typeindex = FLAG_TYPE_1;
+        if (strlen(needSendGpsStr) > 0) {
+          sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr), false);
+          strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
+          needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
+        } else {
+          sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getTodaySecond(), true);
         }
       }
-      testSheepFun();
-    }
-    if (nextSendTime < millis()) {
-      typeindex = FLAG_TYPE_1;
-      if (strlen(needSendGpsStr) > 0) {
-        sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr), false);
-        strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
-        needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
-      } else {
-        sendLoraToMid(String(MSG_TYPE_TIME) + "|" + deviceName + "|" + getTodaySecond(), true);
+    } else {
+      if (nextSendTime < millis()) {
+        nextSendTime = calculateNextTime(get_send_interval_ms() / 1000);
+        if (timeSyncFlag) {  // 接收了同步时间
+          if ((nextSendTime - millis()) < num6000 * 2) {
+            DEBUG_PRINTLN("⚠️⚠️⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
+                          "要跳过这个窗口将时间后移到下一个周期⚠️⚠️⚠️");
+            nextSendTime = nextSendTime + get_send_interval_ms();
+          }
+        }
+        testSheepFun();
       }
     }
   }
