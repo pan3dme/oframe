@@ -409,6 +409,77 @@ function refreshDeviceSyncAll(callback) {
   getDeviceSyncAll(callback, true)
 }
 
+// ==================== 设备配置缓存 ====================
+
+/**
+ * 获取设备配置表 device_config（上报周期/开机时间/GPS工作时间等）
+ * @param {function} callback - 回调 (cachedData)，cachedData 为 { configMap }
+ * @param {boolean} forceRefresh - 是否强制刷新
+ */
+function getDeviceConfigAll(callback, forceRefresh) {
+  _loadWithDedup('deviceConfig', 'deviceConfigCache', (done) => {
+    wx.request({
+      url: API_DEVICE_URL,
+      method: 'POST',
+      data: { action: 'getDeviceConfigAll', info: {} },
+      timeout: 8000,
+      success: (res) => {
+        const configMap = _parseDeviceConfigRecords(res.data)
+        const cachedData = { configMap }
+        app.globalData.deviceConfigCache = cachedData
+        done(cachedData)
+      },
+      fail: (err) => {
+        console.error('获取设备配置失败:', err)
+        done(app.globalData.deviceConfigCache || { configMap: {} })
+      }
+    })
+  }, callback, forceRefresh)
+}
+
+// 解析设备配置记录，提取上报周期（分钟）
+// lorastr格式: 6|v4-16|30,0M,38|1.0|4.2|18
+// 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间
+function _parseDeviceConfigRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) {
+    rawList = data.data
+  } else if (Array.isArray(data)) {
+    rawList = data
+  }
+  const map = {}
+  rawList.forEach(record => {
+    const attr = {}
+    if (record.attributes) {
+      record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+    }
+    if (record.primaryKey) {
+      record.primaryKey.forEach(item => { attr[item.name] = item.value })
+    }
+    if (record.lorastr) attr.lorastr = record.lorastr
+    const deviceId = attr.deviceId || ''
+    if (!deviceId) return
+    const configLorastr = attr.lorastr || ''
+    let reportInterval = null
+    if (configLorastr) {
+      const parts = configLorastr.split('|')
+      if (parts.length >= 3 && parts[2]) {
+        const configParts = parts[2].split(',')
+        if (configParts.length >= 1) {
+          const num = parseInt(configParts[0].trim(), 10)
+          if (!isNaN(num) && num > 0) reportInterval = num
+        }
+      }
+    }
+    map[deviceId] = { lorastr: configLorastr, reportInterval }
+  })
+  return map
+}
+
+function refreshDeviceConfigAll(callback) {
+  getDeviceConfigAll(callback, true)
+}
+
 // ==================== 道路列表缓存（按天：一天只请求一次网络） ====================
 
 /**
@@ -606,6 +677,8 @@ module.exports = {
   refreshDeviceBatteryAll,
   getDeviceSyncAll,
   refreshDeviceSyncAll,
+  getDeviceConfigAll,
+  refreshDeviceConfigAll,
   getRoadListFromCache,
   refreshRoadList,
   clearRoadCache,

@@ -468,7 +468,7 @@ page {
 .rec-val-alias {
   font-size: 24rpx;
   font-weight: normal;
-  color: #999;
+  color: #000;
 }
 
 .rec-val-lora {

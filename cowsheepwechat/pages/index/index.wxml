@@ -1,7 +1,7 @@
 <!--index.wxml-->
-<navigation-bar title="牛羊显示" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="首页" back="{{false}}" color="black" background="#FFF"></navigation-bar>
 
-<scroll-view class="scrollarea" scroll-y type="list">
+<scroll-view class="scrollarea" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refresherTriggered}}" bindrefresherrefresh="onRefresh">
   <!-- 设备摘要 -->
   <view class="summary-card" bindtap="goToDevice">
     <view class="summary-icon summary-icon-device">📡</view>
@@ -23,6 +23,11 @@
   <!-- 统计告警 -->
   <view class="alert-card">
     <view class="alert-title">📋 统计信息</view>
+    <view class="alert-item">
+      <view class="alert-dot" style="background:#1976d2"></view>
+      <text class="alert-icon">📡</text>
+      <text class="alert-text">{{fastReportCount}} 台定位设备上报周期≤5分钟：{{fastReportDevices}}</text>
+    </view>
     <view class="alert-item" wx:for="{{alerts}}" wx:key="text">
       <view class="alert-dot" style="background:{{item.color}}"></view>
       <text class="alert-icon">{{item.icon}}</text>

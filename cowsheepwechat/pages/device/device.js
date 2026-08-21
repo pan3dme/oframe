@@ -159,9 +159,9 @@ Page({
         const lotRec = lotMap[item.deviceId]
         const syncInfo = syncMap[item.deviceId]
 
-        // 电量仅从同步时间表（device_sync）取
+        // 电量仅从同步时间表（device_sync）取，统一归一化为 0~100 显示
         let battery = ''
-        if (syncInfo && syncInfo.battery) battery = syncInfo.battery
+        if (syncInfo && syncInfo.battery) battery = this._formatBatteryPercent(syncInfo.battery)
 
         // 对比设备表、LOT表(最后定位)、同步时间表三者的时间，取最新的显示
         let displayTime = item.rawTime
@@ -220,7 +220,7 @@ Page({
           dotColor: timeInfo.color,
           lastRecordType,
           battery,
-          batteryColor: isDormant ? '#999999' : (battery && parseFloat(battery) < 0.6) ? '#f44336' : '#333',
+          batteryColor: isDormant ? '#999999' : (battery && parseFloat(battery) < 50) ? '#f44336' : '#333',
           isDormant: isDormant,
           powerOnTime: cfg.powerOnTime
         }
@@ -268,6 +268,15 @@ Page({
     this.fetchDeviceList(true, () => {
       this.setData({ refresherTriggered: false })
     })
+  },
+
+  // 电量归一化为 0~100 显示：兼容 0~1 小数（如 1.0/0.87）与 0~100 整数（如 99）
+  _formatBatteryPercent(raw) {
+    if (raw === null || raw === undefined || raw === '') return ''
+    const n = parseFloat(raw)
+    if (isNaN(n)) return raw
+    const percent = n > 1 ? Math.round(n) : Math.round(n * 100)
+    return String(percent)
   },
 
   // 计算相对时间：返回 { text, color, bgColor }

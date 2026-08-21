@@ -7,6 +7,11 @@ Page({
     deviceUpdateTime: '',
     livestockCount: 0,
     boundCount: 0,
+    // 上报周期≤5分钟的定位设备数量（无ProductKey + visible=true）
+    fastReportCount: 0,
+    // 对应设备的 id(别名) 列表字符串，方便快速定位
+    fastReportDevices: '',
+    refresherTriggered: false,
     // 统计告警（动态计算）
     alerts: [
       { icon: '📶', text: '暂无设备离线数据', color: '#999999' },
@@ -25,13 +30,24 @@ Page({
   },
 
   // 预加载设备列表和牛羊列表到全局缓存，并更新首页摘要
-  _preloadData(force) {
+  // force=true 强制请求网络；onComplete 在所有数据回调完成后触发
+  _preloadData(force, onComplete) {
+    let done = 0
+    const total = 5
+    const finish = () => {
+      done++
+      if (done >= total && onComplete) onComplete()
+    }
+
     dataCache.getDeviceList((data) => {
       const deviceCount = data.deviceIdOptions ? data.deviceIdOptions.length - 1 : 0 // 去掉"未连接"
       this.setData({ deviceCount })
       console.log('设备表缓存已就绪:', deviceCount + '个设备')
       // 尝试计算绑定数
       this._calcBoundCount()
+      // 尝试计算快周期定位设备数
+      this._calcFastReportCount()
+      finish()
     }, force)
 
     dataCache.getLivestockList((data) => {
@@ -40,6 +56,7 @@ Page({
       console.log('牛羊表缓存已就绪:', livestockCount + '头牛羊')
       // 尝试计算绑定数
       this._calcBoundCount()
+      finish()
     }, force)
 
     // 加载设备LOT最新数据表，首页设备"最后更新"时间从这里取
@@ -55,6 +72,7 @@ Page({
       this.setData({ deviceUpdateTime })
       console.log('设备LOT最新数据缓存已就绪:', lotList.length + '条记录')
       this._updateAlerts()
+      finish()
     }, force)
 
     // 加载设备电量表
@@ -63,7 +81,27 @@ Page({
       const keys = Object.keys(batteryMap)
       console.log('设备电量表缓存已就绪:', keys.length + '条记录')
       this._updateAlerts()
+      finish()
     }, force)
+
+    // 加载设备配置表（上报周期等），用于统计快周期定位设备
+    dataCache.getDeviceConfigAll((data) => {
+      const configMap = data.configMap || {}
+      console.log('设备配置表缓存已就绪:', Object.keys(configMap).length + '条记录')
+      this._calcFastReportCount()
+      finish()
+    }, force)
+  },
+
+  // 下拉刷新：先展示缓存数据，再强制请求网络更新
+  onRefresh() {
+    this.setData({ refresherTriggered: true })
+    // 第一步：走缓存立即渲染
+    this._preloadData(false)
+    // 第二步：强制刷新网络数据，完成后收起刷新动画
+    this._preloadData(true, () => {
+      this.setData({ refresherTriggered: false })
+    })
   },
 
   // 相对时间：刚刚 / X分钟前 / X小时前 / X天前
@@ -104,6 +142,35 @@ Page({
       }
     }
     this.setData({ boundCount })
+    this._updateAlerts()
+  },
+
+  // 统计无ProductKey（定位设备）+ visible=true + 上报周期≤5的设备数量
+  // 同时记录这些设备的 id，方便快速定位
+  _calcFastReportCount() {
+    const app = getApp()
+    const deviceCache = app.globalData.deviceCache
+    const configCache = app.globalData.deviceConfigCache
+    if (!deviceCache || !configCache) return
+
+    const recordList = deviceCache.recordList || []
+    const configMap = configCache.configMap || {}
+    const matched = []
+    recordList.forEach(r => {
+      // 无ProductKey（定位设备）
+      if (r.ProductKey && r.ProductKey !== '-') return
+      // 仅统计可见设备
+      if (r.visible !== true) return
+      // 上报周期需能解析且≤5分钟
+      const cfg = configMap[r.deviceId]
+      if (!cfg || typeof cfg.reportInterval !== 'number') return
+      if (cfg.reportInterval <= 5) matched.push(r)
+    })
+    // 最多显示两台设备 id，超过两台显示前两台加"等"，避免一行过长
+    const deviceStr = matched.length > 0
+      ? matched.slice(0, 2).map(r => r.deviceId).join('、') + (matched.length > 2 ? ' 等' : '')
+      : ''
+    this.setData({ fastReportCount: matched.length, fastReportDevices: deviceStr })
     this._updateAlerts()
   },
 
