@@ -45,7 +45,7 @@ uint64_t allowedDevices[] = {
     0xD4A284697090, // v4    20
     0x9875555,
     0x3CB7A21B5BF8, // v4    22
-    0x9875555,
+    0x248B9C697090, // v4-433     23
     0xE436A21B5BF8, // v4    24  dtu
     0xF89A3604A7AC, // V3     35   三角 433
     0x20A161F61B44, // v4 NOLED   26

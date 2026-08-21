@@ -162,7 +162,8 @@ unsigned long calculateNextTime(unsigned long intervalSeconds) {
 
   if (delayMillis == 0 && isSleepRestFristSendRolaFlag == true) {
     //这里是特殊处理如果属于休眠重启后如果是第一次获取发射时间并正好为0那么需要后置1秒这样才不会进入无效的重启。不然又会进入休眠
-    delayMillis = 1;
+    delayMillis = 5;//第一次获取就多出5秒做为容错
+    hourlyDriftTemp=0;
   }
   unsigned long minutes = delayMillis / 60000;
   unsigned long seconds = (delayMillis % 60000) / 1000;
@@ -253,8 +254,13 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
         DEBUG_PRINTLN(" 秒");
         printDurationSec(hourlyDriftSec, "每小时偏差: ");
         // 每小时小于3分钟的偏差才通过，防止出乱子
-        if (abs(hourlyDriftSec) < 180) {
+        if (abs(hourlyDriftSec) < 120) {
           hourlyDriftTemp = hourlyDriftSec;
+        } else {
+          hourlyDriftTemp=0;//重置为0的偏差，这样才能回到正常逻辑
+          sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|hourTm|" + hourlyDriftSec, true);
+          delay(2000);
+
         }
       }
     }
@@ -624,8 +630,7 @@ void testSheepFun() {
 
       // 假设 hourlyDriftSec 是每小时偏差（秒），由外部传入
       long long hourlyDriftSec = hourlyDriftTemp;  // 重命名便于理解
-      if (hourlyDriftSec > 120) hourlyDriftSec = 120;
-      if (hourlyDriftSec < -120) hourlyDriftSec = -120;
+ 
 
       // 1. 将休眠微秒转为秒（整数除法，舍去微秒余数）
       long long sleepSec = (long long)(sleepTime / 1000000ULL);
