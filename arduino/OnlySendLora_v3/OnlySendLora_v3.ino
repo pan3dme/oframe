@@ -41,7 +41,7 @@ RTC_DATA_ATTR int8_t lastSnr;
 
 RTC_DATA_ATTR int8_t debugsetupNum;
 RTC_DATA_ATTR int8_t debugSendNum;
-RTC_DATA_ATTR int8_t debugWarnNum;
+
 
 RTC_DATA_ATTR double rtc_gps_lat;
 RTC_DATA_ATTR double rtc_gps_lon;
@@ -454,17 +454,16 @@ void sendLoraToMid(String dataStr, bool addBatter) {
 unsigned long inRxEndTime = 0;
 // ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
-  debugWarnNum = 1;
   DEBUG_PRINT("✅ 发送完成");
   if (typeindex == FLAG_TYPE_1) {
-    DEBUG_PRINTLN("定时上报信息");
+    DEBUG_PRINTLN("1 定时 上报信息");
     inRxEndTime = millis() + 3000;  // 4秒后结束接收窗口
     typeindex = FLAG_TYPE_2;
     Radio.Rx(0);
   } else if (typeindex == FLAG_TYPE_2) {
-    DEBUG_PRINTLN("重复上报时间信息");
+    DEBUG_PRINTLN("2 应该不会到这里");
   } else if (typeindex == FLAG_TYPE_3) {
-    DEBUG_PRINTLN("Gps上报完成");
+    DEBUG_PRINTLN("3 Gps上报完成");
   }
 }
 
@@ -696,7 +695,7 @@ void setup() {
 
     debugsetupNum = 0;
     debugSendNum = 0;
-    debugWarnNum = 0;
+
 
     rtc_gps_lat = static_gps_lat;
     rtc_gps_lon = static_gps_lon;
@@ -732,22 +731,15 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
   batteryNum = readBatteryEndStr();
-  debugsetupNum++;
-  if (debugsetupNum > (debugSendNum + 3)) {
-    //如果启动了3次都没有发送一次ROLA那就特殊处理发送异常信息再重起设备
-    if (debugWarnNum++ < 3) {
-      sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|" + debugsetupNum + "|" + debugSendNum, true);
-      delay(2000);
-      Radio.Sleep();
-      ESP.restart();
-    } else {
-      esp_sleep_enable_timer_wakeup(MAX_SLEEP_US);
-      DEBUG_PRINTLN("--->即将进入深度睡眠...");
-      Serial.flush();
-      Radio.Sleep();
-      esp_deep_sleep_start();
-    }
+
+  if (debugsetupNum > (debugSendNum)) {
+     debugSendNum = debugsetupNum;
+    sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|" + debugsetupNum + "|" + debugSendNum, true);
+    delay(2000);
+    Radio.Sleep();
+    ESP.restart();
   }
+  debugsetupNum ++;
 
   if (rtcSendCount == -1) {
     //重新启动不要快速进入休眠，是为了给出时间上传程序
@@ -831,7 +823,7 @@ void loop() {
     }
     return;
   } else if (typeindex == FLAG_TYPE_1) {
-    delay(100);
+    delay(10);
     return;
   } else if (typeindex == FLAG_TYPE_0) {
 

@@ -32,12 +32,9 @@ String deviceCacheMsg[DEVICE_CACHE_MAX];
 int deviceCacheCount = 0;
 
 bool debugLog = true;
-
 int rtcSendCount = 0;
-
 String deviceName = "x-x";
 // 必须要上报GPS时间段
-
 unsigned long mustrefrishgpsTime = 0;
 
 // ========================= LoRa全局变量 =========================
@@ -56,6 +53,9 @@ unsigned long lastSyncMillis = 0;  // 上次对时时的 millis()
 time_t lastSyncEpoch = 0;          // 上次对时后的系统 epoch
 bool hasLastSync = false;          // 是否已有上次记录
 
+
+String nextLoraToDeviceidStr = "";
+unsigned long nextLoraToDeviceiMillis = 0;
 
 
 // ========================= BLE回调 =========================
@@ -542,19 +542,7 @@ void receiveDtuData() {
   }
 }
 
-void sendLoraToDeviceid(String dataStr) {
-  int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
-  if (len < 0 || len >= BUFFER_SIZE) {
-    Serial.println("⚠️ 数据过长，已截断");
-    sendData[BUFFER_SIZE - 1] = '\0';
-  }
-  // Serial.print(getCurrentTime(true));
-  Serial.print("下发lora：");
-  Serial.print(sendData);
-  Serial.print("len:");
-  Serial.println(strlen(sendData));
-  Radio.Send((uint8_t *)sendData, strlen(sendData));
-}
+
 String needSyncTimeDeviceid;
 unsigned long down_syn_time = 0;
 // ========================= 下发指令 =========================
@@ -590,7 +578,7 @@ void sendDownInfo(String loraStr, String deviceId) {
       String cmd = tmpDoc["cmd"].as<String>();
       String value = tmpDoc["value"].as<String>();
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
-      sendLoraToDeviceid(dataStr);
+      sendLoraToDeviceid(dataStr,200);
     }
   } else {
     needSyncTimeDeviceid = deviceId;
@@ -686,12 +674,32 @@ void processLoraData() {
         Serial.println(millis());
         Serial.print(devId);
         Serial.println("必须经上报GPS坐标");
-        sendLoraToDeviceid(String(MSG_TYPE_COM) + "|" + devId + "|upgps|0");
+        sendLoraToDeviceid(String(MSG_TYPE_COM) + "|" + devId + "|upgps|0",0);
       } else {
         sendDownInfo(infoStr, devId);
       }
     }
     // 3. 下发回复
+  }
+}
+void sendLoraToDeviceid(String dataStr,unsigned long delaySec) {
+  nextLoraToDeviceidStr = dataStr;
+  nextLoraToDeviceiMillis = millis()+delaySec;
+}
+void processSendLoraTo() {
+  if (nextLoraToDeviceiMillis < millis() && nextLoraToDeviceidStr.length() > 0) {
+    int len = snprintf(sendData, BUFFER_SIZE, "%s", nextLoraToDeviceidStr.c_str());
+    if (len < 0 || len >= BUFFER_SIZE) {
+      Serial.println("⚠️ 数据过长，已截断");
+      sendData[BUFFER_SIZE - 1] = '\0';
+    }
+    // Serial.print(getCurrentTime(true));
+    Serial.print("下发lora：");
+    Serial.print(sendData);
+    Serial.print("len:");
+    Serial.println(strlen(sendData));
+    Radio.Send((uint8_t *)sendData, strlen(sendData));
+    nextLoraToDeviceidStr = "";
   }
 }
 // ========================= 系统初始化 =========================
@@ -826,12 +834,13 @@ void loop() {
   }
   if (down_syn_time < millis() && needSyncTimeDeviceid.length() > 0) {
     String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + String(getCurrentTimestampSec()) + "|" + String(getDevicesIdx());
-    sendLoraToDeviceid(dataStr);
+    sendLoraToDeviceid(dataStr,0);
     needSyncTimeDeviceid = "";
   }
 
   Radio.IrqProcess();
   processLoraData();
   receiveDtuData();
+  processSendLoraTo();
   delay(1);
 }
