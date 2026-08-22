@@ -23,6 +23,7 @@ Page({
     // 指令内容
     cmdText: '',
     quickSelected: 0,  // 当前选中快捷按钮
+    sendmodeValue: 0,  // 上报模式当前值（0/1 循环切换）
 
     // 发送日志
     sendLog: [],
@@ -126,7 +127,12 @@ Page({
   },
 
   onQuickNormalMode() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'sendmode', value: 0 }), quickSelected: 12 })
+    const newVal = this.data.sendmodeValue === 0 ? 1 : 0
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'sendmode', value: newVal }),
+      quickSelected: 12,
+      sendmodeValue: newVal
+    })
   },
 
   onQuickSyncTime() {

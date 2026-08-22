@@ -32,15 +32,15 @@ int typeindex = FLAG_TYPE_0;
 RTC_DATA_ATTR uint32_t rtcMagic;
 
 RTC_DATA_ATTR long long lastSyncTime;
-RTC_DATA_ATTR long long lastDriftCompSec;
-RTC_DATA_ATTR long long hourlyDriftTemp;
+
+
 
 RTC_DATA_ATTR int loraTxPower;
+RTC_DATA_ATTR int sendModeidx;
+
 RTC_DATA_ATTR int16_t lastRssi;
 RTC_DATA_ATTR int8_t lastSnr;
 
-RTC_DATA_ATTR int8_t debugsetupNum;
-RTC_DATA_ATTR int8_t debugSendNum;
 
 
 RTC_DATA_ATTR double rtc_gps_lat;
@@ -163,7 +163,6 @@ unsigned long calculateNextTime(unsigned long intervalSeconds) {
   if (delayMillis == 0 && isSleepRestFristSendRolaFlag == true) {
     //这里是特殊处理如果属于休眠重启后如果是第一次获取发射时间并正好为0那么需要后置1秒这样才不会进入无效的重启。不然又会进入休眠
     delayMillis = 5;  //第一次获取就多出5秒做为容错
-    hourlyDriftTemp = 0;
   }
   unsigned long minutes = delayMillis / 60000;
   unsigned long seconds = (delayMillis % 60000) / 1000;
@@ -241,23 +240,20 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
     if (lastSyncTime > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
       DEBUG_PRINTLN("---中继和上次相对，那开始计算晶震偏移:----- ");
       long long ds =
-        getCurrentTimestampSec() + lastDriftCompSec - lastSyncTime;
+        getCurrentTimestampSec() - lastSyncTime;
 
       printDurationSec(ds, "两次对时间隔: ");
-      long long diff_ms = mathTimeDiffmsFromSec(atoll(timeStr.c_str())) + lastDriftCompSec;
-      printDurationSec(diff_ms, "当前偏差: ");
+      long long diff_Sec = mathTimeDiffmsFromSec(atoll(timeStr.c_str()));
+      printDurationSec(diff_Sec, "当前偏差: ");
       // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
       if (ds > 0) {
-        long long hourlyDriftSec = diff_ms * 3600LL / ds;
+        long long hourlyDriftSec = diff_Sec * 3600LL / ds;
         DEBUG_PRINT("每小时偏差: ");
         DEBUG_PRINT(hourlyDriftSec);
         DEBUG_PRINTLN(" 秒");
         printDurationSec(hourlyDriftSec, "每小时偏差: ");
         // 每小时小于3分钟的偏差才通过，防止出乱子
-        if (abs(hourlyDriftSec) < 120) {
-          hourlyDriftTemp = hourlyDriftSec;
-        } else {
-          hourlyDriftTemp = 0;  //重置为0的偏差，这样才能回到正常逻辑
+        if (sendModeidx > 0) {
           sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|hourTm|" + hourlyDriftSec, true);
           delay(2000);
         }
@@ -340,12 +336,10 @@ void meshCmdType(String infoStr, String tmp) {
   } else if (thirdField == "sendmode") {
     // 11|v4-10|sendmode|1|0
     int modeVal = tmp.toInt();
-    if (modeVal >= 0 && modeVal <= 2) {
-      DEBUG_PRINT("✅✅设置工作模式：");
-    } else {
-      DEBUG_PRINT("❌工作模式值错误(需0/1/2)：");
-      DEBUG_PRINTLN(modeVal);
-    }
+
+    sendModeidx = modeVal;
+    DEBUG_PRINT("✅✅修改上报模式：");
+
   } else if (thirdField == "txpower") {
     DEBUG_PRINT("✅✅修改发射功率：");
     if (tmp.toInt() >= 10 && tmp.toInt() <= 28) {
@@ -450,7 +444,7 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   DEBUG_PRINT("  len:");
   DEBUG_PRINTLN(strlen(sendData));
   Radio.Send((uint8_t *)sendData, strlen(sendData));
-  debugSendNum = debugsetupNum;
+
   isSleepRestFristSendRolaFlag = false;
 }
 // ==================== 构建并发送数据包 ====================
@@ -540,10 +534,10 @@ void meshGpsInfoFun(bool closeGps = true) {
     if (allPass) {
       DEBUG_PRINTLN("==== GPS全部条件满足，退出搜星循环 ====");
       upDataGpsTimeToCs();
-      hourlyDriftTemp = 0;  //自己同步了时间后，就重置晶震偏差
+
+      lastSyncTime = getCurrentTimestampSec();  // ← 加上
       strncpy(lastrelayName, "", sizeof(lastrelayName) - 1);
       lastrelayName[sizeof(lastrelayName) - 1] = '\0';
-
       timeSyncFlag = true;
 
       break;
@@ -591,7 +585,7 @@ void batteryLowSleep(int minValue) {
 }
 
 unsigned long num6000 = 5000;  // 暂时提前20秒开机
-void testSheepFun() {
+void testSheepFun(bool driftComp) {
 
   unsigned long waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
 
@@ -624,45 +618,14 @@ void testSheepFun() {
         sleepTime = 10 * 1000 * 1000ULL;
       }
     }
-    // 根据每小时偏差补偿休眠期间的时钟漂移
-    if (hourlyDriftTemp != 0) {
 
-      // 假设 hourlyDriftSec 是每小时偏差（秒），由外部传入
-      long long hourlyDriftSec = hourlyDriftTemp;  // 重命名便于理解
-
-
-      // 1. 将休眠微秒转为秒（整数除法，舍去微秒余数）
-      long long sleepSec = (long long)(sleepTime / 1000000ULL);
-
-      // 2. 计算休眠期间预估累积偏差（秒）
-      //    公式：偏差 = 每小时偏差（秒） * 休眠时长（秒） / 3600（秒/小时）
-      long long driftCompSec = hourlyDriftSec * sleepSec / 3600;
-
-
-      // 3. 获取当前系统时间戳（秒）
-      long long currentSec = getCurrentTimestampSec();
-
-      // 4. 补偿后的时间戳（秒）
-      long long adjustedSec = currentSec + driftCompSec;
-      lastDriftCompSec = driftCompSec;
-      setTimeFromTimestampSec(adjustedSec);
-
-      // 打印调试信息
-      DEBUG_PRINTF("每小时偏差: %lld 秒\n", hourlyDriftSec);
-      DEBUG_PRINTF("休眠时长: %llu 微秒\n", sleepTime);
-      DEBUG_PRINTF("休眠期间预估偏差: %lld 秒\n", driftCompSec);
-
-      // 确保 printTimestampSec 是“接收秒参数”的版本（不输出毫秒）
-      printTimestampSec(currentSec, "补偿前时间: ");
-      printTimestampSec(adjustedSec, "补偿后时间: ");
-    }
 
     //判断是否需要GPS工作
     isNeedGpsWork = isTimeInRange(getCurrentTimestampSec(), gps_time_str);
 
-    if (sleepTime > MAX_SLEEP_US) {
-      sleepTime = MAX_SLEEP_US;
-    }
+    // if (sleepTime > MAX_SLEEP_US) {
+    //   sleepTime = MAX_SLEEP_US;
+    // }
     esp_sleep_enable_timer_wakeup(sleepTime);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     // 计算并打印预计开机时间
@@ -688,18 +651,15 @@ String mathGpsRectByBaseStr(char *value) {
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
+
   if (rtcMagic != MY_RTC_MAGIC) {
     // ========== 全部出厂默认值写在这里 ==========
     lastSyncTime = 0;
-    lastDriftCompSec = 0;
-    hourlyDriftTemp = 0;
+    sendModeidx = 0;
 
     loraTxPower = 22;
     lastRssi = 0;
     lastSnr = 0;
-
-    debugsetupNum = 0;
-    debugSendNum = 0;
 
 
     rtc_gps_lat = static_gps_lat;
@@ -735,16 +695,15 @@ void setup() {
 
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
+  DEBUG_PRINT("开机时间-");
+  DEBUG_PRINTLN(getCurrentTime(true));
+  DEBUG_PRINT("开机时间-");
+  DEBUG_PRINTLN(getCurrentTime(true));
   batteryNum = readBatteryEndStr();
 
-  if (debugsetupNum > (debugSendNum + 1)) {
-    //防止休眠重起两次都还没有任何发包，就重起，还有问题要找，最后应该是不需要这里的代码 和晶震动有关系
-    debugSendNum = debugsetupNum;
-    sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|" + debugsetupNum + "|" + debugSendNum, true);
-    delay(2000);
-    hourlyDriftTemp = 0;  //重置为0的偏差，这样才能回到正常逻辑
-  }
-  debugsetupNum++;
+
+
+
 
   if (rtcSendCount == -1) {
     //重新启动不要快速进入休眠，是为了给出时间上传程序 烧入程序等待20秒才可以把程序上传不然很麻烦只为烧入程序
@@ -767,7 +726,7 @@ void setup() {
   } else {
     //获取设备的上报时间
     nextSendTime = calculateNextTime(get_send_interval_ms() / 1000);
-    testSheepFun();
+    testSheepFun(false);
   }
   initLora();
 }
@@ -849,13 +808,15 @@ void loop() {
       if (nextSendTime < millis()) {
         nextSendTime = calculateNextTime(get_send_interval_ms() / 1000);
         if (timeSyncFlag) {  // 接收了同步时间
-          if ((nextSendTime - millis()) < num6000 * 2) {
+
+          if ((nextSendTime - millis()) < get_send_interval_ms() * 0.5) {
             DEBUG_PRINTLN("⚠️⚠️⚠️接收了同步时间，由于时间偏差导致又进入了上报窗口所以"
                           "要跳过这个窗口将时间后移到下一个周期⚠️⚠️⚠️");
             nextSendTime = nextSendTime + get_send_interval_ms();
           }
+          timeSyncFlag = false;
         }
-        testSheepFun();
+        testSheepFun(true);
       }
     }
   }
