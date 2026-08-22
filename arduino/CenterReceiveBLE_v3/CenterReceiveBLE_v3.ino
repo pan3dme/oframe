@@ -578,7 +578,7 @@ void sendDownInfo(String loraStr, String deviceId) {
       String cmd = tmpDoc["cmd"].as<String>();
       String value = tmpDoc["value"].as<String>();
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
-      sendLoraToDeviceid(dataStr,500);
+      sendLoraToDeviceid(dataStr, 500);
     }
   } else {
     needSyncTimeDeviceid = deviceId;
@@ -674,7 +674,7 @@ void processLoraData() {
         Serial.println(millis());
         Serial.print(devId);
         Serial.println("必须经上报GPS坐标");
-        sendLoraToDeviceid(String(MSG_TYPE_COM) + "|" + devId + "|upgps|0",0);
+        sendLoraToDeviceid(String(MSG_TYPE_COM) + "|" + devId + "|upgps|0", 0);
       } else {
         sendDownInfo(infoStr, devId);
       }
@@ -682,9 +682,9 @@ void processLoraData() {
     // 3. 下发回复
   }
 }
-void sendLoraToDeviceid(String dataStr,unsigned long delaySec) {
+void sendLoraToDeviceid(String dataStr, unsigned long delaySec) {
   nextLoraToDeviceidStr = dataStr;
-  nextLoraToDeviceiMillis = millis()+delaySec;
+  nextLoraToDeviceiMillis = millis() + delaySec;
 }
 void processSendLoraTo() {
   if (nextLoraToDeviceiMillis < millis() && nextLoraToDeviceidStr.length() > 0) {
@@ -706,27 +706,23 @@ void processSendLoraTo() {
 void setup() {
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  delay(1000);
+
   deviceName = makeDivceName();
-
-
-
-  delay(1000);
-
+  Serial.println(deviceName);
 
 #if defined(WIFI_LORA_32_V3)
   Serial2.begin(115200, SERIAL_8N1, 17, 18);
   dtuSerial = &Serial2;
   Serial.println("✅ v3 板子 DTU");
   // dtuSerial->println("V3 DTU TEST");
-  delay(1000);
+
 #endif
 #if defined(WIFI_LORA_32_V4)
   // Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
   Serial2.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   dtuSerial = &Serial2;
   Serial.println("✅ v4 板子 DTU");
-  delay(1000);
+
 #endif
 
 
@@ -834,7 +830,7 @@ void loop() {
   }
   if (down_syn_time < millis() && needSyncTimeDeviceid.length() > 0) {
     String dataStr = String(MSG_TYPE_SYN_TIME) + "|" + String(getCurrentTimestampSec()) + "|" + String(getDevicesIdx());
-    sendLoraToDeviceid(dataStr,0);
+    sendLoraToDeviceid(dataStr, 0);
     needSyncTimeDeviceid = "";
   }
 

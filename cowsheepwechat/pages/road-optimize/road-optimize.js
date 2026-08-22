@@ -1,6 +1,6 @@
 // road-optimize.js - 道路优化（两条道路对比 + 合并）
 const dataCache = require('../../config/data-cache.js')
-const { wgs84ToGcj02, gcj02ToWgs84, parseRoadPoints, calcDistance } = require('../../utils/coord-transform.js')
+const { wgs84ToGcj02, gcj02ToWgs84, parseRoadPoints, encodeRoadPoints, calcDistance } = require('../../utils/coord-transform.js')
 const app = getApp()
 const API_URL = app.globalData.api_route_place_Url
 
@@ -388,10 +388,8 @@ Page({
     const nameB = roadB ? (roadB.name || roadB.roadId || '未命名') : '未知路'
     const mergedName = nameA + '+' + nameB
 
-    // 格式: lat,lng,lat,lng,...（WGS-84）
-    const pointsStr = this._mergedWgs
-      .map(p => p.lat.toFixed(6) + ',' + p.lng.toFixed(6))
-      .join(',')
+    // 差分编码: 首点绝对微度坐标 + 后续点相对前一点的偏移（节约存储）
+    const pointsStr = encodeRoadPoints(this._mergedWgs)
 
     wx.showLoading({ title: '提交中...' })
 

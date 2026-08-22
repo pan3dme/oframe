@@ -46,8 +46,36 @@ function gcj02ToWgs84(lng, lat) {
 }
 
 /**
+ * 将坐标点数组差分编码为紧凑字符串（节约存储空间）
+ * 坐标只保留 5 位小数（放大 100000 取整，约 1 米精度）
+ * 第一个点存绝对坐标（微度整数），后续点只存相对前一点的偏移（微度整数）
+ * 例: [{lat:26.529587,lng:109.390729}, {lat:26.529611,lng:109.390716}, ...]
+ *   → "2652959,10939073,2,-1,1,-18,-1,13"
+ * 支持 {lat,lng} 或 {latitude,longitude}
+ */
+function encodeRoadPoints(points) {
+  if (!points || points.length < 1) return ''
+  const parts = []
+  let prevLat = 0
+  let prevLng = 0
+  points.forEach((p, idx) => {
+    const latMicro = Math.round(p.lat * 100000)
+    const lngMicro = Math.round(p.lng * 100000)
+    if (idx === 0) {
+      parts.push(String(latMicro), String(lngMicro))
+    } else {
+      parts.push(String(latMicro - prevLat), String(lngMicro - prevLng))
+    }
+    prevLat = latMicro
+    prevLng = lngMicro
+  })
+  return parts.join(',')
+}
+
+/**
  * 解析 roadinfo 中的 GPS 坐标，构建点数组
  * 兼容格式：
+ *   latMicro,lngMicro,dLat,dLng,dLat,dLng,...  (差分微度：首点绝对×100000 保留5位小数，后续点相对偏移，推荐存储格式)
  *   lat1,lng1|lat2,lng2|...        (逗号分隔经纬度，竖线分隔点)
  *   lat1|lng1|lat2|lng2|...        (竖线交替)
  *   lat1,lng1;lat2,lng2;...        (分号分隔点)
@@ -56,8 +84,33 @@ function gcj02ToWgs84(lng, lat) {
 function parseRoadPoints(roadinfo) {
   if (!roadinfo || roadinfo === '-') return []
 
-  // Strategy 0: flat lat, lng, lat, lng, ... (逗号交替平铺)
-  const commaAll = roadinfo.split(/[,，]\s*/)
+  // Strategy 0: 差分微度格式，如 2652959,10939073,2,-1,1,-18,-1,13
+  // 坐标保留5位小数（放大100000）：首点绝对坐标，后续点相对前一点的偏移
+  // 特征：全部为整数、偶数个、首两个数在微度绝对坐标数量级（100000+）
+  const microRe = /^-?\d+,-?\d+(,-?\d+,-?\d+)+$/
+  const trimmed = String(roadinfo).trim()
+  if (microRe.test(trimmed)) {
+    const nums = trimmed.split(/[,，]\s*/).map(Number)
+    const absLat = Math.abs(nums[0])
+    const absLng = Math.abs(nums[1])
+    if (nums.length >= 4 && nums.length % 2 === 0 &&
+        absLat >= 100000 && absLat <= 9000000 &&
+        absLng >= 100000 && absLng <= 18000000) {
+      const points = []
+      let curLat = nums[0]
+      let curLng = nums[1]
+      points.push({ lat: curLat / 100000, lng: curLng / 100000 })
+      for (let i = 2; i + 1 < nums.length; i += 2) {
+        curLat += nums[i]
+        curLng += nums[i + 1]
+        points.push({ lat: curLat / 100000, lng: curLng / 100000 })
+      }
+      if (points.length >= 2) return points
+    }
+  }
+
+  // Strategy 1: flat lat, lng, lat, lng, ... (逗号交替平铺)
+  const commaAll = trimmed.split(/[,，]\s*/)
   if (commaAll.length >= 4 && commaAll.length % 2 === 0) {
     const points = []
     let allValid = true
@@ -138,5 +191,6 @@ module.exports = {
   wgs84ToGcj02,
   gcj02ToWgs84,
   parseRoadPoints,
+  encodeRoadPoints,
   calcDistance
 }

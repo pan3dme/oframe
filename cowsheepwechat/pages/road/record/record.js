@@ -1,5 +1,5 @@
 // road/record/record.js - 路径录制页
-const { gcj02ToWgs84, calcDistance } = require('../../../utils/coord-transform.js')
+const { gcj02ToWgs84, calcDistance, encodeRoadPoints } = require('../../../utils/coord-transform.js')
 const app = getApp()
 
 Page({
@@ -166,10 +166,9 @@ Page({
       return
     }
 
-    // 格式: lat,lng,lat,lng,...（WGS-84）
-    const pointsStr = this._recordedWgs
-      .map(p => p.lat.toFixed(6) + ',' + p.lng.toFixed(6))
-      .join(',')
+    // 差分编码: 首点绝对微度坐标 + 后续点相对前一点的偏移（节约存储）
+    // 例: 26529587,109390729,24,-13,10,-175,-15,127
+    const pointsStr = encodeRoadPoints(this._recordedWgs)
 
     app.globalData._roadRecordedPath = pointsStr
     wx.navigateBack()
