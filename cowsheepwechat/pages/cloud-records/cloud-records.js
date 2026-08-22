@@ -1,5 +1,6 @@
-// cloud-records.js — 云端记录查看，卡片式列表参考蓝牙缓存数据样式
+// cloud-records.js — 云端记录查看，数据列表排版参照设备详情页
 const API_URL = getApp().globalData.api_device_Url
+const dataCache = require('../../config/data-cache.js')
 
 Page({
   data: {
@@ -20,6 +21,24 @@ Page({
   },
 
   onLoad() {
+    const that = this
+    // 构建 设备id -> 别名 映射，用于记录列表显示上传设备别名（与设备详情一致）
+    dataCache.getDeviceList((deviceData) => {
+      const renameMap = {}
+      if (deviceData && deviceData.recordList) {
+        deviceData.recordList.forEach(v => {
+          if (v.deviceId) renameMap[v.deviceId] = v.rename || ''
+        })
+      }
+      that._deviceRenameMap = renameMap
+      // 若记录已先返回，则补充别名后刷新显示
+      if (that.data.allRecords.length > 0) {
+        const updated = that.data.allRecords.map(r => Object.assign({}, r, {
+          upDateDeviceAlias: renameMap[r.upDateDevice] || ''
+        }))
+        that.setData({ allRecords: updated }, () => that.applyFilter())
+      }
+    })
     this.fetchRecords()
   },
 
@@ -116,7 +135,7 @@ Page({
     })
   },
 
-  // ========== 记录解析 ==========
+  // ========== 记录解析（与设备详情页 _parseRecords 一致） ==========
   parseRecordList(data) {
     let rawList = []
     if (data && data.data && Array.isArray(data.data)) {
@@ -124,7 +143,7 @@ Page({
     } else if (Array.isArray(data)) {
       rawList = data
     }
-    const records = rawList.map(record => {
+    const records = rawList.map((record, idx) => {
       const attr = {}
       if (record.attributes) {
         record.attributes.forEach(item => {
@@ -137,27 +156,53 @@ Page({
         })
       }
       const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
-      const lorastr = attr.lorastr || record.lorastr || '-'
       const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || '-'
+      const upDateDeviceAlias = (this._deviceRenameMap && this._deviceRenameMap[upDateDevice]) || ''
+      const lorastr = attr.lorastr || record.lorastr || '-'
       const rawTime = attr.time || record.time || '-'
+      const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : '')
+      const snr = attr.snr != null ? attr.snr : (record.snr != null ? record.snr : '')
       const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-      const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : 0)
-      const snr = attr.snr != null ? attr.snr : (record.snr != null ? record.snr : 0)
 
-      const display = this._buildDisplayParts(lorastr)
+      // 如果 rssi/snr 为空，尝试从 lorastr 末尾段提取
+      let finalRssi = rssi
+      let finalSnr = snr
+      if (lorastr && lorastr !== '-') {
+        const parts = lorastr.split('|')
+        if (parts.length >= 2) {
+          const lastPart = parts[parts.length - 1]
+          const secLastPart = parts[parts.length - 2]
+          if (finalRssi === '' && /^-?\d+$/.test(lastPart)) {
+            finalRssi = lastPart
+          }
+          if (finalSnr === '' && /^-?\d+(\.\d+)?$/.test(secLastPart)) {
+            finalSnr = secLastPart
+          }
+        }
+      }
+
+      // 解析 lorastr 类型：格式为 type|deviceId|data
+      // 1=定位  2=对时  3=电量  5=跟踪  6=设置
+      let msgType = '-'
+      if (lorastr && lorastr !== '-') {
+        const parts = lorastr.split('|')
+        msgType = parts[0] || '-'
+      }
 
       return {
+        _key: rawTime + '_' + idx,
         deviceId,
-        lorastr,
         upDateDevice,
+        upDateDeviceAlias,
+        lorastr,
+        displayLorastr: lorastr,
+        msgType,
+        rssi: finalRssi,
+        snr: finalSnr,
         date: date || '-',
         time_part: time_part || '',
         rawTime,
-        rssi,
-        snr,
-        msgType: display.msgType,
-        displayParts: display.displayParts,
-        bgColor: this._hashPastel(upDateDevice !== '-' ? upDateDevice : rawTime + '|' + lorastr),
+        bgColor: this._devicePastel(upDateDevice),
         deviceColor: this._deviceColor(upDateDevice)
       }
     })
@@ -173,92 +218,15 @@ Page({
     return records
   },
 
-  // 构建 lorastr 彩色分段
-  // 7段电离格式: type|device|val1|val2|val3|val4|val5 → 黑|红|黑|红
-  // 4段GPS格式:  type|tag|lat,lng|value               → 黑|红|黑|红
-  // 旧3段格式:   type|gps|other                        → GPS全黑，其他首尾红中间绿
-  _buildDisplayParts(lorastr) {
-    const parts = lorastr.split('|')
-    if (parts.length === 0) return { msgType: '', displayParts: [] }
-
-    const typeStr = parts[0] || ''
-    const displayParts = []
-    const icon = this._getTypeIcon(typeStr, parts.length)
-    if (icon) {
-      displayParts.push({ text: icon.text + ' ', color: icon.color })
-    }
-
-    const isGps = typeStr === '1'
-    const isTimeSync = typeStr === '2'
-    const isBattery = typeStr === '3'
-    const blackColor = '#333'
-    const redColor = '#e74c3c'
-
-    // === 7段电离格式: type|device|val1|val2|val3|val4|val5 ===
-    // 3|v4-6|1.00|987|831|4.45|114 → 黑色|红色|黑色|黑色|黑色|黑色|红色
-    if (parts.length === 7) {
-      displayParts.push({ text: parts[0], color: blackColor, bold: true })
-      displayParts.push({ text: '|', color: '#999' })
-      displayParts.push({ text: parts[1], color: redColor, bold: true })
-      displayParts.push({ text: '|', color: '#999' })
-      // 中间4段合并显示为黑色
-      const middle4 = parts.slice(2, 6).join('|')
-      displayParts.push({ text: middle4, color: blackColor, bold: true })
-      displayParts.push({ text: '|', color: '#999' })
-      displayParts.push({ text: parts[6], color: redColor, bold: true })
-
-      return { msgType: typeStr, displayParts }
-    }
-
-    // === 4段GPS/对时/电量格式: type|tag|val1|val2 → 黑|红|黑|红 ===
-    // 1|device|lat,lng|value  （GPS）
-    // 2|v3-12|2000/1/1 09:19:21|80 （对时）
-    // 3|device|voltage|percent （电量）
-    if ((isGps || isTimeSync || isBattery) && parts.length === 4) {
-      displayParts.push({ text: parts[0], color: blackColor, bold: true })
-      displayParts.push({ text: '|', color: '#999' })
-      displayParts.push({ text: parts[1], color: redColor, bold: true })
-      displayParts.push({ text: '|', color: '#999' })
-      displayParts.push({ text: parts[2], color: blackColor, bold: true })
-      displayParts.push({ text: '|', color: '#999' })
-      displayParts.push({ text: parts[3], color: redColor, bold: true })
-
-      return { msgType: typeStr, displayParts }
-    }
-
-    // === 旧3段格式 ===
-    displayParts.push({ text: typeStr, color: isGps ? blackColor : '#e74c3c', bold: true })
-
-    if (parts.length > 1) {
-      const middle = parts.slice(1, parts.length - 1).join('|')
-      const tail = parts[parts.length - 1]
-      const midColor = isGps ? blackColor : '#07c160'
-      const tailColor = isGps ? blackColor : '#e74c3c'
-      displayParts.push({ text: '|' + middle + '|', color: midColor, bold: true })
-      displayParts.push({ text: tail, color: tailColor, bold: true })
-    }
-
-    return { msgType: typeStr, displayParts }
-  },
-
-  // 根据类型编号返回图标（segmentCount 用于区分电离7段格式）
-  _getTypeIcon(typeStr, segmentCount) {
-    // 7段格式为电离信息
-    if (segmentCount === 7) return { text: '⚡', color: '#ff6600' }
-    if (typeStr === '1') return { text: '◉', color: '#1989fa' }   // GPS定位
-    if (typeStr === '2') return { text: '🕐', color: '#666' }       // 对时
-    if (typeStr === '3') return { text: '🔋', color: '#07c160' }    // 电量
-    return null
-  },
-
-  // 稳定浅色背景：基于字符串哈希生成色相
-  _hashPastel(str) {
+  // 按设备名生成稳定的浅色背景色：同一设备始终同色，不同设备不同色（与设备详情一致）
+  _devicePastel(deviceName) {
+    if (!deviceName || deviceName === '-') return 'hsl(0, 0%, 95%)'
     let h = 0
-    for (let i = 0; i < str.length; i++) {
-      h = (h * 31 + str.charCodeAt(i)) % 360
+    for (let i = 0; i < deviceName.length; i++) {
+      h = (h * 31 + deviceName.charCodeAt(i)) % 360
     }
-    const s = 30 + (h % 20)
-    const l = 88 + (h % 8)
+    const s = 35 + (h % 15)
+    const l = 86 + (h % 10)
     return `hsl(${h}, ${s}%, ${l}%)`
   },
 

@@ -49,44 +49,32 @@ page {
   border: none;
 }
 
-/* ========== 记录列表面板 ========== */
-.recv-panel {
-  flex: 1;
-  margin: 16rpx 24rpx 24rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  overflow: hidden;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
-  display: flex;
-  flex-direction: column;
-  min-height: 200rpx;
-}
-
+/* ========== 标题 + 筛选栏（参照设备详情"数据记录"标题栏） ========== */
 .recv-header {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 18rpx 24rpx;
-  border-bottom: 1rpx solid #f0f0f0;
+  gap: 16rpx;
+  margin: 24rpx 24rpx 0;
+  padding: 16rpx 20rpx;
   background: #fff;
-}
-
-.recv-icon {
   font-size: 28rpx;
-  margin-right: 6rpx;
+  color: #555;
+  font-weight: 600;
+  border-bottom: 1rpx solid #f0f0f0;
+  border-radius: 16rpx 16rpx 0 0;
+  flex-shrink: 0;
 }
 
 .recv-label {
   font-size: 28rpx;
-  font-weight: bold;
-  color: #333;
+  color: #555;
+  font-weight: 600;
   flex-shrink: 0;
 }
 
 .recv-filters {
   display: flex;
   gap: 10rpx;
-  margin-left: 16rpx;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -109,9 +97,10 @@ page {
 
 .recv-count {
   margin-left: auto;
-  font-size: 26rpx;
+  font-size: 24rpx;
   color: #999;
   flex-shrink: 0;
+  font-weight: normal;
 }
 
 .recv-scroll {
@@ -119,83 +108,125 @@ page {
   min-height: 0;
 }
 
-/* ========== 单条记录卡片 ========== */
-.recv-item {
-  padding: 18rpx 24rpx;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
-  line-height: 1.55;
-  display: flex;
-  align-items: flex-start;
-  gap: 16rpx;
+/* ========== 数据记录列表（完全参照设备详情页排版） ========== */
+.msg-panel {
+  margin: 0 24rpx 24rpx;
+  border-radius: 0 0 16rpx 16rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 
-.recv-item:last-child {
+.record-item {
+  padding: 20rpx 24rpx;
+  font-size: 32rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
+  line-height: 1.6;
+}
+
+.record-item:last-child {
   border-bottom: none;
 }
 
-/* 序号 */
-.recv-seq {
-  flex-shrink: 0;
-  width: 44rpx;
-  height: 44rpx;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(6rpx);
-  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.08);
+.rec-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #666;
-  margin-top: 4rpx;
+  padding: 6rpx 0;
 }
 
-/* 内容区 */
-.recv-body {
+.rec-row-time {
+  padding-bottom: 0;
+}
+
+.rec-row-content {
+}
+
+.rec-val {
   flex: 1;
-  min-width: 0;
-}
-
-.recv-main {
-  font-size: 32rpx;
+  font-size: 28rpx;
+  color: #333;
   word-break: break-all;
 }
 
-.recv-sub {
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  color: #666;
-  word-break: break-all;
-}
-
-.recv-source {
-  margin-left: 8rpx;
-  font-size: 32rpx;
-  color: #999;
-  font-weight: 900;
-}
-
-.recv-meta {
-  margin-top: 8rpx;
-  display: flex;
-  gap: 24rpx;
-  color: #07c160;
-}
-
-.recv-rssi,
-.recv-snr {
+.rec-val-time {
+  color: #555;
   font-weight: 500;
-  font-size: 24rpx;
 }
 
-.recv-meta-label {
-  font-size: 24rpx;
-}
-
-.recv-meta-val {
+.rec-val-update {
+  color: #888;
   font-size: 30rpx;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.rec-val-alias {
+  font-size: 24rpx;
+  font-weight: normal;
+  color: #000;
+}
+
+.rec-val-lora {
+  color: #1565c0;
+  font-size: 32rpx;
+}
+
+/* 定位记录点击箭头 */
+.rec-tap-arrow {
+  font-size: 40rpx;
+  color: #1976d2;
   font-weight: 700;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  line-height: 1;
+}
+
+/* RSSI / SNR 行 */
+.rec-row-rssi {
+  padding-top: 4rpx;
+  justify-content: space-between;
+}
+
+.rec-val-rssi {
+  font-size: 24rpx;
+  flex-shrink: 0;
+}
+
+.rec-val-snr {
+  font-size: 24rpx;
+  flex-shrink: 0;
+}
+
+/* 类型徽章 */
+.rec-icon-lora {
+  display: inline-block;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  font-size: 22rpx;
+  color: #fff;
+  background: #999;
+  margin-right: 10rpx;
+  flex-shrink: 0;
+  line-height: 1.6;
+}
+
+.rec-icon-lora.type-1 {
+  background: #1976d2;
+}
+
+.rec-icon-lora.type-2 {
+  background: #ff9500;
+}
+
+.rec-icon-lora.type-3 {
+  background: #4CAF50;
+}
+
+.rec-icon-lora.type-5 {
+  background: #8E24AA;
+}
+
+.rec-icon-lora.type-6 {
+  background: #607D8B;
 }
 
 /* 空状态 */
@@ -204,23 +235,14 @@ page {
   font-size: 28rpx;
   color: #bbb;
   padding: 100rpx 0;
+  background: #fff;
 }
 
-/* 加载更多 */
-.load-more {
+/* 加载更多提示 */
+.load-more-tip {
   text-align: center;
-  padding: 24rpx 0 40rpx;
-}
-
-.load-more-text {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #999;
-}
-
-.load-more-end {
-  color: #ccc;
-}
-
-.load-more-hint {
-  color: #bbb;
+  padding: 24rpx 0;
+  background: #fff;
 }
