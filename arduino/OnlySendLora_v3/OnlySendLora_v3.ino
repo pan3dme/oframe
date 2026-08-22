@@ -503,8 +503,7 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool timeoutOk = (millis() - startAttemptTime) < seacthTm;
     // Serial.print(".");
     // Serial.println(getCurrentTime());
-    showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
-                       String(skipnum++));
+
     DEBUG_PRINT(hasLocValid ? "✅" : "❌");
     DEBUG_PRINT("定位数据:");
     if (hasLocValid) {
@@ -575,11 +574,10 @@ void batteryLowSleep(int minValue) {
     delay(1000);
     DEBUG_PRINT("❌");
 
+    Radio.Sleep();
     esp_sleep_enable_timer_wakeup(MAX_SLEEP_US);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     Serial.flush();
-    Radio.Sleep();
-
     esp_deep_sleep_start();
   }
 }
@@ -600,32 +598,28 @@ void testSheepFun(bool driftComp) {
       waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
     }
 
-
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
     DEBUG_PRINTLN("秒进入睡眠");
-    hideOLED();
-    delay(1000);
     // 05:02|10:59
     uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
     //判断下个时间段是否需要开启GPS是的话就提前搜星
-    if (isTimeInRange(getCurrentTimestampSec(), gps_time_str) && strlen(needSendGpsStr) == 0) {
+     //判断是否需要GPS工作
+    isNeedGpsWork = isTimeInRange(getCurrentTimestampSec(), gps_time_str);
+    if (isNeedGpsWork && strlen(needSendGpsStr) == 0) {
       DEBUG_PRINTLN("工作模式上报GPS，需要提前开启GPS");
       if (sleepTime > (seacthTm * 1000ULL)) {
         sleepTime = sleepTime - (seacthTm * 1000ULL);
       } else {
-        //小于时间周期，10秒就马上重启
+        //小于时间周期，10秒就马上重启 应该不会到这里，有空测试一下
         sleepTime = 10 * 1000 * 1000ULL;
       }
     }
-
-
-    //判断是否需要GPS工作
-    isNeedGpsWork = isTimeInRange(getCurrentTimestampSec(), gps_time_str);
-
     // if (sleepTime > MAX_SLEEP_US) {
     //   sleepTime = MAX_SLEEP_US;
     // }
+
+    Radio.Sleep();
     esp_sleep_enable_timer_wakeup(sleepTime);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     // 计算并打印预计开机时间
@@ -639,7 +633,6 @@ void testSheepFun(bool driftComp) {
                    wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
     }
     Serial.flush();
-    Radio.Sleep();
     esp_deep_sleep_start();
   }
 }
@@ -745,7 +738,6 @@ void loop() {
     DEBUG_PRINT(millis() - gpsWorkStat);
     DEBUG_PRINT("-");
     DEBUG_PRINTLN(gpsWorkTime);
-    showOLED();
     DEBUG_PRINT("获取GPS ");
     printCurrentTime();
     meshGpsInfoFun(true);
@@ -758,7 +750,7 @@ void loop() {
 
     sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr), false);
     delay(2000);  // 上报LORA需要2秒钟间隔
-    hideOLED();
+
 
     if ((millis() - gpsWorkStat) > gpsWorkTime || gpsWorkInterval == gpsWorkTime) {
       DEBUG_PRINTLN("结束GPS上报");
