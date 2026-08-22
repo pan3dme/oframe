@@ -67,6 +67,7 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 // 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
 // work_time_str格式: "05:02-10:59" 表示工作时段 05:02 ~ 10:59
 uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
+  return (uint64_t)sleepMs * 1000ULL;  //直接返回
   // 1. 用isTimeInRange判断是否在工作时间（支持跨午夜）
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
   if (inWorkTime || !isBoardDateTimeOK()) {
@@ -107,10 +108,15 @@ uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
 }
 
 unsigned long get_send_interval_ms() {
-  if (roundTime == 0) {
-    return SEND_INTERVAL_MS;
+  bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
+  if (inWorkTime || !isBoardDateTimeOK()) {
+    if (roundTime == 0) {
+      return 1000 * 60 * 5;
+    } else {
+      return roundTime;
+    }
   } else {
-    return roundTime;
+    return 1000 * 60 * 60 * 2;  //不在工作区间就2个小时上报一次
   }
 }
 float getSlotDuration() {
@@ -604,7 +610,7 @@ void testSheepFun(bool driftComp) {
     // 05:02|10:59
     uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
     //判断下个时间段是否需要开启GPS是的话就提前搜星
-     //判断是否需要GPS工作
+    //判断是否需要GPS工作
     isNeedGpsWork = isTimeInRange(getCurrentTimestampSec(), gps_time_str);
     if (isNeedGpsWork && strlen(needSendGpsStr) == 0) {
       DEBUG_PRINTLN("工作模式上报GPS，需要提前开启GPS");
