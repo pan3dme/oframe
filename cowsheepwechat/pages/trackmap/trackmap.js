@@ -685,8 +685,10 @@ Page({
         latitude: gcj.lat,
         longitude: gcj.lng,
         width: 30,
-        height: 30,
+        height: 32,
+        iconPath: '/images/place_pin.png',
         title: name,
+        anchor: { x: 0.5, y: 1 },
         callout: {
           content: name + '\n' + coord.lat.toFixed(6) + ',' + coord.lng.toFixed(6),
           display: 'BYCLICK',
@@ -696,8 +698,13 @@ Page({
           content: name,
           color: '#C62828',
           fontSize: 13,
+          bgColor: '#ffffff',
+          borderColor: '#E53935',
+          borderWidth: 1,
+          borderRadius: 4,
+          padding: 2,
           anchorX: 0,
-          anchorY: 4,
+          anchorY: -12,
           textAlign: 'center'
         }
       })

@@ -813,21 +813,29 @@ Page({
       ctx.fillStyle = '#ffffff'
       ctx.fillText(name, W / 2, textH / 2 + 1)
 
-      // ---- 下半部：红点（白底红圈红三角，圆心在红点区中心） ----
-      const cx = W / 2, cy = textH + 14, r = 10
+      // ---- 下半部：红色定位图钉（圆头尖尾，尖端对准坐标点） ----
+      const cx = W / 2
+      const headCy = textH + 10
+      const headR = 8
+      const tipY = textH + dotH - 2
+
       ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
-      ctx.fillStyle = '#ffffff'
-      ctx.fill()
-      ctx.strokeStyle = '#E53935'
-      ctx.lineWidth = 2
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(cx - 5, cy - 5)
-      ctx.lineTo(cx, cy + 5)
-      ctx.lineTo(cx + 5, cy - 5)
+      ctx.moveTo(cx, headCy - headR)
+      ctx.arc(cx, headCy, headR, -Math.PI / 2, Math.PI / 2 + 0.35, false)
+      ctx.quadraticCurveTo(cx + headR * 0.4, headCy + headR + 2, cx, tipY)
+      ctx.quadraticCurveTo(cx - headR * 0.4, headCy + headR + 2, cx - headR, headCy + headR * 0.35)
+      ctx.arc(cx, headCy, headR, Math.PI / 2 - 0.35, -Math.PI / 2, false)
       ctx.closePath()
       ctx.fillStyle = '#E53935'
+      ctx.fill()
+      ctx.strokeStyle = '#C62828'
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      // 中心白点
+      ctx.beginPath()
+      ctx.arc(cx, headCy, 3.5, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
       ctx.fill()
 
       const filePath = (wx.env.USER_DATA_PATH || '') + '/place_' + idx + '.png'
@@ -835,7 +843,7 @@ Page({
         canvas: canvas,
         fileType: 'png',
         filePath: filePath,
-        success: (fileRes) => cb(fileRes.tempFilePath, W, H, (textH + 14) / H),
+        success: (fileRes) => cb(fileRes.tempFilePath, W, H, tipY / H),
         fail: () => cb('', 0, 0, 0)
       })
     })

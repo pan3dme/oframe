@@ -52,17 +52,17 @@ Page({
     getApp().globalData._placeDetailItem = null
   },
 
-  // ===== 地名 marker：临时用设备图 /images/device_pin.png（验证图标显示） =====
+  // ===== 地名 marker：红色定位图钉 /images/place_pin.png =====
   _buildPlaceMarker(gcj, name) {
     return {
       id: 0,
       latitude: gcj.lat,
       longitude: gcj.lng,
-      width: 28,
-      height: 28,
-      iconPath: '/images/device_pin.png',
+      width: 30,
+      height: 32,
+      iconPath: '/images/place_pin.png',
       title: name,
-      anchor: { x: 0.5, y: 0.5 },
+      anchor: { x: 0.5, y: 1 },
       zIndex: 100,
       callout: {
         content: name,
