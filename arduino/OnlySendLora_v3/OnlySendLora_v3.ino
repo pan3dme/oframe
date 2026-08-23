@@ -689,10 +689,11 @@ void setup() {
     strncpy(work_time_str, "00:00-23:59", sizeof(work_time_str) - 1);
     work_time_str[sizeof(work_time_str) - 1] = '\0';
 
-    strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);
+    // strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);
+    strncpy(gps_time_str, "15:00-17:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
 
-    strncpy(config_str, "5,0M,2o,1", sizeof(config_str) - 1);
+    strncpy(config_str, "5,0M,3t,1", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
 

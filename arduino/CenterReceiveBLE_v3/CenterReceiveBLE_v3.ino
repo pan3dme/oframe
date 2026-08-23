@@ -588,6 +588,44 @@ void sendDownInfo(String loraStr, String deviceId) {
 
 
 // ========================= 主循环处理LoRa数据 =========================
+void changeReceivedRolaStr(char *value) {
+  char loraOut[BUFFER_SIZE];  //组装完成后的新完整字符串
+  String tempstr(value);
+  int firstPipeIndex = tempstr.indexOf('|');
+  if (firstPipeIndex > 0) {
+    int messageType = tempstr.substring(0, firstPipeIndex).toInt();
+    if (messageType == MSG_TYPE_TIME) {
+      char segBuf[32];
+      char tsStr[24];  // 存放unix时间戳字符串
+      splitPipeSegment(value, segBuf, 2);
+      Serial.print("对时的第二部分 segBuf");
+      Serial.println(segBuf);
+      if (buildFullTimestampStr(segBuf, tsStr, sizeof(tsStr))) {
+        Serial.print("生成时间戳字符串:");
+        Serial.println(tsStr);
+        //用你原来存在的函数
+        replacePipeSegment(value, loraOut, 2, tsStr, sizeof(loraOut));
+
+        strncpy(value, loraOut, BUFFER_SIZE - 1);
+        value[BUFFER_SIZE - 1] = '\0';  // 确保字符串以 '\0' 结尾
+      } else {
+        Serial.println("时间无效");
+      }
+
+    } else if (messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_UP_GPS) {
+      char segBuf[32];
+      char outBuf[32];
+      splitPipeSegment(value, segBuf, 2);
+      restoreGpsFromDiff(segBuf, outBuf, static_gps_lat, static_gps_lon);
+      replacePipeSegment(value, loraOut, 2, outBuf, sizeof(loraOut));
+
+      strncpy(value, loraOut, BUFFER_SIZE - 1);
+      value[BUFFER_SIZE - 1] = '\0';  // 确保字符串以 '\0' 结尾
+    } 
+  }
+  Serial.print("changeReceivedRolaStr转换value");
+  Serial.println(value);
+}
 
 // 处理LoRa接收数据（JSON序列化、队列缓存、设备缓存、对时）
 void processLoraData() {
@@ -597,7 +635,7 @@ void processLoraData() {
   loraReceivedFlag = false;
   Serial.print("接收lora：");
   Serial.println(loraStr);
-
+changeReceivedRolaStr(loraStr);
   // 1. 构建JSON并存入队列/设备缓存
   StaticJsonDocument<256> doc;
   doc["rssi"] = (int)lastRssi;
@@ -622,48 +660,7 @@ void processLoraData() {
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
     if ((messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_UP_GPS || messageType == MSG_TYPE_CONFIG) || debugLog) {
-      if (messageType == MSG_TYPE_TIME) {
-        char segBuf[32];
-        char tsStr[24];             // 存放unix时间戳字符串
-        char loraOut[BUFFER_SIZE];  //组装完成后的新完整字符串
-        splitPipeSegment(loraStr, segBuf, 2);
-        Serial.print("对时的第二部分 segBuf");
-        Serial.println(segBuf);
-        if (buildFullTimestampStr(segBuf, tsStr, sizeof(tsStr))) {
-          Serial.print("生成时间戳字符串:");
-          Serial.println(tsStr);
-          //用你原来存在的函数
-          replacePipeSegment(loraStr, loraOut, 2, tsStr, sizeof(loraOut));
-          sendLoraInfoUseDtu(loraOut, String(lastRssi), String(lastSnr));
-        } else {
-          Serial.println("时间无效");
-          strncpy(loraOut, loraStr, sizeof(loraOut) - 1);
-          loraOut[sizeof(loraOut) - 1] = '\0';
-        }
-
-
-      } else if (messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_UP_GPS) {
-        //需要能GPS进行偏移纠正
-        char segBuf[32];
-        char outBuf[32];
-        char loraOut[BUFFER_SIZE];  //组装完成后的新完整字符串
-        splitPipeSegment(loraStr, segBuf, 2);
-        restoreGpsFromDiff(segBuf, outBuf, static_gps_lat, static_gps_lon);
-        replacePipeSegment(loraStr, loraOut, 2, outBuf, sizeof(loraOut));
-        // strcpy(loraStr, loraOut);
-        // Serial.println("GPS偏移记算");
-        // Serial.print("static_gps_lat：");
-        // Serial.print(static_gps_lat);
-        // Serial.print("static_gps_lon：");
-        // Serial.println(static_gps_lon);
-        // Serial.print("outBuf：");
-        // Serial.println(outBuf);
-        // Serial.print("loraOut");
-        // Serial.println(loraOut);
-        sendLoraInfoUseDtu(loraOut, String(lastRssi), String(lastSnr));
-      } else {
         sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
-      }
     }
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_GPS) {
 
