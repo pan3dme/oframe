@@ -446,14 +446,7 @@ function processGPSQueue() {
   const parts = infoStr.split('|')
   const msgType = parts[0]
 
-  // typedef enum {
-  //   MSG_TYPE_GPS = 1,        // GPS定位信息
-  //   MSG_TYPE_TIME = 2,       // 对时信息
-  //   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
-  //   MSG_TYPE_CONFIG = 6,     // 配置信息（工作时间/GPS工作时间等）
-  //   MSG_TYPE_FIRMWARE = 10,   // 固件更新指令
-  //   MSG_TYPE_COM = 11   // 下载指令到设备
-  // } MessageType_t;
+ 
   if (msgType == 1 || msgType == 2 || msgType == 3 || msgType == 6) {
     const deviceId = parts[1]
     const lorastr = infoStr
