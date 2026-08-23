@@ -56,6 +56,7 @@ RTC_DATA_ATTR char needSendGpsStr[32];
 RTC_DATA_ATTR char lastrelayName[10];
 RTC_DATA_ATTR char work_time_str[16];
 RTC_DATA_ATTR char gps_time_str[16];
+RTC_DATA_ATTR int big_interval_tm;
 RTC_DATA_ATTR char config_str[16];
 
 #define MY_RTC_MAGIC 0xA5B6C7D8U
@@ -116,7 +117,7 @@ unsigned long get_send_interval_ms() {
       return roundTime;
     }
   } else {
-    return 1000 * 60 * 60 * 2;  //不在工作区间就2个小时上报一次
+    return 1000 * 60 * 60 * big_interval_tm;  //不在工作区间就用大周期
   }
 }
 float getSlotDuration() {
@@ -294,15 +295,13 @@ void meshCmdType(String infoStr, String tmp) {
     int rt;
     char workstr[16];
     char gpsstr[16];
-    if (sscanf(tmp.c_str(), "%d,%15[^,],%15s", &rt, workstr, gpsstr) == 3) {
+    int bigrt;
+    if (sscanf(tmp.c_str(), "%d,%15[^,],%15[^,],%d", &rt, workstr, gpsstr, &bigrt) == 4) {
       if (rt < 5 || rt > 120) {
         DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
         return;
       }
       roundTime = rt * 60 * 1000;
-
-
-
       tmp.toCharArray(config_str, sizeof(config_str) - 1);
       config_str[sizeof(config_str) - 1] = '\0';
       configConfirmed = true;
@@ -331,6 +330,14 @@ void meshCmdType(String infoStr, String tmp) {
         DEBUG_PRINT(" gps=");
         DEBUG_PRINT(gps_time_str);
       }
+
+      big_interval_tm = bigrt;
+
+      DEBUG_PRINT("✅✅配置正常 ");
+      DEBUG_PRINT(rt);
+      DEBUG_PRINT(work_time_str);
+      DEBUG_PRINT(gps_time_str);
+      DEBUG_PRINT(bigrt);
     } else {
       DEBUG_PRINT("❌配置格式错误 ");
     }
@@ -434,11 +441,13 @@ void sendLoraToMid(String dataStr, bool addBatter) {
     initLora();
     delay(100);
   }
-
   if (addBatter == true) {
     dataStr += "|" + String(batteryNum);
   }
+
   dataStr += "|" + String(rtcSendCount++);
+
+
   sendData[0] = 0;
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
@@ -669,6 +678,7 @@ void setup() {
     rtcSendCount = -1;
     rtcResiveIdx = 0;
     roundTime = 0;
+    big_interval_tm = 1;
 
     strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
     needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
@@ -682,7 +692,7 @@ void setup() {
     strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
 
-    strncpy(config_str, "5,0M,2o", sizeof(config_str) - 1);
+    strncpy(config_str, "5,0M,2o,1", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
 

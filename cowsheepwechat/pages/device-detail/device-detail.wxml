@@ -20,7 +20,7 @@
       <view class="header-info-grid">
         <view class="hi-item">
           <text class="hi-label">上报周期</text>
-          <text class="hi-value">{{deviceInfo.reportInterval || '-'}}分钟</text>
+          <text class="hi-value">{{deviceInfo.reportInterval || '-'}}分钟<block wx:if="{{deviceInfo.mainPeriod}}">（{{deviceInfo.mainPeriod}}小时）</block></text>
         </view>
         <view class="hi-item">
           <text class="hi-label">开机时间</text>

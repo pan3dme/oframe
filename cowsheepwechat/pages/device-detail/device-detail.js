@@ -330,7 +330,9 @@ Page({
             const configLorastr = attr.lorastr || ''
             // 解析配置：格式 6|v4-16|30,0M,38|1.0|4.2|18
             // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间（两位代号，兼容旧格式 8-6）
+            // 第4段可选: 主周期（小时 1-4）
             let reportInterval = '-'
+            let mainPeriod = 0
             let powerOnTime = '-'
             let gpsReportTime = '-'
             if (configLorastr) {
@@ -340,6 +342,11 @@ Page({
                 if (configParts.length >= 1) reportInterval = configParts[0].trim()
                 if (configParts.length >= 2) powerOnTime = timeWindowCodec.formatTimeRange(configParts[1].trim())
                 if (configParts.length >= 3) gpsReportTime = timeWindowCodec.formatTimeRange(configParts[2].trim())
+                // 主周期（小时 1-4），仅当存在且有效时记录，用于上报周期后显示（n小时）
+                if (configParts.length >= 4) {
+                  const mp = parseInt(configParts[3].trim(), 10)
+                  if (!isNaN(mp) && mp >= 1 && mp <= 4) mainPeriod = mp
+                }
               }
             }
             // 更新 deviceInfo 中的配置信息
@@ -347,7 +354,7 @@ Page({
               // 判断是否在休眠时间内（含最后上报时间>1小时的判断）
               const rawTime = that.data.deviceInfo.rawTime || ''
               const isDormant = that._isDormantNow(configLorastr, rawTime)
-              const updated = { ...that.data.deviceInfo, configLorastr, reportInterval, powerOnTime, gpsReportTime, isDormant }
+              const updated = { ...that.data.deviceInfo, configLorastr, reportInterval, mainPeriod, powerOnTime, gpsReportTime, isDormant }
               that.setData({ deviceInfo: updated, deviceConfig: attr })
             } else {
               that.setData({ deviceConfig: attr })
@@ -355,14 +362,14 @@ Page({
           } else {
             // 未匹配到当前设备，清空显示
             if (that.data.deviceInfo) {
-              const updated = { ...that.data.deviceInfo, reportInterval: '-', powerOnTime: '-', gpsReportTime: '-' }
+              const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-' }
               that.setData({ deviceInfo: updated })
             }
           }
         } else {
           // 无配置数据，清空显示
           if (that.data.deviceInfo) {
-            const updated = { ...that.data.deviceInfo, reportInterval: '-', powerOnTime: '-', gpsReportTime: '-' }
+            const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-' }
             that.setData({ deviceInfo: updated })
           }
         }
@@ -980,6 +987,7 @@ Page({
   //   如 "2|v4-0|1787230505|93|2" → "2|v4-0|2026-08-20 12:55:05|93|2"
   // TYPE=6 配置：把第3段的工作时间/GPS工作时间代号转换为可读时间窗
   //   如 "6|v4-26|5,0M,30|1" → "6|v4-26|5,00:00-23:59 10:00-12:00|1"
+  //   带主周期: "6|v4-26|5,0M,30,2|1" → "6|v4-26|5,00:00-23:59 10:00-12:00,2|1"
   // 无法转换时原样返回
   _buildDisplayLorastr(lorastr, msgType) {
     if (!lorastr || lorastr === '-') return lorastr
@@ -997,8 +1005,8 @@ Page({
     return lorastr
   },
 
-  // TYPE=6 配置记录转换：第3段格式 "周期,开机时间代号,GPS工作时间代号"
-  // → "周期,工作时间 GPS工作时间"（换算后不再保留原始代号）
+  // TYPE=6 配置记录转换：第3段格式 "周期,开机时间代号,GPS工作时间代号[,主周期]"
+  // → "周期,工作时间 GPS工作时间[,主周期]"（换算后不再保留原始代号；第4段主周期原样保留显示）
   _formatConfigLorastr(lorastr) {
     if (!lorastr || lorastr === '-') return lorastr
     const parts = String(lorastr).split('|')
@@ -1010,7 +1018,12 @@ Page({
     // 解析失败时保留原代号
     const workDisplay = workTime === '-' ? segs[1] : workTime
     const gpsDisplay = gpsTime === '-' ? segs[2] : gpsTime
-    parts[2] = segs[0] + ',' + workDisplay + ' ' + gpsDisplay
+    // 第4段主周期（大周期，小时 1-4），存在则追加在两个时间后面显示
+    let mainPeriodPart = ''
+    if (segs.length >= 4 && /^\d{1,2}$/.test(segs[3])) {
+      mainPeriodPart = ',' + segs[3]
+    }
+    parts[2] = segs[0] + ',' + workDisplay + ' ' + gpsDisplay + mainPeriodPart
     return parts.join('|')
   },
 

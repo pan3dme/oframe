@@ -72,33 +72,48 @@
       <!-- ② 开机时间（小时 0-24） -->
       <view class="config-group">
         <view class="config-group-title">② 开机时间（小时）</view>
-        <view class="time-picker-row">
-          <text class="time-picker-label">开始时间</text>
-          <picker mode="selector" range="{{startHourRange}}" value="{{configWorkStart}}" bindchange="onConfigWorkStartChange">
-            <view class="time-picker-value">{{startHourRange[configWorkStart]}} 时</view>
-          </picker>
-        </view>
-        <view class="time-picker-row">
-          <text class="time-picker-label">结束时间</text>
-          <picker mode="selector" range="{{hourRange}}" value="{{configWorkEnd}}" bindchange="onConfigWorkEndChange">
-            <view class="time-picker-value">{{hourRange[configWorkEnd]}} 时</view>
-          </picker>
+        <view class="time-picker-dual">
+          <view class="time-picker-cell">
+            <text class="time-picker-label">开始时间</text>
+            <picker mode="selector" range="{{startHourRange}}" value="{{configWorkStart}}" bindchange="onConfigWorkStartChange">
+              <view class="time-picker-value">{{startHourRange[configWorkStart]}} 时</view>
+            </picker>
+          </view>
+          <view class="time-picker-cell">
+            <text class="time-picker-label">结束时间</text>
+            <picker mode="selector" range="{{hourRange}}" value="{{configWorkEnd}}" bindchange="onConfigWorkEndChange">
+              <view class="time-picker-value">{{hourRange[configWorkEnd]}} 时</view>
+            </picker>
+          </view>
         </view>
       </view>
 
       <!-- ③ GPS工作时间（小时 0-24） -->
       <view class="config-group">
         <view class="config-group-title">③ GPS工作时间（小时）</view>
-        <view class="time-picker-row">
-          <text class="time-picker-label">开始时间</text>
-          <picker mode="selector" range="{{startHourRange}}" value="{{configGpsStart}}" bindchange="onConfigGpsStartChange">
-            <view class="time-picker-value">{{startHourRange[configGpsStart]}} 时</view>
-          </picker>
+        <view class="time-picker-dual">
+          <view class="time-picker-cell">
+            <text class="time-picker-label">开始时间</text>
+            <picker mode="selector" range="{{startHourRange}}" value="{{configGpsStart}}" bindchange="onConfigGpsStartChange">
+              <view class="time-picker-value">{{startHourRange[configGpsStart]}} 时</view>
+            </picker>
+          </view>
+          <view class="time-picker-cell">
+            <text class="time-picker-label">结束时间</text>
+            <picker mode="selector" range="{{hourRange}}" value="{{configGpsEnd}}" bindchange="onConfigGpsEndChange">
+              <view class="time-picker-value">{{hourRange[configGpsEnd]}} 时</view>
+            </picker>
+          </view>
         </view>
+      </view>
+
+      <!-- ④ 主周期（小时 1-4） -->
+      <view class="config-group">
+        <view class="config-group-title">④ 主周期（小时）<text class="config-group-range">1-4</text></view>
         <view class="time-picker-row">
-          <text class="time-picker-label">结束时间</text>
-          <picker mode="selector" range="{{hourRange}}" value="{{configGpsEnd}}" bindchange="onConfigGpsEndChange">
-            <view class="time-picker-value">{{hourRange[configGpsEnd]}} 时</view>
+          <text class="time-picker-label">主周期</text>
+          <picker mode="selector" range="{{mainPeriodRange}}" value="{{configMainPeriodIndex}}" bindchange="onConfigMainPeriodChange">
+            <view class="time-picker-value">{{mainPeriodRange[configMainPeriodIndex]}} 小时</view>
           </picker>
         </view>
       </view>

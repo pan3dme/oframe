@@ -36,7 +36,9 @@ Page({
     configWorkStart: 0,          // 开机时间开始（小时索引）
     configWorkEnd: 24,           // 开机时间结束（24=23:59）
     configGpsStart: 12,          // GPS工作时间开始
-    configGpsEnd: 24             // GPS工作时间结束（24=23:59）
+    configGpsEnd: 24,            // GPS工作时间结束（24=23:59）
+    mainPeriodRange: [1, 2, 3, 4],  // 主周期可选（小时）
+    configMainPeriodIndex: 0        // 主周期选中索引（默认1小时）
   },
 
   onLoad(options) {
@@ -209,7 +211,7 @@ Page({
     })
   },
 
-  // 打开配置下发弹框，defaults 为空时使用默认值 10,0-24,12-24
+  // 打开配置下发弹框，defaults 为空时使用默认值 10,0-24,12-24,主周期1
   _openConfigModal(defaults) {
     const d = defaults || {}
     this.setData({
@@ -218,11 +220,14 @@ Page({
       configWorkStart: d.configWorkStart !== undefined ? d.configWorkStart : 0,
       configWorkEnd: d.configWorkEnd !== undefined ? d.configWorkEnd : 24,
       configGpsStart: d.configGpsStart !== undefined ? d.configGpsStart : 12,
-      configGpsEnd: d.configGpsEnd !== undefined ? d.configGpsEnd : 24
+      configGpsEnd: d.configGpsEnd !== undefined ? d.configGpsEnd : 24,
+      configMainPeriodIndex: d.configMainPeriod !== undefined
+        ? Math.max(0, Math.min(3, d.configMainPeriod - 1))
+        : 0
     })
   },
 
-  // 解析设备配置 lorastr 第3段: 上报周期,开机时间,GPS工作时间 → 弹框默认值
+  // 解析设备配置 lorastr 第3段: 上报周期,开机时间,GPS工作时间,主周期 → 弹框默认值
   // 兼容两位代号（新格式）与 start-duration（旧格式）；无法解析返回 null
   _parseLoraConfigToModal(lorastr) {
     const parts = String(lorastr || '').split('|')
@@ -235,13 +240,21 @@ Page({
     const gpsWin = timeWindowCodec.parseTimeWindow(segs[2])
     if (!workWin || !gpsWin) return null
 
+    // 主周期（小时 1-4），第4段可选，缺失默认1小时
+    let mainPeriod = 1
+    if (segs.length >= 4) {
+      const mp = parseInt(segs[3], 10)
+      if (!isNaN(mp) && mp >= 1 && mp <= 4) mainPeriod = mp
+    }
+
     // end=23 代表 23:59，弹框结束时间回填为 24（对应"当天最后一刻"）
     return {
       configPeriod: String(isNaN(period) || period < 5 ? 10 : (period > 60 ? 60 : period)),
       configWorkStart: workWin.start,
       configWorkEnd: workWin.end === 23 ? 24 : workWin.end,
       configGpsStart: gpsWin.start,
-      configGpsEnd: gpsWin.end === 23 ? 24 : gpsWin.end
+      configGpsEnd: gpsWin.end === 23 ? 24 : gpsWin.end,
+      configMainPeriod: mainPeriod
     }
   },
 
@@ -264,6 +277,10 @@ Page({
 
   onConfigGpsEndChange(e) {
     this.setData({ configGpsEnd: parseInt(e.detail.value, 10) })
+  },
+
+  onConfigMainPeriodChange(e) {
+    this.setData({ configMainPeriodIndex: parseInt(e.detail.value, 10) })
   },
 
   onConfigModalCancel() {
@@ -289,8 +306,11 @@ Page({
       return
     }
 
-    // 结构: 周期,开机代号,GPS代号 （如 10,0K,0L）
-    const value = period + ',' + workCode + ',' + gpsCode
+    // 主周期（小时 1-4），追加到 value 末尾
+    const mainPeriod = this.data.mainPeriodRange[this.data.configMainPeriodIndex] || 1
+
+    // 结构: 周期,开机代号,GPS代号,主周期 （如 10,0K,0L,1）
+    const value = period + ',' + workCode + ',' + gpsCode + ',' + mainPeriod
 
     this.setData({
       cmdText: JSON.stringify({ cmd: 'A', value }),

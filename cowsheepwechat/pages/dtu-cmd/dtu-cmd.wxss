@@ -308,6 +308,35 @@ page {
   border-bottom: 1rpx solid #f0f0f0;
 }
 
+/* 开始/结束时间放一行两列 */
+.time-picker-dual {
+  display: flex;
+  gap: 20rpx;
+}
+
+.time-picker-cell {
+  flex: 1;
+  background: #fafafa;
+  border: 2rpx solid #f0f0f0;
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  box-sizing: border-box;
+}
+
+.time-picker-cell .time-picker-label {
+  display: block;
+  font-size: 22rpx;
+  color: #999;
+  margin-bottom: 10rpx;
+}
+
+.time-picker-cell .time-picker-value {
+  display: block;
+  text-align: center;
+  font-size: 28rpx;
+  padding: 10rpx 0;
+}
+
 .time-picker-label {
   font-size: 28rpx;
   color: #333;
