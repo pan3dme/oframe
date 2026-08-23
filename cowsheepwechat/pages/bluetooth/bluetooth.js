@@ -1,5 +1,7 @@
-// bluetooth.js
-const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
+// bluetooth.js - 蓝牙连接页（纯UI层）
+// 连接/收数/缓存/上报等核心逻辑在 utils/ble-manager.js 全局单例中，
+// 离开本页连接保持、数据照常接收；本页只负责展示与操作入口。
+const bleManager = require('../../utils/ble-manager.js')
 const dataCache = require('../../config/data-cache')
 
 Page({
@@ -34,141 +36,171 @@ Page({
     cmdQuickSelected: 0  // 当前选中的快捷按钮（value值），0=未选中
   },
 
-  _lastCacheTapTime: 0,  // 双击清空缓存用
-  _storageKey: 'bt_cache_queue',  // 本地存储 key
+  _lastCacheTapTime: 0,   // 双击清空缓存用
+  _scanTimer: null,       // 扫描超时定时器
+  _lastCmdRaw: null,      // 上次指令设备列表引用（用于重置选中项）
+  _deviceRenameMap: {},   // deviceId -> 别名（用于记录列表显示上传设备别名）
 
-  // 生成随机浅色背景色（HSL 浅色调，饱和度低，亮度高）
-  _randomPastel() {
-    const h = Math.floor(Math.random() * 360)           // 色相随机
-    const s = 30 + Math.floor(Math.random() * 20)       // 饱和度 30-50%（低饱和=柔和）
-    const l = 88 + Math.floor(Math.random() * 8)        // 亮度 88-96%（很高=浅色）
+  // 每条记录生成不同的柔和浅色背景（风格参考设备详情记录）：
+  // 色相按消息内容哈希，同一消息颜色稳定，不同消息颜色各不相同，便于列表逐条区分
+  _recordPastel(msg) {
+    const key = msg || ''
+    let h = 0
+    for (let i = 0; i < key.length; i++) {
+      h = (h * 31 + key.charCodeAt(i)) % 360
+    }
+    const s = 35 + (h % 15)
+    const l = 86 + (h % 10)
     return `hsl(${h}, ${s}%, ${l}%)`
   },
 
-  /**
-   * 从云端设备缓存表取 rename，生成显示用设备列表
-   * rawList: 蓝牙返回的原始设备名（即 deviceId）
-   * callback(displayList): 显示列表 [ "deviceId (rename)", ... ]
-   */
-  _resolveDeviceDisplayNames(rawList, callback) {
-    const that = this
-    // 优先用内存缓存，没有则拉取
-    dataCache.getDeviceList((cacheData) => {
-      const recordList = (cacheData && cacheData.recordList) ? cacheData.recordList : []
-      // 构建 deviceId → rename 映射
-      const renameMap = {}
-      recordList.forEach(r => {
-        if (r.deviceId && r.rename) {
-          renameMap[r.deviceId] = r.rename
-        }
-      })
-      // 生成显示列表
-      const displayList = rawList.map(name => {
-        const rename = renameMap[name]
-        if (rename && rename !== '-' && rename !== name) {
-          return name + ' (' + rename + ')'
-        }
-        return name
-      })
-      console.log('[蓝牙] 设备显示列表（含云端RENAME）:', displayList)
-      callback(displayList)
-    }, false) // false = 不强制刷新，优先用缓存
+  // 按 upDateDevice 生成稳定文字颜色：同一设备始终同色，不同设备分配鲜艳颜色（与设备详情一致）
+  _deviceColor(deviceName) {
+    if (!deviceName || deviceName === '-') return '#999'
+    const vividColors = [
+      '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA', '#00ACC1',
+      '#F4511E', '#D81B60', '#5E35B1', '#039BE5', '#2E7D32', '#C0CA33'
+    ]
+    let idx = 0
+    for (let i = 0; i < deviceName.length; i++) {
+      idx = (idx * 31 + deviceName.charCodeAt(i)) % vividColors.length
+    }
+    return vividColors[idx]
   },
 
-  // 播放蓝牙接收提示音（开关在设置页面控制）
-  // 类似系统通知音的单音"叮"声，约300ms，指数衰减更自然
-  _playBleSound() {
-    try {
-      const enabled = wx.getStorageSync(STORAGE_KEY_BLE_SOUND)
-      if (enabled === false || enabled === 'false') return
-    } catch (e) { /* 读取失败则播放（默认开启） */ }
-
-    try {
-      const sampleRate = 8000
-      const freq = 1200                     // 清脆的中高频
-      const duration = 0.28                 // 280ms
-      const numSamples = Math.floor(sampleRate * duration)
-      const dataLen = numSamples
-      const fileLen = 44 + dataLen
-      const buf = new ArrayBuffer(fileLen)
-      const v = new DataView(buf)
-
-      const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)) }
-      ws(0, 'RIFF'); v.setUint32(4, fileLen - 8, true); ws(8, 'WAVE')
-      ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true)
-      v.setUint16(22, 1, true); v.setUint32(24, sampleRate, true)
-      v.setUint32(28, sampleRate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true)
-      ws(36, 'data'); v.setUint32(40, dataLen, true)
-
-      const attackSamples = Math.floor(sampleRate * 0.01)    // 10ms 快速起音
-      for (let i = 0; i < numSamples; i++) {
-        // 指数衰减包络，模拟自然铃声
-        let env = Math.exp(-i / (sampleRate * 0.15))
-        // 快速起音
-        if (i < attackSamples) env *= i / attackSamples
-        v.setUint8(44 + i, 128 + Math.floor(90 * env * Math.sin(2 * Math.PI * freq * i / sampleRate)))
-      }
-
-      const fs = wx.getFileSystemManager()
-      const tmpPath = wx.env.USER_DATA_PATH + '/ble_chime.wav'
-      fs.writeFile({
-        filePath: tmpPath,
-        data: buf,
-        success: () => {
-          const audio = wx.createInnerAudioContext()
-          audio.src = tmpPath
-          audio.volume = 0.7
-          audio.play()
-          audio.onEnded(() => audio.destroy())
-          audio.onError(() => audio.destroy())
-        },
-        fail: () => {}
-      })
-    } catch (e) { /* 播放失败不阻塞 */ }
-  },
-
-  // ========== 蓝牙连接 ==========
+  // ========== 页面生命周期 ==========
   onLoad() {
-    // 恢复本地缓存的蓝牙数据
-    this._loadCacheFromStorage()
+    // 初始化全局蓝牙管理（幂等，只注册一次数据接收回调）
+    bleManager.init()
+    // 加载设备别名映射（记录列表显示上传设备别名）
+    this._loadRenameMap()
     // 开发工具不支持蓝牙，跳过自动连接避免 timeout
     const sysInfo = wx.getSystemInfoSync()
     if (sysInfo.platform === 'devtools') {
       console.log('开发工具环境，跳过蓝牙自动连接')
       return
     }
-    // 打开小程序自动连接蓝牙（走完整扫描流程）
-    this.connectBluetooth()
-  },
-
-  // 从本地存储加载缓存
-  _loadCacheFromStorage() {
-    try {
-      const saved = wx.getStorageSync(this._storageKey)
-      if (saved && Array.isArray(saved)) {
-        this.setData({ cacheQueue: saved, cacheCount: saved.length }, () => {
-          this._rebuildCacheDisplay()
-        })
-      }
-    } catch (e) {
-      console.error('读取缓存失败:', e)
+    // 已全局连接（从其他页面返回）则直接展示，否则自动扫描
+    if (!bleManager.getState().connected) {
+      this.connectBluetooth()
     }
   },
 
-  // 保存缓存到本地存储
-  _saveCacheToStorage() {
-    try {
-      wx.setStorageSync(this._storageKey, this.data.cacheQueue)
-    } catch (e) {
-      console.error('保存缓存失败:', e)
+  onShow() {
+    // 订阅全局状态：每次状态变化（收到数据、连接变化、上传进度）自动刷新
+    if (!this._onBleUpdateBound) {
+      this._onBleUpdateBound = this._onBleUpdate.bind(this)
+    }
+    bleManager.subscribe(this._onBleUpdateBound)
+    this._syncFromManager()
+  },
+
+  onHide() {
+    if (this._onBleUpdateBound) bleManager.unsubscribe(this._onBleUpdateBound)
+  },
+
+  onUnload() {
+    // 注意：不再断开蓝牙，连接与数据接收由全局 manager 保持
+    if (this._onBleUpdateBound) bleManager.unsubscribe(this._onBleUpdateBound)
+    if (this._scanTimer) { clearTimeout(this._scanTimer); this._scanTimer = null }
+    wx.stopBluetoothDevicesDiscovery({ complete: () => {} })
+    if (this._onDeviceFound) {
+      try { wx.offBluetoothDeviceFound(this._onDeviceFound) } catch (e) { /* ignore */ }
     }
   },
 
+  // 全局状态变更回调（订阅触发）
+  _onBleUpdate() {
+    const s = bleManager.getState()
+    // 指令设备列表变化时重置选中项
+    if (s.cmdDeviceRawList !== this._lastCmdRaw) {
+      this._lastCmdRaw = s.cmdDeviceRawList
+      if (this.data.showCmdModal) this.setData({ cmdDeviceIndex: 0 })
+    }
+    this._syncFromManager()
+  },
+
+  // 将全局状态同步到页面 data
+  _syncFromManager() {
+    const s = bleManager.getState()
+    const ft = this.data.filterType
+    const displayList = ft
+      ? s.receivedList.filter(item => this._getMsgType(item) === ft)
+      : s.receivedList
+    const cacheList = (ft
+      ? s.cacheQueue.filter(msg => this._getMsgType(msg) === ft)
+      : s.cacheQueue
+    ).slice().reverse() // 倒序显示，最新在前，与接收数据列表一致
+    this.setData({
+      bluetoothConnected: s.connected,
+      connectedDeviceName: s.connectedDeviceName,
+      isSyncing: s.isSyncing,
+      isCenterUploading: s.isCenterUploading,
+      cacheQueue: s.cacheQueue,
+      cacheCount: s.cacheCount,
+      gpsQueue: s.gpsQueue,
+      uploading: s.uploading,
+      uploadedCount: s.uploadedCount,
+      writeDeviceInfo: s.writeDeviceInfo,
+      cmdDeviceRawList: s.cmdDeviceRawList,
+      cmdDeviceList: s.cmdDeviceList,
+      displayList: displayList.map((msg, i) => this._buildRecordItem(msg, i)),
+      cacheDisplayList: cacheList.map((msg, i) => this._buildRecordItem(msg, i))
+    })
+  },
+
+  // 构建设备详情风格记录项（与 device-detail 数据记录显示一致）
+  _buildRecordItem(msg, idx) {
+    // 优先 JSON 解析
+    let info = ''
+    let rawTime = ''
+    let upDateDevice = ''
+    let rssi = ''
+    let snr = ''
+    try {
+      const obj = JSON.parse(msg)
+      info = obj.info || ''
+      rawTime = obj.time || ''
+      upDateDevice = obj.upDateDevice || ''
+      rssi = obj.rssi !== undefined && obj.rssi !== null ? String(obj.rssi) : ''
+      snr = obj.snr !== undefined && obj.snr !== null ? String(obj.snr) : ''
+    } catch (e) {
+      // 非 JSON（管道分隔等），整条作为 LORA 数据展示
+      info = msg
+    }
+
+    // 类型：info 首段（1=定位 2=对时 3=电量 5=跟踪 6=设置）
+    let msgType = '-'
+    if (info) {
+      const firstSeg = String(info).split('|')[0]
+      if (firstSeg) msgType = firstSeg
+    }
+
+    const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
+    const alias = (this._deviceRenameMap && this._deviceRenameMap[upDateDevice]) || ''
+
+    return {
+      _key: msg + '_' + idx,
+      date: date || '',
+      time_part: time_part || '',
+      upDateDevice,
+      upDateDeviceAlias: alias,
+      msgType,
+      displayLorastr: info || msg,
+      rssi,
+      snr,
+      // 每条记录背景色各不相同（柔和浅色风格参考设备详情），按消息内容哈希生成
+      bgColor: this._recordPastel(msg),
+      deviceColor: this._deviceColor(upDateDevice)
+    }
+  },
+
+  // ========== 扫描与连接 ==========
   connectBluetooth() {
     const that = this
-    // 如果已连接，先断开再重新连接
-    if (this.data.bluetoothConnected) {
-      this.disconnectBluetooth()
+    // 如果已连接，先断开再重新扫描
+    if (bleManager.getState().connected) {
+      bleManager.disconnect()
     }
     // 初始化蓝牙适配器
     wx.openBluetoothAdapter({
@@ -197,7 +229,7 @@ Page({
     })
 
     // 监听发现设备
-    wx.onBluetoothDeviceFound(function (res) {
+    this._onDeviceFound = function (res) {
       res.devices.forEach(function (device) {
         const deviceName = device.localName || device.name
         if (deviceName && deviceName.includes('牛羊GPS')) {
@@ -212,14 +244,15 @@ Page({
           }
         }
       })
-    })
+    }
+    wx.onBluetoothDeviceFound(this._onDeviceFound)
 
     // 开始搜索
     wx.startBluetoothDevicesDiscovery({
       allowDuplicatesKey: false,
       success() {
         wx.showToast({ title: '正在扫描设备...', icon: 'none', duration: 1000 })
-        setTimeout(() => { that.stopScanDevices() }, 10000)
+        that._scanTimer = setTimeout(() => { that.stopScanDevices() }, 10000)
       },
       fail() {
         that.setData({ bluetoothScanning: false })
@@ -230,6 +263,7 @@ Page({
 
   // 停止扫描
   stopScanDevices() {
+    if (this._scanTimer) { clearTimeout(this._scanTimer); this._scanTimer = null }
     wx.stopBluetoothDevicesDiscovery({
       success: () => { this.setData({ bluetoothScanning: false }) }
     })
@@ -243,25 +277,14 @@ Page({
     this.stopScanDevices()
     wx.showLoading({ title: '连接中...' })
 
-    wx.createBLEConnection({
-      deviceId: deviceid,
-      success() {
-        wx.hideLoading()
-        that.setData({
-          bluetoothConnected: true,
-          connectedDeviceName: devicename,
-          devices: []
-        })
-        // 缓存最后连接设备ID，供首页直连使用
-        that._saveLastDevice(deviceid, devicename)
-        wx.showToast({ title: '蓝牙已连接', icon: 'success' })
-        that.getBLEDeviceServices(deviceid)
-      },
-      fail(err) {
-        wx.hideLoading()
-        console.error('连接失败:', err)
-        wx.showToast({ title: '设备连接失败', icon: 'error' })
-      }
+    bleManager.connect(deviceid, devicename, () => {
+      wx.hideLoading()
+      that._syncFromManager()
+      wx.showToast({ title: '蓝牙已连接', icon: 'success' })
+    }, (err) => {
+      wx.hideLoading()
+      console.error('连接失败:', err)
+      wx.showToast({ title: '设备连接失败', icon: 'error' })
     })
   },
 
@@ -269,293 +292,77 @@ Page({
   _reconnectDevice(deviceId) {
     const that = this
     wx.showLoading({ title: '正在重连蓝牙...' })
-    wx.openBluetoothAdapter({
-      success() {
-        wx.createBLEConnection({
-          deviceId: deviceId,
-          success() {
-            wx.hideLoading()
-            that.setData({
-              bluetoothConnected: true,
-              connectedDeviceName: '已连接设备',
-              devices: []
-            })
-            that._saveLastDevice(deviceId, '已连接设备')
-            wx.showToast({ title: '蓝牙已连接', icon: 'success' })
-            that.getBLEDeviceServices(deviceId)
-          },
-          fail(err) {
-            wx.hideLoading()
-            console.error('缓存设备直连失败:', err)
-            wx.showModal({
-              title: '连接失败',
-              content: '缓存设备无法连接，是否重新扫描？',
-              success: (res) => {
-                if (res.confirm) that.connectBluetooth()
-              }
-            })
-          }
-        })
-      },
-      fail() {
-        wx.hideLoading()
-        wx.showToast({ title: '蓝牙适配器启动失败', icon: 'error' })
-      }
+    bleManager.connect(deviceId, '已连接设备', () => {
+      wx.hideLoading()
+      that._syncFromManager()
+      wx.showToast({ title: '蓝牙已连接', icon: 'success' })
+    }, (err) => {
+      wx.hideLoading()
+      console.error('缓存设备直连失败:', err)
+      wx.showModal({
+        title: '连接失败',
+        content: '缓存设备无法连接，是否重新扫描？',
+        success: (res) => {
+          if (res.confirm) that.connectBluetooth()
+        }
+      })
     })
   },
 
-  // 缓存最后连接设备信息到本地
-  _saveLastDevice(deviceId, deviceName) {
-    try {
-      wx.setStorageSync('bt_last_device', { deviceId, deviceName, time: Date.now() })
-    } catch (e) {
-      console.warn('缓存蓝牙设备ID失败:', e)
-    }
+  // 断开蓝牙（手动断开按钮）
+  disconnectBluetooth() {
+    bleManager.disconnect(() => {
+      this._syncFromManager()
+    })
   },
 
-  // 获取设备服务
-  getBLEDeviceServices(deviceId) {
+  // ========== 显示相关 ==========
+  // 加载 deviceId -> 别名映射（用于记录列表显示上传设备别名）
+  _loadRenameMap() {
     const that = this
-    wx.getBLEDeviceServices({
-      deviceId,
-      success(res) {
-        console.log('设备服务列表:', res.services)
-        if (res.services.length > 0) {
-          that.getBLEDeviceCharacteristics(deviceId, res.services[0].uuid)
-        }
-      },
-      fail(err) { console.error('获取服务失败:', err) }
-    })
-  },
-
-  // 获取特征值
-  getBLEDeviceCharacteristics(deviceId, serviceId) {
-    const that = this
-    wx.getBLEDeviceCharacteristics({
-      deviceId,
-      serviceId,
-      success(res) {
-        console.log('特征值列表:', res.characteristics)
-        let writeChar = null
-        for (let i = 0; i < res.characteristics.length; i++) {
-          const char = res.characteristics[i]
-          if (char.properties.notify || char.properties.indicate) {
-            wx.notifyBLECharacteristicValueChange({
-              deviceId,
-              serviceId,
-              characteristicId: char.uuid,
-              state: true,
-              success() { console.log('已启用数据通知:', char.uuid) }
-            })
-          }
-          if (char.properties.write || char.properties.writeNoResponse) {
-            if (!writeChar) writeChar = char
-          }
-        }
-        if (writeChar) {
-          that.data.writeDeviceInfo = {
-            deviceId, serviceId, characteristicId: writeChar.uuid
-          }
-          console.log('可写入特征值:', writeChar.uuid)
-        }
-        // 监听数据变化
-        wx.onBLECharacteristicValueChange(function (res) {
-          that._playBleSound()  // 播放接收提示音
-          const msg = that.abToText(res.value)
-          // 打印原始数据，方便对消息分类
-          const rawHex = that.abToHex(res.value)
-          console.log('═════════════════════════════════')
-          console.log('[蓝牙] 原始长度:', res.value.byteLength, 'bytes')
-          console.log('[蓝牙] 原始HEX:', rawHex)
-          console.log('[蓝牙] 文本内容:', msg)
-
-          // 尝试 JSON 解析，判断 cmd 类型
-          let isTip = false
-          let tipInfo = ''
-          let isDeviceList = false
-          let deviceListRaw = ''
-          try {
-            const obj = JSON.parse(msg)
-            console.log('[蓝牙] JSON解析，cmd:', obj.cmd || '(无)', 'info:', obj.info || '(无)')
-            if (obj.cmd === 'tip') {
-              isTip = true
-              tipInfo = obj.info || ''
-            } else if (obj.cmd === 'getDeviceList') {
-              isDeviceList = true
-              deviceListRaw = obj.info || ''
-            }
-          } catch (e) { /* 非JSON，非管道 */ }
-
-          // tip 消息：弹框提示，不缓存
-          if (isTip) {
-            console.log('[蓝牙] ⚠️ 收到tip消息，弹框提示，不缓存')
-            wx.showModal({
-              title: '设备提示',
-              content: tipInfo,
-              showCancel: false,
-              confirmText: '知道了'
-            })
-            return
-          }
-
-          // getDeviceList 响应：更新指令弹窗的设备下拉列表
-          if (isDeviceList) {
-            console.log('[蓝牙] 收到 getDeviceList 响应:', deviceListRaw)
-            let deviceList = []
-            try {
-              if (typeof deviceListRaw === 'string') {
-                deviceList = JSON.parse(deviceListRaw)
-              } else if (Array.isArray(deviceListRaw)) {
-                deviceList = deviceListRaw
-              }
-            } catch (e) {
-              console.warn('[蓝牙] getDeviceList info 解析失败:', e)
-            }
-            const rawList = deviceList.length > 0 ? deviceList : [that.data.connectedDeviceName || '未知设备']
-            // 从云端设备缓存表取 RENAME，代替硬编码的 (RENAME) 后缀
-            that._resolveDeviceDisplayNames(rawList, (displayList) => {
-              that.setData({
-                cmdDeviceRawList: rawList,
-                cmdDeviceList: displayList,
-                cmdDeviceIndex: 0
-              })
-            })
-            return
-          }
-
-          // 预判管道类型
-          const firstPipe = msg.indexOf('|')
-          if (firstPipe !== -1) {
-            const typeId = msg.substring(0, firstPipe)
-            console.log('[蓝牙] 管道分隔，首段typeId:', typeId)
-          }
-          console.log('═════════════════════════════════')
-
-          // 时间修正：若 gpsData.time 早于 2025 年，则用设备时间偏差重新计算
-          let correctedMsg = msg
-          try {
-            const gpsObj = JSON.parse(msg)
-            if (gpsObj.time && gpsObj.now !== undefined && gpsObj.ms !== undefined) {
-              const year = parseInt(String(gpsObj.time).substring(0, 4))
-              if (year && year < 2025) {
-                const offset = Number(gpsObj.now) - Number(gpsObj.ms)
-                const refTimestamp = Date.now()
-                const correctedTimestamp = refTimestamp + offset
-                gpsObj.time = getApp().formatTime(new Date(correctedTimestamp))
-                correctedMsg = JSON.stringify(gpsObj)
-                console.log('[蓝牙] 时间修正, 原时间:', msg.substring(0, 80))
-              }
-            }
-          } catch (e) { /* 非 JSON，保持原样 */ }
-
-          const now = getApp().formatTime()
-          const displayResult = that._parseDisplay(correctedMsg)
-          const newItem = {
-            text: correctedMsg,
-            time: now.substring(11, 19),
-            displayParts: displayResult,
-            bgColor: that._randomPastel()  // 随机浅色背景
-          }
-          // 最新数据插到最前面，方便直接看到
-          const newList = [newItem].concat(that.data.receivedList)
-          const trimmedList = newList.length > 200 ? newList.slice(0, 200) : newList
-          if (that.data.isCenterUploading) {
-            // 上报模式：直接推入上传队列，不缓存
-            that.data.gpsQueue.push(correctedMsg)
-            that.setData({ gpsQueue: that.data.gpsQueue })
-            that._setReceivedList(trimmedList)
-            if (!that.data.uploading) {
-              that.processGPSQueue()
-            }
-          } else {
-            // 暂停模式：存入本地缓存
-            const newCache = that.data.cacheQueue.concat([correctedMsg])
-            that.setData({
-              cacheQueue: newCache,
-              cacheCount: newCache.length
-            }, () => { that._rebuildCacheDisplay() })
-            that._setReceivedList(trimmedList)
-            that._saveCacheToStorage()
-          }
-        })
-      },
-      fail(err) { console.error('获取特征值失败:', err) }
-    })
-  },
-
-  // 根据类型编号返回图标
-  _getTypeIcon(typeStr) {
-    if (typeStr === '1') return { text: '◉', color: '#1989fa' }   // 靶心图标 = GPS定位
-    if (typeStr === '2') return { text: '🕐', color: '#666' }       // 时钟 = 对时
-    if (typeStr === '3') return { text: '🔋', color: '#07c160' }    // 电池 = 电量
-    return null
-  },
-
-  // 解析显示格式：优先 JSON，回退 | 分隔
-  _parseDisplay(msg) {
-    // 尝试 JSON 解析
-    try {
-      const obj = JSON.parse(msg)
-      if (obj && typeof obj === 'object') {
-        return this._parseJsonDisplay(obj)
+    dataCache.getDeviceList((cacheData) => {
+      const recordList = (cacheData && cacheData.recordList) ? cacheData.recordList : []
+      const map = {}
+      recordList.forEach(v => { if (v.deviceId) map[v.deviceId] = v.rename || '' })
+      if (JSON.stringify(that._deviceRenameMap) !== JSON.stringify(map)) {
+        that._deviceRenameMap = map
+        that._syncFromManager()
       }
-    } catch (e) { /* 非 JSON，继续尝试 | 格式 */ }
-
-    // 回退：| 分隔格式
-    const idx = msg.indexOf('|')
-    if (idx !== -1) {
-      const typeStr = msg.substring(0, idx)
-      const icon = this._getTypeIcon(typeStr)
-      const parts = [
-        { text: msg.substring(0, idx), color: '#e74c3c', bold: true },
-        { text: msg.substring(idx), color: '#07c160', bold: true }
-      ]
-      if (icon) parts.unshift({ text: icon.text + ' ', color: icon.color })
-      return parts
-    }
-    // 纯文本
-    return [{ text: msg, color: '#333' }]
+    }, false)
   },
 
-  // 解析 JSON 显示
-  _parseJsonDisplay(obj) {
-    const parts = []
-    const info = obj.info || ''
-    const infoParts = info.split('|')
-    const dev = obj.upDateDevice || ''
-    const timeFull = obj.time || ''
-    const rssi = obj.rssi !== undefined ? obj.rssi : ''
-    const snr = obj.snr !== undefined ? obj.snr : ''
+  // 点击数据记录：定位/跟踪记录跳转定位地图（与设备详情一致）
+  onRecordTap(e) {
+    const index = e.currentTarget.dataset.index
+    const list = this.data.bluetoothConnected ? this.data.displayList : this.data.cacheDisplayList
+    const record = list[index]
+    if (!record) return
+    if (record.msgType !== '1' && record.msgType !== '5') return
 
-    // 元数据行
-    parts.push({ text: 'rssi:', color: '#999' })
-    parts.push({ text: rssi, color: '#e74c3c', bold: true })
-    parts.push({ text: '  snr:', color: '#999' })
-    parts.push({ text: snr, color: '#07c160', bold: true })
-    parts.push({ text: '\n', color: '#333' })
-
-    // 类型图标（infoParts[0] 为类型编号：1=GPS定位，2=对时）
-    const typeIcon = this._getTypeIcon(infoParts[0])
-    if (typeIcon) parts.push({ text: typeIcon.text + ' ', color: typeIcon.color })
-
-    // info 各段：类型编号、设备ID、末尾数字标红
-    for (let i = 0; i < infoParts.length; i++) {
-      const isRed = (i === 0) || (i === 1) || (i === infoParts.length - 1)
-      parts.push({ text: infoParts[i], color: isRed ? '#e74c3c' : '#333', bold: isRed })
-      if (i < infoParts.length - 1) parts.push({ text: '|', color: '#333' })
+    let lat = null, lng = null
+    if (record.displayLorastr && record.displayLorastr !== '-') {
+      const segs = record.displayLorastr.split(/[｜|]/)
+      if (segs.length >= 3 && segs[2]) {
+        const parts = segs[2].split(/[,，]\s*/)
+        if (parts.length >= 2) {
+          lat = parseFloat(parts[0])
+          lng = parseFloat(parts[1])
+        }
+      }
     }
-
-    // 时间 + 设备名称（第三行）
-    const thirdLine = []
-    if (timeFull) thirdLine.push({ text: timeFull, color: '#333' })
-    if (timeFull && dev) thirdLine.push({ text: ' ', color: '#333' })
-    if (dev) thirdLine.push({ text: '(' + dev + ')', color: '#333' })
-    if (thirdLine.length > 0) {
-      parts.push({ text: '\n', color: '#333' })
-      parts.push(...thirdLine)
+    if (isNaN(lat) || isNaN(lng)) {
+      wx.showToast({ title: '该记录无有效坐标', icon: 'none' })
+      return
     }
-
-    return parts
+    wx.navigateTo({
+      url: '/pages/location-map/location-map' +
+        '?lat=' + lat +
+        '&lng=' + lng +
+        '&deviceId=' + encodeURIComponent(record.upDateDevice || '') +
+        '&time=' + encodeURIComponent((record.date + ' ' + record.time_part).trim()) +
+        '&lorastr=' + encodeURIComponent(record.displayLorastr || '') +
+        '&upDateDevice=' + encodeURIComponent(record.upDateDevice || '')
+    })
   },
 
   // 从原始消息文本判断类型：'gps' | 'time' | 'battery' | ''
@@ -579,139 +386,58 @@ Page({
     return ''
   },
 
-  // 应用当前筛选条件，更新 displayList
-  _applyFilter() {
-    const all = this.data.receivedList
-    const ft = this.data.filterType
-    if (!ft) {
-      this.setData({ displayList: all })
-    } else {
-      this.setData({ displayList: all.filter(item => this._getMsgType(item.text) === ft) })
-    }
-  },
-
-  // 设置 receivedList 并同步更新 displayList
-  _setReceivedList(newList) {
-    this.setData({ receivedList: newList }, () => { this._applyFilter() })
-  },
-
-  // 从 cacheQueue 构建缓存显示列表，格式与 receivedList 一致
-  _rebuildCacheDisplay() {
-    const ft = this.data.filterType
-    let queue = this.data.cacheQueue
-    if (ft) {
-      queue = queue.filter(msg => this._getMsgType(msg) === ft)
-    }
-    // 倒序显示，最新在前，与接收数据列表一致
-    const items = queue.slice().reverse().map(msg => ({
-      text: msg,
-      time: '',
-      displayParts: this._parseDisplay(msg),
-      bgColor: this._randomPastel()
-    }))
-    this.setData({ cacheDisplayList: items })
-  },
-
   // 筛选按钮：GPS 切换
   onToggleFilterGps() {
     const next = this.data.filterType === 'gps' ? '' : 'gps'
     this.setData({ filterType: next }, () => {
-      this._applyFilter()
-      this._rebuildCacheDisplay()
+      this._syncFromManager()
     })
   },
   // 筛选按钮：对时 切换
   onToggleFilterTime() {
     const next = this.data.filterType === 'time' ? '' : 'time'
     this.setData({ filterType: next }, () => {
-      this._applyFilter()
-      this._rebuildCacheDisplay()
+      this._syncFromManager()
     })
   },
   // 筛选按钮：电量 切换
   onToggleFilterBattery() {
     const next = this.data.filterType === 'battery' ? '' : 'battery'
     this.setData({ filterType: next }, () => {
-      this._applyFilter()
-      this._rebuildCacheDisplay()
+      this._syncFromManager()
     })
   },
 
-  // ArrayBuffer 转可读文本
-  abToText(buffer) {
-    if (!buffer) return ''
-    try {
-      const uint8 = new Uint8Array(buffer)
-      let str = ''
-      for (let i = 0; i < uint8.length; i++) {
-        str += '%' + ('00' + uint8[i].toString(16)).slice(-2)
-      }
-      const text = decodeURIComponent(str)
-      if (/[\x00-\x1F]/.test(text) && !/[\u4e00-\u9fa5a-zA-Z0-9]/.test(text)) {
-        return 'HEX: ' + this.abToHex(buffer)
-      }
-      return text
-    } catch (e) {
-      return 'HEX: ' + this.abToHex(buffer)
-    }
+  // ========== 上报数据中心（切换：上报 / 暂停） ==========
+  uploadToCenter() {
+    bleManager.toggleCenterUpload()
   },
 
-  // ArrayBuffer 转 Hex
-  abToHex(buffer) {
-    if (!buffer) return ''
-    const hexArr = Array.prototype.map.call(
-      new Uint8Array(buffer),
-      function (bit) { return ('00' + bit.toString(16)).slice(-2) }
-    )
-    return hexArr.join(' ')
-  },
-
-  // 文本转 ArrayBuffer
-  textToAb(text) {
-    if (!text) return new ArrayBuffer(0)
-    const uint8 = new Uint8Array(text.length)
-    for (let i = 0; i < text.length; i++) { uint8[i] = text.charCodeAt(i) }
-    return uint8.buffer
-  },
-
-  // 断开蓝牙
-  disconnectBluetooth() {
-    wx.closeBluetoothAdapter({
-      success: () => {
-        this.setData({
-          bluetoothConnected: false,
-          connectedDeviceName: '',
-          receivedList: [],
-          displayList: [],
-          writeDeviceInfo: null,
-          isSyncing: false,
-          // cacheQueue/cacheCount 保留，不随断开清空
-          gpsQueue: [],
-          uploading: false,
-          uploadedCount: 0,
-          isCenterUploading: false
-        })
-      }
+  // ========== 数据同步 ==========
+  syncData() {
+    bleManager.toggleSync((newState) => {
+      wx.showToast({ title: newState ? '同步已开始' : '同步已停止', icon: 'success' })
     })
   },
 
+  // ========== 缓存管理 ==========
   // 双击缓存文本 → 清空缓存
   onTapCacheText() {
     const now = Date.now()
     if (now - this._lastCacheTapTime < 350) {
       // 双击触发清空
       this._lastCacheTapTime = 0
-      if (this.data.cacheCount === 0) {
+      const count = bleManager.getState().cacheCount
+      if (count === 0) {
         wx.showToast({ title: '缓存已为空', icon: 'none' })
         return
       }
       wx.showModal({
         title: '清空缓存',
-        content: '确定清空 ' + this.data.cacheCount + ' 条缓存数据？',
+        content: '确定清空 ' + count + ' 条缓存数据？',
         success: (res) => {
           if (res.confirm) {
-            this.setData({ cacheQueue: [], cacheCount: 0 }, () => { this._rebuildCacheDisplay() })
-            wx.setStorageSync(this._storageKey, [])
+            bleManager.clearCache()
             wx.showToast({ title: '缓存已清空', icon: 'success' })
           }
         }
@@ -721,179 +447,21 @@ Page({
     }
   },
 
-  // ========== 上报数据中心（切换：上报 / 暂停） ==========
-  uploadToCenter() {
-    if (this.data.isCenterUploading) {
-      // 正在上报 → 暂停
-      this.setData({ isCenterUploading: false })
-      wx.showToast({ title: '已暂停上报', icon: 'none' })
-      return
-    }
-
-    // 开始上报
-    this.setData({ isCenterUploading: true })
-
-    const cache = this.data.cacheQueue
-    if (cache.length > 0) {
-      // 有缓存：先上传缓存
-      this.setData({
-        cacheQueue: [],
-        cacheCount: 0,
-        gpsQueue: this.data.gpsQueue.concat(cache)
-      }, () => { this._rebuildCacheDisplay() })
-      wx.setStorageSync(this._storageKey, [])
-      wx.showToast({ title: '上报已开启，先上传 ' + cache.length + ' 条缓存', icon: 'none' })
-    } else {
-      wx.showToast({ title: '上报已开启，等待接收数据...', icon: 'none' })
-    }
-
-    // 启动队列处理
-    if (!this.data.uploading) {
-      this.processGPSQueue()
-    }
-  },
-
-  // 清空缓存
+  // 清空缓存（按钮）
   clearCache() {
-    if (this.data.cacheCount === 0) {
+    const count = bleManager.getState().cacheCount
+    if (count === 0) {
       wx.showToast({ title: '缓存已为空', icon: 'none' })
       return
     }
     wx.showModal({
       title: '确认清空',
-      content: '确定清空 ' + this.data.cacheCount + ' 条缓存数据？',
+      content: '确定清空 ' + count + ' 条缓存数据？',
       success: (res) => {
         if (res.confirm) {
-          this.setData({ cacheQueue: [], cacheCount: 0 })
+          bleManager.clearCache()
           wx.showToast({ title: '缓存已清空', icon: 'success' })
         }
-      }
-    })
-  },
-
-  // 处理GPS上传队列
-  processGPSQueue() {
-    if (this.data.uploading) return
-    const queue = this.data.gpsQueue
-    if (queue.length === 0) {
-      // 队列已空，等待新数据（上报模式下不自动停止）
-      return
-    }
-
-    this.data.uploading = true
-    const gpsDataStr = queue.shift()
-    this.setData({ gpsQueue: queue })
-
-    let gpsData
-    try {
-      gpsData = JSON.parse(gpsDataStr)
-    } catch (e) {
-      console.warn('GPS数据JSON解析失败，跳过:', gpsDataStr, e)
-      this.data.uploading = false
-      this.processGPSQueue()
-      return
-    }
-
-    const infoStr = gpsData.info
-    if (!infoStr) {
-      console.warn('GPS数据缺少info字段，跳过:', gpsDataStr)
-      this.data.uploading = false
-      this.processGPSQueue()
-      return
-    }
-    const parts = infoStr.split('|')
-    const msgType = parts[0]
-
-     // typedef enum {
-    //   MSG_TYPE_GPS = 1,        // GPS定位信息
-    //   MSG_TYPE_TIME = 2,       // 对时信息
-    //   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
-    //   MSG_TYPE_FIRMWARE = 10,   // 固件更新指令
-    //   MSG_TYPE_COM = 11   // 下载指令到设备
-    // } MessageType_t;
-    if (msgType == 1||msgType == 2||msgType == 3) {
-      const deviceId = parts[1]
-      const lorastr = infoStr
-      const logTime = getApp().formatTime()
-      const postData = {
-        time: logTime,
-        action: "insertlog",
-        info: {
-          deviceId: deviceId,
-          lorastr: lorastr,
-          upDateDevice: gpsData.upDateDevice,
-          time: gpsData.time,
-          rssi:   String(gpsData.rssi) ,
-          snr:   String(gpsData.snr) 
-        }
-      }
-      console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '队列剩余:', queue.length)
-      const API_URL = getApp().globalData.api_device_Url
-      const that = this
-      wx.request({
-        url: API_URL,
-        method: 'POST',
-        data: postData,
-        success: (res) => {
-          console.log('GPS记录上传成功:', res.data)
-          that.data.uploading = false
-          that.data.uploadedCount++
-          that.setData({
-            uploadedCount: that.data.uploadedCount,
-            gpsQueue: that.data.gpsQueue
-          })
-          that.processGPSQueue()
-        },
-        fail: (err) => {
-          console.error('GPS记录上传失败:', err)
-          that.data.uploading = false
-          that.setData({ gpsQueue: that.data.gpsQueue })
-          that.processGPSQueue()
-        }
-      })
-    } else {
-      this.data.uploading = false
-      this.processGPSQueue()
-    }
-  },
-
-  // ========== 数据同步 ==========
-  syncData() {
-    if (!this.data.bluetoothConnected) {
-      wx.showToast({ title: '请先连接设备', icon: 'none' })
-      return
-    }
-    const info = this.data.writeDeviceInfo
-    if (!info) {
-      wx.showToast({ title: '未找到可写入特征值', icon: 'error' })
-      return
-    }
-
-    const isSyncing = this.data.isSyncing
-    let sendText = ''
-    if (!isSyncing) {
-      sendText = JSON.stringify({ syncing: true, time: getApp().formatTime() })
-    } else {
-      sendText = JSON.stringify({ syncing: false, time: getApp().formatTime() })
-    }
-
-    const buffer = this.textToAb(sendText)
-    const that = this
-
-    wx.writeBLECharacteristicValue({
-      deviceId: info.deviceId,
-      serviceId: info.serviceId,
-      characteristicId: info.characteristicId,
-      value: buffer,
-      success: () => {
-        const newState = !isSyncing
-        that.setData({ isSyncing: newState })
-        wx.showToast({ title: newState ? '同步已开始' : '同步已停止', icon: 'success' })
-        console.log('已发送[' + (newState ? '开始' : '停止') + '同步]:', sendText)
-      },
-      fail(err) {
-        console.error('发送失败:', err)
-        wx.showToast({ title: '发送失败', icon: 'error' })
       }
     })
   },
@@ -916,9 +484,9 @@ Page({
       let rawList = Array.from(idSet)
       // 兜底：缓存为空时用当前连接设备
       if (rawList.length === 0) {
-        rawList = [that.data.connectedDeviceName || '未知设备']
+        rawList = [this.data.connectedDeviceName || '未知设备']
       }
-      that._resolveDeviceDisplayNames(rawList, (displayList) => {
+      bleManager.resolveDeviceDisplayNames(rawList, (displayList) => {
         that.setData({
           showCmdModal: true,
           cmdDeviceRawList: rawList,
@@ -995,32 +563,17 @@ Page({
       // 非JSON，直接发送原始文本
     }
 
-    const info = this.data.writeDeviceInfo
-    if (!info) {
+    if (!bleManager.getState().writeDeviceInfo) {
       wx.showToast({ title: '未找到可写入特征值', icon: 'error' })
       return
     }
-    const buffer = this.textToAb(sendText)
-    const that = this
-    wx.writeBLECharacteristicValue({
-      deviceId: info.deviceId,
-      serviceId: info.serviceId,
-      characteristicId: info.characteristicId,
-      value: buffer,
-      success: () => {
-        wx.showToast({ title: '指令已发送 → ' + deviceId, icon: 'success' })
-        console.log('BLE指令已发送:', sendText)
-        that.setData({ showCmdModal: false })
-      },
-      fail(err) {
-        console.error('BLE指令发送失败:', err)
-        wx.showToast({ title: '发送失败', icon: 'error' })
-      }
+    bleManager.send(sendText, () => {
+      wx.showToast({ title: '指令已发送 → ' + deviceId, icon: 'success' })
+      console.log('BLE指令已发送:', sendText)
+      this.setData({ showCmdModal: false })
+    }, (err) => {
+      console.error('BLE指令发送失败:', err)
+      wx.showToast({ title: '发送失败', icon: 'error' })
     })
-  },
-
-  // ========== 页面生命周期 ==========
-  onUnload() {
-    this.disconnectBluetooth()
   }
 })
