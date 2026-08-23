@@ -1,5 +1,6 @@
 // location-map.js - 单点定位地图页（从设备详情定位记录跳转过来）
-const { wgs84ToGcj02 } = require('../../utils/coord-transform.js')
+const { wgs84ToGcj02, calcDistance } = require('../../utils/coord-transform.js')
+const dataCache = require('../../config/data-cache.js')
 
 Page({
   data: {
@@ -14,7 +15,11 @@ Page({
     lorastr: '',
     upDateDevice: '',
     originLat: '',
-    originLng: ''
+    originLng: '',
+    // 距用户当前位置的距离（米）
+    distanceText: '',
+    // 从我的坐标到设备的虚线
+    polylines: []
   },
 
   onLoad(options) {
@@ -35,55 +40,299 @@ Page({
         recordTime,
         lorastr,
         upDateDevice,
-        originLat: lat.toFixed(6),
-        originLng: lng.toFixed(6)
+        originLat: lat.toFixed(5),
+        originLng: lng.toFixed(5)
       })
+      // 保存坐标引用，图标生成完成后重刷 marker
+      this._markerGcj = { lat: gcj.lat, lng: gcj.lng, wgsLat: lat, wgsLng: lng }
       this.renderMarker(gcj.lat, gcj.lng, lat, lng)
       this._refreshOverlays(gcj.lat, gcj.lng, 17)
+      // 生成绿色设备图钉图标（与地图中心设备一致），生成后自动刷新 marker
+      this._generateDevPin()
+      // 生成蓝色"我的位置"圆点图标（避免系统 show-location 蓝点与 polyline 起点有亚像素偏差）
+      this._generateMyPin()
+      // 生成透明占位图标（用于在虚线上显示距离文字）
+      this._generateTransparentIcon()
+      // 异步计算"距我"距离（GCJ-02 vs GCJ-02，避免坐标系差异）
+      this._calcDistanceFromMe(gcj.lat, gcj.lng)
+      // 查询设备别名（rename），用于气泡第二行显示
+      this._loadDeviceRename(deviceId, upDateDevice)
     } else {
       wx.showToast({ title: '坐标无效', icon: 'none' })
     }
   },
 
+  // 计算定位点距离用户当前位置的直线距离，显示在顶部信息栏
+  // 距离 < 1km 显示 "xx 米"；>= 1km 显示 "x.xx 千米"
+  // 同时保存我的坐标（GCJ-02），绘制"我 → 设备"的虚线 + 我的位置蓝点 marker
+  // 首次定位成功后启动位置轮询，虚线/蓝点/距离随我的位置实时变化
+  _calcDistanceFromMe(gcjLat, gcjLng) {
+    wx.getLocation({
+      type: 'gcj02',
+      success: (res) => {
+        this._myGcj = { lat: res.latitude, lng: res.longitude }
+        this._applyOverlays()
+        // 启动实时位置更新（轮询，每 3 秒）
+        this._startLocationWatch()
+      },
+      fail: () => {
+        this.setData({ distanceText: '获取失败' })
+      }
+    })
+  },
+
+  // 查询设备别名（rename）：优先按 deviceId 匹配，其次按 upDateDevice
+  _loadDeviceRename(deviceId, upDateDevice) {
+    const that = this
+    dataCache.getDeviceList((cached) => {
+      const list = (cached && cached.recordList) || []
+      const findRename = (id) => {
+        if (!id) return ''
+        const item = list.find(v => v.deviceId === id)
+        return item ? (item.rename || '') : ''
+      }
+      const rename = findRename(deviceId) || findRename(upDateDevice) || ''
+      if (rename !== that._deviceRename) {
+        that._deviceRename = rename
+        that._applyOverlays()
+      }
+    })
+  },
+
+  // 实时跟随我的位置：每 3 秒重新获取一次位置，刷新虚线与距离
+  _startLocationWatch() {
+    if (this._locationTimer) return
+    this._locationTimer = setInterval(() => {
+      wx.getLocation({
+        type: 'gcj02',
+        success: (res) => {
+          const moved = !this._myGcj ||
+            Math.abs(res.latitude - this._myGcj.lat) > 0.000001 ||
+            Math.abs(res.longitude - this._myGcj.lng) > 0.000001
+          if (!moved) return
+          this._myGcj = { lat: res.latitude, lng: res.longitude }
+          this._applyOverlays()
+        },
+        fail: () => {}
+      })
+    }, 3000)
+  },
+
+  // 统一刷新所有叠加层：设备 marker(0) + 我的蓝点(1) + 虚线 + 线中距离(2)
+  // 蓝点坐标 = polyline 起点坐标 = 同一份 wx.getLocation 返回值 → 严格对齐，0 位差
+  _applyOverlays() {
+    const { deviceId } = this.data
+    const markers = []
+
+    // 设备 marker（绿色图钉）
+    if (this._markerGcj) {
+      markers.push({
+        id: 0,
+        latitude: this._markerGcj.lat,
+        longitude: this._markerGcj.lng,
+        width: 28,
+        height: 28,
+        iconPath: this._deviceIconPath || '',
+        title: '设备: ' + (deviceId || '-'),
+        callout: {
+          content: (deviceId || '-') + (this._deviceRename ? '\n(' + this._deviceRename + ')' : ''),
+          display: 'ALWAYS',
+          textAlign: 'center',
+          fontSize: 13,
+          padding: 10,
+          borderRadius: 8
+        },
+        anchor: { x: 0.5, y: 0.5 }
+      })
+    }
+
+    const payload = {}
+    // 我的蓝点 + 虚线 + 距离
+    if (this._myGcj) {
+      const meters = this._markerGcj
+        ? calcDistance(this._markerGcj.lat, this._markerGcj.lng, this._myGcj.lat, this._myGcj.lng)
+        : 0
+      const text = meters < 1000
+        ? Math.round(meters) + ' 米'
+        : (meters / 1000).toFixed(2) + ' 千米'
+      payload.distanceText = text
+      payload.polylines = [{
+        points: [
+          { latitude: this._myGcj.lat, longitude: this._myGcj.lng },
+          { latitude: this._markerGcj.lat, longitude: this._markerGcj.lng }
+        ],
+        color: '#ff0000',
+        width: 3,
+        dottedLine: true,
+        arrowLine: true,
+        zIndex: 10
+      }]
+
+      // 我的蓝点
+      if (this._myIconPath) {
+        markers.push({
+          id: 1,
+          latitude: this._myGcj.lat,
+          longitude: this._myGcj.lng,
+          width: 22,
+          height: 22,
+          iconPath: this._myIconPath,
+          title: '我的位置',
+          anchor: { x: 0.5, y: 0.5 }
+        })
+      }
+
+      // 线中距离文字：透明占位 marker + callout，位于线段中点
+      if (this._transparentIconPath && this._markerGcj) {
+        markers.push({
+          id: 2,
+          latitude: (this._markerGcj.lat + this._myGcj.lat) / 2,
+          longitude: (this._markerGcj.lng + this._myGcj.lng) / 2,
+          width: 4,
+          height: 4,
+          iconPath: this._transparentIconPath,
+          callout: {
+            content: text,
+            display: 'ALWAYS',
+            color: '#333333',
+            fontSize: 12,
+            bgColor: '#ffffff',
+            borderColor: '#999999',
+            borderWidth: 1,
+            padding: 4,
+            borderRadius: 4,
+            textAlign: 'center'
+          },
+          anchor: { x: 0.5, y: 0.5 }
+        })
+      }
+    }
+
+    payload.markers = markers
+    this.setData(payload)
+  },
+
+  // 生成蓝色"我的位置"圆点图标：白色描边 + 蓝色实心
+  // 离屏绘制到固定 PNG，生成完成后统一刷新叠加层
+  _generateMyPin() {
+    const query = wx.createSelectorQuery()
+    query.select('#myPinCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return
+      const canvas = res[0].node
+      const ctx = canvas.getContext('2d')
+      const dpr = wx.getSystemInfoSync().pixelRatio
+      const size = 22
+      canvas.width = size * dpr
+      canvas.height = size * dpr
+      ctx.scale(dpr, dpr)
+
+      const cx = size / 2, cy = size / 2, r = 9
+      // 白色描边圈
+      ctx.beginPath()
+      ctx.arc(cx, cy, r + 1, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+      // 蓝色实心
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.fillStyle = '#3C9CFF'
+      ctx.fill()
+
+      const filePath = (wx.env.USER_DATA_PATH || '') + '/my_pin.png'
+      wx.canvasToTempFilePath({
+        canvas: canvas,
+        fileType: 'png',
+        filePath: filePath,
+        success: (fileRes) => {
+          this._myIconPath = fileRes.tempFilePath
+          this._applyOverlays()
+        },
+        fail: () => {}
+      })
+    })
+  },
+
+  // 生成 4x4 全透明占位图标：用于"线中距离文字"marker 的 iconPath
+  // （marker 必须带 iconPath 才能显示 callout，用透明图避免遮挡虚线）
+  _generateTransparentIcon() {
+    const query = wx.createSelectorQuery()
+    query.select('#transparentCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return
+      const canvas = res[0].node
+      const dpr = wx.getSystemInfoSync().pixelRatio
+      canvas.width = 4 * dpr
+      canvas.height = 4 * dpr
+      wx.canvasToTempFilePath({
+        canvas: canvas,
+        fileType: 'png',
+        filePath: (wx.env.USER_DATA_PATH || '') + '/transparent.png',
+        success: (fileRes) => {
+          this._transparentIconPath = fileRes.tempFilePath
+          this._applyOverlays()
+        },
+        fail: () => {}
+      })
+    })
+  },
+
   renderMarker(gcjLat, gcjLng, wgsLat, wgsLng) {
-    const { deviceId, recordTime, upDateDevice } = this.data
-    const labelText = deviceId ? deviceId.substring(0, 10) : '定位点'
+    // 坐标已保存在 this._markerGcj，统一走 _applyOverlays 渲染所有叠加层
+    this._applyOverlays()
+  },
 
-    const markers = [{
-      id: 0,
-      latitude: gcjLat,
-      longitude: gcjLng,
-      width: 36,
-      height: 36,
-      iconPath: '',
-      title: '设备: ' + (deviceId || '-'),
-      callout: {
-        content: '设备:' + (deviceId || '-') +
-          (upDateDevice ? '\n上传:' + upDateDevice : '') +
-          '\nWGS84: ' + wgsLat + ', ' + wgsLng +
-          '\n时间:' + (recordTime || '-'),
-        display: 'ALWAYS',
-        textAlign: 'center',
-        fontSize: 13,
-        padding: 10,
-        borderRadius: 8
-      },
-      label: {
-        content: labelText,
-        color: '#ffffff',
-        fontSize: 13,
-        bgColor: '#E53935',
-        borderRadius: 6,
-        padding: 6,
-        anchorX: 0,
-        anchorY: 3,
-        textAlign: 'center'
-      },
-      // 红色圆点标记
-      anchor: { x: 0.5, y: 0.5 }
-    }]
+  // ==================== 绿色设备图钉图标（与地图中心一致） ====================
 
-    this.setData({ markers })
+  // 通用图钉绘制：canvas选择器 → fillColor/strokeColor → 导图
+  _drawPin(canvasSelector, fillColor, strokeColor, targetPath, cb) {
+    const query = wx.createSelectorQuery()
+    query.select(canvasSelector).fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return
+      const canvas = res[0].node
+      const ctx = canvas.getContext('2d')
+      const dpr = wx.getSystemInfoSync().pixelRatio
+      canvas.width = 28 * dpr
+      canvas.height = 28 * dpr
+      ctx.scale(dpr, dpr)
+
+      const cx = 14, cy = 14, r = 10
+
+      // 白色圆底 + 绿色描边
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+      ctx.strokeStyle = fillColor
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      // 内部绿色倒三角
+      ctx.beginPath()
+      ctx.moveTo(cx - 5, cy - 5)
+      ctx.lineTo(cx, cy + 5)
+      ctx.lineTo(cx + 5, cy - 5)
+      ctx.closePath()
+      ctx.fillStyle = fillColor
+      ctx.fill()
+
+      wx.canvasToTempFilePath({
+        canvas: canvas,
+        fileType: 'png',
+        filePath: targetPath,
+        success: (fileRes) => cb(fileRes.tempFilePath),
+        fail: () => {}
+      })
+    })
+  },
+
+  // 生成设备绿色图钉图标（绿色 #00C853，与地图中心 _generateDevPin 完全一致），
+  // 固定路径每次覆盖不累积；生成完成后统一刷新叠加层
+  _generateDevPin() {
+    const that = this
+    const targetPath = (wx.env.USER_DATA_PATH || '') + '/dev_pin.png'
+    this._drawPin('#devPinCanvas', '#00C853', '#1B5E20', targetPath, (filePath) => {
+      that._deviceIconPath = filePath
+      that._applyOverlays()
+    })
   },
 
   // ==================== 高德瓦片叠加 ====================
@@ -299,5 +548,13 @@ Page({
       longitude: this.data.nativeLng
     })
     wx.showToast({ title: '已回到定位点', icon: 'success', duration: 1000 })
+  },
+
+  // 页面销毁：停止位置轮询
+  onUnload() {
+    if (this._locationTimer) {
+      clearInterval(this._locationTimer)
+      this._locationTimer = null
+    }
   }
 })

@@ -7,12 +7,16 @@ page {
   background: #222;
 }
 
-/* 顶部信息栏 */
+/* 右上角悬浮信息栏（半透明，可透出地图） */
 .info-bar {
-  background: #fff;
-  padding: 16rpx 24rpx;
-  border-bottom: 1rpx solid #eee;
-  flex-shrink: 0;
+  position: fixed;
+  top: 200rpx;
+  right: 20rpx;
+  z-index: 998;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 14rpx 20rpx;
+  border-radius: 12rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.15);
 }
 
 .info-row {
@@ -39,7 +43,7 @@ page {
 }
 
 .info-value.coords {
-  color: #E53935;
+  color: #333;
   font-weight: 600;
 }
 

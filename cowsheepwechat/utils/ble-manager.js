@@ -1,5 +1,5 @@
 // utils/ble-manager.js - 全局蓝牙管理单例
-// 核心职责：连接管理、数据接收、本地缓存、上报队列、同步开关。
+// 核心职责：连接管理、数据接收、本地缓存、上传队列、同步开关。
 // 生命周期独立于页面：离开蓝牙页后连接保持，数据照常接收/缓存/上报。
 // 页面通过 subscribe/getState 订阅状态，仅负责 UI 展示与操作入口。
 const STORAGE_KEY = 'bt_cache_queue'
@@ -365,7 +365,7 @@ function handleBleData(res) {
   } catch (e) { /* 非 JSON，保持原样 */ }
 
   if (state.isCenterUploading) {
-    // 上报模式：直接推入上传队列，不缓存
+    // 上传模式：直接推入上传队列，不缓存
     state.gpsQueue.push(correctedMsg)
     prependReceived(correctedMsg)
     emit()
@@ -381,17 +381,17 @@ function handleBleData(res) {
   }
 }
 
-// ========== 上报数据中心（切换：上报 / 暂停） ==========
+// ========== 上传数据中心（切换：上传 / 暂停） ==========
 function toggleCenterUpload() {
   if (state.isCenterUploading) {
-    // 正在上报 → 暂停
+    // 正在上传 → 暂停
     state.isCenterUploading = false
     emit()
-    wx.showToast({ title: '已暂停上报', icon: 'none' })
+    wx.showToast({ title: '已暂停上传', icon: 'none' })
     return
   }
 
-  // 开始上报
+  // 开始上传
   state.isCenterUploading = true
 
   const cache = state.cacheQueue
@@ -400,9 +400,9 @@ function toggleCenterUpload() {
     state.cacheQueue = []
     state.gpsQueue = state.gpsQueue.concat(cache)
     saveCache()
-    wx.showToast({ title: '上报已开启，先上传 ' + cache.length + ' 条缓存', icon: 'none' })
+    wx.showToast({ title: '上传已开启，先上传 ' + cache.length + ' 条缓存', icon: 'none' })
   } else {
-    wx.showToast({ title: '上报已开启，等待接收数据...', icon: 'none' })
+    wx.showToast({ title: '上传已开启，等待接收数据...', icon: 'none' })
   }
   emit()
 
@@ -417,7 +417,7 @@ function processGPSQueue() {
   if (state.uploading) return
   const queue = state.gpsQueue
   if (queue.length === 0) {
-    // 队列已空，等待新数据（上报模式下不自动停止）
+    // 队列已空，等待新数据（上传模式下不自动停止）
     return
   }
 
@@ -450,10 +450,11 @@ function processGPSQueue() {
   //   MSG_TYPE_GPS = 1,        // GPS定位信息
   //   MSG_TYPE_TIME = 2,       // 对时信息
   //   MSG_TYPE_BATTERY = 3,    // 电量信息（小数，如0.5、0.1）
+  //   MSG_TYPE_CONFIG = 6,     // 配置信息（工作时间/GPS工作时间等）
   //   MSG_TYPE_FIRMWARE = 10,   // 固件更新指令
   //   MSG_TYPE_COM = 11   // 下载指令到设备
   // } MessageType_t;
-  if (msgType == 1 || msgType == 2 || msgType == 3) {
+  if (msgType == 1 || msgType == 2 || msgType == 3 || msgType == 6) {
     const deviceId = parts[1]
     const lorastr = infoStr
     const logTime = getApp().formatTime()

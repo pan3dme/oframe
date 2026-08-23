@@ -1,30 +1,35 @@
 <!--location-map.wxml-->
 <navigation-bar title="定位详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 
-<!-- 顶部信息栏 -->
-<view class="info-bar" wx:if="{{deviceId}}">
-  <view class="info-row">
-    <text class="info-label">设备: </text>
-    <text class="info-value">{{deviceId}}</text>
-  </view>
-  <view class="info-row" wx:if="{{upDateDevice}}">
-    <text class="info-label">上传: </text>
-    <text class="info-value">{{upDateDevice}}</text>
-  </view>
+<!-- 绿色设备图钉图标（与地图中心设备一致），离屏绘制 -->
+<canvas type="2d" id="devPinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
+
+<!-- 蓝色"我的位置"圆点图标，离屏绘制（用于避免系统 show-location 蓝点与虚线起点的亚像素偏差） -->
+<canvas type="2d" id="myPinCanvas" style="width:22px;height:22px;position:fixed;left:-9999px"></canvas>
+
+<!-- 透明占位图标，离屏绘制（用于在虚线上显示距离文字） -->
+<canvas type="2d" id="transparentCanvas" style="width:4px;height:4px;position:fixed;left:-9999px"></canvas>
+
+<map id="locMap" class="map"
+  latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
+  markers="{{markers}}" polyline="{{polylines}}" enable-satellite="{{isSatellite}}"
+  bindregionchange="onRegionChange" />
+
+<!-- 右上角悬浮信息栏 -->
+<view class="info-bar" wx:if="{{originLat}}">
   <view class="info-row">
     <text class="info-label">坐标: </text>
     <text class="info-value coords">{{originLat}}, {{originLng}}</text>
+  </view>
+  <view class="info-row" wx:if="{{distanceText}}">
+    <text class="info-label">距离: </text>
+    <text class="info-value">{{distanceText}}</text>
   </view>
   <view class="info-row" wx:if="{{recordTime}}">
     <text class="info-label">时间: </text>
     <text class="info-value">{{recordTime}}</text>
   </view>
 </view>
-
-<map id="locMap" class="map"
-  latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
-  markers="{{markers}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
-  bindregionchange="onRegionChange" />
 
 <!-- 右下角按钮 -->
 <view class="map-toolbar">

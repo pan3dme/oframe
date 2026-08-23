@@ -9,11 +9,11 @@
         <text class="cache-icon">☁️</text>
         <text class="cache-text" bindtap="onTapCacheText">缓存记录: <text class="cache-num">{{cacheCount}}</text> 条</text>
         <button class="cache-upload-btn {{isCenterUploading ? 'cache-upload-cancel' : ''}}" bindtap="uploadToCenter">
-          {{isCenterUploading ? '⏸ 暂停上报' : '▶ 上报'}}
+          {{isCenterUploading ? '⏸ 暂停上传' : '▶ 上传数据'}}
         </button>
       </view>
       <view class="cache-progress-line" wx:if="{{isCenterUploading || uploadedCount > 0}}">
-        {{isCenterUploading ? '上报中' : ''}}{{uploadedCount > 0 ? ' | 已上传 ' + uploadedCount + ' 条' : ''}}{{gpsQueue.length > 0 ? ' | 队列 ' + gpsQueue.length + ' 条' : ''}}
+        {{isCenterUploading ? '上传中' : ''}}{{uploadedCount > 0 ? ' | 已上传 ' + uploadedCount + ' 条' : ''}}{{gpsQueue.length > 0 ? ' | 队列 ' + gpsQueue.length + ' 条' : ''}}
       </view>
     </view>
 

@@ -14,8 +14,9 @@
 >
 </map>
 
-<!-- 底部信息栏 -->
+<!-- 右上角悬浮信息栏 -->
 <view class="bottom-bar">
   <view class="bar-name">{{roadName}}</view>
-  <view class="bar-info">ID: {{roadId}}  |  {{pointCount}} 个路径点</view>
+  <view class="bar-info">{{pointCount}} 个路径点</view>
+  <view class="bar-length" wx:if="{{roadLength}}">道路长度：{{roadLength}}</view>
 </view>

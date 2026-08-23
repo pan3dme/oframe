@@ -290,7 +290,7 @@ Page({
             content: labelText,
             color: '#333333',
             fontSize: 14,
-            bgColor: '#ff0000',
+            bgColor: '#ffffff',
             borderColor: '#999999',
             borderWidth: 1,
             borderRadius: 4,
@@ -415,7 +415,7 @@ Page({
           maxWidth: 300,
           anchorX: devAnchorX,
           anchorY: -25,
-          textAlign: 'centen'
+          textAlign: 'center'
         }
       })
     })

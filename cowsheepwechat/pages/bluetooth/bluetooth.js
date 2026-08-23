@@ -3,6 +3,7 @@
 // 离开本页连接保持、数据照常接收；本页只负责展示与操作入口。
 const bleManager = require('../../utils/ble-manager.js')
 const dataCache = require('../../config/data-cache')
+const timeWindowCodec = require('../../utils/time-window-codec.js')
 
 Page({
   data: {
@@ -16,6 +17,8 @@ Page({
     displayList: [],       // 过滤后的显示列表（已连接）
     cacheDisplayList: [],  // 缓存数据显示列表（未连接时展示）
     filterType: '',        // ''=全部, 'gps', 'time', 'battery'
+    // 是否显示转换（设置页开关控制）：开启后对时记录(TYPE=2)显示换算日期时间、配置记录(TYPE=6)显示时间窗
+    showConverted: false,
     // 数据缓存（先存后上传）
     cacheQueue: [],
     cacheCount: 0,
@@ -74,6 +77,8 @@ Page({
     bleManager.init()
     // 加载设备别名映射（记录列表显示上传设备别名）
     this._loadRenameMap()
+    // 读取"显示转换"设置（与设备详情一致）
+    this._readSettings()
     // 开发工具不支持蓝牙，跳过自动连接避免 timeout
     const sysInfo = wx.getSystemInfoSync()
     if (sysInfo.platform === 'devtools') {
@@ -92,7 +97,8 @@ Page({
       this._onBleUpdateBound = this._onBleUpdate.bind(this)
     }
     bleManager.subscribe(this._onBleUpdateBound)
-    this._syncFromManager()
+    // 读取"显示转换"设置（从设置页返回时刷新显示），并同步列表
+    this._readSettings()
   },
 
   onHide() {
@@ -178,6 +184,11 @@ Page({
 
     const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
     const alias = (this._deviceRenameMap && this._deviceRenameMap[upDateDevice]) || ''
+    // 显示文本：默认显示原始LORA数据；仅当"显示转换"开启时，对时(TYPE=2)与配置(TYPE=6)显示换算内容（与设备详情一致）
+    const rawLora = info || msg
+    const displayLorastr = (this.data.showConverted && (msgType === '2' || msgType === '6'))
+      ? this._buildDisplayLorastr(rawLora, msgType)
+      : rawLora
 
     return {
       _key: msg + '_' + idx,
@@ -186,13 +197,96 @@ Page({
       upDateDevice,
       upDateDeviceAlias: alias,
       msgType,
-      displayLorastr: info || msg,
+      displayLorastr,
       rssi,
       snr,
       // 每条记录背景色各不相同（柔和浅色风格参考设备详情），按消息内容哈希生成
       bgColor: this._recordPastel(msg),
       deviceColor: this._deviceColor(upDateDevice)
     }
+  },
+
+  // ========== 显示转换（与设备详情数据记录一致） ==========
+  // 读取本地设置："显示转换"开关
+  _readSettings() {
+    let showConverted = false
+    try {
+      const conv = wx.getStorageSync('setting_show_converted')
+      if (conv !== '' && conv !== undefined && conv !== null) {
+        showConverted = conv === true || conv === 'true' || conv === 1 || conv === '1'
+      }
+    } catch (e) { /* ignore */ }
+    this.setData({ showConverted })
+    // 开关变化后刷新已加载记录的显示文本（如从设置页返回时）
+    this._syncFromManager()
+  },
+
+  // 对时/配置记录显示转换：按消息类型分派
+  // TYPE=2 对时：把第3段秒级时间戳替换为日期时间（按UTC显示）
+  //   如 "2|v4-0|1787230505|93|2" → "2|v4-0|2026-08-20 12:55:05|93|2"
+  // TYPE=6 配置：把第3段的工作时间/GPS工作时间代号转换为可读时间窗
+  //   如 "6|v4-26|5,0M,30|1" → "6|v4-26|5,00:00-23:59 10:00-12:00|1"
+  //   带主周期: "6|v4-26|5,0M,30,2|1" → "6|v4-26|5,00:00-23:59 10:00-12:00,2|1"
+  // 无法转换时原样返回
+  _buildDisplayLorastr(lorastr, msgType) {
+    if (!lorastr || lorastr === '-') return lorastr
+    if (msgType === '2') {
+      const parts = String(lorastr).split('|')
+      if (parts.length < 3 || !parts[2]) return lorastr
+      const fmt = this._formatTsToDateTime(parts[2])
+      if (!fmt) return lorastr
+      parts[2] = fmt
+      return parts.join('|')
+    }
+    if (msgType === '6') {
+      return this._formatConfigLorastr(lorastr)
+    }
+    return lorastr
+  },
+
+  // TYPE=6 配置记录转换：第3段格式 "周期,开机时间代号,GPS工作时间代号[,主周期]"
+  // → "周期,工作时间 GPS工作时间[,主周期]"（换算后不再保留原始代号；第4段主周期原样保留显示）
+  _formatConfigLorastr(lorastr) {
+    if (!lorastr || lorastr === '-') return lorastr
+    const parts = String(lorastr).split('|')
+    if (parts.length < 3 || !parts[2]) return lorastr
+    const segs = parts[2].split(',')
+    if (segs.length < 3) return lorastr
+    const workTime = timeWindowCodec.formatTimeRange(segs[1])
+    const gpsTime = timeWindowCodec.formatTimeRange(segs[2])
+    // 解析失败时保留原代号
+    const workDisplay = workTime === '-' ? segs[1] : workTime
+    const gpsDisplay = gpsTime === '-' ? segs[2] : gpsTime
+    // 第4段主周期（大周期，小时 1-4），存在则追加在两个时间后面显示
+    let mainPeriodPart = ''
+    if (segs.length >= 4 && /^\d{1,2}$/.test(segs[3])) {
+      mainPeriodPart = ',' + segs[3]
+    }
+    parts[2] = segs[0] + ',' + workDisplay + ' ' + gpsDisplay + mainPeriodPart
+    return parts.join('|')
+  },
+
+  // 秒级时间戳（兼容13位毫秒）→ "YYYY-MM-DD HH:mm:ss"（UTC时间）；无法转换返回空串
+  _formatTsToDateTime(raw) {
+    if (raw === undefined || raw === null || raw === '') return ''
+    const s = String(raw).trim()
+    let ms = NaN
+    if (/^\d{10}$/.test(s)) {
+      // 秒级时间戳
+      ms = parseInt(s, 10) * 1000
+    } else if (/^\d{13}$/.test(s)) {
+      // 毫秒级时间戳
+      ms = parseInt(s, 10)
+    } else if (/^\d{10}\.\d+$/.test(s)) {
+      // 带小数的秒级时间戳
+      ms = Math.round(parseFloat(s) * 1000)
+    }
+    if (isNaN(ms)) return ''
+    const d = new Date(ms)
+    if (isNaN(d.getTime())) return ''
+    const pad = (n) => String(n).padStart(2, '0')
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) +
+      ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds())
   },
 
   // ========== 扫描与连接 ==========
@@ -408,7 +502,7 @@ Page({
     })
   },
 
-  // ========== 上报数据中心（切换：上报 / 暂停） ==========
+  // ========== 上传数据中心（切换：上传 / 暂停） ==========
   uploadToCenter() {
     bleManager.toggleCenterUpload()
   },

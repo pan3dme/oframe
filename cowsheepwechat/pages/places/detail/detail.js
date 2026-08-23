@@ -34,7 +34,7 @@ Page({
     this.setData({
       placeId: item.placeId || '',
       placeName: name,
-      gpsText: coord.lat.toFixed(6) + ', ' + coord.lng.toFixed(6),
+      gpsText: coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5),
       mapCenter: { lat: gcj.lat, lng: gcj.lng },
       markers: [{
         id: 0,
@@ -42,23 +42,19 @@ Page({
         longitude: gcj.lng,
         width: 30,
         height: 36,
+        iconPath: '/images/place_pin.png',
         title: name,
+        anchor: { x: 0.5, y: 1 },
         callout: {
-          content: name + '\n' + coord.lat.toFixed(6) + ', ' + coord.lng.toFixed(6),
+          content: name,
           display: 'ALWAYS',
           textAlign: 'center',
-          bgColor: '#FFD600',
+          bgColor: '#ffffff',
           color: '#333333',
+          borderColor: '#cccccc',
+          borderWidth: 1,
           borderRadius: 8,
           padding: 8
-        },
-        label: {
-          content: name,
-          color: '#ffffff',
-          fontSize: 14,
-          anchorX: 0,
-          anchorY: 5,
-          textAlign: 'center'
         }
       }]
     }, () => {

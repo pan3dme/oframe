@@ -14,8 +14,8 @@
 >
 </map>
 
-<!-- 底部信息栏 -->
+<!-- 右上角悬浮信息栏 -->
 <view class="bottom-bar">
   <view class="bar-name">{{placeName}}</view>
-  <view class="bar-info">ID: {{placeId}}  |  坐标: {{gpsText}}</view>
+  <view class="bar-info">坐标: {{gpsText}}</view>
 </view>
