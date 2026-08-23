@@ -34,3 +34,9 @@ page {
   font-size: 24rpx;
   color: #999;
 }
+
+.bar-devices {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #00C853;
+}

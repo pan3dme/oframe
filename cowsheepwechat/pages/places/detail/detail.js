@@ -1,5 +1,6 @@
-// places/detail/detail.js - 单个地名地图展示
-const { wgs84ToGcj02 } = require('../../../utils/coord-transform.js')
+// places/detail/detail.js - 单个地名地图展示（地名+附近设备叠加）
+const { wgs84ToGcj02, calcDistance } = require('../../../utils/coord-transform.js')
+const dataCache = require('../../../config/data-cache.js')
 
 Page({
   data: {
@@ -9,7 +10,8 @@ Page({
     mapCenter: { lat: 26.529950, lng: 109.390224 },
     scale: 14,
     markers: [],
-    isSatellite: true
+    isSatellite: true,
+    deviceCount: 0
   },
 
   onLoad() {
@@ -36,33 +38,102 @@ Page({
       placeName: name,
       gpsText: coord.lat.toFixed(5) + ', ' + coord.lng.toFixed(5),
       mapCenter: { lat: gcj.lat, lng: gcj.lng },
-      markers: [{
-        id: 0,
-        latitude: gcj.lat,
-        longitude: gcj.lng,
-        width: 30,
-        height: 36,
-        iconPath: '/images/place_pin.png',
-        title: name,
-        anchor: { x: 0.5, y: 1 },
-        callout: {
-          content: name,
-          display: 'ALWAYS',
-          textAlign: 'center',
-          bgColor: '#ffffff',
-          color: '#333333',
-          borderColor: '#cccccc',
-          borderWidth: 1,
-          borderRadius: 8,
-          padding: 8
-        }
-      }]
+      markers: [this._buildPlaceMarker(gcj, name)]
     }, () => {
       this._refreshOverlays(gcj.lat, gcj.lng, this.data.scale)
     })
 
+    // 保存坐标和地名 marker（供 _loadNearbyDevices 复用）
+    this._placeGcj = gcj
+    this._placeMarker = this._buildPlaceMarker(gcj, name)
+    this._loadNearbyDevices()
+
     // 用完清除
     getApp().globalData._placeDetailItem = null
+  },
+
+  // ===== 地名 marker：临时用设备图 /images/device_pin.png（验证图标显示） =====
+  _buildPlaceMarker(gcj, name) {
+    return {
+      id: 0,
+      latitude: gcj.lat,
+      longitude: gcj.lng,
+      width: 28,
+      height: 28,
+      iconPath: '/images/device_pin.png',
+      title: name,
+      anchor: { x: 0.5, y: 0.5 },
+      zIndex: 100,
+      callout: {
+        content: name,
+        display: 'ALWAYS',
+        textAlign: 'center',
+        fontSize: 13,
+        bgColor: '#ffffff',
+        color: '#333333',
+        borderColor: '#cccccc',
+        borderWidth: 1,
+        borderRadius: 6,
+        padding: 6
+      }
+    }
+  },
+
+  // ===== 设备 marker：绿色圆形 + 白底气泡显示设备号（始终显示） =====
+  _buildDeviceMarker(gcj, deviceId, rename, idx) {
+    const tail = rename ? '\n(' + rename + ')' : ''
+    return {
+      id: idx,
+      latitude: gcj.lat,
+      longitude: gcj.lng,
+      width: 28,
+      height: 28,
+      iconPath: '/images/device_pin.png',
+      title: '设备: ' + deviceId,
+      anchor: { x: 0.5, y: 0.5 },
+      zIndex: 50,
+      callout: {
+        content: deviceId + tail,
+        display: 'ALWAYS',
+        textAlign: 'center',
+        fontSize: 12,
+        bgColor: '#ffffff',
+        color: '#333333',
+        borderColor: '#cccccc',
+        borderWidth: 1,
+        borderRadius: 6,
+        padding: 6
+      }
+    }
+  },
+
+  // 加载附近设备：按距离过滤，加为 marker
+  _loadNearbyDevices() {
+    const that = this
+    dataCache.getDeviceList((cached) => {
+      const list = (cached && cached.recordList) || []
+      const placeGcj = that._placeGcj
+      // 地名 marker（设备图）+ 设备 marker
+      const markers = that._placeMarker ? [that._placeMarker] : []
+      let deviceCount = 0
+      // 距离阈值（米）：50 km 内都显示
+      const MAX_DIST = 50000
+
+      list.forEach(function(d) {
+        if (!d.visible) return
+        if (!d.lorastr || d.lorastr === '-') return
+        const c = that._parseSingleGPS(d.lorastr)
+        if (!c) return
+        // WGS-84 → GCJ-02
+        const gcj = wgs84ToGcj02(c.lng, c.lat)
+        const dist = calcDistance(placeGcj.lat, placeGcj.lng, gcj.lat, gcj.lng)
+        if (dist > MAX_DIST) return
+        deviceCount++
+        markers.push(that._buildDeviceMarker(gcj, d.deviceId, d.rename, 100 + deviceCount))
+      })
+
+      that.setData({ markers, deviceCount })
+    })
   },
 
   // ========== 高德瓦片叠加 ==========
@@ -222,11 +293,12 @@ Page({
   _parseSingleGPS(gps) {
     if (!gps || gps === '-') return null
 
-    // 尝试 | 分隔
+    // 尝试 | 分隔（lorastr 可能是 crow_idx|lat|lng，取最后两段）
     let parts = gps.split(/[｜|]/)
     if (parts.length >= 2) {
-      const lat = parseFloat(parts[0])
-      const lng = parseFloat(parts[1])
+      const tail = parts.slice(-2)
+      const lat = parseFloat(tail[0])
+      const lng = parseFloat(tail[1])
       if (!isNaN(lat) && !isNaN(lng)) return { lat, lng }
     }
 

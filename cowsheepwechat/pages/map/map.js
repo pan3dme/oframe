@@ -28,7 +28,6 @@ Page({
   _placeMarkers: [],
   _fullRoadList: [],
   _fullPlaceList: [],
-  _pinIconPath: '',
   _cowIconPath: '',
   _deviceIconPath: '',
 
@@ -697,7 +696,7 @@ Page({
     const filteredPlaces = show
       ? this._fullPlaceList.filter(p => (parseInt(p.level) || 1) <= level)
       : []
-    this._buildPlaceMarkers(filteredPlaces, this._pinIconPath)
+    this._buildPlaceMarkers(filteredPlaces)
 
     const label = show ? ('Lv.' + level) : '图层'
 
@@ -777,116 +776,135 @@ Page({
   },
 
   /**
-   * 用 Canvas 绘制经典定位图钉图标，固定路径，每次覆盖不累积
+   * 生成"黑描边白字 + 红色圆点"组合图钉 PNG
+   * 文字在上（带黑色描边），红点在下——微信 callout/label 均不支持文字描边，
+   * 只能用 canvas 把文字画进图标，这样文本描边是真实渲染的
+   * @param {string} name   地名
+   * @param {number} idx    序号（用于唯一文件名）
+   * @param {function} cb   (iconPath, W, H, anchorY) 生成完成回调
    */
-  _generateYellowDot() {
-    const targetPath = (wx.env.USER_DATA_PATH || '') + '/pin_icon.png'
-    return new Promise((resolve) => {
-      const query = wx.createSelectorQuery()
-      query.select('#pinCanvas').fields({ node: true, size: true }).exec((res) => {
-        if (!res || !res[0] || !res[0].node) {
-          resolve('')
-          return
-        }
-        const canvas = res[0].node
-        const ctx = canvas.getContext('2d')
-        const dpr = wx.getSystemInfoSync().pixelRatio
-        canvas.width = 40 * dpr
-        canvas.height = 40 * dpr
-        ctx.scale(dpr, dpr)
+  _generatePlaceTextPin(name, idx, cb) {
+    const query = wx.createSelectorQuery()
+    query.select('#placeTextCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return cb('', 0, 0, 0)
+      const canvas = res[0].node
+      const ctx = canvas.getContext('2d')
+      const dpr = wx.getSystemInfoSync().pixelRatio
+      const fontSize = 13
+      const dotH = 28                    // 红点区高度（与设备/牛图标同规格）
+      const textH = 24                   // 文字区高度
+      const textW = Math.ceil(name.length * fontSize * 1.05) + 10  // 文字宽度估算
+      const W = Math.max(32, textW)
+      const H = textH + dotH
 
-        // 绘制蓝色定位图钉（泪滴形）
-        const cx = 20, cy = 18, r = 13
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, Math.PI, 0)          // 上半圆
-        ctx.lineTo(cx, 34)                        // 右侧斜到尖端
-        ctx.closePath()
-        ctx.fillStyle = '#2979FF'
-        ctx.fill()
-        ctx.strokeStyle = '#0D47A1'
-        ctx.lineWidth = 1.5
-        ctx.stroke()
+      canvas.width = W * dpr
+      canvas.height = H * dpr
+      ctx.scale(dpr, dpr)
+      ctx.clearRect(0, 0, W, H)
 
-        // 内部白色小圆（高光）
-        ctx.beginPath()
-        ctx.arc(cx, cy - 2, 5, 0, 2 * Math.PI)
-        ctx.fillStyle = '#ffffff'
-        ctx.fill()
+      // ---- 上半部：白字 + 黑色描边 ----
+      ctx.font = 'bold ' + fontSize + 'px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = 3
+      ctx.strokeText(name, W / 2, textH / 2 + 1)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(name, W / 2, textH / 2 + 1)
 
-        wx.canvasToTempFilePath({
-          canvas: canvas,
-          fileType: 'png',
-          filePath: targetPath,
-          success: (fileRes) => resolve(fileRes.tempFilePath),
-          fail: () => resolve('')
-        })
+      // ---- 下半部：红点（白底红圈红三角，圆心在红点区中心） ----
+      const cx = W / 2, cy = textH + 14, r = 10
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+      ctx.strokeStyle = '#E53935'
+      ctx.lineWidth = 2
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(cx - 5, cy - 5)
+      ctx.lineTo(cx, cy + 5)
+      ctx.lineTo(cx + 5, cy - 5)
+      ctx.closePath()
+      ctx.fillStyle = '#E53935'
+      ctx.fill()
+
+      const filePath = (wx.env.USER_DATA_PATH || '') + '/place_' + idx + '.png'
+      wx.canvasToTempFilePath({
+        canvas: canvas,
+        fileType: 'png',
+        filePath: filePath,
+        success: (fileRes) => cb(fileRes.tempFilePath, W, H, (textH + 14) / H),
+        fail: () => cb('', 0, 0, 0)
       })
     })
   },
 
   fetchPlaceData() {
     const that = this
-    // 先生成图钉图标（仅首次）
-    const iconPromise = this._pinIconPath
-      ? Promise.resolve(this._pinIconPath)
-      : this._generateYellowDot().then(path => {
-          that._pinIconPath = path
-          return path
-        })
 
-    iconPromise.then((iconPath) => {
-      dataCache.getPlaceListFromCache((cachedData) => {
-        const placeList = cachedData.placeList || []
-        if (placeList.length === 0) {
-          console.log('[地名] 暂无数据')
-          that._placeFetched = true
-          that._tryInitLevel()
-          return
-        }
-        console.log('[地名] 已解析:', placeList.length, '条（缓存优先）')
-        that._fullPlaceList = placeList
+    dataCache.getPlaceListFromCache((cachedData) => {
+      const placeList = cachedData.placeList || []
+      if (placeList.length === 0) {
+        console.log('[地名] 暂无数据')
         that._placeFetched = true
         that._tryInitLevel()
-      })
+        return
+      }
+      console.log('[地名] 已解析:', placeList.length, '条（缓存优先）')
+      that._fullPlaceList = placeList
+      that._placeFetched = true
+      that._tryInitLevel()
     })
   },
 
-  _buildPlaceMarkers(placeList, iconPath) {
-    const markers = []
-    // 地名图钉 ID 从 90000 起，避免与牛群(0~N)和设备(50000~N)冲突
+  _buildPlaceMarkers(placeList) {
+    const that = this
     const ID_BASE = 90000
+
+    // 先把每个地名的基础数据解析出来
+    const items = []
     placeList.forEach((place, index) => {
       const coord = this._parseSingleGPS(place.gps)
       if (!coord) return
       const gcj = wgs84ToGcj02(coord.lng, coord.lat)
       const name = place.name || place.placeid || '-'
-      markers.push({
-        id: ID_BASE + index,
-        latitude: gcj.lat,
-        longitude: gcj.lng,
-        width: 30,
-        height: 36,
-        iconPath: iconPath || '',
-        title: name,
-        callout: {
-          content: name + '\n' + coord.lat.toFixed(6) + ',' + coord.lng.toFixed(6),
-          display: 'BYCLICK',
-          textAlign: 'center',
-          bgColor: '#FFD600',
-          color: '#333333'
-        },
-        label: {
-          content: name,
-          color: '#ffffff',
-          fontSize: 14,
-          anchorX: 0,
-          anchorY: 4,
-          textAlign: 'center'
+      items.push({ id: ID_BASE + index, gcj, name })
+    })
+    if (items.length === 0) {
+      this._placeMarkers = []
+      return
+    }
+
+    // 逐个生成"描边文字+红点"PNG，全部完成后再合并渲染
+    const markers = []
+    let done = 0
+    items.forEach((item, i) => {
+      this._generatePlaceTextPin(item.name, i, (iconPath, W, H, anchorY) => {
+        if (iconPath) {
+          markers.push({
+            id: item.id,
+            latitude: item.gcj.lat,
+            longitude: item.gcj.lng,
+            width: W,
+            height: H,
+            iconPath: iconPath,
+            title: item.name,
+            zIndex: 50,
+            // 红点圆心对准坐标点（anchorY = 红点圆心在整图中的相对位置）
+            anchor: { x: 0.5, y: anchorY }
+          })
+        }
+        done++
+        if (done === items.length) {
+          console.log('[地名] 生成完成:', markers.length, '个（共', items.length, '个）')
+          that._placeMarkers = markers
+          // 图层开启状态才需要刷新地图
+          if (that.data.showRoadLayer) that._applyAllMarkers()
         }
       })
     })
-    console.log('[地名] 构建图钉:', markers.length, '个')
-    this._placeMarkers = markers
   },
 
   /**
