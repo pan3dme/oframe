@@ -193,10 +193,10 @@ Page({
 
         // 根据最新数据来源判断最后记录类型
         if (newestSource === 'lot' && lotRec) {
-          // LOT表的 lorastr 首段为类型编号：1=GPS, 2=对时
+          // LOT表的 lorastr 首段为类型编号：1=GPS, 2=对时, 5=跟踪（也视为定位）
           const lorastr = lotRec.lorastr || ''
           const typePart = lorastr.split('|')[0]
-          if (typePart === '1') lastRecordType = 'gps'
+          if (typePart === '1' || typePart === '5') lastRecordType = 'gps'
           else if (typePart === '2') lastRecordType = 'time'
         } else if (newestSource === 'sync') {
           // 同步时间表记录 = 对时
