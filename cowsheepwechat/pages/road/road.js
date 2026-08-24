@@ -151,7 +151,8 @@ Page({
           roadname: name,
           roadinfo: points,
           level: level,
-          time: getApp().formatTime()
+          time: getApp().formatTime(),
+          wechatid: getApp().getWechatId()
         }
       },
       success: (res) => {
@@ -211,7 +212,8 @@ Page({
           roadname: name,
           roadinfo: points,
           level: level,
-          time: getApp().formatTime()
+          time: getApp().formatTime(),
+          wechatid: getApp().getWechatId()
         }
       },
       success: (res) => {
@@ -264,7 +266,7 @@ Page({
       timeout: 15000,
       data: {
         action: 'deleteRoad',
-        info: { route_id: roadId }
+        info: { route_id: roadId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         console.log('删除道路返回:', JSON.stringify(res.data))

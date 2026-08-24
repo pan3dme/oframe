@@ -182,7 +182,7 @@ function fetchAndAnalyze(deviceId, scanPages, callback) {
       method: 'POST',
       data: {
         action: 'getDeviceLogbyId',
-        info: { limit: PAGE_SIZE, deviceId: deviceId, offset: page * PAGE_SIZE },
+        info: { limit: PAGE_SIZE, deviceId: deviceId, offset: page * PAGE_SIZE, wechatid: getApp().getWechatId() },
         time: getApp().formatTime()
       },
       timeout: 8000,

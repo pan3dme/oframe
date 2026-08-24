@@ -56,7 +56,8 @@ Page({
         info: {
           deviceId: deviceId,
           limit: 99,
-          curdate: curdate
+          curdate: curdate,
+          wechatid: getApp().getWechatId()
         },
         time: app.formatTime(now)
       },

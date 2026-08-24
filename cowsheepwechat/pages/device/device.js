@@ -55,7 +55,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceConfigAll',
-        info: {}
+        info: { wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         console.log('设备配置All查询返回:', JSON.stringify(res.data))
@@ -358,7 +358,7 @@ Page({
       method: 'POST',
       data: {
         action: 'addDevice',
-        info: { deviceId }
+        info: { deviceId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         wx.hideLoading()

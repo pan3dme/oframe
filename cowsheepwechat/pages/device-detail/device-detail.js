@@ -301,7 +301,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceConfigAll',
-        info: { deviceId: deviceId }
+        info: { deviceId: deviceId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         console.log('设备配置查询返回:', JSON.stringify(res.data))
@@ -414,7 +414,7 @@ Page({
   loadTodayRecords(offset, callback) {
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const info = { limit: this.data.recordLimit, deviceId: deviceId, offset: offset || 0 }
+    const info = { limit: this.data.recordLimit, deviceId: deviceId, offset: offset || 0, wechatid: getApp().getWechatId() }
     wx.request({
       url: API_URL,
       method: 'POST',
@@ -567,7 +567,7 @@ Page({
       method: 'POST',
       data: {
         action: 'updateDevice',
-        info: { deviceId: oldKey,  rename, ProductKey, DeviceName, DeviceSecret, visible, picurl }
+        info: { deviceId: oldKey,  rename, ProductKey, DeviceName, DeviceSecret, visible, picurl, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         wx.hideLoading()
@@ -643,10 +643,10 @@ Page({
       wx.request({
         url: API_COWSHEEP_URL,
         method: 'POST',
-        data: {
-          action: 'bindDeviceCow',
-          info: { deviceId, cowsheepId: item.cowsheepId }
-        },
+      data: {
+        action: 'bindDeviceCow',
+        info: { deviceId, cowsheepId: item.cowsheepId, wechatid: getApp().getWechatId() }
+      },
         success: (res) => {
           wx.hideLoading()
           console.log('设备绑定返回:', JSON.stringify(res.data))
@@ -719,7 +719,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceBestRssibyId',
-        info: { limit: 3, deviceId: targetDeviceId } 
+        info: { limit: 3, deviceId: targetDeviceId, wechatid: getApp().getWechatId() } 
       },
       success: (res) => {
         wx.hideLoading()
@@ -825,7 +825,8 @@ Page({
       deviceName: credDevice.DeviceName,
       productKey: credDevice.ProductKey,
       msg: finalMsg,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      info: { wechatid: getApp().getWechatId() }
     }
 
     console.log('[获取定位] 发送DTU:', JSON.stringify(payload))

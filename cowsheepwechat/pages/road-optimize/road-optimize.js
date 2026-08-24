@@ -404,7 +404,8 @@ Page({
           roadname: mergedName,
           roadinfo: pointsStr,
           level: '1',
-          time: app.formatTime()
+          time: app.formatTime(),
+          wechatid: app.getWechatId()
         }
       },
       success: (res) => {

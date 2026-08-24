@@ -165,7 +165,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceConfigAll',
-        info: { deviceId: device.deviceId }
+        info: { deviceId: device.deviceId, wechatid: getApp().getWechatId() }
       },
       timeout: 8000,
       success: (res) => {
@@ -374,7 +374,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceBestRssibyId',
-        info: { limit: 3, deviceId: targetDeviceId }
+        info: { limit: 3, deviceId: targetDeviceId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         wx.hideLoading()
@@ -491,7 +491,8 @@ Page({
       deviceName: credDevice.DeviceName,
       productKey: credDevice.ProductKey,
       msg: finalMsg,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      info: { wechatid: getApp().getWechatId() }
     }
 
     this.addLog('info', '发送 → ' + targetDeviceId + ': ' + finalMsg)

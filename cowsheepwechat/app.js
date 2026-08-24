@@ -60,6 +60,24 @@ App({
     return y + '/' + M + '/' + d + ' ' + pad2(h) + ':' + pad2(m) + ':' + pad2(s)
   },
 
+  // 从服务器登录返回的用户数据中解析 wechatid（除登录外，所有 action 请求的 info 都需携带）
+  getWechatId() {
+    let serverData = this.globalData.serverData
+    if (!serverData) {
+      try {
+        serverData = wx.getStorageSync('login_server_data')
+        this.globalData.serverData = serverData || null
+      } catch (e) { /* ignore */ }
+    }
+    if (serverData && serverData.data && Array.isArray(serverData.data.attributes)) {
+      const item = serverData.data.attributes.find(a => a.columnName === 'wechatid')
+      if (item && item.columnValue !== undefined && item.columnValue !== null) {
+        return item.columnValue
+      }
+    }
+    return ''
+  },
+
   globalData: {
     api_device_Url: 'https://gpsmoveinfo.cn/fc/device',
     api_cowsheep_Url: 'https://gpsmoveinfo.cn/fc/cowsheep',

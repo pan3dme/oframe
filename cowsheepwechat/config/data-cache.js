@@ -50,7 +50,7 @@ function getDeviceList(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDeviceTaleAll',info:{limit:20} },
+      data: { action: 'getDeviceTaleAll', info: { limit: 20, wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const recordList = _parseDeviceRecords(res.data)
@@ -142,7 +142,7 @@ function getLivestockList(callback, forceRefresh) {
     wx.request({
       url: API_COWSHEEP_URL,
       method: 'POST',
-      data: { action: 'getLivestockList' },
+      data: { action: 'getLivestockList', info: { wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const list = []
@@ -205,7 +205,8 @@ function getDeviceLotRefresh(callback, forceRefresh) {
       url: API_DEVICE_URL,
       method: 'POST',
       data: { action: 'getDeviceLotRefreshAll' , info: {
-        limit: 20
+        limit: 20,
+        wechatid: getApp().getWechatId()
       }},
       timeout: 8000,
       success: (res) => {
@@ -279,7 +280,8 @@ function getDeviceBatteryAll(callback, forceRefresh) {
       url: API_DEVICE_URL,
       method: 'POST',
       data: { action: 'getDeviceBatteryAll' , info: {
-        limit: 20
+        limit: 20,
+        wechatid: getApp().getWechatId()
       }},
       timeout: 8000,
       success: (res) => {
@@ -348,7 +350,7 @@ function getDeviceSyncAll(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDevicesyncAll', info: { limit: 20 } },
+      data: { action: 'getDevicesyncAll', info: { limit: 20, wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const syncMap = _parseDeviceSyncRecords(res.data)
@@ -421,7 +423,7 @@ function getDeviceConfigAll(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDeviceConfigAll', info: {} },
+      data: { action: 'getDeviceConfigAll', info: { wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const configMap = _parseDeviceConfigRecords(res.data)
@@ -508,7 +510,7 @@ function getRoadListFromCache(callback, forceRefresh) {
   wx.request({
     url: API_ROUTE_PLACE_URL,
     method: 'POST',
-    data: { action: 'getroutetableall' },
+    data: { action: 'getroutetableall', info: { wechatid: getApp().getWechatId() } },
     success: (res) => {
       console.log('[道路缓存] 网络请求返回:', JSON.stringify(res.data))
       const roadList = _parseRoadRecords(res.data)
@@ -588,7 +590,7 @@ function getPlaceListFromCache(callback, forceRefresh) {
   wx.request({
     url: API_ROUTE_PLACE_URL,
     method: 'POST',
-    data: { action: 'getplacetableall' },
+    data: { action: 'getplacetableall', info: { wechatid: getApp().getWechatId() } },
     success: (res) => {
       console.log('[地名缓存] 网络请求返回:', JSON.stringify(res.data))
       const placeList = _parsePlaceRecords(res.data)

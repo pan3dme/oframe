@@ -460,7 +460,8 @@ function processGPSQueue() {
         upDateDevice: gpsData.upDateDevice,
         time: gpsData.time,
         rssi: String(gpsData.rssi),
-        snr: String(gpsData.snr)
+        snr: String(gpsData.snr),
+        wechatid: getApp().getWechatId()
       }
     }
     console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '队列剩余:', queue.length)

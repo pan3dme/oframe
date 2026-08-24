@@ -130,7 +130,7 @@ Page({
       timeout: 15000,
       data: {
         action: 'addPlace',
-        info: { placeid, name, gps, level, time: getApp().formatTime() }
+        info: { placeid, name, gps, level, time: getApp().formatTime(), wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         console.log('新增地名返回:', JSON.stringify(res.data))
@@ -190,7 +190,7 @@ Page({
       timeout: 15000,
       data: {
         action: 'updatePlace',
-        info: { placeId, name, gps, level, time: getApp().formatTime() }
+        info: { placeId, name, gps, level, time: getApp().formatTime(), wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         console.log('更新地名返回:', JSON.stringify(res.data))
@@ -233,7 +233,7 @@ Page({
       timeout: 15000,
       data: {
         action: 'deletePlace',
-        info: { placeid }
+        info: { placeid, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         console.log('删除地名返回:', JSON.stringify(res.data))

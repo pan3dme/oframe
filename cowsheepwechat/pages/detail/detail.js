@@ -172,7 +172,8 @@ Page({
         action: 'bindDeviceCow',
         info: {
           deviceId: deviceId,
-          cowsheepId: this.data.cowsheepId
+          cowsheepId: this.data.cowsheepId,
+          wechatid: getApp().getWechatId()
         }
       },
       success: (res) => {
@@ -214,7 +215,8 @@ Page({
       data: {
         action: 'getcowsheepvideo',
         info: {
-          cowsheep_id: this.data.cowsheepId
+          cowsheep_id: this.data.cowsheepId,
+          wechatid: getApp().getWechatId()
         }
       },
       success: (res) => {
@@ -366,7 +368,7 @@ Page({
       method: 'POST',
       data: {
         action: 'deletecowsheepvideo',
-        info: { oss_urls: ossUrls }
+        info: { oss_urls: ossUrls, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         wx.hideLoading()
@@ -464,7 +466,8 @@ Page({
             info: {
               cowsheep_id: cowsheepId,
               time: formatDate(new Date()),
-              ossUrl: ossUrl
+              ossUrl: ossUrl,
+              wechatid: getApp().getWechatId()
             }
           },
           success: (res) => {
@@ -584,7 +587,8 @@ Page({
           rename: rename,
           birthday: birthday,
           gender: gender,
-          avatar: avatarUrl
+          avatar: avatarUrl,
+          wechatid: getApp().getWechatId()
         }
       },
       success: (res) => {
@@ -649,7 +653,7 @@ Page({
       method: 'POST',
       data: {
         action: 'bindDeviceCow',
-        info: { deviceId, cowsheepId }
+        info: { deviceId, cowsheepId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         wx.hideLoading()

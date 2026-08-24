@@ -161,7 +161,8 @@ Page({
           upDateDevice:"wechat",
           time: getApp().formatTime(),
           rssi:  "0",
-          snr:  "0"
+          snr:  "0",
+          wechatid: getApp().getWechatId()
         }
 
       },

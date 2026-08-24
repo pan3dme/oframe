@@ -85,7 +85,8 @@ Page({
         action: 'getDeviceBatteryLogbyId',
         info: {
           limit: limit,
-          deviceId: deviceId
+          deviceId: deviceId,
+          wechatid: getApp().getWechatId()
         }
       },
       success: (res) => {

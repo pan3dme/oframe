@@ -196,7 +196,8 @@ onAddGenderChange(e) {
         info: {
           cowsheep_id: cowsheepId,
           birthday: birthday,
-          gender: gender
+          gender: gender,
+          wechatid: getApp().getWechatId()
         }
       },
       success: (res) => {

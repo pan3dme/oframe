@@ -61,7 +61,8 @@ Page({
         action: 'getlastlog',
         info: {
           page: page,
-          limit: this.data.pageSize
+          limit: this.data.pageSize,
+          wechatid: getApp().getWechatId()
         },
         time: getApp().formatTime()
       },

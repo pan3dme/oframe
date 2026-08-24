@@ -437,7 +437,8 @@ Page({
   fetchCrowData() {
     const crowAllData = {
       time: new Date().toLocaleString(),
-      action: "getCowTableAll"
+      action: "getCowTableAll",
+      info: { wechatid: getApp().getWechatId() }
     }
     console.log('地图页 POST发送数据:', crowAllData)
     wx.request({

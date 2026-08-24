@@ -218,7 +218,8 @@ Page({
       deviceName: credDevice.DeviceName,
       productKey: credDevice.ProductKey,
       msg: finalMsg,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      info: { wechatid: getApp().getWechatId() }
     }
 
     this.addLog('info', '发送 → ' + targetDeviceId + ': ' + finalMsg)
