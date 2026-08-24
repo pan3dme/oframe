@@ -11,7 +11,7 @@ const SERVER_DATA_KEY = 'login_server_data'
 Page({
   data: {
     username: '',      // 用户名
-    password: '',      // 密码
+    password: '',      // 密码（明文显示，type=text，避免触发 iOS 保存密码提示）
     loginCode: '',     // wx.login 获取的临时凭证 code
     autoLogin: false,  // 是否自动登录（勾选后下次免密进入首页）
     loading: false

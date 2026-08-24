@@ -10,10 +10,10 @@
       <input class="input-field" placeholder="请输入用户名" placeholder-class="input-placeholder" value="{{username}}" bindinput="onUsernameInput" />
     </view>
 
-    <!-- 密码 -->
+    <!-- 密码（明文显示；用 type="text" 而非 password，避免 iOS 弹出"自动保存密码"提示） -->
     <view class="input-group">
       <view class="input-label">密码</view>
-      <input class="input-field" password placeholder="请输入密码" placeholder-class="input-placeholder" value="{{password}}" bindinput="onPasswordInput" />
+      <input class="input-field" type="text" placeholder="请输入密码" placeholder-class="input-placeholder" value="{{password}}" bindinput="onPasswordInput" />
     </view>
 
     <!-- 登录按钮 -->
