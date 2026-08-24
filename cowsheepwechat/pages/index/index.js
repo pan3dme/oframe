@@ -99,6 +99,8 @@ Page({
       this.setData({ deviceUpdateTime })
       console.log('设备LOT最新数据缓存已就绪:', lotList.length + '条记录')
       this._updateAlerts()
+      // LOT数据就绪后重新计算，确保两周未上报的设备能被正确忽略
+      this._calcFastReportCount()
       finish()
     }, force)
 
@@ -165,14 +167,29 @@ Page({
 
   // 统计无ProductKey（定位设备）+ visible=true + 上报周期≤5的设备数量
   // 同时记录这些设备的 id，方便快速定位
+  // 附加判断：设备连续两个5分钟上报周期（10分钟）未上报数据，视为设备没电、无法下发指令，忽略该设备
   _calcFastReportCount() {
     const app = getApp()
     const deviceCache = app.globalData.deviceCache
     const configCache = app.globalData.deviceConfigCache
+    const lotCache = app.globalData.deviceLotCache
     if (!deviceCache || !configCache) return
 
     const recordList = deviceCache.recordList || []
     const configMap = configCache.configMap || {}
+    // 各设备最后一次上报时间（毫秒时间戳），来自LOT最新数据表
+    const deviceLatest = {}
+    if (lotCache && lotCache.lotList) {
+      lotCache.lotList.forEach(item => {
+        const t = new Date(item.rawTime).getTime()
+        if (!isNaN(t) && (!deviceLatest[item.deviceId] || t > deviceLatest[item.deviceId])) {
+          deviceLatest[item.deviceId] = t
+        }
+      })
+    }
+    const now = Date.now()
+    // 连续两个5分钟上报周期（10分钟）未上报视为设备没电、无法下发，忽略
+    const TWO_PERIODS_MS = 2 * 5 * 60 * 1000
     const matched = []
     recordList.forEach(r => {
       // 无ProductKey（定位设备）
@@ -182,7 +199,12 @@ Page({
       // 上报周期需能解析且≤5分钟
       const cfg = configMap[r.deviceId]
       if (!cfg || typeof cfg.reportInterval !== 'number') return
-      if (cfg.reportInterval <= 5) matched.push(r)
+      if (cfg.reportInterval <= 5) {
+        // 连续两个5分钟周期无上报数据：设备可能没电，也没办法下发数据，忽略
+        const lastTime = deviceLatest[r.deviceId]
+        if (lastTime && now - lastTime > TWO_PERIODS_MS) return
+        matched.push(r)
+      }
     })
     // 最多显示两台设备 id，超过两台显示前两台加"等"，避免一行过长
     const deviceStr = matched.length > 0
