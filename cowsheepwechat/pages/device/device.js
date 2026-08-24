@@ -298,7 +298,7 @@ Page({
     let text = ''
     if (sec < 60) text = sec + '秒前'
     else if (min < 60) text = min + '分钟前'
-    else if (hour < 24) text = hour + '小时前'
+    else if (hour < 24) text = hour + '小时' + (min % 60 > 0 ? (min % 60) + '分' : '')
     else if (day < 30) text = day + '天前'
     else if (day < 365) text = Math.floor(day / 30) + '个月前'
     else text = Math.floor(day / 365) + '年前'
