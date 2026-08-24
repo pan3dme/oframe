@@ -22,11 +22,38 @@ Page({
 
   onLoad() {
     console.log('牛羊GPS小程序首页')
+    // 未登录则跳转登录页，不加载数据
+    if (!this._checkLogin()) return
     this._preloadData(true)
   },
 
   onShow() {
+    // 从登录页返回时校验登录状态
+    if (!this._checkLogin()) return
     this._preloadData(false)
+  },
+
+  // 检查登录状态：本次会话未确认登录则跳转登录页
+  _checkLogin() {
+    const app = getApp()
+    // 本次会话已确认登录 → 放行
+    if (app.globalData.sessionConfirmed) return true
+    // 启用自动登录且有本地记录，且本地有服务器返回的用户数据时才免密放行；
+    // 服务器数据缺失则不允许放行，需重新登录获取
+    if (app.globalData.autoLogin) {
+      try {
+        const loginInfo = wx.getStorageSync('login_info')
+        const serverData = wx.getStorageSync('login_server_data')
+        if (loginInfo && loginInfo.isLoggedIn && serverData && serverData.data && serverData.data.primaryKey) {
+          app.globalData.loginInfo = loginInfo
+          app.globalData.serverData = serverData
+          app.globalData.sessionConfirmed = true
+          return true
+        }
+      } catch (e) { /* ignore */ }
+    }
+    wx.reLaunch({ url: '/pages/login/login' })
+    return false
   },
 
   // 预加载设备列表和牛羊列表到全局缓存，并更新首页摘要

@@ -60,6 +60,18 @@
     </view>
   </view>
 
+  <!-- 账户管理 -->
+  <view class="section">
+    <view class="section-title">账户管理</view>
+    <view class="action-row" bindtap="onLogout">
+      <text class="action-icon">🚪</text>
+      <view class="action-info">
+        <text class="action-label logout-label">退出登录</text>
+        <text class="action-desc">清除本地登录记录，返回登录页重新登录</text>
+      </view>
+    </view>
+  </view>
+
   <!-- 数据管理 -->
   <view class="section">
     <view class="section-title">数据管理</view>

@@ -126,6 +126,35 @@ Page({
     wx.showToast({ title: value ? '已设为管理员' : '已取消管理员', icon: 'none', duration: 1000 })
   },
 
+  // 退出登录：清除本地登录记录，回到登录页
+  onLogout() {
+    wx.showModal({
+      title: '退出登录',
+      content: '确定退出当前账号吗？将清除本地登录记录并返回登录页。',
+      confirmText: '退出',
+      confirmColor: '#fa5151',
+      success: (res) => {
+        if (!res.confirm) return
+        try {
+          wx.removeStorageSync('login_info')
+        } catch (e) { /* ignore */ }
+        try {
+          wx.removeStorageSync('login_server_data')
+        } catch (e) { /* ignore */ }
+        const app = getApp()
+        app.globalData.loginInfo = null
+        app.globalData.serverData = null
+        app.globalData.loginCode = null
+        app.globalData.isLoggedIn = false
+        app.globalData.sessionConfirmed = false
+        wx.showToast({ title: '已退出登录', icon: 'none', duration: 1200 })
+        setTimeout(() => {
+          wx.reLaunch({ url: '/pages/login/login' })
+        }, 800)
+      }
+    })
+  },
+
   // 清理所有数据库缓存
   onClearCache() {
     wx.showModal({

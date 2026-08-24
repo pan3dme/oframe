@@ -96,6 +96,11 @@ page {
   font-weight: 500;
 }
 
+/* 退出登录红色样式 */
+.logout-label {
+  color: #fa5151;
+}
+
 .action-desc {
   font-size: 24rpx;
   color: #bbb;

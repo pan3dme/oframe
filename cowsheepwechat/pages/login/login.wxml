@@ -1,0 +1,35 @@
+<!--login.wxml-->
+<navigation-bar title="登录" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+
+<scroll-view class="scrollarea" scroll-y type="list">
+  <view class="login-card">
+
+    <!-- 用户名 -->
+    <view class="input-group">
+      <view class="input-label">用户名</view>
+      <input class="input-field" placeholder="请输入用户名" placeholder-class="input-placeholder" value="{{username}}" bindinput="onUsernameInput" />
+    </view>
+
+    <!-- 密码 -->
+    <view class="input-group">
+      <view class="input-label">密码</view>
+      <input class="input-field" password placeholder="请输入密码" placeholder-class="input-placeholder" value="{{password}}" bindinput="onPasswordInput" />
+    </view>
+
+    <!-- 登录按钮 -->
+    <button class="login-btn" bindtap="onLogin" loading="{{loading}}">登录</button>
+
+    <!-- 自动登录复选框 -->
+    <view class="auto-login-row">
+      <checkbox-group bindchange="onAutoLoginChange">
+        <label class="auto-login-label">
+          <checkbox value="auto" checked="{{autoLogin}}" color="#07c160" style="transform: scale(0.9);" />
+          <text class="auto-login-text">下次自动登录</text>
+        </label>
+      </checkbox-group>
+      <view class="login-tip">勾选后，下次打开小程序免密进入首页</view>
+    </view>
+  </view>
+
+  <view class="section-placeholder"></view>
+</scroll-view>

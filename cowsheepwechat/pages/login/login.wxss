@@ -1,0 +1,102 @@
+/* login.wxss */
+page {
+  background: #f5f6f8;
+}
+
+.scrollarea {
+  height: 100vh;
+  box-sizing: border-box;
+}
+
+.login-card {
+  margin: 60rpx 40rpx 0;
+  padding: 60rpx 48rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 输入框 */
+.input-group {
+  width: 100%;
+  margin-top: 36rpx;
+}
+
+.input-label {
+  font-size: 26rpx;
+  color: #666666;
+  margin-bottom: 12rpx;
+}
+
+.input-field {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  box-sizing: border-box;
+  background: #f5f6f8;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #333333;
+}
+
+.input-placeholder {
+  color: #bbbbbb;
+}
+
+/* 登录按钮 */
+.login-btn {
+  width: 100%;
+  height: 92rpx;
+  margin-top: 56rpx;
+  padding: 0;
+  background: #07c160;
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 500;
+  border-radius: 46rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-btn::after {
+  border: none;
+}
+
+.login-btn[disabled] {
+  background: #a8e6c0;
+  color: #ffffff;
+}
+
+/* 自动登录复选框 */
+.auto-login-row {
+  width: 100%;
+  margin-top: 32rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.auto-login-label {
+  display: flex;
+  align-items: center;
+}
+
+.auto-login-text {
+  font-size: 26rpx;
+  color: #666666;
+  margin-left: 8rpx;
+}
+
+.login-tip {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #bbbbbb;
+}
+
+.section-placeholder {
+  height: 40rpx;
+}
