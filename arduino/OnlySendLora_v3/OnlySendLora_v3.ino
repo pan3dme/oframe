@@ -141,10 +141,7 @@ unsigned long calculateNextTime(unsigned long intervalSeconds) {
   }
 
   // 1. 获取当前时间
-  String timeStr = getCurrentTime(true);
-  int hour = 0, minute = 0, second = 0;
-  sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
-  unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
+  unsigned long currentSeconds = getCurrentTimestampSec();
 
   // 2. 计算基础参数
   unsigned long mySlotOffset =
@@ -174,8 +171,10 @@ unsigned long calculateNextTime(unsigned long intervalSeconds) {
   unsigned long minutes = delayMillis / 60000;
   unsigned long seconds = (delayMillis % 60000) / 1000;
 
-  DEBUG_PRINTF("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
-               timeStr.c_str(), deviceIndex, getSlotDuration(), minutes,
+  DEBUG_PRINT("当前时间：");
+  DEBUG_PRINT(getCurrentTime(true));
+  DEBUG_PRINTF(" 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
+               deviceIndex, getSlotDuration(), minutes,
                seconds);
 
 
