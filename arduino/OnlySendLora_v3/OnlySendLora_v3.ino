@@ -605,7 +605,7 @@ void testSheepFun(bool driftComp) {
   printTimeToString("到上报时间还有 ", nextSendTime - millis());
   // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
   if ((waittm) > num6000) {
-    if (configConfirmed || rtcSendCount <= 1) {
+    if (configConfirmed) {
       //确认配置给两秒特殊插入数据， 开机上报当前的配置信息
       configConfirmed = false;
       sendLoraToMid(String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str), false);
@@ -673,7 +673,7 @@ void setup() {
     rtc_gps_lat = static_gps_lat;
     rtc_gps_lon = static_gps_lon;
 
-    configConfirmed = false;
+    configConfirmed = true;
     isNeedGpsWork = false;
     rtcSendCount = -1;
     rtcResiveIdx = 0;
