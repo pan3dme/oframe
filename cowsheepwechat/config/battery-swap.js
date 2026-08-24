@@ -1,20 +1,18 @@
 // config/battery-swap.js — 换电时间分析与永久缓存
 // 逻辑：
-//   1. 只认 type=2 对时记录，lorastr 格式 2|device|时间|电量|...，电量在 parts[3]。
-//   2. 从 getDeviceLogbyId 拉取最近日志，按时间升序分析。
-//   3. 如果存在电量 > 0.8 的样本，取其中最新一条作为最新换电时间。
-//   4. 如果所有样本电量都 ≤ 0.8（如全是 0.4/0.5），取最早一条作为最新换电时间。
-//   5. 同时记录当前扫描到的最低电量样本与最新电量样本。
+//   1. 只有对时信息（type=2）中包含电量，lorastr 格式 2|device|时间|电量|...，电量在 parts[3]。
+//   2. 从 getDeviceLogbyId 拉取日志，按时间升序遍历（一个循环）：
+//      - 记录电量最高的那条记录（含时间）→ 设备刚换电/上电时电量最高，其时间即上次上电/换电时间
+//      - 记录该最高记录之后出现的最低电量记录（含时间）→ 当前这节电池消耗到的最低点
+//   3. 每台设备永久缓存这两条记录（最高电量记录 + 最低电量记录），即可得出上次换电时间。
 
 const API_URL = getApp().globalData.api_device_Url
 
-const SWAP_CACHE_KEY = 'battery_swap_cache_v2'
+const SWAP_CACHE_KEY = 'battery_swap_cache_v3'
 const PAGE_SIZE = 100 // 每页拉取记录数
 const MAX_PAGES_FIRST = 15 // 无缓存时首次扫描最多页数（最多1500条）
 const MAX_PAGES_UPDATE = 2 // 已有缓存后只扫描最近几页（最多200条）
-const HIGH_BATTERY_THRESHOLD = 0.8 // 高于此值视为换电后电量
 const MIN_VALID_BATTERY = 0.05 // 忽略过低无效读数
-const MAX_SWAPS_PER_DEVICE = 50 // 每台设备最多保留的换电记录条数
 
 // ==================== 永久缓存 ====================
 
@@ -25,7 +23,7 @@ function getSwapCache() {
   } catch (e) {
     console.error('[换电缓存] 读取失败:', e)
   }
-  return { version: 2, devices: {}, updatedAt: 0 }
+  return { version: 3, devices: {}, updatedAt: 0 }
 }
 
 function saveSwapCache(cache) {
@@ -101,75 +99,45 @@ function extractBatterySamples(data, deviceId) {
 
 // ==================== 换电分析 ====================
 
-// 按时间升序样本，分析最新换电事件、最低电量、最新电量
+// 按时间升序样本，一个循环内：
+//   highest → 电量最高的对时记录（其时间 = 上次上电/换电时间）
+//   lowest  → 最高记录之后出现的最低电量记录（当前电池消耗到的最低点）
 function analyzeSamples(samples) {
   const asc = samples
     .filter(s => s.b >= MIN_VALID_BATTERY)
     .sort((a, b) => a.t - b.t)
   if (!asc.length) {
-    return { swaps: [], minBattery: null, latestBattery: null }
+    return { highest: null, lowest: null }
   }
 
-  let minBattery = asc[0]
+  let highest = asc[0]
+  let lowest = null
   for (let i = 1; i < asc.length; i++) {
-    if (asc[i].b < minBattery.b) minBattery = asc[i]
-  }
-  const latestBattery = asc[asc.length - 1]
-
-  // 高电量样本：> 0.8 视为换电后电量
-  const highSamples = asc.filter(s => s.b > HIGH_BATTERY_THRESHOLD)
-  let latestSwap = null
-  if (highSamples.length > 0) {
-    latestSwap = highSamples[highSamples.length - 1]
-  } else {
-    // 全部低电量时，最早那条就是换电后首次出现的记录
-    latestSwap = asc[0]
-  }
-
-  const swaps = latestSwap ? [{
-    time: latestSwap.t,
-    timeStr: latestSwap.rawTime,
-    battery: latestSwap.b
-  }] : []
-
-  return {
-    swaps,
-    minBattery: {
-      time: minBattery.t,
-      timeStr: minBattery.rawTime,
-      battery: minBattery.b
-    },
-    latestBattery: {
-      time: latestBattery.t,
-      timeStr: latestBattery.rawTime,
-      battery: latestBattery.b
+    const s = asc[i]
+    if (s.b > highest.b) {
+      // 出现更高电量 → 视为新的"上次上电/换电"记录，其后的最低电量重新统计
+      highest = s
+      lowest = null
+    } else if (!lowest || s.b < lowest.b) {
+      lowest = s
     }
   }
+  // 整段电量都在下降时（未出现更高电量），最低电量取扫描范围内最后一条最低记录
+  if (!lowest) lowest = asc[asc.length - 1]
+
+  const fmt = s => ({ time: s.t, timeStr: s.rawTime, battery: s.b })
+  return { highest: fmt(highest), lowest: fmt(lowest) }
 }
 
 // ==================== 合并缓存 ====================
 
-function mergeSwaps(cache, deviceId, swaps) {
+// 每台设备只保留两条记录：最高电量（上次上电/换电）+ 该记录之后的最低电量
+function updateDeviceRecords(cache, deviceId, summary) {
   if (!cache.devices) cache.devices = {}
-  if (!cache.devices[deviceId]) cache.devices[deviceId] = { swaps: [] }
-  const existing = cache.devices[deviceId].swaps
-  swaps.forEach((sw) => {
-    const dup = existing.some(e => Math.abs(e.time - sw.time) < 60000)
-    if (!dup) existing.push(sw)
-  })
-  existing.sort((a, b) => b.time - a.time)
-  if (existing.length > MAX_SWAPS_PER_DEVICE) {
-    cache.devices[deviceId].swaps = existing.slice(0, MAX_SWAPS_PER_DEVICE)
-  }
-  return existing[0] || null
-}
-
-function updateDeviceSummary(cache, deviceId, summary) {
-  if (!cache.devices) cache.devices = {}
-  if (!cache.devices[deviceId]) cache.devices[deviceId] = { swaps: [] }
+  if (!cache.devices[deviceId]) cache.devices[deviceId] = {}
   const dev = cache.devices[deviceId]
-  if (summary.minBattery) dev.minBattery = summary.minBattery
-  if (summary.latestBattery) dev.latestBattery = summary.latestBattery
+  if (summary.highest) dev.highest = summary.highest
+  if (summary.lowest) dev.lowest = summary.lowest
 }
 
 // ==================== 拉取与分析主流程 ====================
@@ -199,7 +167,7 @@ function fetchAndAnalyze(deviceId, scanPages, callback) {
           const asc = allSamples.slice().sort((a, b) => a.t - b.t)
           console.log('[换电分析] 样本明细:', asc.map(s => s.rawTime + '→' + Math.round(s.b * 100) + '%').join('; ') || '（无）')
         }
-        // 已找到最近换电 / 无更多数据 / 达到页数上限，停止扫描
+        // 无更多数据 / 达到页数上限，停止扫描
         if (noMore || page + 1 >= scanPages) {
           callback(analyzeSamples(allSamples), allSamples.length)
         } else {
@@ -218,9 +186,10 @@ function fetchAndAnalyze(deviceId, scanPages, callback) {
 /**
  * 获取设备最近换电时间（自动分析 + 永久缓存）
  * @param {string} deviceId
- * @param {function} callback - (latestSwap|null) 分析完成后的回调
+ * @param {function} callback - (lastSwap|null) 分析完成后的回调
  * @returns {object|null} 永久缓存中的最近换电（同步返回，界面可先展示）
  *   swap 结构: { time: 毫秒时间戳, timeStr: '2026/8/14 09:08:33', battery }
+ *   即电量最高的对时记录，其时间 = 上次上电/换电时间
  */
 function getLastSwap(deviceId, callback) {
   if (!deviceId) {
@@ -229,7 +198,7 @@ function getLastSwap(deviceId, callback) {
   }
   const cache = getSwapCache()
   const deviceData = cache.devices ? cache.devices[deviceId] : null
-  const cachedSwap = deviceData && deviceData.swaps && deviceData.swaps.length > 0 ? deviceData.swaps[0] : null
+  const cachedSwap = deviceData && deviceData.highest ? deviceData.highest : null
 
   const scanPages = cachedSwap ? MAX_PAGES_UPDATE : MAX_PAGES_FIRST
 
@@ -238,21 +207,20 @@ function getLastSwap(deviceId, callback) {
   }
 
   fetchAndAnalyze(deviceId, scanPages, (summary, scanned) => {
-    updateDeviceSummary(cache, deviceId, summary)
-    const latest = mergeSwaps(cache, deviceId, summary.swaps)
+    updateDeviceRecords(cache, deviceId, summary)
     saveSwapCache(cache)
+    const lastSwap = summary.highest || cachedSwap || null
     console.log('[换电分析]', deviceId, '扫描样本:', scanned,
-      '最低电量:', summary.minBattery ? Math.round(summary.minBattery.battery * 100) + '%@' + summary.minBattery.timeStr : '无',
-      '最新电量:', summary.latestBattery ? Math.round(summary.latestBattery.battery * 100) + '%@' + summary.latestBattery.timeStr : '无',
-      '最新换电:', latest ? latest.timeStr : '无')
-    if (callback) callback(latest)
+      '最高电量(上次上电):', lastSwap ? Math.round(lastSwap.battery * 100) + '%@' + lastSwap.timeStr : '无',
+      '最低电量:', summary.lowest ? Math.round(summary.lowest.battery * 100) + '%@' + summary.lowest.timeStr : '无')
+    if (callback) callback(lastSwap)
   })
 
   return cachedSwap
 }
 
 /**
- * 获取设备电量汇总（最低电量、最新电量、最近换电）
+ * 获取设备电量汇总（最高电量、最低电量、最近换电）
  * @param {string} deviceId
  * @returns {object|null}
  */
@@ -262,9 +230,9 @@ function getBatterySummary(deviceId) {
   const dev = cache.devices ? cache.devices[deviceId] : null
   if (!dev) return null
   return {
-    minBattery: dev.minBattery || null,
-    latestBattery: dev.latestBattery || null,
-    lastSwap: dev.swaps && dev.swaps.length > 0 ? dev.swaps[0] : null
+    highest: dev.highest || null,
+    lowest: dev.lowest || null,
+    lastSwap: dev.highest || null
   }
 }
 
