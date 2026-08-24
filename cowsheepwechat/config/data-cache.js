@@ -267,77 +267,6 @@ function refreshDeviceLotRefresh(callback) {
   getDeviceLotRefresh(callback, true)
 }
 
-// ==================== 设备电量数据缓存 ====================
-
-/**
- * 获取设备电量表 device_battery
- * @param {function} callback - 回调 (cachedData)，cachedData 为 { batteryMap }
- * @param {boolean} forceRefresh - 是否强制刷新
- */
-function getDeviceBatteryAll(callback, forceRefresh) {
-  _loadWithDedup('deviceBattery', 'deviceBatteryCache', (done) => {
-    wx.request({
-      url: API_DEVICE_URL,
-      method: 'POST',
-      data: { action: 'getDeviceBatteryAll' , info: {
-        limit: 20,
-        wechatid: getApp().getWechatId()
-      }},
-      timeout: 8000,
-      success: (res) => {
-        const batteryMap = _parseBatteryRecords(res.data)
-        const cachedData = { batteryMap }
-        app.globalData.deviceBatteryCache = cachedData
-        done(cachedData)
-      },
-      fail: (err) => {
-        console.error('获取设备电量失败:', err)
-        done(app.globalData.deviceBatteryCache || { batteryMap: {} })
-      }
-    })
-  }, callback, forceRefresh)
-}
-
-function _parseBatteryRecords(data) {
-  let rawList = []
-  if (data && data.data && Array.isArray(data.data)) {
-    rawList = data.data
-  } else if (Array.isArray(data)) {
-    rawList = data
-  }
-  const map = {}
-  rawList.forEach(record => {
-    const attr = {}
-    if (record.attributes) {
-      record.attributes.forEach(item => {
-        attr[item.columnName] = item.columnValue
-      })
-    }
-    if (record.primaryKey) {
-      record.primaryKey.forEach(item => {
-        attr[item.name] = item.value
-      })
-    }
-    const deviceId = attr.deviceId || attr.deviceid || ''
-    const battery = attr.battery || ''
-    const rawTime = attr.time || record.time || '-'
-    if (deviceId && battery) {
-      // 保留每台设备最新的电量记录（含时间）
-      const existing = map[deviceId]
-      const newTime = new Date(rawTime).getTime()
-      if (!existing || (newTime > new Date(existing.rawTime || '').getTime())) {
-        const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-        map[deviceId] = { battery, rawTime, date: date || '-', time_part: time_part || '' }
-      }
-    }
-  })
-  return map
-}
-
-function refreshDeviceBatteryAll(callback) {
-  getDeviceBatteryAll(callback, true)
-}
-
 // ==================== 设备同步时间缓存 ====================
 
 /**
@@ -660,7 +589,6 @@ function clearCache() {
   app.globalData.deviceCache = null
   app.globalData.livestockCache = null
   app.globalData.deviceLotCache = null
-  app.globalData.deviceBatteryCache = null
   app.globalData.deviceSyncCache = null
   app.globalData.roadCache = null
   app.globalData.roadCacheTime = null
@@ -675,8 +603,6 @@ module.exports = {
   refreshLivestockList,
   getDeviceLotRefresh,
   refreshDeviceLotRefresh,
-  getDeviceBatteryAll,
-  refreshDeviceBatteryAll,
   getDeviceSyncAll,
   refreshDeviceSyncAll,
   getDeviceConfigAll,

@@ -89,7 +89,6 @@ App({
     deviceCache: null,      // 设备列表缓存
     livestockCache: null,   // 牛羊列表缓存
     deviceLotCache: null,   // 设备LOT最新数据缓存
-    deviceBatteryCache: null, // 设备电量缓存
     roadCache: null,        // 道路列表缓存
     roadCacheTime: null,    // 道路缓存时间戳
     placeCache: null,       // 地名列表缓存

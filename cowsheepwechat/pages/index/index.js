@@ -15,7 +15,6 @@ Page({
     // 统计告警（动态计算）
     alerts: [
       { icon: '📶', text: '暂无设备离线数据', color: '#999999' },
-      { icon: '🔋', text: '暂无电量数据', color: '#999999' },
       { icon: '🐮', text: '暂无绑定数据', color: '#999999' }
     ]
   },
@@ -98,15 +97,6 @@ Page({
       }
       this.setData({ deviceUpdateTime })
       console.log('设备LOT最新数据缓存已就绪:', lotList.length + '条记录')
-      this._updateAlerts()
-      finish()
-    }, force)
-
-    // 加载设备电量表
-    dataCache.getDeviceBatteryAll((data) => {
-      const batteryMap = data.batteryMap || {}
-      const keys = Object.keys(batteryMap)
-      console.log('设备电量表缓存已就绪:', keys.length + '条记录')
       this._updateAlerts()
       finish()
     }, force)
@@ -201,11 +191,10 @@ Page({
     this._updateAlerts()
   },
 
-  // 动态更新告警：根据 LOT 数据（离线时间）和电量数据计算
+  // 动态更新告警：根据 LOT 数据（离线时间）计算
   _updateAlerts() {
     const app = getApp()
     const lotCache = app.globalData.deviceLotCache
-    const batteryCache = app.globalData.deviceBatteryCache
     const livestockCache = app.globalData.livestockCache
 
     const alerts = []
@@ -230,21 +219,7 @@ Page({
       }
     }
 
-    // 2. 设备电量告警：电量低于 20% 的设备
-    if (batteryCache && batteryCache.batteryMap) {
-      const batteryMap = batteryCache.batteryMap
-      const lowBatteryDevices = Object.entries(batteryMap).filter(([, val]) => {
-        const num = parseFloat(val)
-        return !isNaN(num) && num < 20
-      })
-      if (lowBatteryDevices.length > 0) {
-        alerts.push({ icon: '🔋', text: lowBatteryDevices.length + '台设备电量不足', color: '#ff9500' })
-      } else {
-        alerts.push({ icon: '🔋', text: '设备电量正常', color: '#4CAF50' })
-      }
-    }
-
-    // 3. 牛羊绑定状态
+    // 2. 牛羊绑定状态
     if (livestockCache && livestockCache.livestockList) {
       const total = livestockCache.livestockList.length
       const bound = this.data.boundCount
