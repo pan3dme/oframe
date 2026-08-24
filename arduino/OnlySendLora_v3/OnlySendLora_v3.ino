@@ -696,24 +696,17 @@ void setup() {
     strncpy(config_str, "5,0M,3t,1", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
-
-
     rtcMagic = MY_RTC_MAGIC;
     DEBUG_PRINTLN("INFO: RTC magic invalid -> reset all rtc params");
   }
 
-
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   deviceName = makeDivceName();
-  DEBUG_PRINT("开机时间-");
-  DEBUG_PRINTLN(getCurrentTime(true));
-  DEBUG_PRINT("开机时间-");
-  DEBUG_PRINTLN(getCurrentTime(true));
+
+  Serial.print(deviceName);
+  Serial.print(" 开机时间：");
+  Serial.println(getCurrentTime(true));
   batteryNum = readBatteryEndStr();
-
-
-
-
 
   if (rtcSendCount == -1) {
     //重新启动不要快速进入休眠，是为了给出时间上传程序 烧入程序等待20秒才可以把程序上传不然很麻烦只为烧入程序

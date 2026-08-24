@@ -17,41 +17,45 @@ unsigned long syncedMillis = 0; // 同步时的本地毫秒计数
 
 bool isGpsOn = false;
 
+
+
 unsigned long rolaHz = 915000000; // 同步时的本地毫秒计数
+
+String wechatid = "v4";
 
 // AT+CDKEY=CF673628FFEB926BD918FBA16375615D
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
     0x6809A21B5BF8, // 0
     0x9875555,      // 2
-    0xC0CBBE1B5BF8, // v4    2
+    0xC0CBBE1B5BF8, //     2
     0x9875555,
-    0x545C82697090, // v4    4
+    0x545C82697090, //     4
     0x9875555,
-    0x1CA684697090, // v4    6
+    0x1CA684697090, //     6
     0x9875555,
-    0xF478B549FD8C, // v4    8
+    0xF478B549FD8C, //     8
     0x9875555,
-    0x00E7A7B2F180, // v4    10
+    0x00E7A7B2F180, //     10
     0x9875555,
-    0xB01796A65688, // v4    12
+    0xB01796A65688, //     12
     0x9875555,
-    0x78A6B749FD8C, // v4    14
+    0x78A6B749FD8C, //     14
     0x9875555,
-    0x10ADB749FD8C, // v4    16
+    0x10ADB749FD8C, //     16
     0x9875555,
-    0x301BA21B5BF8, // v4    18
+    0x301BA21B5BF8, //     18
     0x9875555,
-    0xD4A284697090, // v4    20
+    0xD4A284697090, //     20
     0x9875555,
-    0x3CB7A21B5BF8, // v4    22
-    0x248B9C697090, // v4-433     23
-    0x9875555, // v4    24  dtu
-    0xF89A3604A7AC, // V3     35   三角 433
-    0x20A161F61B44, // v4 NOLED   26
-    0x28003A04A7AC, // v3   中继dtu   27
-    0x20A261F61B44, //  v4 NOLED   28
-    0xE436A21B5BF8       // dtu
+    0x3CB7A21B5BF8, //     22
+    0x248B9C697090, //     23
+    0x9875555,      //     24
+    0xF89A3604A7AC, //     35
+    0x20A161F61B44, //     26
+    0x28003A04A7AC, //     27
+    0x20A261F61B44, //     28
+    0xE436A21B5BF8  //     29
 };
 const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);
 
@@ -259,7 +263,7 @@ bool isReliableGPS() {
   if (gps.satellites.value() < 6)
     return false;
   // 3. HDOP 小于 3.0（可根据需求调整）
-  
+
   // 4. 数据不陈旧（age < 2 秒）
   if (gps.location.age() > 2000)
     return false;
@@ -303,21 +307,12 @@ String makeDivceName() {
   DEBUG_PRINTF("当前设备编号: %012llX\n", currentId);
   int index = getDevicesIdx();
   if (index != -1) {
-    String syname = "vx-x";
-#if defined(WIFI_LORA_32_V3)
-    syname = "v3-" + String(index);
-#endif
-#if defined(WIFI_LORA_32_V4)
-    syname = "v4-" + String(index);
-#endif
+    String syname = wechatid +"-"+ String(index);
     DEBUG_PRINTLN("设备认证成功，设备名为: " + syname);
     return syname;
   } else {
     DEBUG_PRINTLN("错误：该设备编号不在白名单中！");
-#if defined(WIFI_LORA_32_V3)
-    return "v3-x";
-#endif
-    return "v4-x";
+    return "x-x";
   }
 }
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
@@ -383,7 +378,7 @@ int readBatteryEndStr() {
   pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
 
   // 这里填你自己算出来的数值
- 
+
   const float divFactor = 5.20;
   float batteryVoltage = mvAvg * divFactor / 1000.0;
 
@@ -401,13 +396,12 @@ int readBatteryEndStr() {
   return soc;
 }
 
-
 bool isBoardDateTimeOK() {
   time_t now;
   struct tm t;
   time(&now);
   gmtime_r(&now, &t); // UTC
-  mktime(&t);     // 处理时间进位
+  mktime(&t);         // 处理时间进位
   int year = t.tm_year + 1900;
   return (year > 2025) && (year < 2030);
 }

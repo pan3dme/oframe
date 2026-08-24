@@ -598,7 +598,7 @@ void changeReceivedRolaStr(char *value) {
       char segBuf[32];
       char tsStr[24];  // 存放unix时间戳字符串
       splitPipeSegment(value, segBuf, 2);
-      Serial.print("对时的第二部分 segBuf");
+      Serial.print("对时的第二部分 ");
       Serial.println(segBuf);
       if (buildFullTimestampStr(segBuf, tsStr, sizeof(tsStr))) {
         Serial.print("生成时间戳字符串:");
@@ -623,8 +623,7 @@ void changeReceivedRolaStr(char *value) {
       value[BUFFER_SIZE - 1] = '\0';  // 确保字符串以 '\0' 结尾
     } 
   }
-  Serial.print("changeReceivedRolaStr转换value");
-  Serial.println(value);
+
 }
 
 // 处理LoRa接收数据（JSON序列化、队列缓存、设备缓存、对时）
