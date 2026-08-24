@@ -11,7 +11,7 @@
   scroll-y
   type="list"
   refresher-enabled="{{true}}"
-  refresher-triggered="{{false}}"
+  refresher-triggered="{{refreshing}}"
   bindrefresherrefresh="onPullDownRefresh"
 >
   <view wx:if="{{loading}}" class="loading-tip">

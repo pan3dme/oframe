@@ -6,6 +6,7 @@ Page({
   data: {
     placeList: [],
     loading: false,
+    refreshing: false,
 
     // 新增/编辑弹窗
     showModal: false,
@@ -252,7 +253,9 @@ Page({
 
   // ========== 下拉刷新 ==========
   onPullDownRefresh() {
+    this.setData({ refreshing: true })
     this._loadPlaceList(true, () => {
+      this.setData({ refreshing: false })
       wx.stopPullDownRefresh()
     })
   }

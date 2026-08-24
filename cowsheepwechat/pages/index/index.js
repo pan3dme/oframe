@@ -23,7 +23,8 @@ Page({
     console.log('牛羊GPS小程序首页')
     // 未登录则跳转登录页，不加载数据
     if (!this._checkLogin()) return
-    this._preloadData(true)
+    // 默认读缓存（有缓存则不请求网络），下拉刷新时才会强制刷新
+    this._preloadData(false)
   },
 
   onShow() {
@@ -59,7 +60,7 @@ Page({
   // force=true 强制请求网络；onComplete 在所有数据回调完成后触发
   _preloadData(force, onComplete) {
     let done = 0
-    const total = 5
+    const total = 4
     const finish = () => {
       done++
       if (done >= total && onComplete) onComplete()
