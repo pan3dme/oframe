@@ -30,32 +30,22 @@ Page({
   _fullPlaceList: [],
   _cowIconPath: '',
   _deviceIconPath: '',
+  _cowIconReady: false,
+  _devIconReady: false,
+  _pendingCrowData: null,
+  _pendingDeviceArgs: null,
 
   onLoad() {
-    // 清理历史临时文件，避免累积超过存储上限
-    this._cleanTempDir()
-    this._generateCowPin()
-    this._generateDevPin()
+    // 数据请求先发起；图标在 onReady 中绘制，避免 canvas 节点未就绪导致失败
     this.loadMap()
     this.fetchCrowData()
     this.fetchDeviceLotData()
   },
 
-  // 清理临时目录中旧的无用文件
-  _cleanTempDir() {
-    try {
-      const fs = wx.getFileSystemManager()
-      const tmpDir = (wx.env.USER_DATA_PATH || '')
-      fs.readdir({
-        dirPath: tmpDir,
-        success: (res) => {
-          (res.files || []).forEach(file => {
-            try { fs.unlinkSync(tmpDir + '/' + file) } catch (e) { /* ignore */ }
-          })
-        },
-        fail: () => {}
-      })
-    } catch (e) { /* ignore */ }
+  onReady() {
+    // 页面渲染完成后再绘制 canvas 图标，并刷新已拿到数据的 marker
+    this._generateCowPin()
+    this._generateDevPin()
   },
 
   // ========== 高德瓦片叠加 ==========
@@ -238,6 +228,12 @@ Page({
       this._applyAllMarkers()
       return
     }
+    // 图标未准备好时先暂存数据，避免用空 iconPath 渲染成默认红点
+    if (!this._cowIconReady) {
+      this._pendingCrowData = recordList
+      return
+    }
+    this._pendingCrowData = null
     const normalized = recordList.map(item => ({
       crow_id: item.crow_id || item.crow_idx || '-',
       crow_idx: item.crow_idx || item.crow_id || '-',
@@ -340,6 +336,12 @@ Page({
       this._deviceMarkers = []
       return
     }
+    // 图标未准备好时先暂存数据，避免用空 iconPath 渲染成默认红点
+    if (!this._devIconReady) {
+      this._pendingDeviceArgs = { lotList, deviceInfoMap }
+      return
+    }
+    this._pendingDeviceArgs = null
 
     // 从一条记录中提取 lat/lng，支持多种格式
     function extractCoord(item) {
@@ -528,6 +530,8 @@ Page({
   onToolBtn2() {
     this._cowMarkers = []
     this._deviceMarkers = []
+    this._pendingCrowData = null
+    this._pendingDeviceArgs = null
     this.setData({ markers: [] })
     wx.showLoading({ title: '刷新中...' })
     this.fetchCrowData()
@@ -758,6 +762,15 @@ Page({
     const targetPath = (wx.env.USER_DATA_PATH || '') + '/cow_pin.png'
     this._drawPin('#cowPinCanvas', '#2979FF', '#0D47A1', targetPath, (filePath) => {
       that._cowIconPath = filePath
+      that._cowIconReady = true
+      // 如果牛群数据先返回、图标后生成，在这里补渲染
+      if (that._pendingCrowData) {
+        const list = that._pendingCrowData
+        that._pendingCrowData = null
+        that.renderMarkersFromData(list)
+        return
+      }
+      // 兜底：已生成的标记点 iconPath 为空时补上
       if ((that._cowMarkers || []).length > 0) {
         that._cowMarkers.forEach(m => { m.iconPath = that._cowIconPath })
         that._applyAllMarkers()
@@ -773,6 +786,20 @@ Page({
     const targetPath = (wx.env.USER_DATA_PATH || '') + '/dev_pin.png'
     this._drawPin('#devPinCanvas', '#00C853', '#1B5E20', targetPath, (filePath) => {
       that._deviceIconPath = filePath
+      that._devIconReady = true
+      // 如果设备数据先返回、图标后生成，在这里补渲染
+      if (that._pendingDeviceArgs) {
+        const { lotList, deviceInfoMap } = that._pendingDeviceArgs
+        that._pendingDeviceArgs = null
+        that._renderDeviceMarkers(lotList, deviceInfoMap)
+        that._applyAllMarkers()
+        return
+      }
+      // 兜底：已生成的标记点 iconPath 为空时补上并刷新地图
+      if ((that._deviceMarkers || []).length > 0) {
+        that._deviceMarkers.forEach(m => { m.iconPath = that._deviceIconPath })
+        that._applyAllMarkers()
+      }
     })
   },
 
