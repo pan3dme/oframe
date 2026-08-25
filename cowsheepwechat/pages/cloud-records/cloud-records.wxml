@@ -21,7 +21,7 @@
       <view class="recv-filters">
         <text class="recv-filter-btn {{filterType === '1' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="1">📍 GPS</text>
         <text class="recv-filter-btn {{filterType === '2' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="2">🕐 对时</text>
-        <text class="recv-filter-btn {{filterType === '3' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="3">🔋 电量</text>
+        <text class="recv-filter-btn {{filterType === 'other' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="other">📦 其它</text>
       </view>
       <text class="recv-count">{{filteredRecords.length}} 条</text>
     </view>

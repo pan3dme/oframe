@@ -666,6 +666,35 @@ page {
   color: #fff;
 }
 
+/* 编辑弹窗-设为中继（设备无 ProductKey 时显示，点击展开中继配置输入框） */
+.modal-set-relay {
+  align-self: center;
+  width: 50%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 28rpx;
+  border: 2rpx dashed #1565c0;
+  border-radius: 12rpx;
+  background: #f0f6ff;
+  box-sizing: border-box;
+}
+.modal-set-relay:active {
+  opacity: 0.75;
+}
+.modal-set-relay-icon {
+  font-size: 36rpx;
+  line-height: 1;
+}
+.modal-set-relay-text {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1565c0;
+}
+
 /* 编辑弹窗-图片 */
 .edit-pic-wrap {
   width: 200rpx;

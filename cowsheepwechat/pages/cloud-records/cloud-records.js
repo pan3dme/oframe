@@ -9,7 +9,7 @@ Page({
     refreshing: false,
     // 全部原始记录
     allRecords: [],
-    // 当前筛选类型：''=全部, '1'=GPS, '2'=对时, '3'=电量
+    // 当前筛选类型：''=全部, '1'=GPS, '2'=对时, 'other'=其它（除GPS、对时外）
     filterType: '',
     // 筛选后显示的记录
     filteredRecords: [],
@@ -249,9 +249,15 @@ Page({
   // ========== 筛选 ==========
   applyFilter() {
     const type = this.data.filterType
-    const filtered = type
-      ? this.data.allRecords.filter(item => item.msgType === type)
-      : this.data.allRecords.slice()
+    let filtered
+    if (type === 'other') {
+      // 其它 = 除 GPS(1)、对时(2) 外的所有类型
+      filtered = this.data.allRecords.filter(item => item.msgType !== '1' && item.msgType !== '2')
+    } else {
+      filtered = type
+        ? this.data.allRecords.filter(item => item.msgType === type)
+        : this.data.allRecords.slice()
+    }
     this.setData({ filteredRecords: filtered })
   },
 

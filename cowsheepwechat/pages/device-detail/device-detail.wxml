@@ -141,26 +141,35 @@
       placeholder="请输入别名"
       bindinput="onEditRenameInput" />
 
-    <!-- ProductKey -->
-    <view class="modal-label">ProductKey</view>
-    <input class="modal-input"
-      value="{{editProductKey}}"
-      placeholder="请输入ProductKey"
-      bindinput="onEditProductKeyInput" />
+    <!-- 中继配置：设备无 ProductKey 时显示"设为中继"按钮 -->
+    <view class="modal-set-relay" wx:if="{{!showRelayFields}}" bindtap="onSetRelayTap">
+      <text class="modal-set-relay-icon">📡</text>
+      <text class="modal-set-relay-text">设为中继</text>
+    </view>
 
-    <!-- DeviceName -->
-    <view class="modal-label">DeviceName</view>
-    <input class="modal-input"
-      value="{{editDeviceName}}"
-      placeholder="请输入DeviceName"
-      bindinput="onEditDeviceNameInput" />
+    <!-- 中继配置输入框（已有 ProductKey 直接显示，或点击"设为中继"后展开，弹框自动变长） -->
+    <block wx:if="{{showRelayFields}}">
+      <!-- ProductKey -->
+      <view class="modal-label">ProductKey</view>
+      <input class="modal-input"
+        value="{{editProductKey}}"
+        placeholder="请输入ProductKey"
+        bindinput="onEditProductKeyInput" />
 
-    <!-- DeviceSecret -->
-    <view class="modal-label">DeviceSecret</view>
-    <input class="modal-input"
-      value="{{editDeviceSecret}}"
-      placeholder="请输入DeviceSecret"
-      bindinput="onEditDeviceSecretInput" />
+      <!-- DeviceName -->
+      <view class="modal-label">DeviceName</view>
+      <input class="modal-input"
+        value="{{editDeviceName}}"
+        placeholder="请输入DeviceName"
+        bindinput="onEditDeviceNameInput" />
+
+      <!-- DeviceSecret -->
+      <view class="modal-label">DeviceSecret</view>
+      <input class="modal-input"
+        value="{{editDeviceSecret}}"
+        placeholder="请输入DeviceSecret"
+        bindinput="onEditDeviceSecretInput" />
+    </block>
 
     <!-- 是否可见 -->
     <view class="modal-label">是否可见</view>

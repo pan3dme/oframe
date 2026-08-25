@@ -659,7 +659,7 @@ void setup() {
     strncpy(lastrelayName, "", sizeof(lastrelayName) - 1);
     lastrelayName[sizeof(lastrelayName) - 1] = '\0';
 
-    strncpy(work_time_str, "08:35-23:59", sizeof(work_time_str) - 1);
+    strncpy(work_time_str, "00:00-23:59", sizeof(work_time_str) - 1);
     work_time_str[sizeof(work_time_str) - 1] = '\0';
 
     // strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);

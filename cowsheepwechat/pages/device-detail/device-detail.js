@@ -33,6 +33,9 @@ Page({
     editPicurl: '',
     editPicFilePath: '',
     editVisible: false,
+    // 是否展开中继配置输入框（ProductKey/DeviceName/DeviceSecret）：
+    // 设备已有 ProductKey 时默认展开；否则隐藏，点击"设为中继"后才展开
+    showRelayFields: false,
     // 连接牛羊弹窗
     showBindModal: false,
     bindDeviceId: '',
@@ -487,8 +490,16 @@ Page({
       editDeviceSecret: info.DeviceSecret || '',
       editPicurl: info.picurl || '',
       editPicFilePath: '',
-      editVisible: info.visible === true || info.visible === 'true' || info.visible === 1
+      editVisible: info.visible === true || info.visible === 'true' || info.visible === 1,
+      // 已有 ProductKey 的设备：直接显示中继配置输入框（保留原样式）
+      // 没有 ProductKey 的设备：隐藏，需点击"设为中继"才展开
+      showRelayFields: !!(info.ProductKey)
     })
+  },
+
+  // 点击"设为中继"：展开 ProductKey/DeviceName/DeviceSecret 输入框（弹框自动变长）
+  onSetRelayTap() {
+    this.setData({ showRelayFields: true })
   },
 
   onEditRenameInput(e) {
