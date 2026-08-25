@@ -22,11 +22,8 @@ Page({
     // 数据缓存（先存后上传）
     cacheQueue: [],
     cacheCount: 0,
-    // GPS 数据上传队列
-    gpsQueue: [],
-    uploading: false,
-    uploadedCount: 0,
     isCenterUploading: false, // 数据中心上传状态
+    autoUpload: false,        // 自动上传模式（复选框勾选状态，重启保留）
     // 写入特征值信息（连接成功后缓存）
     writeDeviceInfo: null,
     // 发送指令弹窗
@@ -142,11 +139,9 @@ Page({
       connectedDeviceName: s.connectedDeviceName,
       isSyncing: s.isSyncing,
       isCenterUploading: s.isCenterUploading,
+      autoUpload: s.autoUpload,
       cacheQueue: s.cacheQueue,
       cacheCount: s.cacheCount,
-      gpsQueue: s.gpsQueue,
-      uploading: s.uploading,
-      uploadedCount: s.uploadedCount,
       writeDeviceInfo: s.writeDeviceInfo,
       cmdDeviceRawList: s.cmdDeviceRawList,
       cmdDeviceList: s.cmdDeviceList,
@@ -459,7 +454,8 @@ Page({
     })
   },
 
-  // 从原始消息文本判断类型：'gps' | 'time' | 'battery' | ''
+  // 从原始消息文本判断类型：'gps' | 'time' | 'other' | ''
+  // 'other' = 除 GPS、对时外的其它所有信息
   _getMsgType(text) {
     try {
       const obj = JSON.parse(text)
@@ -467,7 +463,7 @@ Page({
       const parts = info.split('|')
       if (parts[0] === '1') return 'gps'
       if (parts[0] === '2') return 'time'
-      if (parts[0] === '3') return 'battery'
+      if (parts[0]) return 'other'
     } catch (e) { /* 非JSON */ }
     // 回退：| 分隔格式，首段为类型
     const idx = text.indexOf('|')
@@ -475,7 +471,7 @@ Page({
       const typeStr = text.substring(0, idx)
       if (typeStr === '1') return 'gps'
       if (typeStr === '2') return 'time'
-      if (typeStr === '3') return 'battery'
+      if (typeStr) return 'other'
     }
     return ''
   },
@@ -494,17 +490,17 @@ Page({
       this._syncFromManager()
     })
   },
-  // 筛选按钮：电量 切换
-  onToggleFilterBattery() {
-    const next = this.data.filterType === 'battery' ? '' : 'battery'
+  // 筛选按钮：其它（除GPS、对时外的所有信息）切换
+  onToggleFilterOther() {
+    const next = this.data.filterType === 'other' ? '' : 'other'
     this.setData({ filterType: next }, () => {
       this._syncFromManager()
     })
   },
 
-  // ========== 上传数据中心（切换：上传 / 暂停） ==========
-  uploadToCenter() {
-    bleManager.toggleCenterUpload()
+  // ========== 自动上传按钮（切换：开启 / 暂停，重启保留） ==========
+  onToggleAutoUpload() {
+    bleManager.toggleAutoUpload()
   },
 
   // ========== 数据同步 ==========

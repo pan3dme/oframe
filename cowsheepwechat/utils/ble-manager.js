@@ -5,6 +5,7 @@
 const STORAGE_KEY = 'bt_cache_queue'
 const STORAGE_KEY_SOUND = 'setting_ble_sound'
 const STORAGE_KEY_LAST_DEVICE = 'bt_last_device'
+const STORAGE_KEY_AUTO_UPLOAD = 'bt_auto_upload'
 const dataCache = require('../config/data-cache.js')
 
 const state = {
@@ -13,8 +14,8 @@ const state = {
   writeDeviceInfo: null,
   isSyncing: false,
   isCenterUploading: false,
+  autoUpload: false,          // 自动上传开关（持久化，重启后恢复）
   cacheQueue: [],
-  gpsQueue: [],
   uploading: false,
   uploadedCount: 0,
   receivedList: [],          // 最近200条原始消息（最新在前）
@@ -32,9 +33,9 @@ function getState() {
     writeDeviceInfo: state.writeDeviceInfo,
     isSyncing: state.isSyncing,
     isCenterUploading: state.isCenterUploading,
+    autoUpload: state.autoUpload,
     cacheQueue: state.cacheQueue,
     cacheCount: state.cacheQueue.length,
-    gpsQueue: state.gpsQueue,
     uploading: state.uploading,
     uploadedCount: state.uploadedCount,
     receivedList: state.receivedList,
@@ -186,6 +187,10 @@ function connect(deviceId, deviceName, onSuccess, onFail) {
           state.connectedDeviceName = deviceName || '已连接设备'
           saveLastDevice(deviceId, state.connectedDeviceName)
           setupSession(deviceId)
+          // 自动上传开启时：重连后自动恢复上传模式
+          if (state.autoUpload && !state.isCenterUploading) {
+            startAutoUpload()
+          }
           emit()
           if (onSuccess) onSuccess()
         },
@@ -260,7 +265,6 @@ function disconnect(onDone) {
       state.writeDeviceInfo = null
       state.isSyncing = false
       state.receivedList = []
-      state.gpsQueue = []
       state.uploading = false
       state.uploadedCount = 0
       state.isCenterUploading = false
@@ -364,71 +368,157 @@ function handleBleData(res) {
     }
   } catch (e) { /* 非 JSON，保持原样 */ }
 
-  if (state.isCenterUploading) {
-    // 上传模式：直接推入上传队列，不缓存
-    state.gpsQueue.push(correctedMsg)
-    prependReceived(correctedMsg)
-    emit()
-    if (!state.uploading) {
-      processGPSQueue()
-    }
-  } else {
-    // 暂停模式：存入本地缓存
-    state.cacheQueue = state.cacheQueue.concat([correctedMsg])
-    prependReceived(correctedMsg)
-    saveCache()
-    emit()
+  // 数据统一存入缓存队列（上传模式下由上传处理逐条取走，缓存逐条减少，进度直观）
+  state.cacheQueue = state.cacheQueue.concat([correctedMsg])
+  prependReceived(correctedMsg)
+  saveCache()
+  emit()
+  if (state.isCenterUploading && !state.uploading) {
+    processGPSQueue()
   }
 }
 
-// ========== 上传数据中心（切换：上传 / 暂停） ==========
+// ========== 自动上传（持久化开关，重启后恢复） ==========
+// 开启/恢复上传模式：直接从缓存头部逐条取数据上传，
+// 成功一条缓存减一条（进度直观）；不需要上传的直接跳过
+function startAutoUpload() {
+  state.isCenterUploading = true
+  if (!state.uploading) {
+    processGPSQueue()
+  }
+  emit()
+}
+
+// 持久化自动上传设置
+function saveAutoUploadSetting(val) {
+  try {
+    wx.setStorageSync(STORAGE_KEY_AUTO_UPLOAD, val)
+  } catch (e) {
+    console.error('保存自动上传设置失败:', e)
+  }
+}
+
+// ========== 上传数据中心（切换：上传 / 暂停，重启保留自动上传状态） ==========
+// "上传数据"按钮与"自动上传"复选框联动：
+// 开启上传 = 勾选自动上传并持久化；暂停上传 = 取消勾选并持久化
 function toggleCenterUpload() {
   if (state.isCenterUploading) {
-    // 正在上传 → 暂停
+    // 正在上传 → 暂停（并退出自动上传模式，复选框取消勾选）
     state.isCenterUploading = false
+    state.autoUpload = false
+    saveAutoUploadSetting(false)
     emit()
     wx.showToast({ title: '已暂停上传', icon: 'none' })
     return
   }
 
-  // 开始上传
-  state.isCenterUploading = true
+  // 开始上传（同时勾选自动上传）
+  state.autoUpload = true
+  const cacheCount = state.cacheQueue.length
+  startAutoUpload()
+  saveAutoUploadSetting(true)
 
-  const cache = state.cacheQueue
-  if (cache.length > 0) {
-    // 有缓存：先上传缓存
-    state.cacheQueue = []
-    state.gpsQueue = state.gpsQueue.concat(cache)
-    saveCache()
-    wx.showToast({ title: '上传已开启，先上传 ' + cache.length + ' 条缓存', icon: 'none' })
+  if (cacheCount > 0) {
+    wx.showToast({ title: '自动上传已开启，先上传 ' + cacheCount + ' 条缓存', icon: 'none' })
   } else {
-    wx.showToast({ title: '上传已开启，等待接收数据...', icon: 'none' })
-  }
-  emit()
-
-  // 启动队列处理
-  if (!state.uploading) {
-    processGPSQueue()
+    wx.showToast({ title: '自动上传已开启，等待接收数据...', icon: 'none' })
   }
 }
 
-// 处理GPS上传队列
+// 自动上传复选框开关：勾选=开启自动上传（按钮同步），取消勾选=暂停上传
+function toggleAutoUpload() {
+  if (state.autoUpload) {
+    // 取消勾选 → 退出自动上传模式（暂停上传）
+    state.autoUpload = false
+    state.isCenterUploading = false
+    saveAutoUploadSetting(false)
+    emit()
+    wx.showToast({ title: '已暂停上传', icon: 'none' })
+    return
+  }
+
+  // 勾选 → 开启自动上传（按钮同步为"暂停上传"）
+  state.autoUpload = true
+  const cacheCount = state.cacheQueue.length
+  startAutoUpload()
+  saveAutoUploadSetting(true)
+
+  if (cacheCount > 0) {
+    wx.showToast({ title: '自动上传已开启，先上传 ' + cacheCount + ' 条缓存', icon: 'none' })
+  } else {
+    wx.showToast({ title: '自动上传已开启，等待接收数据...', icon: 'none' })
+  }
+}
+
+// 判断 insertlog 返回是否"正确"：无明确成功标志/返回异常一律视为未成功，
+// 宁可下次再上传一次，也不丢失数据
+function isInsertLogOk(res) {
+  try {
+    if (!res || !res.data) return false
+    let d = res.data
+    if (typeof d === 'string') {
+      try { d = JSON.parse(d) } catch (e) { return false }
+    }
+    if (d === null || typeof d !== 'object') return false
+    // 明确失败标志
+    if (d.success === false || d.success === 'false') return false
+    if (d.code !== undefined && d.code !== null && d.code !== '') {
+      const c = String(d.code)
+      if (c !== '200' && c !== '0' && c.toLowerCase() !== 'success') return false
+    }
+    if (d.status !== undefined && d.status !== null && d.status !== '') {
+      const s = String(d.status).toLowerCase()
+      if (s !== 'success' && s !== 'ok' && s !== '200' && s !== '0') return false
+    }
+    if (d.msg && /(失败|error|fail)/i.test(String(d.msg))) return false
+    if (d.error !== undefined && d.error !== null && d.error !== '') return false
+    // 空返回（无可识别字段）→ 视为未正确返回
+    const okKeys = Object.keys(d).filter(k => /success|code|status|msg|data|result|error/i.test(k))
+    if (okKeys.length === 0) return false
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
+// 上传未成功：数据放回缓存（持久化，重启不丢），2秒后重试
+function retryUploadLater(gpsDataStr) {
+  // 同一数据避免重复进缓存
+  if (state.cacheQueue.indexOf(gpsDataStr) === -1) {
+    state.cacheQueue = [gpsDataStr].concat(state.cacheQueue)
+  }
+  saveCache()
+  emit()
+  // 保持 uploading=true 阻止处理后续数据，2秒后重试（自动上传开启时）
+  setTimeout(() => {
+    state.uploading = false
+    if (state.isCenterUploading) {
+      processGPSQueue()
+    }
+  }, 2000)
+}
+
+// 处理上传队列：从缓存头部逐条取数据
+// 上传成功 → 缓存减一条；不需要上传 → 直接跳过（缓存减一条）；失败 → 放回缓存头部重试
 function processGPSQueue() {
   if (state.uploading) return
-  const queue = state.gpsQueue
+  const queue = state.cacheQueue
   if (queue.length === 0) {
-    // 队列已空，等待新数据（上传模式下不自动停止）
+    // 缓存已空，等待新数据（上传模式下不自动停止）
     return
   }
 
   state.uploading = true
   const gpsDataStr = queue.shift()
+  // 注意：取出后先不持久化，上传成功/跳过时才 saveCache。
+  // 若中途被杀，storage 中仍保留该条，重启后重新上传（宁可重复也不丢）
 
   let gpsData
   try {
     gpsData = JSON.parse(gpsDataStr)
   } catch (e) {
     console.warn('GPS数据JSON解析失败，跳过:', gpsDataStr, e)
+    saveCache()
     state.uploading = false
     emit()
     processGPSQueue()
@@ -438,6 +528,7 @@ function processGPSQueue() {
   const infoStr = gpsData.info
   if (!infoStr) {
     console.warn('GPS数据缺少info字段，跳过:', gpsDataStr)
+    saveCache()
     state.uploading = false
     emit()
     processGPSQueue()
@@ -446,7 +537,6 @@ function processGPSQueue() {
   const parts = infoStr.split('|')
   const msgType = parts[0]
 
- 
   if (msgType == 1 || msgType == 2 || msgType == 3 || msgType == 6) {
     const deviceId = parts[1]
     const lorastr = infoStr
@@ -464,27 +554,35 @@ function processGPSQueue() {
         wechatid: getApp().getWechatId()
       }
     }
-    console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '队列剩余:', queue.length)
+    console.log('上传设备记录, 设备编号:', deviceId, 'lora数据:', lorastr, '缓存剩余:', queue.length)
     const API_URL = getApp().globalData.api_device_Url
     wx.request({
       url: API_URL,
       method: 'POST',
       data: postData,
       success: (res) => {
-        console.log('GPS记录上传成功:', res.data)
-        state.uploading = false
-        state.uploadedCount++
-        emit()
-        processGPSQueue()
+        if (isInsertLogOk(res)) {
+          console.log('GPS记录上传成功:', res.data)
+          saveCache() // 成功：缓存已减一条，持久化
+          state.uploading = false
+          state.uploadedCount++
+          emit()
+          processGPSQueue()
+        } else {
+          // 返回异常：视为未成功，保留到缓存下次重传（宁可重复也不丢）
+          console.warn('GPS记录返回异常，保留到缓存下次重传:', res && res.data)
+          retryUploadLater(gpsDataStr)
+        }
       },
       fail: (err) => {
-        console.error('GPS记录上传失败:', err)
-        state.uploading = false
-        emit()
-        processGPSQueue()
+        console.error('GPS记录上传失败，保留到缓存等待重试:', err)
+        retryUploadLater(gpsDataStr)
       }
     })
   } else {
+    // 不需要上传的数据：跳过（已从缓存移除），继续处理下一条
+    console.log('无需上传的数据，跳过:', gpsDataStr)
+    saveCache()
     state.uploading = false
     emit()
     processGPSQueue()
@@ -572,6 +670,14 @@ function init() {
   if (_inited) return
   _inited = true
   loadCache()
+  // 恢复自动上传设置：开启时直接进入上传模式（重启后保留）
+  try {
+    const auto = wx.getStorageSync(STORAGE_KEY_AUTO_UPLOAD)
+    state.autoUpload = auto === true || auto === 'true' || auto === 1 || auto === '1'
+  } catch (e) { /* ignore */ }
+  if (state.autoUpload) {
+    startAutoUpload()
+  }
   // 全局注册数据接收回调：页面销毁后依然生效，连接保持期间持续收数
   wx.onBLECharacteristicValueChange(function (res) {
     handleBleData(res)
@@ -588,6 +694,7 @@ module.exports = {
   send,
   toggleSync,
   toggleCenterUpload,
+  toggleAutoUpload,
   processGPSQueue,
   clearCache,
   resolveDeviceDisplayNames,

@@ -49,33 +49,52 @@ page {
   margin: 0 4rpx;
 }
 
-.cache-upload-btn {
+/* 自动上传按钮（带复选框视觉，勾选=自动上传模式，点击切换） */
+.auto-upload {
   margin-left: auto;
-  height: 68rpx;
-  line-height: 68rpx;
-  padding: 0 32rpx;
-  font-size: 28rpx;
-  color: #666;
+  display: flex;
+  align-items: center;
+  height: 60rpx;
+  padding: 0 26rpx;
+  border-radius: 30rpx;
   background: #f0f2f5;
-  border-radius: 34rpx;
-  border: none;
+  border: 1rpx solid #e0e0e0;
 }
-.cache-upload-btn::after { border: none; }
-
-.cache-upload-cancel {
+.auto-checkbox {
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 8rpx;
+  border: 2rpx solid #c8c9cc;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10rpx;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+.auto-checkmark {
+  color: #1989fa;
+  font-size: 22rpx;
+  line-height: 1;
+}
+.auto-upload-label {
+  font-size: 26rpx;
+  color: #333;
+  white-space: nowrap;
+}
+/* 激活状态：蓝色高亮，勾选可见 */
+.auto-upload-on {
+  background: #1989fa;
+  border-color: #1989fa;
+}
+.auto-upload-on .auto-checkbox {
+  background: #fff;
+  border-color: #fff;
+}
+.auto-upload-on .auto-upload-label {
   color: #fff;
-  background: #e74c3c;
-}
-
-.cache-progress-line {
-  margin-top: 16rpx;
-  padding: 14rpx 24rpx;
-  background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
-  border-radius: 10rpx;
-  font-size: 28rpx;
-  color: #2e7d32;
   font-weight: bold;
-  text-align: center;
 }
 
 /* 操作按钮区 */
@@ -417,6 +436,14 @@ page {
 .recv-scroll {
   flex: 1;
   min-height: 0;
+}
+
+/* 数据不足时也能上下滑动：内容至少撑满视口高度并留出底部余量，
+   使 scroll-view 始终存在可滚动空间（无需加载新数据，仅保证滚动手感） */
+.recv-list-wrap {
+  min-height: 100%;
+  box-sizing: content-box;
+  padding-bottom: 100rpx;
 }
 
 /* ========== 数据记录列表（与设备详情记录样式一致） ========== */

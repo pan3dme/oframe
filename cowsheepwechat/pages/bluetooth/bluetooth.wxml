@@ -8,12 +8,12 @@
       <view class="cache-row">
         <text class="cache-icon">☁️</text>
         <text class="cache-text" bindtap="onTapCacheText">缓存记录: <text class="cache-num">{{cacheCount}}</text> 条</text>
-        <button class="cache-upload-btn {{isCenterUploading ? 'cache-upload-cancel' : ''}}" bindtap="uploadToCenter">
-          {{isCenterUploading ? '⏸ 暂停上传' : '▶ 上传数据'}}
-        </button>
-      </view>
-      <view class="cache-progress-line" wx:if="{{isCenterUploading || uploadedCount > 0}}">
-        {{isCenterUploading ? '上传中' : ''}}{{uploadedCount > 0 ? ' | 已上传 ' + uploadedCount + ' 条' : ''}}{{gpsQueue.length > 0 ? ' | 队列 ' + gpsQueue.length + ' 条' : ''}}
+        <view class="auto-upload {{autoUpload ? 'auto-upload-on' : ''}}" bindtap="onToggleAutoUpload">
+          <view class="auto-checkbox">
+            <text class="auto-checkmark" wx:if="{{autoUpload}}">✓</text>
+          </view>
+          <text class="auto-upload-label">{{autoUpload ? '自动上传中' : '自动上传'}}</text>
+        </view>
       </view>
     </view>
 
@@ -92,13 +92,13 @@
 
   <!-- 接收/缓存数据列表（撑满剩余空间） -->
   <view class="recv-panel">
-    <view class="recv-header" wx:if="{{bluetoothConnected}}">
+      <view class="recv-header" wx:if="{{bluetoothConnected}}">
       <text class="recv-icon">⬇</text>
       <text class="recv-label">接收数据</text>
       <view class="recv-filters">
         <text class="recv-filter-btn {{filterType === 'gps' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterGps">📍 GPS</text>
         <text class="recv-filter-btn {{filterType === 'time' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterTime">🕐 对时</text>
-        <text class="recv-filter-btn {{filterType === 'battery' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterBattery">🔋 电量</text>
+        <text class="recv-filter-btn {{filterType === 'other' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterOther">📦 其它</text>
       </view>
       <text class="recv-count">{{displayList.length}} 条</text>
     </view>
@@ -108,24 +108,26 @@
       <view class="recv-filters">
         <text class="recv-filter-btn {{filterType === 'gps' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterGps">📍 GPS</text>
         <text class="recv-filter-btn {{filterType === 'time' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterTime">🕐 对时</text>
-        <text class="recv-filter-btn {{filterType === 'battery' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterBattery">🔋 电量</text>
+        <text class="recv-filter-btn {{filterType === 'other' ? 'recv-filter-on' : ''}}" bindtap="onToggleFilterOther">📦 其它</text>
       </view>
       <text class="recv-count">{{cacheDisplayList.length}} 条</text>
     </view>
     <scroll-view class="recv-scroll" scroll-y>
-      <view class="record-item" wx:for="{{bluetoothConnected ? displayList : cacheDisplayList}}" wx:key="_key" style="background-color:{{item.bgColor}}" bindtap="onRecordTap" data-index="{{index}}">
-        <view class="rec-row rec-row-time">
-          <text class="rec-val rec-val-time">{{item.date}} {{item.time_part}}</text>
-          <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}<text wx:if="{{item.upDateDeviceAlias}}" class="rec-val-alias">({{item.upDateDeviceAlias}})</text></text>
-        </view>
-        <view class="rec-row rec-row-content">
-          <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType === '6' ? '设置' : item.msgType}}</text>
-          <text class="rec-val rec-val-lora">{{item.displayLorastr}}</text>
-          <text class="rec-tap-arrow" wx:if="{{item.msgType === '1' || item.msgType === '5'}}">›</text>
-        </view>
-        <view class="rec-row rec-row-rssi" wx:if="{{item.rssi !== '' || item.snr !== ''}}">
-          <text class="rec-val rec-val-rssi" wx:if="{{item.rssi !== ''}}">RSSI: {{item.rssi}}dBm</text>
-          <text class="rec-val rec-val-snr" wx:if="{{item.snr !== ''}}">SNR: {{item.snr}}</text>
+      <view class="recv-list-wrap">
+        <view class="record-item" wx:for="{{bluetoothConnected ? displayList : cacheDisplayList}}" wx:key="_key" style="background-color:{{item.bgColor}}" bindtap="onRecordTap" data-index="{{index}}">
+          <view class="rec-row rec-row-time">
+            <text class="rec-val rec-val-time">{{item.date}} {{item.time_part}}</text>
+            <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}<text wx:if="{{item.upDateDeviceAlias}}" class="rec-val-alias">({{item.upDateDeviceAlias}})</text></text>
+          </view>
+          <view class="rec-row rec-row-content">
+            <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType === '6' ? '设置' : item.msgType}}</text>
+            <text class="rec-val rec-val-lora">{{item.displayLorastr}}</text>
+            <text class="rec-tap-arrow" wx:if="{{item.msgType === '1' || item.msgType === '5'}}">›</text>
+          </view>
+          <view class="rec-row rec-row-rssi" wx:if="{{item.rssi !== '' || item.snr !== ''}}">
+            <text class="rec-val rec-val-rssi" wx:if="{{item.rssi !== ''}}">RSSI: {{item.rssi}}dBm</text>
+            <text class="rec-val rec-val-snr" wx:if="{{item.snr !== ''}}">SNR: {{item.snr}}</text>
+          </view>
         </view>
       </view>
     </scroll-view>
