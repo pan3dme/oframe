@@ -62,6 +62,30 @@ page {
   background: #fffaf5;
 }
 
+/* 蓝牙模式下中继固定为蓝牙设备（禁用下拉箭头，显示锁定标识） */
+.relay-locked {
+  border-color: #1989fa;
+  background: #f0f7ff;
+  justify-content: space-between;
+  cursor: default;
+}
+.relay-locked::after {
+  content: '🔒';
+  font-size: 24rpx;
+}
+.relay-locked-name {
+  font-size: 30rpx;
+  color: #1989fa;
+  font-weight: 600;
+}
+.relay-locked-tag {
+  font-size: 22rpx;
+  color: #1989fa;
+  border: 1rpx solid #1989fa;
+  border-radius: 8rpx;
+  padding: 2rpx 12rpx;
+}
+
 .relay-hint {
   margin-top: 12rpx;
   font-size: 22rpx;

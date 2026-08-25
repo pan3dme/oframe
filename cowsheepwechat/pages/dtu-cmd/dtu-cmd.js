@@ -1,5 +1,7 @@
 // pages/dtu-cmd/dtu-cmd.js
 // DTU发送指令页面：选择设备 → 输入/快捷指令 → HTTP发送到云函数
+// 已连接蓝牙时：标题变"设备蓝牙指令"，中继固定为蓝牙设备，指令通过蓝牙发送
+const bleManager = require('../../utils/ble-manager.js')
 const dataCache = require('../../config/data-cache.js')
 const timeWindowCodec = require('../../utils/time-window-codec.js')
 
@@ -10,6 +12,10 @@ const API_URL = getApp().globalData.api_device_Url
 
 Page({
   data: {
+    // 蓝牙状态（已连接时页面切换为"设备蓝牙指令"模式）
+    bleConnected: false,
+    bleDeviceName: '',
+    navTitle: '设备DTU指令',
     // 目标设备列表
     deviceList: [],         // 完整设备记录 [{deviceId, ProductKey, DeviceName, rename}, ...]
     deviceDisplayList: [],  // 下拉显示用 ["deviceId (rename)", ...]
@@ -42,6 +48,8 @@ Page({
   },
 
   onLoad(options) {
+    // 初始化全局蓝牙管理（幂等，只注册一次数据接收回调）
+    bleManager.init()
     const preselectDeviceId = options.deviceId || ''
     // 从缓存获取设备列表
     dataCache.getDeviceList((deviceData) => {
@@ -108,13 +116,41 @@ Page({
     })
   },
 
+  // ========== 蓝牙状态订阅 ==========
+  onShow() {
+    if (!this._onBleUpdateBound) {
+      this._onBleUpdateBound = this._onBleUpdate.bind(this)
+    }
+    bleManager.subscribe(this._onBleUpdateBound)
+    this._onBleUpdate() // 进入页面立即同步一次当前状态
+  },
+
+  onHide() {
+    if (this._onBleUpdateBound) bleManager.unsubscribe(this._onBleUpdateBound)
+  },
+
+  onUnload() {
+    if (this._onBleUpdateBound) bleManager.unsubscribe(this._onBleUpdateBound)
+  },
+
+  // 蓝牙状态变化：更新标题、中继固定显示
+  _onBleUpdate() {
+    const s = bleManager.getState()
+    this.setData({
+      bleConnected: s.connected,
+      bleDeviceName: s.connectedDeviceName,
+      navTitle: s.connected ? '设备蓝牙指令' : '设备DTU指令'
+    })
+  },
+
   // ========== 设备选择 ==========
   onDeviceChange(e) {
     this.setData({ deviceIndex: parseInt(e.detail.value) })
   },
 
-  // 中继转发设备选择
+  // 中继转发设备选择（蓝牙模式下固定为蓝牙设备，不可选）
   onRelayChange(e) {
+    if (this.data.bleConnected) return
     this.setData({ relayIndex: parseInt(e.detail.value) })
   },
 
@@ -346,6 +382,12 @@ Page({
       // 非JSON或解析失败，跳过校验
     }
 
+    // 蓝牙已连接：指令通过蓝牙发送（蓝牙网关转发到目标设备），不走 HTTP
+    if (this.data.bleConnected) {
+      this._sendViaBle(device.deviceId, cmdText)
+      return
+    }
+
     // 获取手动选择的中继转发设备
     const relayDevice = this.data.relayDeviceList[this.data.relayIndex]  // null=自动
 
@@ -374,7 +416,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceBestRssibyId',
-        info: { limit: 4, deviceId: targetDeviceId, wechatid: getApp().getWechatId() }
+        info: { limit: 2, deviceId: targetDeviceId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         wx.hideLoading()
@@ -469,6 +511,39 @@ Page({
     if (val === undefined || val === null || val === '' || val === '-') return -999
     const n = parseInt(val, 10)
     return isNaN(n) ? -999 : n
+  },
+
+  // 蓝牙模式发送：目标设备ID注入消息，通过蓝牙特征值发给已连接的蓝牙网关
+  _sendViaBle(targetDeviceId, cmdText) {
+    // 尝试解析为 JSON，并注入目标设备 ID
+    let msgObj
+    try {
+      msgObj = JSON.parse(cmdText)
+    } catch (e) {
+      // 非 JSON，作为纯文本发送
+      msgObj = { text: cmdText }
+    }
+    msgObj.deviceId = targetDeviceId
+    const finalMsg = JSON.stringify(msgObj)
+
+    this.addLog('info', '蓝牙发送 → ' + targetDeviceId + ': ' + finalMsg)
+    console.log('[DTU指令] 蓝牙发送:', finalMsg)
+
+    if (!bleManager.getState().writeDeviceInfo) {
+      this.addLog('error', '未找到可写入特征值')
+      wx.showToast({ title: '未找到可写入特征值', icon: 'error' })
+      return
+    }
+
+    const that = this
+    bleManager.send(finalMsg, () => {
+      that.addLog('success', '蓝牙发送成功 → ' + targetDeviceId)
+      wx.showToast({ title: '指令已发送 → ' + targetDeviceId, icon: 'success' })
+    }, (err) => {
+      console.error('[DTU指令] 蓝牙发送失败:', err)
+      that.addLog('error', '蓝牙发送失败: ' + (err.errMsg || '写入失败'))
+      wx.showToast({ title: '发送失败', icon: 'error' })
+    })
   },
 
   // 实际执行发送：credDevice 提供密钥，targetDeviceId 注入到消息中

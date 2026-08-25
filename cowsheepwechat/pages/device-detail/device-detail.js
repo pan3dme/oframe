@@ -730,7 +730,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceBestRssibyId',
-        info: { limit: 3, deviceId: targetDeviceId, wechatid: getApp().getWechatId() } 
+        info: { limit: 2, deviceId: targetDeviceId, wechatid: getApp().getWechatId() } 
       },
       success: (res) => {
         wx.hideLoading()
