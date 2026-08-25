@@ -65,48 +65,6 @@ RTC_DATA_ATTR char config_str[16];
 RadioEvents_t radioEvents;                             // LoRa事件回调
 void printTimeToString(String str, unsigned long ms);  // 前向声明
 
-// 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
-// work_time_str格式: "05:02-10:59" 表示工作时段 05:02 ~ 10:59
-uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
-  return (uint64_t)sleepMs * 1000ULL;  //直接返回
-  // 1. 用isTimeInRange判断是否在工作时间（支持跨午夜）
-  bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
-  if (inWorkTime || !isBoardDateTimeOK()) {
-    DEBUG_PRINTLN("✅ 当前在工作时间内，按原计划休眠");
-    return (uint64_t)sleepMs * 1000ULL;
-  }
-
-  // 2. 不在工作时间内，解析开始时间计算等待
-  int startH = 0, startM = 0, endH = 0, endM = 0;
-  int ret = sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
-  if (ret != 4) {
-    DEBUG_PRINTLN("⚠️ work_time_str parse fail, use 00:00‑23:59");
-    return (uint64_t)sleepMs * 1000ULL;
-  }
-  int startMinutes = startH * 60 + startM;
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);
-  time_t now = tv.tv_sec;
-  struct tm t;
-  localtime_r(&now, &t);
-  int nowMinutes = t.tm_hour * 60 + t.tm_min;
-
-  DEBUG_PRINTF("    工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
-               startH, startM, endH, endM, t.tm_hour, t.tm_min);
-
-  // 3. 计算到下次工作开始的分钟数
-  int waitMinutes = 0;
-  if (nowMinutes < startMinutes) {
-    waitMinutes = startMinutes - nowMinutes;
-  } else {
-    waitMinutes = (24 * 60 - nowMinutes) + startMinutes;
-  }
-
-  uint64_t adjustedUs = (uint64_t)waitMinutes * 60 * 1000000ULL;
-  DEBUG_PRINTF("❌ 当前不在工作时间，%d分钟后开始工作，休眠%llu秒\n",
-               waitMinutes, adjustedUs / 1000000ULL);
-  return adjustedUs;
-}
 
 unsigned long get_send_interval_ms() {
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
@@ -611,40 +569,56 @@ void testSheepFun(bool driftComp) {
       delay(2000);
       waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
     }
-
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
     DEBUG_PRINTLN("秒进入睡眠");
     // 05:02|10:59
-    uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
+    uint64_t sleepTime = (waittm - num6000);  //毫秒
     //判断下个时间段是否需要开启GPS是的话就提前搜星
     //判断是否需要GPS工作
     isNeedGpsWork = isTimeInRange(getCurrentTimestampSec(), gps_time_str);
     if (isNeedGpsWork && strlen(needSendGpsStr) == 0) {
       DEBUG_PRINTLN("工作模式上报GPS，需要提前开启GPS");
-      if (sleepTime > (seacthTm * 1000ULL)) {
-        sleepTime = sleepTime - (seacthTm * 1000ULL);
+      if (sleepTime > (seacthTm)) {
+        sleepTime = sleepTime - (seacthTm);
       } else {
         //小于时间周期，10秒就马上重启 应该不会到这里，有空测试一下
-        sleepTime = 10 * 1000 * 1000ULL;
+        sleepTime = 10 * 1000ULL;
       }
     }
-    // if (sleepTime > MAX_SLEEP_US) {
-    //   sleepTime = MAX_SLEEP_US;
-    // }
+    //现在还不是在工作时间，但下个周期为工作时间
+    if (isBoardDateTimeOK() && !isTimeInRange(getCurrentTimestampSec(), work_time_str) && isTimeInRange(getCurrentTimestampSec() + sleepTime / 1000ULL, work_time_str)) {
+      DEBUG_PRINTLN("即将跨入工作时间   周期不能沿用大周期 要设定工作时间");
+      int startH = 0, startM = 0, endH = 0, endM = 0;
+      int ret = sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
+      if (ret == 4) {
+        long long now = getCurrentTimestampSec();
+        long long todayZero = (now / 86400) * 86400;
+        long long targetTime = todayZero + startH * 3600 + startM * 60;
+        long long secondsLeft = targetTime - now;
+        if (secondsLeft > 0) {
+          sleepTime = secondsLeft * 1000ULL;
+        }
+        DEBUG_PRINTF("距离工作时间开始还有 %lld 秒\n", secondsLeft);
+      }
+    }
+
 
     Radio.Sleep();
-    esp_sleep_enable_timer_wakeup(sleepTime);
+    esp_sleep_enable_timer_wakeup(sleepTime * 1000ULL); //需要微秒单位
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     // 计算并打印预计开机时间
     {
-      uint64_t wakeUpSec = sleepTime / 1000000ULL;
+      uint64_t wakeUpSec = sleepTime / 1000ULL;
       time_t now = time(nullptr);
       time_t wakeTime = now + (time_t)wakeUpSec;
       struct tm wt;
       localtime_r(&wakeTime, &wt);
-      DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
-                   wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
+      // DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
+      //              wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
+      DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu分%llu秒)\n",
+                   wt.tm_hour, wt.tm_min, wt.tm_sec,
+                   wakeUpSec / 60, wakeUpSec % 60);
     }
     Serial.flush();
     esp_deep_sleep_start();
