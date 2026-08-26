@@ -282,5 +282,20 @@ Page({
   // 跳转到地图页面
   goToMap() {
     wx.navigateTo({ url: '/pages/map/map' })
+  },
+
+  // 右上角菜单分享：转发给微信好友/群
+  onShareAppMessage() {
+    return {
+      title: '牛羊GPS定位管理 - 实时掌握每头牛羊的位置',
+      path: '/pages/index/index'
+    }
+  },
+
+  // 分享到朋友圈（仅安卓支持，需启用 onShareTimeline）
+  onShareTimeline() {
+    return {
+      title: '牛羊GPS定位管理 - 实时掌握每头牛羊的位置'
+    }
   }
 })
