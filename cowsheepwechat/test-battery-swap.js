@@ -1,4 +1,4 @@
-// 独立测试 battery-swap 的解析和分析逻辑
+// 独立测试 battery-swap 的解析和分析逻辑（v5：换电判定基于"放电≥20个百分点后电量回满"）
 
 // 复制关键的解析函数（去掉 getApp 依赖）
 function parseBatteryValue(v) {
@@ -82,7 +82,7 @@ function extractBatterySamples(data, deviceId) {
 }
 
 const MIN_VALID_BATTERY = 0.05
-const SWAP_JUMP_DELTA = 0.15
+const SWAP_DROP_DELTA = 0.20
 
 function analyzeSamples(samples, cachedHighest) {
   const asc = samples
@@ -95,11 +95,14 @@ function analyzeSamples(samples, cachedHighest) {
   }
 
   let highest = cachedHighest
+  if (highest) {
+    highest = { t: highest.time || 0, rawTime: highest.timeStr || '', b: highest.battery }
+  }
   if (!highest) {
     highest = asc[0]
     for (let i = 1; i < asc.length; i++) {
       if (asc[i].b > highest.b ||
-          (asc[i].b === highest.b && asc[i].t > highest.t)) {
+          (asc[i].b === highest.b && asc[i].t < highest.t)) {
         highest = asc[i]
       }
     }
@@ -110,11 +113,17 @@ function analyzeSamples(samples, cachedHighest) {
     const s = asc[i]
     if (s.t <= highest.t) continue
 
-    if (lowest && (s.b - lowest.b) >= SWAP_JUMP_DELTA) {
+    // 换电判定：电量回到满电水平（≥原最高电量），且中间最低点比原最高电量低≥20个百分点
+    if (s.b >= highest.b &&
+        lowest &&
+        (highest.b - lowest.b) >= SWAP_DROP_DELTA) {
+      console.log('  -> 判定换电: ' + Math.round(s.b * 100) + '% @ ' + s.rawTime +
+        ' (原最高 ' + Math.round(highest.b * 100) + '%, 最低 ' + Math.round(lowest.b * 100) + '%)')
       highest = s
       lowest = null
       continue
     }
+
     if (s.b < highest.b) {
       if (!lowest || s.b < lowest.b) lowest = s
     }
@@ -126,90 +135,78 @@ function analyzeSamples(samples, cachedHighest) {
   return { highest: fmt(highest), lowest: fmt(lowest) }
 }
 
-// 模拟截图中的5条对时记录（v4-10，由不同中继转发）
-const mockData = {
-  data: [
-    {
-      deviceId: 'v4-10',  // 实际设备
-      upDateDevice: 'v4-27',
-      attributes: [
-        { columnName: 'deviceId', columnValue: 'v4-10' },
-        { columnName: 'upDateDevice', columnValue: 'v4-27' },
-        { columnName: 'lorastr', columnValue: '2|v4-10|1787689260|99|52' },
-        { columnName: 'time', columnValue: '2026-08-25 20:20:47' },
-        { columnName: 'rssi', columnValue: '-64' },
-        { columnName: 'snr', columnValue: '8' }
-      ],
-      primaryKey: [{ name: 'id', value: 'r1' }]
-    },
-    {
-      deviceId: 'v4-10',
-      upDateDevice: 'v4-20',
-      attributes: [
-        { columnName: 'deviceId', columnValue: 'v4-10' },
-        { columnName: 'upDateDevice', columnValue: 'v4-20' },
-        { columnName: 'lorastr', columnValue: '2|v4-10|1787689260|99|52' },
-        { columnName: 'time', columnValue: '2026-08-25 20:20:46' },
-        { columnName: 'rssi', columnValue: '-100' },
-        { columnName: 'snr', columnValue: '6' }
-      ]
-    },
-    {
-      deviceId: 'v4-10',
-      upDateDevice: 'v4-22',
-      attributes: [
-        { columnName: 'deviceId', columnValue: 'v4-10' },
-        { columnName: 'upDateDevice', columnValue: 'v4-22' },
-        { columnName: 'lorastr', columnValue: '2|v4-10|1787689260|99|52' },
-        { columnName: 'time', columnValue: '2026-08-25 20:20:46' }
-      ]
-    },
-    {
-      deviceId: 'v4-10',
-      upDateDevice: 'v4-29',
-      attributes: [
-        { columnName: 'deviceId', columnValue: 'v4-10' },
-        { columnName: 'upDateDevice', columnValue: 'v4-29' },
-        { columnName: 'lorastr', columnValue: '2|v4-10|1787689260|99|52' },
-        { columnName: 'time', columnValue: '2026-08-25 20:20:46' }
-      ]
-    },
-    {
-      deviceId: 'v4-10',
-      upDateDevice: 'v4-29',
-      attributes: [
-        { columnName: 'deviceId', columnValue: 'v4-10' },
-        { columnName: 'upDateDevice', columnValue: 'v4-29' },
-        { columnName: 'lorastr', columnValue: '2|v4-10|1787682060|99|50' },
-        { columnName: 'time', columnValue: '2026-08-25 18:20:58' }
-      ]
-    }
-  ]
+// 构造一条 type=2 记录
+function makeRecord(id, lorastr, time, rssi, snr) {
+  return {
+    deviceId: 'v4-10',
+    upDateDevice: 'v4-27',
+    attributes: [
+      { columnName: 'deviceId', columnValue: 'v4-10' },
+      { columnName: 'upDateDevice', columnValue: 'v4-27' },
+      { columnName: 'lorastr', columnValue: lorastr },
+      { columnName: 'time', columnValue: time },
+      { columnName: 'rssi', columnValue: rssi },
+      { columnName: 'snr', columnValue: snr }
+    ],
+    primaryKey: [{ name: 'id', value: id }]
+  }
 }
 
-console.log('=== Test 1: standard format with deviceId in attributes ===')
-const samples = extractBatterySamples(mockData, 'v4-10')
-console.log('Extracted samples:', samples.length)
-const summary = analyzeSamples(samples, null)
-console.log('Summary:', JSON.stringify(summary, null, 2))
-console.log()
-console.log('Last swap time (display):', summary.highest.timeStr, 'battery:', summary.highest.battery)
+const t0 = 1787689260 // 基准时间（秒级时间戳）
 
-// 再测试一种格式：API 直接用 record.deviceId 作为中继设备，actual device 在 lorastr 中
+console.log('=== Test 1: 带缓存 + 完整放电回满（缓存90% + 85/70/64/92 应判定换电） ===')
+const cached1 = { time: t0 * 1000, timeStr: '2026-08-25T20:21:00.000Z', battery: 0.9 }
+const mockData1 = { data: [
+  makeRecord('r1', '2|v4-10|' + (t0 + 3600) + '|85|52', '2026-08-25 21:20:47', '-60', '8'),
+  makeRecord('r2', '2|v4-10|' + (t0 + 7200) + '|70|52', '2026-08-25 22:20:47', '-61', '7'),
+  makeRecord('r3', '2|v4-10|' + (t0 + 10800) + '|64|52', '2026-08-25 23:20:47', '-62', '6'),
+  makeRecord('r4', '2|v4-10|' + (t0 + 14400) + '|92|52', '2026-08-26 00:20:47', '-58', '9')
+]}
+const samples1 = extractBatterySamples(mockData1, 'v4-10')
+console.log('Extracted samples:', samples1.length)
+const summary1 = analyzeSamples(samples1, cached1)
+console.log('Summary:', JSON.stringify(summary1, null, 2))
+console.log('期望: 判定换电 → 上次换电 = 92% @ r4 时间')
 console.log()
-console.log('=== Test 2: record.deviceId is relay, actual device in lorastr ===')
-const mockData2 = {
-  data: mockData.data.map(r => {
-    const relay = r.attributes.find(a => a.columnName === 'upDateDevice').columnValue
-    return {
-      ...r,
-      deviceId: relay,  // 顶层 deviceId 是中继
-      attributes: r.attributes.filter(a => a.columnName !== 'deviceId')  // 移除 attributes 里的 deviceId
-    }
-  })
-}
+
+console.log('=== Test 2: 带缓存 + 放电不足20%（缓存90% + 88/87/90 不判定换电） ===')
+const cached2 = { time: t0 * 1000, timeStr: '2026-08-25T20:21:00.000Z', battery: 0.9 }
+const mockData2 = { data: [
+  makeRecord('r1', '2|v4-10|' + (t0 + 3600) + '|88|52', '2026-08-25 21:20:47', '-60', '8'),
+  makeRecord('r2', '2|v4-10|' + (t0 + 7200) + '|87|52', '2026-08-25 22:20:47', '-61', '7'),
+  makeRecord('r3', '2|v4-10|' + (t0 + 10800) + '|90|52', '2026-08-25 23:20:47', '-62', '6')
+]}
 const samples2 = extractBatterySamples(mockData2, 'v4-10')
 console.log('Extracted samples:', samples2.length)
-const summary2 = analyzeSamples(samples2, null)
+const summary2 = analyzeSamples(samples2, cached2)
 console.log('Summary:', JSON.stringify(summary2, null, 2))
-console.log('Last swap time (display):', summary2.highest.timeStr, 'battery:', summary2.highest.battery)
+console.log('期望: 不判定 → 上次换电保持 90% @ 缓存时间')
+console.log()
+
+console.log('=== Test 3: 截图场景，无缓存（91% → 90%，平稳无放电，取最高91%为基准） ===')
+const mockData3 = { data: [
+  makeRecord('r1', '2|v4-10|1787822460|90|95', '2026-08-27 09:20:50', '-88', '6'),
+  makeRecord('r2', '2|v4-10|1787822460|90|95', '2026-08-27 09:20:49', '-74', '7'),
+  makeRecord('r3', '2|v4-10|1787822460|90|95', '2026-08-27 09:20:49', '-100', '6'),
+  makeRecord('r4', '2|v4-10|1787822460|90|95', '2026-08-27 09:20:49', '-90', '5'),
+  makeRecord('r5', '2|v4-10|1787818860|91|94', '2026-08-27 08:20:52', '-88', '8')
+]}
+const samples3 = extractBatterySamples(mockData3, 'v4-10')
+console.log('Extracted samples:', samples3.length)
+const summary3 = analyzeSamples(samples3, null)
+console.log('Summary:', JSON.stringify(summary3, null, 2))
+console.log('期望: 上次换电 = 91% @ r5 时间（无缓存取最高点）')
+console.log()
+
+console.log('=== Test 4: 带缓存再扫（缓存91%基准 + 新数据80/64/91 应判定换电） ===')
+const cachedHighest = { time: 1787818860000, timeStr: '2026-08-26T08:21:00.000Z', battery: 0.91 }
+const mockData4 = { data: [
+  makeRecord('r1', '2|v4-10|1787822460|80|95', '2026-08-27 09:20:50', '-88', '6'),
+  makeRecord('r2', '2|v4-10|1787826060|64|95', '2026-08-27 10:20:50', '-74', '7'),
+  makeRecord('r3', '2|v4-10|1787829660|91|95', '2026-08-27 11:20:50', '-100', '6')
+]}
+const samples4 = extractBatterySamples(mockData4, 'v4-10')
+console.log('Extracted samples:', samples4.length)
+const summary4 = analyzeSamples(samples4, cachedHighest)
+console.log('Summary:', JSON.stringify(summary4, null, 2))
+console.log('期望: 判定换电 → 上次换电更新为 91% @ r3（最低64比91低27个百分点）')

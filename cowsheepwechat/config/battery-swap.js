@@ -1,20 +1,22 @@
 // config/battery-swap.js — 换电时间分析与永久缓存
 // 逻辑：
 //   1. 只有对时信息（type=2）中包含电量，lorastr 格式 2|device|时间|电量|...，电量在 parts[3]。
-//   2. 每台设备永久缓存"上次换电"记录（电量最高点 + 时间）与当前电池最低点。
-//   3. 新的对时电量只会随放电不断下降，因此已保存的换电记录保持不变；
-//      只有当电量相对当前最低点回升达到跳变阈值（换电/重新上电）时才更新换电时间。
+//   2. 每台设备永久缓存"上次换电"记录（电量最高点 + 时间）与当前电池最低点，缓存不清除。
+//   3. 无换电记录时，取扫描到的最高电量对时记录作为"上次换电"基准。
+//   4. 换电判定：新记录电量回到满电水平（≥原最高电量），
+//      且中间出现的最低点比原最高电量低≥20个百分点（证明电池确实用掉一大截），
+//      则视为换电/重新上电：新记录替换原最高记录，并清空最低点。
 
 const API_URL = getApp().globalData.api_device_Url
 
-const SWAP_CACHE_KEY = 'battery_swap_cache_v4'
+const SWAP_CACHE_KEY = 'battery_swap_cache_v5'
 const PAGE_SIZE = 100 // 每页拉取记录数
 const MAX_PAGES_FIRST = 15 // 无缓存时首次扫描最多页数（最多1500条）
 const MAX_PAGES_UPDATE = 2 // 已有缓存后只扫描最近几页（最多200条）
 const MIN_VALID_BATTERY = 0.05 // 忽略过低无效读数
 // 换电判定阈值：
 const SWAP_MAX_LEVEL = 0.85   // 电量≥85%视为满电级别（新电池，用于"疑似错过换电"加深扫描判断）
-const SWAP_JUMP_DELTA = 0.15  // 相对当前最低电量回升≥15个百分点视为换电跳变
+const SWAP_DROP_DELTA = 0.20  // 最低点比原最高电量低≥20个百分点，证明电池确实用掉一大截，换电判定才有效
 const SWAP_GAP_MS = 24 * 60 * 60 * 1000 // 与缓存换电记录间隔超过24小时
 
 // ==================== 永久缓存 ====================
@@ -26,7 +28,7 @@ function getSwapCache() {
   } catch (e) {
     console.error('[换电缓存] 读取失败:', e)
   }
-  return { version: 4, devices: {}, updatedAt: 0 }
+  return { version: 5, devices: {}, updatedAt: 0 }
 }
 
 function saveSwapCache(cache) {
@@ -124,9 +126,12 @@ function extractBatterySamples(data, deviceId) {
 // ==================== 换电分析 ====================
 
 // 按时间升序样本，跟踪"上次换电"（电量最高点）与当前电池最低点：
-//   - 已保存的换电记录保持不变：新的对时电量只会随放电下降，
-//     微小回升（<跳变阈值）也忽略，避免换电时间被小波动不断前移
-//   - 只有当电量相对当前最低点回升达到跳变阈值（换电/重新上电）时才更新换电时间
+//   - 无缓存时，取扫描窗口内电量最高的对时记录作为"上次换电"基准（新电池上电时电量最高）
+//   - 之后正常放电，只跟踪最低电量点
+//   - 换电判定：新记录电量回到满电水平（≥原最高电量），
+//     且中间出现的最低点比原最高电量低≥SWAP_DROP_DELTA（电池确实用掉一大截），
+//     则视为换电/重新上电：新记录替换原最高记录，并清空最低点
+//   - 不满足条件的高电量记录不更新最高点，避免小波动/未充分放电误判换电
 // @param {object|null} cachedHighest 缓存中的上次换电记录（其时间只前进不回退）
 function analyzeSamples(samples, cachedHighest) {
   const asc = samples
@@ -137,15 +142,19 @@ function analyzeSamples(samples, cachedHighest) {
   }
 
   // 基准：优先用缓存中的上次换电记录（防止扫描窗口偏移导致换电时间回退/漂移）；
+  //   缓存对象为 { time, timeStr, battery }，统一转成样本结构 { t, rawTime, b } 便于内部比较
   // 无缓存时取扫描窗口内电量最高的样本作为"上次换电"记录：
   //   新电池上电时电量最高，其时间即上次上电/换电时间
-  //   多个相同最高电量时取时间最晚的（最近一次换电/上电）
+  //   多个相同最高电量时取时间最早的（首次上电时刻，避免平稳高电量导致时间漂移）
   let highest = cachedHighest
+  if (highest) {
+    highest = { t: highest.time || 0, rawTime: highest.timeStr || '', b: highest.battery }
+  }
   if (!highest) {
     highest = asc[0]
     for (let i = 1; i < asc.length; i++) {
       if (asc[i].b > highest.b ||
-          (asc[i].b === highest.b && asc[i].t > highest.t)) {
+          (asc[i].b === highest.b && asc[i].t < highest.t)) {
         highest = asc[i]
       }
     }
@@ -157,19 +166,24 @@ function analyzeSamples(samples, cachedHighest) {
     // 跳过早于当前换电记录的样本
     if (s.t <= highest.t) continue
 
-    if (lowest && (s.b - lowest.b) >= SWAP_JUMP_DELTA) {
-      // 相对当前最低电量回升达到跳变阈值 → 换电/重新上电，更新换电时间
+    // 换电判定：电量回到满电水平（≥原最高电量），
+    // 且中间存在最低点，且最低点比原最高电量低≥20个百分点
+    if (s.b >= highest.b &&
+        lowest &&
+        (highest.b - lowest.b) >= SWAP_DROP_DELTA) {
+      // 视为换电/重新上电：新记录替换原最高记录，清空最低点
       highest = s
       lowest = null
       continue
     }
-    // 正常放电下降（或未达跳变的微小回升）→ 只跟踪最低点
+
+    // 正常放电（低于最高电量的记录）→ 只跟踪最低点
     if (s.b < highest.b) {
       if (!lowest || s.b < lowest.b) lowest = s
     }
   }
 
-  // 整段电量都在下降时（未出现跳变），最低电量取扫描范围内最后一条最低记录
+  // 整段电量都在下降时（未出现换电），最低电量取扫描范围内最后一条最低记录
   if (!lowest) lowest = asc[asc.length - 1]
 
   const fmt = s => ({ time: s.t, timeStr: s.rawTime, battery: s.b })
