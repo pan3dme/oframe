@@ -3,6 +3,7 @@ const API_URL = getApp().globalData.api_device_Url
 const API_COWSHEEP_URL = getApp().globalData.api_cowsheep_Url
 const dataCache = require('../../config/data-cache.js')
 const batterySwap = require('../../config/battery-swap.js')
+const reportIntervalCheck = require('../../config/report-interval.js')
 const { compressImage } = require('../../utils/image-compress.js')
 const { uploadToOSS } = require('../../utils/oss-upload.js')
 const timeWindowCodec = require('../../utils/time-window-codec.js')
@@ -46,7 +47,11 @@ Page({
     // 设备配置（getDeviceConfigAll）
     deviceConfig: null,
     // 是否显示转换（设置页开关控制）：开启后对时记录(TYPE=2)显示换算日期时间，关闭显示原始LORA数据
-    showConverted: false
+    showConverted: false,
+    // 上报周期与数据记录实际间隔不符时为 true，在"上报周期"后显示红色间隔时间
+    reportIntervalAbnormal: false,
+    // 异常时显示的实际上报间隔（如 "3.0分钟"）
+    reportActualInterval: ''
   },
 
   // 按设备名生成稳定的浅色背景色：同一设备始终同色，不同设备不同色
@@ -273,6 +278,76 @@ Page({
     apply(cached)
   },
 
+  // ========== 上报周期校验（配置周期 vs 数据记录实际间隔） ==========
+  // 配置周期和记录都就绪后执行一次：只统计 TYPE=1/TYPE=2 记录，
+  // 10秒内视为同一时间（多中继重复上报），取最近两个时间点间隔与配置周期比较，
+  // 偏差超过周期一半 → 在"上报周期"后显示红色实际间隔
+  // 仅当当前处于开机时间（非休眠）时校验：休眠期间设备不上报，间隔无意义
+  _maybeCheckReportInterval() {
+    if (this._intervalChecked) return
+    const info = this.data.deviceInfo
+    if (!info || !info.reportInterval || info.reportInterval === '-') return
+    if (!this.data.recordList || !this.data.recordList.length) return
+    // 开机时间内判断：休眠中不做校验（配置缺失时 _isDormantNow 返回 false，视为开机时间）
+    const configLorastr = (this.data.deviceConfig && this.data.deviceConfig.lorastr) || ''
+    if (this._isDormantNow(configLorastr, info.rawTime || '')) return
+    this._intervalChecked = true
+    this._runReportIntervalCheck(this.data.recordList)
+  },
+
+  _runReportIntervalCheck(records) {
+    const info = this.data.deviceInfo
+    const periodMin = info.reportInterval
+    let result = reportIntervalCheck.analyzeReportInterval(records, periodMin)
+    if (result) {
+      this._applyReportIntervalResult(result)
+      return
+    }
+    // 当前列表数据不足，拉取一批记录再分析（不进入列表展示）
+    const deviceId = this.data.deviceId
+    if (!deviceId) return
+    const that = this
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'getDeviceLogbyId',
+        info: { limit: 50, deviceId: deviceId, offset: 0, wechatid: getApp().getWechatId() },
+        time: getApp().formatTime()
+      },
+      timeout: 8000,
+      success: (res) => {
+        const moreRecords = that._parseRecords(res.data)
+        const result2 = reportIntervalCheck.analyzeReportInterval(moreRecords, periodMin)
+        that._applyReportIntervalResult(result2)
+      },
+      fail: (err) => {
+        console.error('[上报周期校验] 补充拉取失败:', err)
+      }
+    })
+  },
+
+  _applyReportIntervalResult(result) {
+    if (!result) return
+    const periodMin = result.periodMs / 60000
+    const actualMin = result.actualMin
+    console.log('[上报周期校验] ' + (result.abnormal ? '异常' : '正常') +
+      ': 配置周期' + periodMin + '分钟, 记录最近间隔' + actualMin.toFixed(1) + '分钟')
+    if (result.abnormal) {
+      this.setData({
+        reportIntervalAbnormal: true,
+        reportActualInterval: this._formatInterval(actualMin)
+      })
+    }
+  },
+
+  // 间隔时间格式化：不足1分钟显示秒，否则显示分钟（保留1位小数）
+  _formatInterval(min) {
+    if (min < 1) return Math.round(min * 60) + '秒'
+    const v = Math.round(min * 10) / 10
+    return (Number.isInteger(v) ? String(v) : v.toFixed(1)) + '分钟'
+  },
+
   // 页面重新展示时刷新相对时间（如返回前台），并重新读取设置
   onShow() {
     this._readSettings()
@@ -295,10 +370,54 @@ Page({
     }
   },
 
+  // 应用设备配置 lorastr：解析上报周期/开机时间/GPS工作时间并更新显示
+  // （缓存预显示与网络返回后共用同一套解析逻辑）
+  _applyConfigFromLorastr(configLorastr) {
+    // 解析配置：格式 6|v4-16|30,0M,38|1.0|4.2|18
+    // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间（两位代号，兼容旧格式 8-6）
+    // 第4段可选: 主周期（小时 1-4）
+    let reportInterval = '-'
+    let mainPeriod = 0
+    let powerOnTime = '-'
+    let gpsReportTime = '-'
+    if (configLorastr) {
+      const parts = configLorastr.split('|')
+      if (parts.length >= 3 && parts[2]) {
+        const configParts = parts[2].split(',')
+        if (configParts.length >= 1) reportInterval = configParts[0].trim()
+        if (configParts.length >= 2) powerOnTime = timeWindowCodec.formatTimeRange(configParts[1].trim())
+        if (configParts.length >= 3) gpsReportTime = timeWindowCodec.formatTimeRange(configParts[2].trim())
+        // 主周期（小时 1-4），仅当存在且有效时记录，用于上报周期后显示（n小时）
+        if (configParts.length >= 4) {
+          const mp = parseInt(configParts[3].trim(), 10)
+          if (!isNaN(mp) && mp >= 1 && mp <= 4) mainPeriod = mp
+        }
+      }
+    }
+    // 更新 deviceInfo 中的配置信息
+    if (this.data.deviceInfo) {
+      // 判断是否在休眠时间内（含最后上报时间>1小时的判断）
+      const rawTime = this.data.deviceInfo.rawTime || ''
+      const isDormant = this._isDormantNow(configLorastr, rawTime)
+      const updated = { ...this.data.deviceInfo, configLorastr, reportInterval, mainPeriod, powerOnTime, gpsReportTime, isDormant }
+      this.setData({ deviceInfo: updated, deviceConfig: { ...this.data.deviceConfig, lorastr: configLorastr } })
+    } else {
+      this.setData({ deviceConfig: { ...this.data.deviceConfig, lorastr: configLorastr } })
+    }
+    // 配置周期就绪后尝试上报周期校验（需记录也已就绪）
+    this._maybeCheckReportInterval()
+  },
+
   // 拉取设备配置（上报周期/开机时间/GPS工作时间等）
+  // 网络数据未返回前先从缓存取对应设备配置立即显示，网络返回后再刷新覆盖
   loadDeviceConfig(deviceId) {
     if (!deviceId) return
     const that = this
+    // 缓存预显示：配置下发后网络未返回前先用缓存配置
+    const cachedConfig = dataCache.getCachedDeviceConfig(deviceId)
+    if (cachedConfig && cachedConfig.lorastr) {
+      that._applyConfigFromLorastr(cachedConfig.lorastr)
+    }
     wx.request({
       url: API_URL,
       method: 'POST',
@@ -330,38 +449,8 @@ Page({
             }
             // 也取直接的属性
             if (record.lorastr) attr.lorastr = record.lorastr
-            const configLorastr = attr.lorastr || ''
-            // 解析配置：格式 6|v4-16|30,0M,38|1.0|4.2|18
-            // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间（两位代号，兼容旧格式 8-6）
-            // 第4段可选: 主周期（小时 1-4）
-            let reportInterval = '-'
-            let mainPeriod = 0
-            let powerOnTime = '-'
-            let gpsReportTime = '-'
-            if (configLorastr) {
-              const parts = configLorastr.split('|')
-              if (parts.length >= 3 && parts[2]) {
-                const configParts = parts[2].split(',')
-                if (configParts.length >= 1) reportInterval = configParts[0].trim()
-                if (configParts.length >= 2) powerOnTime = timeWindowCodec.formatTimeRange(configParts[1].trim())
-                if (configParts.length >= 3) gpsReportTime = timeWindowCodec.formatTimeRange(configParts[2].trim())
-                // 主周期（小时 1-4），仅当存在且有效时记录，用于上报周期后显示（n小时）
-                if (configParts.length >= 4) {
-                  const mp = parseInt(configParts[3].trim(), 10)
-                  if (!isNaN(mp) && mp >= 1 && mp <= 4) mainPeriod = mp
-                }
-              }
-            }
             // 更新 deviceInfo 中的配置信息
-            if (that.data.deviceInfo) {
-              // 判断是否在休眠时间内（含最后上报时间>1小时的判断）
-              const rawTime = that.data.deviceInfo.rawTime || ''
-              const isDormant = that._isDormantNow(configLorastr, rawTime)
-              const updated = { ...that.data.deviceInfo, configLorastr, reportInterval, mainPeriod, powerOnTime, gpsReportTime, isDormant }
-              that.setData({ deviceInfo: updated, deviceConfig: attr })
-            } else {
-              that.setData({ deviceConfig: attr })
-            }
+            that._applyConfigFromLorastr(attr.lorastr || '')
           } else {
             // 未匹配到当前设备，清空显示
             if (that.data.deviceInfo) {
@@ -439,6 +528,7 @@ Page({
             isLoadingMore: false,
             showRecordTable: merged.length > 0
           })
+          this._maybeCheckReportInterval()
         } else {
           // 首次加载或刷新：替换整个列表
           this.setData({
@@ -450,6 +540,7 @@ Page({
             showRecordTable: newRecords.length > 0
           })
         }
+        this._maybeCheckReportInterval()
         if (callback) callback()
       },
       fail: (err) => {

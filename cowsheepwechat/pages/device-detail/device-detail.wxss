@@ -123,6 +123,13 @@ page {
   word-break: break-all;
   line-height: 1.5;
 }
+.hi-value-abnormal {
+  flex-shrink: 0;
+  margin-left: 8rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #ff4d4f;
+}
 .send-cmd-link {
   flex-shrink: 0;
   margin-left: 8rpx;
@@ -186,6 +193,13 @@ page {
 .hi-value-highlight {
   color: #a7f0ba;
   font-weight: 500;
+}
+.hi-item-links {
+  display: flex;
+  align-items: center;
+}
+.hi-item-links-relay {
+  margin-left: auto;
 }
 
 /* ========== 右上角操作图标 ========== */

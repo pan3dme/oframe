@@ -191,10 +191,15 @@ Page({
     }
 
     this.setData({ quickSelected: 18 })
-    // 打开配置下发弹框（先用默认值）
-    this._openConfigModal(null)
+    // 打开配置下发弹框：优先用缓存中的设备配置预填（一般与网络一致，避免闪动），无缓存时用默认值
+    const cached = dataCache.getCachedDeviceConfig(device.deviceId)
+    const cachedDefaults = cached && cached.lorastr ? this._parseLoraConfigToModal(cached.lorastr) : null
+    this._openConfigModal(cachedDefaults)
+    if (cachedDefaults) {
+      this.addLog('info', '已用缓存配置预填弹框: ' + cached.lorastr)
+    }
 
-    // 异步查询设备已有配置，用于预填弹框
+    // 异步查询设备已有配置，用于更新预填弹框（网络返回后覆盖缓存值）
     const that = this
     wx.request({
       url: API_URL,

@@ -411,6 +411,19 @@ function refreshDeviceConfigAll(callback) {
   getDeviceConfigAll(callback, true)
 }
 
+/**
+ * 从缓存中取指定设备的配置（网络数据未返回前用于预显示）
+ * @param {string} deviceId - 设备ID
+ * @returns {object|null} configMap 中的 { lorastr, reportInterval }，无缓存时返回 null
+ */
+function getCachedDeviceConfig(deviceId) {
+  const cache = app.globalData.deviceConfigCache
+  if (cache && cache.configMap && deviceId && cache.configMap[deviceId]) {
+    return cache.configMap[deviceId]
+  }
+  return null
+}
+
 // ==================== 道路列表缓存（按天：一天只请求一次网络） ====================
 
 /**
@@ -607,6 +620,7 @@ module.exports = {
   refreshDeviceSyncAll,
   getDeviceConfigAll,
   refreshDeviceConfigAll,
+  getCachedDeviceConfig,
   getRoadListFromCache,
   refreshRoadList,
   clearRoadCache,

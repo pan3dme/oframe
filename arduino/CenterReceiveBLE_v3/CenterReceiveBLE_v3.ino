@@ -796,7 +796,7 @@ void loop() {
   }
 
   // BLE数据同步发送
-  if (needSync && dataCount > 0 && (millis() - bleLastSend) > 50) {
+  if (needSync && dataCount > 0 && (millis() - bleLastSend) > 250) {
     bleLastSend = millis();
     String jsonData = getAndRemoveFirstData();
     StaticJsonDocument<256> newDoc;

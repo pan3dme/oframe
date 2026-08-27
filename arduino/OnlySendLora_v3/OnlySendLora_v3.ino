@@ -605,7 +605,7 @@ void testSheepFun(bool driftComp) {
 
 
     Radio.Sleep();
-    esp_sleep_enable_timer_wakeup(sleepTime * 1000ULL); //需要微秒单位
+    esp_sleep_enable_timer_wakeup(sleepTime * 1000ULL);  //需要微秒单位
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     // 计算并打印预计开机时间
     {
@@ -666,6 +666,7 @@ void setup() {
     strncpy(gps_time_str, "15:00-17:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
 
+    // strncpy(config_str, "5,0M,3t,1", sizeof(config_str) - 1);
     strncpy(config_str, "5,0M,3t,1", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
