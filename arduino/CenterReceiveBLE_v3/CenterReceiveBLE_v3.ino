@@ -41,6 +41,13 @@ unsigned long mustrefrishgpsTime = 0;
 char loraStr[BUFFER_SIZE];
 char sendData[BUFFER_SIZE];  // 发送数据缓存
 
+RTC_DATA_ATTR char work_time_str[16];
+RTC_DATA_ATTR uint32_t rtcMagic;
+RTC_DATA_ATTR char config_str[16];
+RTC_DATA_ATTR int roundTime;
+RTC_DATA_ATTR bool configConfirmed;
+
+
 // 回调标记（主循环根据此标志处理数据）
 bool loraReceivedFlag = false;
 int16_t lastRssi = 0;
@@ -57,7 +64,7 @@ bool hasLastSync = false;          // 是否已有上次记录
 String nextLoraToDeviceidStr = "";
 unsigned long nextLoraToDeviceiMillis = 0;
 
-
+#define MY_RTC_MAGIC 0xA5B6C7D8U
 // ========================= BLE回调 =========================
 
 // BLE服务器连接/断开回调
@@ -231,14 +238,14 @@ void meshCmdInfomsg(String rxValue) {
       String cmd = docCom["cmd"].as<String>();
       String tmp = docCom["value"].as<String>();
       if (cmd == "lorasw") {
-        int sw = tmp.toInt();
-        if (sw == 1) {
-          Radio.Rx(0);
-          Serial.print("✅ROLA 开始接收-");
-        } else {
-          Radio.Sleep();
-          Serial.print("❌ROLA进入休眠-");
-        }
+        // int sw = tmp.toInt();
+        // if (sw == 1) {
+        //   Radio.Rx(0);
+        //   Serial.print("✅ROLA 开始接收-");
+        // } else {
+        //   Radio.Sleep();
+        //   Serial.print("❌ROLA进入休眠-");
+        // }
 
       } else if (cmd == "debug") {
         int sw = tmp.toInt();
@@ -260,6 +267,35 @@ void meshCmdInfomsg(String rxValue) {
         if (power > 10 && power <= 28) {
           initRadio(power);
         }
+      } else if (cmd == "A") {
+        //10,1m,38
+        int rt;
+        char workstr[16];
+
+        int bigrt;
+        if (sscanf(tmp.c_str(), "%d,%15[^,]", &rt, workstr) == 2) {
+          if (rt < 5 || rt > 120) {
+            DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
+            return;
+          }
+          roundTime = rt * 60 * 1000;
+          tmp.toCharArray(config_str, sizeof(config_str) - 1);
+          config_str[sizeof(config_str) - 1] = '\0';
+          configConfirmed = true;
+          DEBUG_PRINT("全局配置");
+          uint8_t outS, outE;
+          if (indexToTimeWindow(twoCharToIndex(workstr), outS, outE)) {
+            uint8_t endHour = outE;
+            uint8_t endMin = 0;
+            if (outE == 23) {
+              endMin = 59;
+            }
+            snprintf(work_time_str, sizeof(work_time_str), "%02d:00-%02d:%02d", outS, endHour, endMin);
+            DEBUG_PRINT(" work=");
+            Serial.println(work_time_str);
+          }
+        }
+
       } else {
         Serial.println(
           "❌❌❌下发的对象就是中继， 还没有设计指令功能❌❌❌");
@@ -621,9 +657,8 @@ void changeReceivedRolaStr(char *value) {
 
       strncpy(value, loraOut, BUFFER_SIZE - 1);
       value[BUFFER_SIZE - 1] = '\0';  // 确保字符串以 '\0' 结尾
-    } 
+    }
   }
-
 }
 
 // 处理LoRa接收数据（JSON序列化、队列缓存、设备缓存、对时）
@@ -634,7 +669,7 @@ void processLoraData() {
   loraReceivedFlag = false;
   Serial.print("接收lora：");
   Serial.println(loraStr);
-changeReceivedRolaStr(loraStr);
+  changeReceivedRolaStr(loraStr);
   // 1. 构建JSON并存入队列/设备缓存
   StaticJsonDocument<256> doc;
   doc["rssi"] = (int)lastRssi;
@@ -659,7 +694,7 @@ changeReceivedRolaStr(loraStr);
     int messageType = infoStr.substring(0, firstPipeIndex).toInt();
     // 2. DTU上报
     if ((messageType == MSG_TYPE_GPS || messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_UP_GPS || messageType == MSG_TYPE_CONFIG) || debugLog) {
-        sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
+      sendLoraInfoUseDtu(infoStr, String(lastRssi), String(lastSnr));
     }
     if (messageType == MSG_TYPE_TIME || messageType == MSG_TYPE_GPS) {
 
@@ -705,6 +740,14 @@ void setup() {
 
   deviceName = makeDivceName();
   Serial.println(deviceName);
+  if (rtcMagic != MY_RTC_MAGIC) {
+    roundTime = 1000 * 60 * 30;
+    strncpy(work_time_str, "00:00-23:59", sizeof(work_time_str) - 1);
+    work_time_str[sizeof(work_time_str) - 1] = '\0';
+    strncpy(config_str, "30,0M", sizeof(config_str) - 1);
+    config_str[sizeof(config_str) - 1] = '\0';
+    configConfirmed = true;
+  }
 
 #if defined(WIFI_LORA_32_V3)
   Serial2.begin(115200, SERIAL_8N1, 17, 18);
@@ -733,23 +776,40 @@ void setup() {
 }
 
 // 1分钟就上报中继在线时间
-unsigned long lastUpSelfTm = 15 * 1000;
 unsigned long nextSyncTm = 10 * 1000;
-unsigned long CENTEN_INTERVAL_MS = 1000 * 60 * 30;
-static unsigned long bleLastSend = 0;
+unsigned long lastUpSelfTm = 15 * 1000;
+unsigned long lastUpConfigTm = 20 * 1000;
+static unsigned long bleLastSendTm = 0;
+
 enum { DTU_IDLE,
        DTU_SEND_CSQ,
        DTU_WAIT_CSQ,
        DTU_SEND_NETTIME,
        DTU_WAIT_NETTIME } dtuState = DTU_IDLE;
 unsigned long dtuWaitMs = 0;
+bool loraWorkIng = true;
 void loop() {
 
   // 超过10分钟的周期才上报，不要流量溢出
+  if (isBoardDateTimeOK()) {
+    bool temp = isTimeInRange(getCurrentTimestampSec(), work_time_str);
+    if (loraWorkIng != temp) {
+      if (temp) {
+        Serial.print("✅工作时间内  Radio.Rx(0)");
+        Radio.Rx(0);
+      } else {
+        Serial.print("❌不在工作时间 ");
+        Radio.Sleep();
+      }
+      Serial.println(work_time_str);
+      loraWorkIng = temp;
+    }
+  }
+
 
   // loop内部替换原来nextSyncTm那一段
   if (nextSyncTm < millis() && dtuState == DTU_IDLE) {
-    nextSyncTm = millis() + CENTEN_INTERVAL_MS;
+    nextSyncTm = millis() + roundTime;
     dtuState = DTU_SEND_CSQ;
   }
   if (dtuState == DTU_SEND_CSQ) {
@@ -774,7 +834,7 @@ void loop() {
     }
   }
   if ((lastUpSelfTm) < millis()) {
-    lastUpSelfTm = millis() + CENTEN_INTERVAL_MS;
+    lastUpSelfTm = millis() + roundTime;
     // 测试电量
     int batteryValue = readBatteryEndStr();
 
@@ -794,10 +854,16 @@ void loop() {
     serializeJson(doc, jsonData);
     addDataToQueue(jsonData);
   }
+  if (configConfirmed && lastUpConfigTm < millis()) {
+    String dataStr = String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str);
+    dataStr += "|" + String(rtcSendCount++);
+    sendLoraInfoUseDtu(dataStr, signalRss, "0");
+    configConfirmed = false;
+  }
 
   // BLE数据同步发送
-  if (needSync && dataCount > 0 && (millis() - bleLastSend) > 250) {
-    bleLastSend = millis();
+  if (needSync && dataCount > 0 && (millis() - bleLastSendTm) > 250) {
+    bleLastSendTm = millis();
     String jsonData = getAndRemoveFirstData();
     StaticJsonDocument<256> newDoc;
     DeserializationError error = deserializeJson(newDoc, jsonData);
@@ -829,6 +895,7 @@ void loop() {
     sendLoraToDeviceid(dataStr, 0);
     needSyncTimeDeviceid = "";
   }
+
 
   Radio.IrqProcess();
   processLoraData();

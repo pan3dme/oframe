@@ -22,6 +22,7 @@
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
       <button class="quick-btn {{quickSelected === 17 ? 'quick-active' : ''}}" bindtap="onQuickLoraSw">🔘 开关LORA({{loraSwValue}})</button>
       <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickRelayReboot">🔄 重启中继</button>
+      <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickConfig">⚙️ 配置下发</button>
       <button class="quick-btn {{quickSelected === 4 ? 'quick-active' : ''}}" bindtap="onQuickDebug">🐛 开关Debug</button>
     </view>
   </view>
@@ -48,6 +49,47 @@
       <view class="modal-footer">
         <button class="modal-btn modal-btn-cancel" bindtap="onWorkTimeCancel">取消</button>
         <button class="modal-btn modal-btn-confirm" bindtap="onWorkTimeConfirm">确定</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 配置下发弹框 -->
+  <view class="modal-overlay" wx:if="{{showConfigModal}}">
+    <view class="modal-container config-modal">
+      <view class="modal-title">⚙️ 配置下发</view>
+
+      <view class="config-scroll">
+        <!-- ① 上报周期（输入框 5-60） -->
+        <view class="config-group">
+          <view class="config-group-title">① 上报周期（秒）<text class="config-group-range">5-60</text></view>
+          <input class="config-input" type="number" value="{{configPeriod}}" bindinput="onConfigPeriodInput" placeholder="请输入5-60" />
+        </view>
+
+        <!-- ② 开机时间（小时 0-24） -->
+        <view class="config-group">
+          <view class="config-group-title">② 开机时间（小时）</view>
+          <view class="time-picker-dual">
+            <view class="time-picker-cell">
+              <text class="time-picker-label">开始时间</text>
+              <picker mode="selector" range="{{startHourRange}}" value="{{configWorkStart}}" bindchange="onConfigWorkStartChange">
+                <view class="time-picker-value">{{startHourRange[configWorkStart]}} 时</view>
+              </picker>
+            </view>
+            <view class="time-picker-cell">
+              <text class="time-picker-label">结束时间</text>
+              <picker mode="selector" range="{{hourRange}}" value="{{configWorkEnd}}" bindchange="onConfigWorkEndChange">
+                <view class="time-picker-value">{{hourRange[configWorkEnd]}} 时</view>
+              </picker>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="config-hint">仅支持当天时间窗口（持续≥1小时），确定后将编码为两位代号填入指令内容</view>
+
+      <view class="modal-footer">
+        <button class="modal-btn modal-btn-cancel" bindtap="onConfigModalCancel">取消</button>
+        <button class="modal-btn modal-btn-confirm" bindtap="onConfigModalConfirm">确定</button>
       </view>
     </view>
   </view>

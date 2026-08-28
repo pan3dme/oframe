@@ -69,11 +69,7 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 unsigned long get_send_interval_ms() {
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
   if (inWorkTime || !isBoardDateTimeOK()) {
-    if (roundTime == 0) {
-      return 1000 * 60 * 5;
-    } else {
-      return roundTime;
-    }
+    return roundTime;
   } else {
     return 1000 * 60 * 60 * big_interval_tm;  //不在工作区间就用大周期
   }
@@ -650,8 +646,12 @@ void setup() {
     isNeedGpsWork = false;
     rtcSendCount = -1;
     rtcResiveIdx = 0;
-    roundTime = 0;
+
     big_interval_tm = 1;
+
+
+    roundTime = 1000 * 60 * 5;
+
 
     strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
     needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
