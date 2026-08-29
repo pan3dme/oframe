@@ -295,8 +295,8 @@ Page({
 
   // 计算相对时间：返回 { text, color, bgColor }
   // 颜色按设备配置的上报周期（分钟）判断：
-  //   < 1个周期 → 绿色；1~2个周期 → 红色；> 2个周期 → 灰色
-  //   若在 1~2 周期区间但不在工作时间内（休眠中），红色降级为灰色
+  //   工作区间内：< 1个周期 → 绿色；1~2个周期 → 红色；> 2个周期 → 灰色
+  //   不在工作区间：超过2个周期未上报 → 灰色（与设备名一致），未超过保持绿色
   _calcRelativeTime(rawTime, reportInterval, isDormant) {
     const empty = { text: '', color: '', bgColor: '' }
     if (!rawTime || rawTime === '-') return empty
@@ -313,13 +313,13 @@ Page({
     if (sec < 60) text = sec + '秒前'
     else if (min < 60) text = min + '分钟前'
     else if (hour < 24) text = hour + '小时' + (min % 60 > 0 ? (min % 60) + '分' : '')
-    else if (day < 30) text = day + '天前'
+    else if (day < 30) text = day + '天' + (hour % 24 > 0 ? (hour % 24) + '小时' : '')
     else if (day < 365) text = Math.floor(day / 30) + '个月前'
     else text = Math.floor(day / 365) + '年前'
 
     // 颜色规则：按配置上报周期判断，默认周期30分钟
-    // <1个周期 绿色；1~2个周期 红色；>2个周期 灰色
-    // 在1~2周期区间内但不在工作时间（休眠中），红色降级为灰色
+    // 工作区间内：<1个周期 绿色；1~2个周期 红色；>2个周期 灰色
+    // 不在工作区间：按上报周期判断，超过2个周期未上报 → 灰色（与设备名一致），未超过保持绿色
     const period = (typeof reportInterval === 'number' && reportInterval > 0) ? reportInterval : 30
     let color, bgColor
     if (min >= period * 2) {
@@ -327,8 +327,8 @@ Page({
       bgColor = '#f5f5f5'
     } else if (min >= period) {
       if (isDormant) {
-        color = '#999'
-        bgColor = '#f5f5f5'
+        color = '#4caf50'
+        bgColor = '#e8f5e9'
       } else {
         color = '#f44336'
         bgColor = '#ffebee'
