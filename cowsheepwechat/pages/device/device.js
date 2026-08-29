@@ -203,10 +203,22 @@ Page({
           lastRecordType = 'time'
         }
 
-        // 休眠状态完全由设备配置 lorastr 中的工作时间决定：区间内=活跃(绿)，区间外=休眠(灰)
+        // 休眠状态完全由设备配置 lorastr 中的工作时间决定：区间内=活跃，区间外=休眠
         const cfg = (configMapData && configMapData[item.deviceId]) || { isDormant: false, powerOnTime: '-', reportInterval: 30 }
         const isDormant = cfg.isDormant
         const timeInfo = this._calcRelativeTime(displayTime, cfg.reportInterval, isDormant)
+
+        // 信号图标颜色：
+        // 中继设备（有 ProductKey）：不在工作区间 → 灰色
+        // 其它设备（GPS设备）：超过2个上报周期未上报数据 → 灰色
+        const isRelay = !!(item.ProductKey && item.ProductKey !== '-')
+        const signalColor = isRelay
+          ? (isDormant ? '#999999' : '#4caf50')
+          : (timeInfo.overdue ? '#999999' : '#4caf50')
+
+        // 设备名颜色：与信号图标灰色条件一致
+        // 中继设备不在工作区间 → 灰色；其它设备超过2个上报周期未上报 → 灰色；其余黑色
+        const nameColor = signalColor === '#999999' ? '#999999' : ''
 
         return {
           ...item,
@@ -222,7 +234,9 @@ Page({
           battery,
           batteryColor: isDormant ? '#999999' : (battery && parseFloat(battery) < 50) ? '#f44336' : '#333',
           isDormant: isDormant,
-          powerOnTime: cfg.powerOnTime
+          powerOnTime: cfg.powerOnTime,
+          signalColor: signalColor,
+          nameColor: nameColor
         }
       })
 
@@ -324,7 +338,7 @@ Page({
       bgColor = '#e8f5e9'
     }
 
-    return { text, color, bgColor }
+    return { text, color, bgColor, overdue: min >= period * 2 }
   },
 
   // ========== 新增设备 ==========
