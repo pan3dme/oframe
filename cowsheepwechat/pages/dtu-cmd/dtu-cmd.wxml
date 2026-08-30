@@ -42,6 +42,7 @@
 
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
       <button class="quick-btn {{quickSelected === 17 ? 'quick-active' : ''}}" bindtap="onQuickMinBattery">🔋 最低电量</button>
+      <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickTestGps">🧪 GPS测试</button>
       <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickConfig">⚙️ 配置下发</button>
     </view>
   </view>

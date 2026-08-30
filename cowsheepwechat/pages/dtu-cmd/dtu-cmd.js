@@ -183,6 +183,9 @@ Page({
   onQuickMinBattery() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'minbattery', value: 50 }), quickSelected: 17 })
   },
+  onQuickTestGps() {
+    this.setData({ cmdText: JSON.stringify({ cmd: 'test_gps', value: 1 }), quickSelected: 19 })
+  },
   onQuickConfig() {
     const device = this.data.deviceList[this.data.deviceIndex]
     if (!device) {
