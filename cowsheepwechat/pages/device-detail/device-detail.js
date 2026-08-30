@@ -264,6 +264,15 @@ Page({
     const apply = (swap) => {
       const timeStr = swap ? (swap.timeStr || '') : ''
       const ts = swap && swap.time ? swap.time : (timeStr ? new Date(timeStr).getTime() : 0)
+      // 换电时间早于 2025 年的记录视为历史脏数据，忽略不展示
+      if (ts && ts < batterySwap.MIN_VALID_SWAP_TIME) {
+        that._swapTime = ''
+        that._swapTimeTs = 0
+        if (that.data.deviceInfo) {
+          that.setData({ 'deviceInfo.swapTime': '', 'deviceInfo.swapTimeRel': '' })
+        }
+        return
+      }
       that._swapTime = timeStr
       that._swapTimeTs = ts
       const rel = batterySwap.formatRelativeTime(ts)

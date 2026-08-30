@@ -18,6 +18,8 @@ const MIN_VALID_BATTERY = 0.05 // 忽略过低无效读数
 const SWAP_MAX_LEVEL = 0.85   // 电量≥85%视为满电级别（新电池，用于"疑似错过换电"加深扫描判断）
 const SWAP_DROP_DELTA = 0.20  // 最低点比原最高电量低≥20个百分点，证明电池确实用掉一大截，换电判定才有效
 const SWAP_GAP_MS = 24 * 60 * 60 * 1000 // 与缓存换电记录间隔超过24小时
+// 2025年之前的记录视为历史脏数据，分析/缓存时忽略（设备上线时间在2025年后）
+const MIN_VALID_SWAP_TIME = Date.UTC(2025, 0, 1)
 
 // ==================== 永久缓存 ====================
 
@@ -135,7 +137,7 @@ function extractBatterySamples(data, deviceId) {
 // @param {object|null} cachedHighest 缓存中的上次换电记录（其时间只前进不回退）
 function analyzeSamples(samples, cachedHighest) {
   const asc = samples
-    .filter(s => s.b >= MIN_VALID_BATTERY)
+    .filter(s => s.b >= MIN_VALID_BATTERY && s.t >= MIN_VALID_SWAP_TIME)
     .sort((a, b) => a.t - b.t)
   if (!asc.length) {
     return { highest: cachedHighest || null, lowest: null }
@@ -269,7 +271,13 @@ function getLastSwap(deviceId, callback) {
   }
   const cache = getSwapCache()
   const deviceData = cache.devices ? cache.devices[deviceId] : null
-  const cachedSwap = deviceData && deviceData.highest ? deviceData.highest : null
+  let cachedSwap = deviceData && deviceData.highest ? deviceData.highest : null
+
+  // 忽略 2025 年之前的换电记录（历史脏数据），视为无缓存重新全量扫描
+  if (cachedSwap && cachedSwap.time < MIN_VALID_SWAP_TIME) {
+    console.log('[换电分析]', deviceId, '缓存换电时间早于2025年，忽略并重新扫描')
+    cachedSwap = null
+  }
 
   const scanPages = cachedSwap ? MAX_PAGES_UPDATE : MAX_PAGES_FIRST
 
@@ -339,5 +347,6 @@ module.exports = {
   getBatterySummary,
   clearSwapCache,
   parseBatteryFromLorastr,
-  formatRelativeTime
+  formatRelativeTime,
+  MIN_VALID_SWAP_TIME
 }
