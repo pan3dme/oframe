@@ -426,13 +426,18 @@ Page({
     }
 
     // 2) 稀化：剔除与前后都极近的点（阈值约15米 ≈ 0.00015度）
+    // 临时：SHOW_ALL_POINTS = true 时跳过稀化，显示所有点；改回 false 恢复稀化
     const THRESHOLD = 0.00055
-    const thinGcj = this._thinCoords(rawCoords.map(c => c.gcj), THRESHOLD)
-    // 用 hash 匹配回原始数据
-    const thinSet = new Set(thinGcj.map(p => p.lat.toFixed(8) + ',' + p.lng.toFixed(8)))
-    const filtered = rawCoords.filter(c =>
-      thinSet.has(c.gcj.lat.toFixed(8) + ',' + c.gcj.lng.toFixed(8))
-    )
+    const SHOW_ALL_POINTS = true
+    let filtered = rawCoords
+    if (!SHOW_ALL_POINTS) {
+      const thinGcj = this._thinCoords(rawCoords.map(c => c.gcj), THRESHOLD)
+      // 用 hash 匹配回原始数据
+      const thinSet = new Set(thinGcj.map(p => p.lat.toFixed(8) + ',' + p.lng.toFixed(8)))
+      filtered = rawCoords.filter(c =>
+        thinSet.has(c.gcj.lat.toFixed(8) + ',' + c.gcj.lng.toFixed(8))
+      )
+    }
 
     const skipped = rawCoords.length - filtered.length
     if (skipped > 0) {

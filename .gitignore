@@ -46,3 +46,7 @@
 /arduino/.idea/fastRequest
 /arduino/.idea
 flutter/001/.idea/workspace.xml
+/python/pan3d/base/__pycache__
+/python/pan3d/core/__pycache__
+/python/crowui/__pycache__
+*.pyc
