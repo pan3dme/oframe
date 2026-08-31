@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 )
 
-from tablestore import OTSClient, INF_MAX, INF_MIN, Direction
+from tablestore import OTSClient, INF_MAX, INF_MIN, Direction, SingleColumnCondition, ComparatorType
 from display3d.google_scene3d import GoogleScene3D
 from crowui.right_panel_container import RightPanelContainer
 from config import settings
@@ -18,8 +18,8 @@ class MainWindow(QMainWindow):
         self.client = None
         settings.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
         self.setWindowTitle("高德地图应用")
-        self.setGeometry(0, 0, 1900, 1000)
-        # self.setGeometry(200, 50, 1700, 750)
+        # self.setGeometry(0, 0, 1900, 1000)
+        self.setGeometry(200, 50, 1700, 750)
 
         # 初始化OTS客户端
         if not self.initTabelClient():
@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         scene_layout.addWidget(self.googleMapScene3D)
         
         # 覆盖按钮 - 显示道路和地名（位于3D场景左上角）
+        self._roads_shown = False  # 道路显示状态，用于按钮点击切换
         self.show_road_btn = QPushButton("显示道路", scene_container)
         self.show_road_btn.setFixedSize(80, 28)
         self.show_road_btn.move(10, 10)
@@ -130,11 +131,20 @@ class MainWindow(QMainWindow):
             return False
     
     def _show_roads_on_3d(self):
-        """从数据库读取道路数据并显示在3D地图上"""
+        """点击切换道路显示：未显示时读取道路数据显示，已显示时清除"""
+        if self._roads_shown:
+            self.googleMapScene3D.clear_all_load_line()
+            self.googleMapScene3D.gl_widget.update()
+            self._roads_shown = False
+            self.show_road_btn.setText("显示道路")
+            print("已清除道路显示")
+            return
+
+        # 从数据库读取道路数据并显示在3D地图上
         columns_to_get = ['route_id', 'roadinfo', 'roadname']
         inclusive_start_primary_key = [('route_id', INF_MAX)]
         exclusive_end_primary_key = [('route_id', INF_MIN)]
-        
+
         try:
             consumed, next_start_primary_key, route_list, next_token = self.client.get_range(
                 table_name=settings.ROUTETABLE_NAME,
@@ -142,7 +152,7 @@ class MainWindow(QMainWindow):
                 inclusive_start_primary_key=inclusive_start_primary_key,
                 exclusive_end_primary_key=exclusive_end_primary_key,
                 columns_to_get=columns_to_get,
-                limit=50
+                limit=10
             )
             
             print(f"成功读取 {len(route_list)} 条道路记录")
@@ -155,13 +165,23 @@ class MainWindow(QMainWindow):
                 if not roadinfo:
                     continue
                 
-                # 解析坐标: "lat1,lon1,lat2,lon2,..."
-                arr = [float(x.strip()) for x in roadinfo.split(',')]
-                gps_coords = []
-                for i in range(int(len(arr) / 2)):
-                    gps_coords.append((arr[i * 2 + 0], arr[i * 2 + 1]))
+                # 解析坐标: 新格式 "lat0,lon0,dLat1,dLon1,dLat2,dLon2,..."
+                #26.52919,109.39053,
+                # 第一组是起点完整坐标，小数点左移5位（除以100000）；
+                # 后面每一组都是相对前一个点的位移，累加后得到当前点坐标
+                arr = [int(x.strip()) for x in roadinfo.split(',')]
+                if len(arr) < 2:
+                    continue
+                cur_lat = arr[0] / 100000.0
+                cur_lon = arr[1] / 100000.0
+                gps_coords = [(cur_lat, cur_lon)]
+                for i in range(2, len(arr) - 1, 2):
+                    cur_lat += arr[i] / 100000.0
+                    cur_lon += arr[i + 1] / 100000.0
+                    gps_coords.append((cur_lat, cur_lon))
                 
                 # 显示到3D场景
+                print(gps_coords)
                 self.googleMapScene3D.receive_load_to_scene(gps_coords)
                 displayed_count += 1
                 print(f"  显示道路: {roadname}, 坐标点: {len(gps_coords)}个")
@@ -169,6 +189,8 @@ class MainWindow(QMainWindow):
             print(f"共显示 {displayed_count} 条道路")
             if displayed_count > 0:
                 self.googleMapScene3D.gl_widget.update()
+            self._roads_shown = True
+            self.show_road_btn.setText("隐藏道路")
             
         except Exception as e:
             print(f"查询道路数据失败: {e}")
@@ -177,9 +199,10 @@ class MainWindow(QMainWindow):
 
     def _show_places_on_3d(self):
         """从数据库读取地名数据并显示在3D地图上"""
-        columns_to_get = ['placeid', 'gps', 'name']
+        columns_to_get = ['placeid', 'gps', 'name', 'wechatid']
         inclusive_start_primary_key = [('placeid', INF_MAX)]
         exclusive_end_primary_key = [('placeid', INF_MIN)]
+        # 只返回 wechatid == "v4" 的记录，字段需加入columns_to_get才能参与判断
         
         try:
             consumed, next_start_primary_key, place_list, next_token = self.client.get_range(
@@ -188,6 +211,7 @@ class MainWindow(QMainWindow):
                 inclusive_start_primary_key=inclusive_start_primary_key,
                 exclusive_end_primary_key=exclusive_end_primary_key,
                 columns_to_get=columns_to_get,
+                column_filter=SingleColumnCondition('wechatid', 'v4', ComparatorType.EQUAL),
                 limit=50
             )
             

@@ -103,7 +103,7 @@ class GoogleScene3D(GoogleBaseScene3D):
         self.google_map_model = GoogleMapDaeModel(self.scene3D)
         self.google_map_model.load_google_earth_model()
 
-        baseFlagSprite = BaseFlagSprite(self.scene3D, text="你好世界", color=(1.0, 0.0, 0.0))
+        baseFlagSprite = BaseFlagSprite(self.scene3D, text="农场中心", color=(1.0, 0.0, 0.0))
         baseFlagSprite.x = 101
         baseFlagSprite.y = 60
         baseFlagSprite.z = 28

@@ -73,7 +73,7 @@ class AreaMapDisplay3DShader(Shader3D):
             vec4 color1 = texture(loadMapTexture, roadUv);
         
             if (color1.r > 0.8 && color1.g < 0.2 && color1.b < 0.2) {
-                color = vec4(0.0, 1.0, 0.0, 1.0);  
+                color = vec4(1.0, 1.0, 1.0, 1.0);  
             } else {
                 color = color0;   
             }
