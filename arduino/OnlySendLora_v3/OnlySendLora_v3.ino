@@ -67,6 +67,9 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 
 
 unsigned long get_send_interval_ms() {
+  if (rtcSendCount <= 2) {
+    return 1000 * 60 * 5;  //前2次默认间隔5份钟 这有利于开机快速配置，
+  }
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
   if (inWorkTime || !isBoardDateTimeOK()) {
     return roundTime;
@@ -316,7 +319,7 @@ void meshCmdType(String infoStr, String tmp) {
     DEBUG_PRINT("✅✅开启测试模块");
     typeindex = FLAG_TYPE_3;
     gpsWorkStat = millis() + 5000;    // 延时5秒
-    gpsWorkTime = 30 * 60 * 1000;      // 跟踪时间
+    gpsWorkTime = 30 * 60 * 1000;     // 跟踪时间
     gpsWorkInterval = 1 * 60 * 1000;  // 跟踪上报间隔
   } else if (thirdField == "upgps") {
 
@@ -657,7 +660,7 @@ void setup() {
     big_interval_tm = 1;
 
 
-    roundTime = 1000 * 60 * 5;
+    roundTime = 1000 * 60 * 30;
 
 
     strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
@@ -672,9 +675,8 @@ void setup() {
     // strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);
     strncpy(gps_time_str, "15:00-17:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
-
-    // strncpy(config_str, "5,0M,3t,1", sizeof(config_str) - 1);
-    strncpy(config_str, "5,0M,3t,1", sizeof(config_str) - 1);
+    
+    strncpy(config_str, "30,0M,3t,1", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
     rtcMagic = MY_RTC_MAGIC;
