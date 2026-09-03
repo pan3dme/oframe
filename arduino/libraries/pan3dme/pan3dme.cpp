@@ -25,7 +25,7 @@ String wechatid = "v4";
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
     0x6809A21B5BF8, // 0
-    0x0004A78FCBA4,      // 1
+    0x0004A78FCBA4, // 1
     0xC0CBBE1B5BF8, //     2
     0xF402A78FCBA4,
     0x545C82697090, //     4
@@ -124,6 +124,8 @@ void setGpsEnable(bool value)
 
     digitalWrite(VGNSS_CTRL, LOW);
     digitalWrite(GPS_ANT_EN, HIGH);
+    Serial2.end();
+    delay(5);
     Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
     DEBUG_PRINTLN("GPS 已开启");
   }
@@ -416,7 +418,7 @@ int readBatteryEndStr()
 
   digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
   delay(10);
-  pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
+ 
 
   // 这里填你自己算出来的数值
 
@@ -507,6 +509,23 @@ void setTimeFromTimestamp(long long epochMs)
   new_tv.tv_usec = (suseconds_t)((epochMs % 1000LL) * 1000);
   settimeofday(&new_tv, NULL);
 }
+// 判断epochSec(秒时间戳)是否合法
+bool is_valid_epoch_sec(long long epochSec)
+{
+  // 拒绝负数
+  if (epochSec < 0)
+    return false;
+
+  // 下限：1990‑01‑01 00:00:00 UTC
+  const long long TS_MIN = 631152000LL;
+  // 上限：2040‑01‑01 00:00:00 UTC，可按你的项目调整
+  const long long TS_MAX = 2208988800LL;
+
+  if (epochSec < TS_MIN || epochSec > TS_MAX)
+    return false;
+
+  return true;
+}
 void setTimeFromTimestampSec(long long epochSec)
 {
   struct timeval tv;
@@ -514,6 +533,11 @@ void setTimeFromTimestampSec(long long epochSec)
   tv.tv_usec = 0;               // 微秒清零（无毫秒精度）
   settimeofday(&tv, NULL);
 }
+/**
+ * 计算从给定秒时间戳到现在的时间差（毫秒）
+ * @param epochSec 给定的秒时间戳
+ * @return 返回从给定时间到现在的时间差，单位为毫秒
+ */
 long long mathTimeDiffmsFromSec(long long epochSec)
 {
   long long nowSec = getCurrentTimestampSec(); // 获取当前秒时间戳

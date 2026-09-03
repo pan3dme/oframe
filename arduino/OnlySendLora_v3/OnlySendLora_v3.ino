@@ -26,6 +26,7 @@ const uint64_t MAX_SLEEP_US = 4200000000ULL;
 unsigned long gpsWorkTime = 0;
 unsigned long gpsWorkInterval = 0;
 unsigned long gpsWorkStat = 0;
+unsigned long lastSendLoraMs = 0;
 int typeindex = FLAG_TYPE_0;
 
 
@@ -67,7 +68,7 @@ RTC_DATA_ATTR int lastSeacthStatTm;
 RadioEvents_t radioEvents;                             // LoRa事件回调
 void printTimeToString(String str, unsigned long ms);  // 前向声明
 
-
+//返回毫秒
 unsigned long get_send_interval_ms() {
   if (rtcSendCount <= 4) {
     return 1000 * 60 * 5;  //前2次默认间隔5份钟 这有利于开机快速配置，
@@ -79,7 +80,7 @@ unsigned long get_send_interval_ms() {
     return 1000 * 60 * 60 * big_interval_tm;  //不在工作区间就用大周期
   }
 }
-float getSlotDuration() {
+unsigned long getSlotDuration() {             //返回是秒
   return get_send_interval_ms() / 30 / 1000;  // 30台设备现在是30分钟
 }
 
@@ -102,24 +103,20 @@ unsigned long calculateNextTime(unsigned long intervalSeconds) {
   // 1. 获取当前时间
   unsigned long currentSeconds = getCurrentTimestampSec();
 
-  // 2. 计算基础参数
-  unsigned long mySlotOffset =
-    (unsigned long)((deviceIndex + 0.5) * getSlotDuration());  // 我在周期内的偏移量
-
-  // 3. 核心修复逻辑：计算到下一个时隙的等待时间
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
-  unsigned long lastTargetSeconds =
-    cyclesPassed * intervalSeconds + mySlotOffset;
 
-  long secondsDiff = 0;
+  unsigned long intervalMs = get_send_interval_ms();
+  unsigned long mySlotOffset = (((unsigned long)deviceIndex * 2UL + 1UL) * intervalMs) / 60UL;
+  unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + (mySlotOffset / 1000UL);
+
+
+  unsigned long secondsDiff = 0;
   if (lastTargetSeconds < currentSeconds) {
     secondsDiff = intervalSeconds - (currentSeconds - lastTargetSeconds);
   } else {
     secondsDiff = lastTargetSeconds - currentSeconds;
   }
-  if (secondsDiff < 0) {
-    secondsDiff += intervalSeconds;
-  }
+
 
   unsigned long delayMillis = secondsDiff * 1000;
 
@@ -190,6 +187,14 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
 
   // 第一个| ~第二个|：时间戳
   String timeStr = infoStr.substring(firstPipeIndex + 1, secondPipeIndex);
+  long long epochSec = atoll(timeStr.c_str());
+
+  if (!is_valid_epoch_sec(epochSec)) {
+    if (sendModeidx > 0) {
+      sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|err|" + timeStr, true);
+    }
+    return;
+  }
   // 第二个|后面全部：relayName，trim过滤\r\n空格
   String relayName = infoStr.substring(secondPipeIndex + 1);
   relayName.trim();
@@ -208,7 +213,7 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
         getCurrentTimestampSec() - lastSyncTime;
 
       printDurationSec(ds, "两次对时间隔: ");
-      long long diff_Sec = mathTimeDiffmsFromSec(atoll(timeStr.c_str()));
+      long long diff_Sec = mathTimeDiffmsFromSec(epochSec);
       printDurationSec(diff_Sec, "当前偏差: ");
       // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
       if (ds > 0) {
@@ -220,7 +225,6 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
         // 每小时小于3分钟的偏差才通过，防止出乱子
         if (sendModeidx > 0) {
           sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|hourTm|" + hourlyDriftSec, true);
-          delay(2000);
         }
       }
     }
@@ -229,7 +233,7 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
     lastrelayName[sizeof(lastrelayName) - 1] = '\0';
   }
 
-  setTimeFromTimestampSec(atoll(timeStr.c_str()));
+  setTimeFromTimestampSec(epochSec);
   lastSyncTime = getCurrentTimestampSec();
   timeSyncFlag = true;
 }
@@ -426,6 +430,7 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   Radio.Send((uint8_t *)sendData, strlen(sendData));
 
   isSleepRestFristSendRolaFlag = false;
+  lastSendLoraMs = millis();
 }
 // ==================== 构建并发送数据包 ====================
 
@@ -466,7 +471,8 @@ void printTimeToString(String str, unsigned long ms) {
   DEBUG_PRINT(remMs);
   DEBUG_PRINTLN("毫秒");
 }
-int seacthTm = 240000;  //5分钟提前搜星
+
+const uint32_t seacthTm = 240000U;
 void meshGpsInfoFun(bool closeGps = true) {
   if (!getGpsStatus()) {
     initPanGPS();
@@ -482,7 +488,7 @@ void meshGpsInfoFun(bool closeGps = true) {
 
     bool timeoutOk = (millis() - startAttemptTime) < seacthTm;
 
-    lastSeacthStatTm=(millis() - startAttemptTime)/ 1000;
+    lastSeacthStatTm = (millis() - startAttemptTime) / 1000;
     // Serial.print(".");
     // Serial.println(getCurrentTime());
 
@@ -511,7 +517,7 @@ void meshGpsInfoFun(bool closeGps = true) {
 
 
 
-    bool allPass = (hasLocValid   && gpsReliable) && timeoutOk;
+    bool allPass = (hasLocValid && gpsReliable) && timeoutOk;
     if (allPass) {
       DEBUG_PRINTLN("==== GPS全部条件满足，退出搜星循环 ====");
       upDataGpsTimeToCs();
@@ -552,10 +558,8 @@ void batteryLowSleep(int minValue) {
   if (batteryNum < 0 || batteryNum > 100) return;
   if (batteryNum <= minValue) {
     DEBUG_PRINTLN("❌❌❌电压过底电压过底电压过底❌❌❌");
-    DEBUG_PRINTLN("电压过底，休眠24个小时");
     delay(1000);
     DEBUG_PRINT("❌");
-
     Radio.Sleep();
     esp_sleep_enable_timer_wakeup(MAX_SLEEP_US);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
@@ -568,16 +572,14 @@ unsigned long num6000 = 5000;  // 暂时提前20秒开机
 void testSheepFun(bool driftComp) {
 
   unsigned long waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
-
-  printTimeToString("到上报时间还有 ", nextSendTime - millis());
+  printTimeToString("到上报时间还有 ", waittm);
   // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
   if ((waittm) > num6000) {
     if (configConfirmed) {
       //确认配置给两秒特殊插入数据， 开机上报当前的配置信息
       configConfirmed = false;
       sendLoraToMid(String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str), false);
-      delay(2000);
-      waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
+      return;
     }
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
@@ -612,14 +614,20 @@ void testSheepFun(bool driftComp) {
         DEBUG_PRINTF("距离工作时间开始还有 %lld 秒\n", secondsLeft);
       }
     }
-
+    if (sleepTime < 1000ULL * 10) {
+      sleepTime = 1000ULL * 10;
+    }
+    uint64_t sleepWake = sleepTime * 1000ULL;
+    if (sleepWake > MAX_SLEEP_US) {
+      sleepWake = MAX_SLEEP_US;
+    }
 
     Radio.Sleep();
-    esp_sleep_enable_timer_wakeup(sleepTime * 1000ULL);  //需要微秒单位
+    esp_sleep_enable_timer_wakeup(sleepWake);  //需要微秒单位
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     // 计算并打印预计开机时间
     {
-      uint64_t wakeUpSec = sleepTime / 1000ULL;
+      uint64_t wakeUpSec = sleepWake / 1000000ULL;
       time_t now = time(nullptr);
       time_t wakeTime = now + (time_t)wakeUpSec;
       struct tm wt;
@@ -662,7 +670,7 @@ void setup() {
     rtcResiveIdx = 0;
 
     big_interval_tm = 1;
-    lastSeacthStatTm=0;
+    lastSeacthStatTm = 0;
 
 
 
@@ -681,7 +689,7 @@ void setup() {
     // strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);
     strncpy(gps_time_str, "15:00-17:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
-    
+
     strncpy(config_str, "30,0M,3t,1", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
@@ -697,15 +705,19 @@ void setup() {
   Serial.println(getCurrentTime(true));
   batteryNum = readBatteryEndStr();
 
+
+
   if (rtcSendCount == -1) {
-    //重新启动不要快速进入休眠，是为了给出时间上传程序 烧入程序等待20秒才可以把程序上传不然很麻烦只为烧入程序
-    unsigned long endTm = millis() + 30000;
-    while (endTm > millis()) {
+    uint32_t waitMs = 30000;
+    uint32_t startMs = millis();
+    while ((millis() - startMs) < waitMs) {
       delay(1000);
       Serial.print("x");
     }
     rtcSendCount = 0;
   }
+
+
   batteryLowSleep(30);
   if (isNeedGpsWork && strlen(needSendGpsStr) == 0) {
     meshGpsInfoFun(true);
@@ -747,7 +759,7 @@ void loop() {
     strncpy(gpsStr, getGpsInfoStr().c_str(), sizeof(gpsStr) - 1);
     gpsStr[sizeof(gpsStr) - 1] = '\0';
 
-    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr)+ "|" + String(lastSeacthStatTm), false);
+    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr) + "|" + String(lastSeacthStatTm), false);
     delay(2000);  // 上报LORA需要2秒钟间隔
 
 
@@ -781,15 +793,14 @@ void loop() {
     delay(10);
     return;
   } else if (typeindex == FLAG_TYPE_0) {
-
-
+ 
 
     if (isSleepRestFristSendRolaFlag == true) {  //一次重启只会上报一条LORA消息，
       if (nextSendTime < millis() || rtcSendCount == 0) {
         typeindex = FLAG_TYPE_1;
         if (strlen(needSendGpsStr) > 0) {
           //lastSeacthStatTm
-          sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr)+ "|" + String(lastSeacthStatTm), false);
+          sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr) + "|" + String(lastSeacthStatTm), false);
           strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
           needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
         } else {
@@ -808,10 +819,13 @@ void loop() {
           }
           timeSyncFlag = false;
         }
+      }
+      if (lastSendLoraMs < (millis() - 2000)) {
         testSheepFun(true);
       }
     }
   }
+
   printCurrentTime();
   delay(10);
 }
