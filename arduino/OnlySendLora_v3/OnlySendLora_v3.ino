@@ -58,6 +58,8 @@ RTC_DATA_ATTR char work_time_str[16];
 RTC_DATA_ATTR char gps_time_str[16];
 RTC_DATA_ATTR int big_interval_tm;
 RTC_DATA_ATTR char config_str[16];
+RTC_DATA_ATTR int lastSeacthStatTm;
+
 
 #define MY_RTC_MAGIC 0xA5B6C7D8U
 
@@ -67,7 +69,7 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 
 
 unsigned long get_send_interval_ms() {
-  if (rtcSendCount <= 2) {
+  if (rtcSendCount <= 4) {
     return 1000 * 60 * 5;  //前2次默认间隔5份钟 这有利于开机快速配置，
   }
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
@@ -479,6 +481,8 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool ellitesNum = gps.satellites.value() >= 6;
 
     bool timeoutOk = (millis() - startAttemptTime) < seacthTm;
+
+    lastSeacthStatTm=(millis() - startAttemptTime)/ 1000;
     // Serial.print(".");
     // Serial.println(getCurrentTime());
 
@@ -507,7 +511,7 @@ void meshGpsInfoFun(bool closeGps = true) {
 
 
 
-    bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
+    bool allPass = (hasLocValid   && gpsReliable) && timeoutOk;
     if (allPass) {
       DEBUG_PRINTLN("==== GPS全部条件满足，退出搜星循环 ====");
       upDataGpsTimeToCs();
@@ -658,6 +662,8 @@ void setup() {
     rtcResiveIdx = 0;
 
     big_interval_tm = 1;
+    lastSeacthStatTm=0;
+
 
 
     roundTime = 1000 * 60 * 30;
@@ -693,10 +699,10 @@ void setup() {
 
   if (rtcSendCount == -1) {
     //重新启动不要快速进入休眠，是为了给出时间上传程序 烧入程序等待20秒才可以把程序上传不然很麻烦只为烧入程序
-    unsigned long endTm = millis() + 20000;
+    unsigned long endTm = millis() + 30000;
     while (endTm > millis()) {
       delay(1000);
-      DEBUG_PRINT("x");
+      Serial.print("x");
     }
     rtcSendCount = 0;
   }
@@ -741,7 +747,7 @@ void loop() {
     strncpy(gpsStr, getGpsInfoStr().c_str(), sizeof(gpsStr) - 1);
     gpsStr[sizeof(gpsStr) - 1] = '\0';
 
-    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr), false);
+    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr)+ "|" + String(lastSeacthStatTm), false);
     delay(2000);  // 上报LORA需要2秒钟间隔
 
 
@@ -782,7 +788,8 @@ void loop() {
       if (nextSendTime < millis() || rtcSendCount == 0) {
         typeindex = FLAG_TYPE_1;
         if (strlen(needSendGpsStr) > 0) {
-          sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr), false);
+          //lastSeacthStatTm
+          sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr)+ "|" + String(lastSeacthStatTm), false);
           strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
           needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
         } else {

@@ -17,8 +17,6 @@ unsigned long syncedMillis = 0; // 同步时的本地毫秒计数
 
 bool isGpsOn = false;
 
-
-
 unsigned long rolaHz = 915000000; // 同步时的本地毫秒计数
 
 String wechatid = "v4";
@@ -59,9 +57,11 @@ uint64_t allowedDevices[] = {
 };
 const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);
 
-void openLedByNum(int count, int delayMs) {
+void openLedByNum(int count, int delayMs)
+{
   pinMode(LED, OUTPUT);
-  for (int i = 0; i < count; i++) {
+  for (int i = 0; i < count; i++)
+  {
     digitalWrite(LED, HIGH);
     delay(delayMs);
     digitalWrite(LED, LOW);
@@ -70,8 +70,10 @@ void openLedByNum(int count, int delayMs) {
 }
 
 // OLED统一初始化函数（给main.ino调用）
-void initOLED() {
-  if (!initFinish) {
+void initOLED()
+{
+  if (!initFinish)
+  {
 #if defined(WIFI_LORA_32_V4)
     initFinish = true;
     // 开启OLED电源
@@ -92,35 +94,41 @@ void initOLED() {
 #endif
   }
 }
-void hideOLED() {
+void hideOLED()
+{
   initFinish = false;
   digitalWrite(Vext, HIGH);
   digitalWrite(RST_OLED, LOW);
 }
-void showOLED() {
+void showOLED()
+{
   initFinish = false;
   initOLED();
 }
 
-void initPanGPS() {
+void initPanGPS()
+{
 
   pinMode(VGNSS_CTRL, OUTPUT);
   pinMode(GPS_ANT_EN, OUTPUT);
   setGpsEnable(true);
 }
 bool getGpsStatus() { return isGpsOn; }
-void setGpsEnable(bool value) {
+void setGpsEnable(bool value)
+{
   if (value == isGpsOn)
     return; // 【优化】如果状态没变，直接返回，避免重复操作
 
-  if (value) {
+  if (value)
+  {
 
     digitalWrite(VGNSS_CTRL, LOW);
     digitalWrite(GPS_ANT_EN, HIGH);
     Serial2.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
     DEBUG_PRINTLN("GPS 已开启");
-
-  } else {
+  }
+  else
+  {
     Serial2.end();
     digitalWrite(VGNSS_CTRL, HIGH);
     digitalWrite(GPS_ANT_EN, LOW);
@@ -130,7 +138,8 @@ void setGpsEnable(bool value) {
   isGpsOn = value; // 更新状态记录
 }
 
-long long setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
+long long setCSTTime(int year, int mon, int day, int h, int m, int s, int ms)
+{
   struct timeval old_tv, new_tv;
   gettimeofday(&old_tv, NULL); // 获取当前系统时间（旧）
 
@@ -156,33 +165,42 @@ long long setCSTTime(int year, int mon, int day, int h, int m, int s, int ms) {
   return diff; // 微秒
 }
 
-void gpsEncode() {
+void gpsEncode()
+{
 
-  if (!isGpsOn) {
+  if (!isGpsOn)
+  {
     return;
   }
-  if (Serial2.available() > 0) {
-    while (Serial2.available()) {
+  if (Serial2.available() > 0)
+  {
+    while (Serial2.available())
+    {
       gps.encode(Serial2.read());
     }
   }
-  if (gps.location.isValid()) {
+  if (gps.location.isValid())
+  {
     int satCount = gps.satellites.value();
     //    Serial.print("当前卫星数: ");
     //    Serial.println(satCount);
     //    Serial.println(getGpsInfoStr());
   }
   // GPS时间有效时，每SEND_INTERVAL_MS周期检查一次是否需要更新
-  if (!isBoardDateTimeOK()) {
+  if (!isBoardDateTimeOK())
+  {
     upDataGpsTimeToCs();
   }
 }
-void upDataGpsTimeToCs() {
-  if (isBoardDateTimeOK()) {
+void upDataGpsTimeToCs()
+{
+  if (isBoardDateTimeOK())
+  {
     return;
   }
   // 新增防护，GPS时间无效直接退出
-  if (!gps.date.isValid() || !gps.time.isValid()) {
+  if (!gps.date.isValid() || !gps.time.isValid())
+  {
     return;
   }
   int year = gps.date.year();
@@ -219,14 +237,21 @@ void upDataGpsTimeToCs() {
   int bj_hour = utcTm.tm_hour;
   int bj_minute = utcTm.tm_min;
   int bj_second = utcTm.tm_sec;
+  if (bj_year < 2025 || bj_year > 2030)
+  {
+    return;
+  }
 
   // 5. 设置系统时间（毫秒为 0，因为没有毫秒数据）
   long long diff =
       setCSTTime(bj_year, bj_month, bj_day, bj_hour, bj_minute, bj_second, 0);
   DEBUG_PRINT("✅GPS成功设置一次时间");
-  if (diff >= 0) {
+  if (diff >= 0)
+  {
     DEBUG_PRINT("，时间调快了 ");
-  } else {
+  }
+  else
+  {
     DEBUG_PRINT("，时间调慢了 ");
     diff = -diff;
   }
@@ -243,19 +268,24 @@ void upDataGpsTimeToCs() {
   DEBUG_PRINTLN("毫秒");
 }
 
-String getGpsInfoStr() {
+String getGpsInfoStr()
+{
   // int hour = gps.time.hour();
   // int minute = gps.time.minute();
   // int second = gps.time.second();
   if (gps.location.isValid() && gps.time.isValid() &&
-      gps.satellites.value() > 0) {
+      gps.satellites.value() > 0)
+  {
     return String(gps.location.lat(), 5) + "," + String(gps.location.lng(), 5);
-  } else {
+  }
+  else
+  {
     return "0.00000,0.00000";
   }
 }
 
-bool isReliableGPS() {
+bool isReliableGPS()
+{
   // 1. 基本有效
   if (!gps.location.isValid())
     return false;
@@ -288,11 +318,14 @@ bool isReliableGPS() {
 }
 
 // 设备ID认证 (根据MAC地址生成设备名)
-int getDevicesIdx() {
+int getDevicesIdx()
+{
   uint64_t currentId = ESP.getEfuseMac();
   int index = -1;
-  for (size_t i = 0; i < DEVICE_COUNT; ++i) {
-    if (currentId == allowedDevices[i]) {
+  for (size_t i = 0; i < DEVICE_COUNT; ++i)
+  {
+    if (currentId == allowedDevices[i])
+    {
       index = static_cast<int>(i);
       break;
     }
@@ -302,21 +335,26 @@ int getDevicesIdx() {
 
 // 获取设备总数
 int getTotalDevices() { return DEVICE_COUNT; }
-String makeDivceName() {
+String makeDivceName()
+{
   uint64_t currentId = ESP.getEfuseMac();
   DEBUG_PRINTF("当前设备编号: %012llX\n", currentId);
   int index = getDevicesIdx();
-  if (index != -1) {
-    String syname = wechatid +"-"+ String(index);
+  if (index != -1)
+  {
+    String syname = wechatid + "-" + String(index);
     DEBUG_PRINTLN("设备认证成功，设备名为: " + syname);
     return syname;
-  } else {
+  }
+  else
+  {
     DEBUG_PRINTLN("错误：该设备编号不在白名单中！");
     return "x-x";
   }
 }
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
-                        BLECharacteristicCallbacks *charCallbacks) {
+                        BLECharacteristicCallbacks *charCallbacks)
+{
 
   BLECallbacks cbs;
 
@@ -339,7 +377,8 @@ BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
 }
 
 // 4 分区显示函数
-void showDisplayBy4Area(String a, String b, String c, String d) {
+void showDisplayBy4Area(String a, String b, String c, String d)
+{
 
 #if defined(WIFI_LORA_32_V4)
   initOLED();
@@ -352,7 +391,8 @@ void showDisplayBy4Area(String a, String b, String c, String d) {
 #endif
 }
 
-int readBatteryEndStr() {
+int readBatteryEndStr()
+{
   analogReadResolution(12);
   pinMode(VBAT_CTRL_PIN, OUTPUT);
   bool isV4 = false;
@@ -365,7 +405,8 @@ int readBatteryEndStr() {
   const int samples = 10;
   long rawSum = 0;
   long mvSum = 0;
-  for (int i = 0; i < samples; i++) {
+  for (int i = 0; i < samples; i++)
+  {
     rawSum += analogRead(VBAT_READ_PIN);
     mvSum += analogReadMilliVolts(VBAT_READ_PIN);
     delay(10);
@@ -396,7 +437,8 @@ int readBatteryEndStr() {
   return soc;
 }
 
-bool isBoardDateTimeOK() {
+bool isBoardDateTimeOK()
+{
   time_t now;
   struct tm t;
   time(&now);
@@ -406,7 +448,8 @@ bool isBoardDateTimeOK() {
   return (year > 2025) && (year < 2030);
 }
 // 获取可用的时间字符串 (优先同步时间，最后默认运行时间)
-String getCurrentTime(bool includeMillis) {
+String getCurrentTime(bool includeMillis)
+{
   struct timeval tv;
   gettimeofday(&tv, nullptr); // 获取秒 + 微秒
   time_t now = tv.tv_sec;
@@ -414,13 +457,16 @@ String getCurrentTime(bool includeMillis) {
   localtime_r(&now, &t); // 自动使用系统时区
 
   char buf[64];
-  if (includeMillis) {
+  if (includeMillis)
+  {
     // 包含毫秒（格式：YYYY/MM/DD HH:MM:SS.mmm）
     snprintf(buf, sizeof(buf), "%4d/%d/%d %02d:%02d:%02d.%03d",
              t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
              t.tm_sec,
              (int)(tv.tv_usec / 1000)); // 微秒 → 毫秒
-  } else {
+  }
+  else
+  {
     // 不包含毫秒（格式：YYYY/MM/DD HH:MM:SS）
     snprintf(buf, sizeof(buf), "%4d/%d/%d %02d:%02d:%02d", t.tm_year + 1900,
              t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
@@ -429,18 +475,21 @@ String getCurrentTime(bool includeMillis) {
 }
 
 // 获取当前时间戳（毫秒级）
-long long getCurrentTimestampMs() {
+long long getCurrentTimestampMs()
+{
   struct timeval tv;
   gettimeofday(&tv, nullptr);
   return (long long)tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
-long long getCurrentTimestampSec() {
+long long getCurrentTimestampSec()
+{
   struct timeval tv;
   gettimeofday(&tv, nullptr);
   return (long long)tv.tv_sec; // tv_sec 本身就是秒数
 }
-uint32_t getTodaySecond() {
+uint32_t getTodaySecond()
+{
   time_t now = time(nullptr);
   struct tm local_tm;
   localtime_r(&now, &local_tm);
@@ -451,24 +500,28 @@ uint32_t getTodaySecond() {
   return sec;
 }
 // 通过时间戳（毫秒）设置系统时间
-void setTimeFromTimestamp(long long epochMs) {
+void setTimeFromTimestamp(long long epochMs)
+{
   struct timeval new_tv;
   new_tv.tv_sec = (time_t)(epochMs / 1000LL);
   new_tv.tv_usec = (suseconds_t)((epochMs % 1000LL) * 1000);
   settimeofday(&new_tv, NULL);
 }
-void setTimeFromTimestampSec(long long epochSec) {
+void setTimeFromTimestampSec(long long epochSec)
+{
   struct timeval tv;
   tv.tv_sec = (time_t)epochSec; // 秒部分
   tv.tv_usec = 0;               // 微秒清零（无毫秒精度）
   settimeofday(&tv, NULL);
 }
-long long mathTimeDiffmsFromSec(long long epochSec) {
+long long mathTimeDiffmsFromSec(long long epochSec)
+{
   long long nowSec = getCurrentTimestampSec(); // 获取当前秒时间戳
   return nowSec - epochSec;                    // 返回差值（ms）
 }
 
-void printTimestampSec(long long epochSec, const char *label) {
+void printTimestampSec(long long epochSec, const char *label)
+{
   time_t sec = (time_t)epochSec; // 直接使用秒
   struct tm t;
   localtime_r(&sec, &t);
@@ -476,9 +529,11 @@ void printTimestampSec(long long epochSec, const char *label) {
                t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
 }
 // 将秒差值打印为 N小时N分N秒
-void printDurationSec(long long diffSec, const char *label) {
+void printDurationSec(long long diffSec, const char *label)
+{
   bool negative = diffSec < 0;
-  if (negative) {
+  if (negative)
+  {
     diffSec = -diffSec;
   }
   long long hours = diffSec / 3600LL;
@@ -490,16 +545,22 @@ void printDurationSec(long long diffSec, const char *label) {
 }
 
 // 从LoRa对时信息设置时间2026/07/14 23:23:10.513
-void setTimeFromLora(String timeStr) {
+void setTimeFromLora(String timeStr)
+{
   int year, month, day, hour, minute, second, millis = 0;
   // 尝试解析带毫秒
   if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d.%d", &year, &month, &day,
-             &hour, &minute, &second, &millis) == 7) {
+             &hour, &minute, &second, &millis) == 7)
+  {
     // 解析成功，millis已赋值
-  } else if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day,
-                    &hour, &minute, &second) == 6) {
+  }
+  else if (sscanf(timeStr.c_str(), "%d/%d/%d %d:%d:%d", &year, &month, &day,
+                  &hour, &minute, &second) == 6)
+  {
     millis = 0; // 无毫秒
-  } else {
+  }
+  else
+  {
     DEBUG_PRINT("❌ LoRa对时解析失败: ");
     DEBUG_PRINTLN(timeStr);
     return;
@@ -520,7 +581,8 @@ void setTimeFromLora(String timeStr) {
 }
 
 void initPanRadio(RadioEvents_t *radioEvents, int txPower, unsigned long hzFreq,
-                  int swNum) {
+                  int swNum)
+{
   // void initPanRadio(RadioEvents_t *radioEvents, int txPower) {
   rolaHz = hzFreq;
   Radio.Init(radioEvents);
@@ -542,10 +604,12 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower, unsigned long hzFreq,
   DEBUG_PRINTLN("✅ LoRa 初始化完成");
 }
 
-bool isTimeInRange(long long timestampSec, const char *timeRangeStr) {
+bool isTimeInRange(long long timestampSec, const char *timeRangeStr)
+{
   int startH = 0, startM = 0, endH = 0, endM = 0;
   if (sscanf(timeRangeStr, "%d:%d-%d:%d", &startH, &startM, &endH, &endM) !=
-      4) {
+      4)
+  {
     DEBUG_PRINT("❌ isTimeInRange 解析失败: ");
     DEBUG_PRINTLN(timeRangeStr);
     return true; // 解析失败默认在范围内
@@ -561,18 +625,25 @@ bool isTimeInRange(long long timestampSec, const char *timeRangeStr) {
   int endMinutes = endH * 60 + endM;
 
   // 处理跨午夜
-  if (startMinutes <= endMinutes) {
+  if (startMinutes <= endMinutes)
+  {
     return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
-  } else {
+  }
+  else
+  {
     return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
   }
 }
 
-int timeWindowToIndex(uint8_t start, uint8_t end) {
+int timeWindowToIndex(uint8_t start, uint8_t end)
+{
   uint8_t realEnd;
-  if (end >= 24) {
+  if (end >= 24)
+  {
     realEnd = 23;
-  } else {
+  }
+  else
+  {
     realEnd = end;
   }
 
@@ -581,7 +652,8 @@ int timeWindowToIndex(uint8_t start, uint8_t end) {
   // 这里删掉 >=3 的判断，只要求 start < realEnd，最小1小时
 
   int preCount = 0;
-  for (uint8_t s = 0; s < start; s++) {
+  for (uint8_t s = 0; s < start; s++)
+  {
     // s+1 开始，最小间隔1小时
     int valid = 23 - (s + 1) + 1;
     if (valid > 0)
@@ -591,16 +663,19 @@ int timeWindowToIndex(uint8_t start, uint8_t end) {
   return preCount + curOffset;
 }
 
-bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd) {
+bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd)
+{
   if (idx < 0)
     return false;
   int sum = 0;
-  for (uint8_t s = 0; s <= 23; s++) {
+  for (uint8_t s = 0; s <= 23; s++)
+  {
     // 最小间隔1小时
     int valid = 23 - (s + 1) + 1;
     if (valid <= 0)
       continue;
-    if (idx < sum + valid) {
+    if (idx < sum + valid)
+    {
       outStart = s;
       int off = idx - sum;
       outEnd = s + 1 + off;
@@ -614,7 +689,8 @@ bool indexToTimeWindow(int idx, uint8_t &outStart, uint8_t &outEnd) {
 const char TIME_DICT[] =
     "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-String indexToTwoChar(int idx) {
+String indexToTwoChar(int idx)
+{
   if (idx < 0 || idx > 275)
     return "XX"; // 最大索引275
   int high = idx / 62;
@@ -625,7 +701,8 @@ String indexToTwoChar(int idx) {
   return res;
 }
 
-int twoCharToIndex(String str) {
+int twoCharToIndex(String str)
+{
   if (str.length() != 2)
     return -1;
   char c0 = str[0];
@@ -649,9 +726,11 @@ int twoCharToIndex(String str) {
  * @param lonHalf 经度半宽(度)
  */
 void filterGpsByRect(const char *inBuf, char *outBuf, double baseLat,
-                     double baseLon, double latHalf, double lonHalf) {
+                     double baseLon, double latHalf, double lonHalf)
+{
   const char *comma = strchr(inBuf, ',');
-  if (comma == nullptr) {
+  if (comma == nullptr)
+  {
     strncpy(outBuf, inBuf, 31);
     outBuf[31] = '\0';
     return;
@@ -672,10 +751,13 @@ void filterGpsByRect(const char *inBuf, char *outBuf, double baseLat,
   bool inRect = (srcLat >= latMin && srcLat <= latMax) &&
                 (srcLon >= lonMin && srcLon <= lonMax);
 
-  if (!inRect) {
+  if (!inRect)
+  {
     strncpy(outBuf, inBuf, 31);
     outBuf[31] = '\0';
-  } else {
+  }
+  else
+  {
     double dLat = srcLat - baseLat;
     double dLon = srcLon - baseLon;
 
@@ -697,9 +779,11 @@ void filterGpsByRect(const char *inBuf, char *outBuf, double baseLat,
  * @param baseLon 基准经度小数
  */
 void restoreGpsFromDiff(const char *diffBuf, char *outBuf, double baseLat,
-                        double baseLon) {
+                        double baseLon)
+{
   const char *comma = strchr(diffBuf, ',');
-  if (comma == nullptr) {
+  if (comma == nullptr)
+  {
     strncpy(outBuf, diffBuf, 31);
     outBuf[31] = '\0';
     return;
@@ -708,7 +792,8 @@ void restoreGpsFromDiff(const char *diffBuf, char *outBuf, double baseLat,
   // 判断是差分(没有小数点)，还是原始带小数数据
   bool isDiff = (strchr(diffBuf, '.') == nullptr);
 
-  if (!isDiff) {
+  if (!isDiff)
+  {
     // 带小数点，属于框外原始数据，直接拷贝
     strncpy(outBuf, diffBuf, 31);
     outBuf[31] = '\0';
@@ -729,14 +814,18 @@ void restoreGpsFromDiff(const char *diffBuf, char *outBuf, double baseLat,
 
   snprintf(outBuf, 32, "%.5f,%.5f", realLat, realLon);
 }
-bool splitPipeSegment(const char *in, char *out, int idx) {
+bool splitPipeSegment(const char *in, char *out, int idx)
+{
   int cur = 0;
   const char *start = in;
   const char *p = in;
 
-  while (*p != '\0') {
-    if (*p == '|') {
-      if (cur == idx) {
+  while (*p != '\0')
+  {
+    if (*p == '|')
+    {
+      if (cur == idx)
+      {
         size_t len = p - start;
         strncpy(out, start, len);
         out[len] = '\0';
@@ -748,7 +837,8 @@ bool splitPipeSegment(const char *in, char *out, int idx) {
     p++;
   }
   // 处理最后一段
-  if (cur == idx) {
+  if (cur == idx)
+  {
 
     strncpy(out, start, sizeof(out) - 1);
     return true;
@@ -757,7 +847,8 @@ bool splitPipeSegment(const char *in, char *out, int idx) {
   return false;
 }
 bool replacePipeSegment(const char *src, char *dest, int idx,
-                        const char *newVal, size_t destSize) {
+                        const char *newVal, size_t destSize)
+{
   if (destSize == 0)
     return false;
   dest[0] = '\0';
@@ -766,11 +857,16 @@ bool replacePipeSegment(const char *src, char *dest, int idx,
   const char *p = src;
   const char *segStart = src;
 
-  while (*p != '\0') {
-    if (*p == '|') {
-      if (curIdx == idx) {
+  while (*p != '\0')
+  {
+    if (*p == '|')
+    {
+      if (curIdx == idx)
+      {
         strncat(dest, newVal, destSize - 1 - strlen(dest));
-      } else {
+      }
+      else
+      {
         size_t segLen = p - segStart;
         char tmp[64];
         strncpy(tmp, segStart, segLen);
@@ -785,18 +881,23 @@ bool replacePipeSegment(const char *src, char *dest, int idx,
   }
 
   // 处理最后一段
-  if (curIdx == idx) {
+  if (curIdx == idx)
+  {
     strncat(dest, newVal, destSize - 1 - strlen(dest));
-  } else {
+  }
+  else
+  {
     strncat(dest, segStart, destSize - 1 - strlen(dest));
   }
   return true;
 }
 // segBuf：上报当日秒偏移，outBuf输出unix时间戳字符串，outBufLen缓冲区大小
 // 返回true成功，false无效
-bool buildFullTimestampStr(const char *segBuf, char *outBuf, size_t outBufLen) {
+bool buildFullTimestampStr(const char *segBuf, char *outBuf, size_t outBufLen)
+{
   uint32_t daySec = atoi(segBuf);
-  if (daySec > 86399) {
+  if (daySec > 86399)
+  {
     return false;
   }
 

@@ -16,7 +16,8 @@ class _Config:
     ROUTETABLE_NAME = 'routetabel001'
     PLACETABLE_NAME = 'placetable001'
 
-    scaleScene = 17500
+    scaleSceneX = 18000
+    scaleSceneZ = 15000
     current_mode = "large_2d"
     baseCamDis100 = -100
     camera3D = Camera3D()
@@ -28,15 +29,15 @@ class _Config:
     # ccav = (gps_bounds['bottom_right'][0]-gps_bounds['top_left'][0], gps_bounds['bottom_right'][1]-gps_bounds['top_left'][1])
     def gps_to_world_pos(self,gps):
         latitude,longitude=gps
-        pos = Vector3D(-1 * (latitude - settings.centenGps[0]) * settings.scaleScene, 0,
-                       (longitude - settings.centenGps[1]) * settings.scaleScene)
+        pos = Vector3D(-1 * (latitude - settings.centenGps[0]) * settings.scaleSceneX, 0,
+                       (longitude - settings.centenGps[1]) * settings.scaleSceneZ)
         pos.x = -pos.x
         pos.z = -pos.z
         return  pos
 
     def world_pos_to_gps(self, pos):
-        latitude = settings.centenGps[0] + pos.x / settings.scaleScene
-        longitude = settings.centenGps[1] - pos.z / settings.scaleScene
+        latitude = settings.centenGps[0] + pos.x / settings.scaleSceneX
+        longitude = settings.centenGps[1] - pos.z / settings.scaleSceneZ
         return round(latitude, 6), round(longitude, 6)
 
 settings = _Config()
