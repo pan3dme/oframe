@@ -205,7 +205,7 @@ function getDeviceLotRefresh(callback, forceRefresh) {
       url: API_DEVICE_URL,
       method: 'POST',
       data: { action: 'getDeviceLotRefreshAll' , info: {
-        limit: 20,
+        limit: 30,
         wechatid: getApp().getWechatId()
       }},
       timeout: 8000,
@@ -279,7 +279,7 @@ function getDeviceSyncAll(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDevicesyncAll', info: { limit: 20, wechatid: getApp().getWechatId() } },
+      data: { action: 'getDevicesyncAll', info: { limit: 30, wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const syncMap = _parseDeviceSyncRecords(res.data)
