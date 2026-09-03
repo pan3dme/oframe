@@ -25,11 +25,11 @@ String wechatid = "v4";
 //  设备白名单 (ESP32芯片ID)
 uint64_t allowedDevices[] = {
     0x6809A21B5BF8, // 0
-    0x9875555,      // 2
+    0x0004A78FCBA4,      // 1
     0xC0CBBE1B5BF8, //     2
-    0x9875555,
+    0xF402A78FCBA4,
     0x545C82697090, //     4
-    0x9875555,
+    0x9409A78FCBA4,
     0x1CA684697090, //     6
     0x9875555,
     0x78A6B749FD8C, //     8
