@@ -43,8 +43,9 @@ Page({
     configWorkEnd: 24,           // 开机时间结束（24=23:59）
     configGpsStart: 12,          // GPS工作时间开始
     configGpsEnd: 24,            // GPS工作时间结束（24=23:59）
-    mainPeriodRange: [1, 2, 3, 4],  // 主周期可选（小时）
-    configMainPeriodIndex: 0        // 主周期选中索引（默认1小时）
+    // 主周期可选（分钟 10-100，每档+10；对应参数 = 分钟/10 = 1-10）
+    mainPeriodRange: (() => { const arr = []; for (let i = 1; i <= 10; i++) arr.push(i * 10); return arr })(),
+    configMainPeriodIndex: 0        // 主周期选中索引（默认10分钟，参数1）
   },
 
   onLoad(options) {
@@ -255,7 +256,7 @@ Page({
     })
   },
 
-  // 打开配置下发弹框，defaults 为空时使用默认值 10,0-24,12-24,主周期1
+  // 打开配置下发弹框，defaults 为空时使用默认值 10,0-24,12-24,主周期1(10分钟)
   _openConfigModal(defaults) {
     const d = defaults || {}
     this.setData({
@@ -266,7 +267,7 @@ Page({
       configGpsStart: d.configGpsStart !== undefined ? d.configGpsStart : 12,
       configGpsEnd: d.configGpsEnd !== undefined ? d.configGpsEnd : 24,
       configMainPeriodIndex: d.configMainPeriod !== undefined
-        ? Math.max(0, Math.min(3, d.configMainPeriod - 1))
+        ? Math.max(0, Math.min(9, d.configMainPeriod - 1))
         : 0
     })
   },
@@ -284,11 +285,11 @@ Page({
     const gpsWin = timeWindowCodec.parseTimeWindow(segs[2])
     if (!workWin || !gpsWin) return null
 
-    // 主周期（小时 1-4），第4段可选，缺失默认1小时
+    // 主周期（参数 1-10 = 10-100分钟），第4段可选，缺失默认参数1（10分钟）
     let mainPeriod = 1
     if (segs.length >= 4) {
       const mp = parseInt(segs[3], 10)
-      if (!isNaN(mp) && mp >= 1 && mp <= 4) mainPeriod = mp
+      if (!isNaN(mp) && mp >= 1 && mp <= 10) mainPeriod = mp
     }
 
     // end=23 代表 23:59，弹框结束时间回填为 24（对应"当天最后一刻"）
@@ -350,8 +351,8 @@ Page({
       return
     }
 
-    // 主周期（小时 1-4），追加到 value 末尾
-    const mainPeriod = this.data.mainPeriodRange[this.data.configMainPeriodIndex] || 1
+    // 主周期（参数 1-10 = 10-100分钟），追加到 value 末尾
+    const mainPeriod = this.data.configMainPeriodIndex + 1
 
     // 结构: 周期,开机代号,GPS代号,主周期 （如 10,0K,0L,1）
     const value = period + ',' + workCode + ',' + gpsCode + ',' + mainPeriod

@@ -15,22 +15,16 @@ Page({
     // 牛羊列表
     livestockList: [],
     isAdmin: false,
-    singleLineRecord: false,
     refresherTriggered: false
   },
 
   _readSettings() {
     let isAdmin = false
-    let singleLineRecord = false
     try {
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)
     } catch (e) { /* ignore */ }
-    try {
-      const raw = wx.getStorageSync('setting_single_line_record')
-      singleLineRecord = raw === true || raw === 'true' || raw === 1 || raw === '1'
-    } catch (e) { /* ignore */ }
-    this.setData({ isAdmin, singleLineRecord })
+    this.setData({ isAdmin })
   },
 
   onLoad() {

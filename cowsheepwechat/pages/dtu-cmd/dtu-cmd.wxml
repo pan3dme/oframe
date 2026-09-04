@@ -117,13 +117,13 @@
         </view>
       </view>
 
-      <!-- ④ 主周期（小时 1-4） -->
+      <!-- ④ 主周期（分钟 10-100，参数 1-10） -->
       <view class="config-group">
-        <view class="config-group-title">④ 主周期（小时）<text class="config-group-range">1-4</text></view>
+        <view class="config-group-title">④ 主周期（分钟）<text class="config-group-range">10-100</text></view>
         <view class="time-picker-row">
           <text class="time-picker-label">主周期</text>
           <picker mode="selector" range="{{mainPeriodRange}}" value="{{configMainPeriodIndex}}" bindchange="onConfigMainPeriodChange">
-            <view class="time-picker-value">{{mainPeriodRange[configMainPeriodIndex]}} 小时</view>
+            <view class="time-picker-value">{{mainPeriodRange[configMainPeriodIndex]}} 分钟</view>
           </picker>
         </view>
       </view>

@@ -71,13 +71,17 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 //返回毫秒
 unsigned long get_send_interval_ms() {
   if (rtcSendCount <= 4) {
+    DEBUG_PRINTLN("u前4次就5分钟启动。");
     return 1000 * 60 * 5;  //前2次默认间隔5份钟 这有利于开机快速配置，
   }
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
   if (inWorkTime || !isBoardDateTimeOK()) {
+    printTimestampSec(roundTime / 1000, "工作期间。。");
     return roundTime;
   } else {
-    return 1000 * 60 * 60 * big_interval_tm;  //不在工作区间就用大周期
+
+    printTimestampSec(60 * 10 * big_interval_tm, "不在工作期使用大周期时间。");
+    return 1000 * 60 * 10 * big_interval_tm;  //不在工作区间就用大周期
   }
 }
 unsigned long getSlotDuration() {             //返回是秒
@@ -669,7 +673,7 @@ void setup() {
     rtcSendCount = -1;
     rtcResiveIdx = 0;
 
-    big_interval_tm = 1;
+    big_interval_tm = 6;  //1为10分钟
     lastSeacthStatTm = 0;
 
 
@@ -690,7 +694,7 @@ void setup() {
     strncpy(gps_time_str, "15:00-17:00", sizeof(gps_time_str) - 1);
     gps_time_str[sizeof(gps_time_str) - 1] = '\0';
 
-    strncpy(config_str, "30,0M,3t,1", sizeof(config_str) - 1);
+    strncpy(config_str, "30,0M,3t,6", sizeof(config_str) - 1);
     config_str[sizeof(config_str) - 1] = '\0';
 
     rtcMagic = MY_RTC_MAGIC;
@@ -793,7 +797,7 @@ void loop() {
     delay(10);
     return;
   } else if (typeindex == FLAG_TYPE_0) {
- 
+
 
     if (isSleepRestFristSendRolaFlag == true) {  //一次重启只会上报一条LORA消息，
       if (nextSendTime < millis() || rtcSendCount == 0) {

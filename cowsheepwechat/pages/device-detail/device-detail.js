@@ -384,7 +384,7 @@ Page({
   _applyConfigFromLorastr(configLorastr) {
     // 解析配置：格式 6|v4-16|30,0M,38|1.0|4.2|18
     // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间（两位代号，兼容旧格式 8-6）
-    // 第4段可选: 主周期（小时 1-4）
+    // 第4段可选: 主周期（参数 1-10 = 10-100分钟，每1个单位=10分钟）
     let reportInterval = '-'
     let mainPeriod = 0
     let powerOnTime = '-'
@@ -396,10 +396,10 @@ Page({
         if (configParts.length >= 1) reportInterval = configParts[0].trim()
         if (configParts.length >= 2) powerOnTime = timeWindowCodec.formatTimeRange(configParts[1].trim())
         if (configParts.length >= 3) gpsReportTime = timeWindowCodec.formatTimeRange(configParts[2].trim())
-        // 主周期（小时 1-4），仅当存在且有效时记录，用于上报周期后显示（n小时）
+        // 主周期（参数 1-10 = 10-100分钟），仅当存在且有效时记录，用于上报周期后显示（n×10分钟）
         if (configParts.length >= 4) {
           const mp = parseInt(configParts[3].trim(), 10)
-          if (!isNaN(mp) && mp >= 1 && mp <= 4) mainPeriod = mp
+          if (!isNaN(mp) && mp >= 1 && mp <= 10) mainPeriod = mp
         }
       }
     }
@@ -1130,7 +1130,7 @@ Page({
     // 解析失败时保留原代号
     const workDisplay = workTime === '-' ? segs[1] : workTime
     const gpsDisplay = gpsTime === '-' ? segs[2] : gpsTime
-    // 第4段主周期（大周期，小时 1-4），存在则追加在两个时间后面显示
+    // 第4段主周期（参数 1-10 = 10-100分钟），存在则追加在两个时间后面显示
     let mainPeriodPart = ''
     if (segs.length >= 4 && /^\d{1,2}$/.test(segs[3])) {
       mainPeriodPart = ',' + segs[3]

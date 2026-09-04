@@ -1,6 +1,5 @@
 // settings.js
 const STORAGE_KEY_BLE_SOUND = 'setting_ble_sound'
-const STORAGE_KEY_SINGLE_LINE = 'setting_single_line_record'
 const STORAGE_KEY_IS_ADMIN = 'setting_is_admin'
 const STORAGE_KEY_SHOW_ALL_DEVICES = 'setting_show_all_devices'
 const STORAGE_KEY_SHOW_CONVERTED = 'setting_show_converted'
@@ -10,7 +9,6 @@ const dataCache = require('../../config/data-cache.js')
 Page({
   data: {
     bleSound: true,          // 默认开启蓝牙接收声音
-    singleLineRecord: false,  // 默认不单行显示
     isAdmin: false,           // 默认不是管理员
     showAllDevices: false,     // 默认不显示所有设备（仅显示visible=true的）
     showConverted: false       // 默认不显示转换（显示原始数据）
@@ -22,13 +20,6 @@ Page({
       const bleSound = wx.getStorageSync(STORAGE_KEY_BLE_SOUND)
       if (bleSound !== '' && bleSound !== undefined && bleSound !== null) {
         this.setData({ bleSound: bleSound === true || bleSound === 'true' })
-      }
-    } catch (e) { /* 首次使用，保持默认值 */ }
-
-    try {
-      const singleLine = wx.getStorageSync(STORAGE_KEY_SINGLE_LINE)
-      if (singleLine !== '' && singleLine !== undefined && singleLine !== null) {
-        this.setData({ singleLineRecord: singleLine === true || singleLine === 'true' })
       }
     } catch (e) { /* 首次使用，保持默认值 */ }
 
@@ -77,14 +68,6 @@ Page({
     this.setData({ showAllDevices: value })
     wx.setStorageSync(STORAGE_KEY_SHOW_ALL_DEVICES, value)
     wx.showToast({ title: value ? '显示所有设备' : '仅显示可见设备', icon: 'none', duration: 1000 })
-  },
-
-  // 单行显示记录开关
-  onSingleLineChange(e) {
-    const value = e.detail.value === true || e.detail.value === 'true'
-    this.setData({ singleLineRecord: value })
-    wx.setStorageSync(STORAGE_KEY_SINGLE_LINE, value)
-    wx.showToast({ title: value ? '已切换单行显示' : '已恢复默认显示', icon: 'none', duration: 1000 })
   },
 
   // 显示转换开关：开启后对时记录(TYPE=2)显示换算的日期时间，关闭显示原始LORA数据

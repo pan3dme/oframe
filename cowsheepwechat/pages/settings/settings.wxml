@@ -8,14 +8,6 @@
 
     <view class="setting-row">
       <view class="setting-left">
-        <text class="setting-icon">📋</text>
-        <text class="setting-label">单行显示记录</text>
-      </view>
-      <switch checked="{{singleLineRecord}}" bindchange="onSingleLineChange" color="#07c160" />
-    </view>
-
-    <view class="setting-row">
-      <view class="setting-left">
         <text class="setting-icon">🔔</text>
         <text class="setting-label">蓝牙接收声音</text>
       </view>
