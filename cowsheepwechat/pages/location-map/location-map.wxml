@@ -13,7 +13,9 @@
 <map id="locMap" class="map"
   latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
   markers="{{markers}}" polyline="{{polylines}}" enable-satellite="{{isSatellite}}"
-  bindregionchange="onRegionChange" />
+  bindregionchange="onRegionChange"
+  bindmarkertap="onMarkerTap"
+  bindcallouttap="onCalloutTap" />
 
 <!-- 右上角悬浮信息栏 -->
 <view class="info-bar" wx:if="{{originLat}}">
@@ -29,6 +31,12 @@
     <text class="info-label">时间: </text>
     <text class="info-value">{{recordTime}}</text>
   </view>
+</view>
+
+<!-- 左下角道路显示按钮（与地图中心图层切换一致） -->
+<view class="layer-toggle {{showRoadLayer ? 'layer-on' : ''}}" bindtap="toggleLayer">
+  <text class="layer-icon">🗺️</text>
+  <text class="layer-label">{{layerLabel}}</text>
 </view>
 
 <!-- 右下角按钮 -->

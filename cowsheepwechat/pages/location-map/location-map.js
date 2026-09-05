@@ -1,5 +1,5 @@
 // location-map.js - 单点定位地图页（从设备详情定位记录跳转过来）
-const { wgs84ToGcj02, calcDistance } = require('../../utils/coord-transform.js')
+const { wgs84ToGcj02, calcDistance, parseRoadPoints } = require('../../utils/coord-transform.js')
 const dataCache = require('../../config/data-cache.js')
 
 Page({
@@ -19,7 +19,14 @@ Page({
     // 距用户当前位置的距离（米）
     distanceText: '',
     // 从我的坐标到设备的虚线
-    polylines: []
+    polylines: [],
+    // 道路显示（左下角图层开关，与地图中心一致）
+    showRoadLayer: false,
+    currentLevel: 0,
+    maxLevel: 0,
+    layerLabel: '图层',
+    // 设备气泡是否显示：默认显示；点击气泡隐藏；隐藏时点击设备图标恢复
+    deviceCalloutShow: true
   },
 
   onLoad(options) {
@@ -55,7 +62,7 @@ Page({
       this._generateTransparentIcon()
       // 异步计算"距我"距离（GCJ-02 vs GCJ-02，避免坐标系差异）
       this._calcDistanceFromMe(gcj.lat, gcj.lng)
-      // 查询设备别名（rename），用于气泡第二行显示
+      // 查询设备别名（rename），用于气泡第一行"设备（别名）"显示
       this._loadDeviceRename(deviceId, upDateDevice)
     } else {
       wx.showToast({ title: '坐标无效', icon: 'none' })
@@ -118,14 +125,19 @@ Page({
     }, 3000)
   },
 
-  // 统一刷新所有叠加层：设备 marker(0) + 我的蓝点(1) + 虚线 + 线中距离(2)
+  // 统一刷新所有叠加层：设备 marker(0) + 我的蓝点(1) + 虚线 + 线中距离(2) + 道路折线
+  // 设备气泡：第一行 = 设备 +（别名），第二行 = 定位时间
   // 蓝点坐标 = polyline 起点坐标 = 同一份 wx.getLocation 返回值 → 严格对齐，0 位差
   _applyOverlays() {
     const { deviceId } = this.data
     const markers = []
+    const polylines = []
 
-    // 设备 marker（绿色图钉）
+    // 设备 marker（绿色图钉）；气泡两行内容 + 可点击开关
     if (this._markerGcj) {
+      const alias = this._deviceRename || ''
+      const calloutLines = [(deviceId || '-') + (alias ? '（' + alias + '）' : '')]
+      if (this.data.recordTime) calloutLines.push(this.data.recordTime)
       markers.push({
         id: 0,
         latitude: this._markerGcj.lat,
@@ -135,8 +147,9 @@ Page({
         iconPath: this._deviceIconPath || '',
         title: '设备: ' + (deviceId || '-'),
         callout: {
-          content: (deviceId || '-') + (this._deviceRename ? '\n(' + this._deviceRename + ')' : ''),
-          display: 'ALWAYS',
+          content: calloutLines.join('\n'),
+          // ALWAYS 常显；BYCLICK 隐藏（点击后原生显示），由 onMarkerTap/onCalloutTap 控制
+          display: this.data.deviceCalloutShow ? 'ALWAYS' : 'BYCLICK',
           textAlign: 'center',
           fontSize: 13,
           padding: 10,
@@ -146,8 +159,13 @@ Page({
       })
     }
 
+    // 道路折线（开启图层时显示，放最底层）
+    if (this.data.showRoadLayer && this._roadPolylines && this._roadPolylines.length) {
+      this._roadPolylines.forEach(line => polylines.push(line))
+    }
+
     const payload = {}
-    // 我的蓝点 + 虚线 + 距离
+    // 我的蓝点 + 虚线 + 距离（红色虚线压在路上方）
     if (this._myGcj) {
       const meters = this._markerGcj
         ? calcDistance(this._markerGcj.lat, this._markerGcj.lng, this._myGcj.lat, this._myGcj.lng)
@@ -156,7 +174,7 @@ Page({
         ? Math.round(meters) + ' 米'
         : (meters / 1000).toFixed(2) + ' 千米'
       payload.distanceText = text
-      payload.polylines = [{
+      polylines.push({
         points: [
           { latitude: this._myGcj.lat, longitude: this._myGcj.lng },
           { latitude: this._markerGcj.lat, longitude: this._markerGcj.lng }
@@ -166,7 +184,7 @@ Page({
         dottedLine: true,
         arrowLine: true,
         zIndex: 10
-      }]
+      })
 
       // 我的蓝点
       if (this._myIconPath) {
@@ -208,6 +226,7 @@ Page({
       }
     }
 
+    payload.polylines = polylines
     payload.markers = markers
     this.setData(payload)
   },
@@ -548,6 +567,129 @@ Page({
       longitude: this.data.nativeLng
     })
     wx.showToast({ title: '已回到定位点', icon: 'success', duration: 1000 })
+  },
+
+  // ==================== 道路显示（左下角图层按钮，与地图中心一致） ====================
+
+  // 左下角图层按钮：首次点击加载道路并自动显示最低等级；之后点击逐级显示，
+  // 已达最大等级后再点击隐藏全部道路
+  toggleLayer() {
+    if (!this._roadFetched) {
+      this.fetchRoadData()
+      return
+    }
+    const { currentLevel, maxLevel } = this.data
+    if (currentLevel >= maxLevel) {
+      // 已到最大等级，再按隐藏所有
+      this._applyLevel(0)
+      return
+    }
+    // 升一级
+    this._applyLevel(currentLevel + 1)
+  },
+
+  // 加载道路数据（缓存优先，与地图中心同一份缓存）
+  fetchRoadData() {
+    if (this._roadLoading) return
+    this._roadLoading = true
+    const that = this
+    wx.showLoading({ title: '加载道路...' })
+    dataCache.getRoadListFromCache((cachedData) => {
+      that._roadLoading = false
+      wx.hideLoading()
+      that._roadFetched = true
+      const roadList = (cachedData && cachedData.roadList) || []
+      if (roadList.length === 0) {
+        wx.showToast({ title: '暂无道路数据', icon: 'none' })
+        return
+      }
+      console.log('[道路] 定位详情页加载:', roadList.length, '条（缓存优先）')
+      that._fullRoadList = roadList
+      // 道路中的最大等级
+      let maxLevel = 0
+      roadList.forEach(item => {
+        const lv = parseInt(item.level) || 1
+        if (lv > maxLevel) maxLevel = lv
+      })
+      if (maxLevel < 1) maxLevel = 1
+      that.setData({ maxLevel })
+      // 加载完成自动显示最低等级
+      that._applyLevel(1)
+    })
+  },
+
+  // 按等级刷新道路折线：level=0 隐藏；level>0 显示 level≤该值的所有道路
+  _applyLevel(level) {
+    const show = level > 0
+    const filteredRoads = show
+      ? this._fullRoadList.filter(r => (parseInt(r.level) || 1) <= level)
+      : []
+    this._buildRoadPolylines(filteredRoads)
+
+    const label = show ? ('Lv.' + level) : '图层'
+    this.setData({
+      showRoadLayer: show,
+      currentLevel: level,
+      layerLabel: label
+    })
+    // 统一刷新叠加层：合并道路折线与"我→设备"虚线
+    this._applyOverlays()
+    wx.showToast({
+      title: show ? ('已显示等级 ≤' + level) : '道路已隐藏',
+      icon: 'none',
+      duration: 1000
+    })
+  },
+
+  // 解析 roadinfo 坐标并构建灰色道路折线（与地图中心样式一致）
+  _buildRoadPolylines(roadList) {
+    const polylines = []
+    roadList.forEach((road) => {
+      const points = parseRoadPoints(road.roadinfo)
+      if (points.length < 2) {
+        console.warn('[道路] 坐标点不足，跳过:', road.roadname || road.route_id)
+        return
+      }
+      // WGS-84 → GCJ-02 转换全部点
+      const gcjPoints = points.map(p => {
+        const gcj = wgs84ToGcj02(p.lng, p.lat)
+        return { latitude: gcj.lat, longitude: gcj.lng }
+      })
+      polylines.push({
+        points: gcjPoints,
+        color: '#C8C8C8',
+        width: 4,
+        borderColor: '#808080',
+        borderWidth: 1.5,
+        arrowLine: false,
+        dottedLine: false
+      })
+    })
+    console.log('[道路] 构建折线:', polylines.length, '条')
+    this._roadPolylines = polylines
+  },
+
+  // ==================== 设备气泡 显示/隐藏 ====================
+
+  // 点击设备 marker：气泡未显示时恢复显示（已显示则不做任何事）
+  onMarkerTap(e) {
+    const markerId = e && e.detail ? e.detail.markerId : -1
+    if (markerId !== 0) return
+    // 部分平台点击气泡会连带触发 markertap，隐藏后短暂忽略，避免"刚隐藏又显示"
+    if (Date.now() - (this._lastCalloutHideTs || 0) < 350) return
+    if (this.data.deviceCalloutShow) return
+    this.setData({ deviceCalloutShow: true })
+    this._applyOverlays()
+  },
+
+  // 点击设备气泡 → 隐藏气泡
+  onCalloutTap(e) {
+    const markerId = e && e.detail ? e.detail.markerId : -1
+    if (markerId !== 0) return
+    if (!this.data.deviceCalloutShow) return
+    this._lastCalloutHideTs = Date.now()
+    this.setData({ deviceCalloutShow: false })
+    this._applyOverlays()
   },
 
   // 页面销毁：停止位置轮询

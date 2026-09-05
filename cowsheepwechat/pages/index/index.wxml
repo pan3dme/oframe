@@ -52,22 +52,9 @@
               <text class="hi-label">GPS时间</text>
               <text class="hi-value">{{deviceInfo.gpsReportTime || '-'}}</text>
             </view>
-            <view class="hi-item">
-              <block wx:if="{{!deviceInfo.ProductKey}}">
-                <text class="hi-label">上次换电</text>
-                <text class="hi-value {{deviceInfo.swapTimeRel ? 'hi-value-highlight' : ''}}">{{deviceInfo.swapTimeRel || '-'}}</text>
-              </block>
-              <view class="hi-item-links {{deviceInfo.ProductKey ? 'hi-item-links-relay' : ''}}">
-                <view class="send-cmd-link" bindtap="onSendCmdTap">
-                  <text class="send-cmd-icon">📤</text>
-                </view>
-                <view class="get-location-link" wx:if="{{!deviceInfo.ProductKey}}" bindtap="onGetLocationTap">
-                  <text class="get-location-icon">📍</text>
-                </view>
-                <view class="track-link" wx:if="{{!deviceInfo.ProductKey}}" bindtap="onViewTrackTap">
-                  <text class="track-icon">🗺</text>
-                </view>
-              </view>
+            <view class="hi-item" wx:if="{{!deviceInfo.ProductKey}}">
+              <text class="hi-label">上次换电</text>
+              <text class="hi-value {{deviceInfo.swapTimeRel ? 'hi-value-highlight' : ''}}">{{deviceInfo.swapTimeRel || '-'}}</text>
             </view>
           </view>
         </view>

@@ -30,12 +30,12 @@ Page({
     // 设备功能按钮（每行3个）
     featureBtns: [
       { id: 'location', label: '实时定位', color: '#F56C6C', icon: '📍' },
-      { id: 'track',    label: '历史轨迹', color: '#F0A020', icon: '🗺' },
-      { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' },
+      { id: 'track',    label: '轨迹地图', color: '#F0A020', icon: '🗺' },
+      { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
       { id: 'alarm',    label: '报警信息', color: '#1E88E5', icon: '🔔' },
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
-      { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' }
+      { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' }
     ]
   },
 
@@ -796,6 +796,15 @@ Page({
     console.log('功能按钮点击:', id, btn && btn.label)
     if (id === 'location') {
       this.onRealtimeLocateTap()
+      return
+    }
+    if (id === 'track') {
+      this.onViewTrackTap()
+      return
+    }
+    if (id === 'setting') {
+      // 设备设置：中继设备(有ProductKey)进入中继DTU指令页 relay-dtu-cmd，普通设备进入 dtu-cmd
+      this.onSendCmdTap()
       return
     }
     if (id === 'records') {

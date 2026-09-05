@@ -524,12 +524,12 @@ Page({
     })
   },
 
-  // ========== 点击设备：选中并回首页展示该设备详情 ==========
+  // ========== 点击设备：缓存选中并切回首页展示（与首页一致，不再进 device-detail 子页） ==========
   onTapDevice(e) {
     const deviceId = e.currentTarget.dataset.deviceid
     if (!deviceId) return
 
-    // 缓存选中的设备，首页每次打开都恢复该设备详情
+    // 缓存选中的设备，首页每次展示都恢复该设备的首页样式详情
     dataCache.setHomeSelectedDevice(deviceId)
     wx.switchTab({
       url: '/pages/index/index',
