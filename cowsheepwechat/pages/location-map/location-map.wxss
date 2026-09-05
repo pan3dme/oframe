@@ -52,6 +52,39 @@ page {
   width: 100%;
 }
 
+/* 左上角：请求设备上报定位（向DTU发送 upgps 指令，样式与右下功能按钮一致） */
+.upgps-btn {
+  position: fixed;
+  left: 20rpx;
+  top: 200rpx;
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.upgps-btn:active {
+  background: rgba(230, 230, 230, 0.95);
+}
+
+.upgps-icon {
+  font-size: 32rpx;
+  color: #333;
+  line-height: 1;
+}
+
+.upgps-label {
+  font-size: 16rpx;
+  color: #666;
+  margin-top: 2rpx;
+}
+
 /* 左下角道路显示按钮 */
 .layer-toggle {
   position: fixed;

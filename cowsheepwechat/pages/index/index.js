@@ -838,7 +838,8 @@ Page({
           '&deviceId=' + encodeURIComponent(deviceId) +
           '&time=' + encodeURIComponent(rawTime || '') +
           '&lorastr=' + encodeURIComponent(lorastr || '') +
-          '&upDateDevice=' + encodeURIComponent(upDateDevice || '')
+          '&upDateDevice=' + encodeURIComponent(upDateDevice || '') +
+          '&autoUpgps=1'
       })
     }
 

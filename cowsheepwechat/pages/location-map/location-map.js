@@ -2,6 +2,10 @@
 const { wgs84ToGcj02, calcDistance, parseRoadPoints } = require('../../utils/coord-transform.js')
 const dataCache = require('../../config/data-cache.js')
 
+const API_URL = getApp().globalData.api_device_Url
+// DTU 指令转发云函数地址
+const FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
+
 Page({
   data: {
     nativeLat: 26.529950,
@@ -26,7 +30,9 @@ Page({
     maxLevel: 0,
     layerLabel: '图层',
     // 设备气泡是否显示：默认显示；点击气泡隐藏；隐藏时点击设备图标恢复
-    deviceCalloutShow: true
+    deviceCalloutShow: true,
+    // 从实时定位进入：页面加载完后自动向DTU发送 upgps 刷新位置
+    autoUpgps: false
   },
 
   onLoad(options) {
@@ -36,6 +42,7 @@ Page({
     const recordTime = decodeURIComponent(options.time || '')
     const lorastr = decodeURIComponent(options.lorastr || '')
     const upDateDevice = decodeURIComponent(options.upDateDevice || '')
+    const autoUpgps = options.autoUpgps === '1' || options.autoUpgps === 'true'
 
     if (!isNaN(lat) && !isNaN(lng)) {
       // WGS-84 → GCJ-02 转换
@@ -47,6 +54,7 @@ Page({
         recordTime,
         lorastr,
         upDateDevice,
+        autoUpgps,
         originLat: lat.toFixed(5),
         originLng: lng.toFixed(5)
       })
@@ -66,6 +74,14 @@ Page({
       this._loadDeviceRename(deviceId, upDateDevice)
     } else {
       wx.showToast({ title: '坐标无效', icon: 'none' })
+    }
+  },
+
+  // 页面加载完成：从实时定位(autoUpgps=1)进入时自动向DTU发送 upgps，触发设备立即上报最新位置
+  onReady() {
+    if (this.data.autoUpgps && this.data.deviceId) {
+      const that = this
+      setTimeout(() => { that._autoSendUpgps() }, 600)
     }
   },
 
@@ -569,6 +585,15 @@ Page({
     wx.showToast({ title: '已回到定位点', icon: 'success', duration: 1000 })
   },
 
+  // 左上角按钮：请求设备上报最新位置（先找信号最好的中继 → 发送 upgps 指令）
+  onRefreshUpgpsTap() {
+    if (!this.data.deviceId) {
+      wx.showToast({ title: '无设备编号', icon: 'none' })
+      return
+    }
+    this._autoSendUpgps()
+  },
+
   // ==================== 道路显示（左下角图层按钮，与地图中心一致） ====================
 
   // 左下角图层按钮：首次点击加载道路并自动显示最低等级；之后点击逐级显示，
@@ -690,6 +715,175 @@ Page({
     this._lastCalloutHideTs = Date.now()
     this.setData({ deviceCalloutShow: false })
     this._applyOverlays()
+  },
+
+  // ==================== 自动刷新位置（实时定位 → 定位详情：加载完发送 upgps） ====================
+
+  // 目标设备自身带密钥则直接发送；否则先找信号最好的中继（上传设备）再发送
+  _autoSendUpgps() {
+    const that = this
+    const deviceId = this.data.deviceId
+    if (!deviceId) return
+    const cmdText = JSON.stringify({ cmd: 'upgps', value: 0 })
+    wx.showLoading({ title: '正在刷新定位...' })
+    dataCache.getDeviceList((deviceData) => {
+      const allDevices = (deviceData && deviceData.recordList) ? deviceData.recordList : []
+      const selfDev = allDevices.find(d => d.deviceId === deviceId)
+      if (selfDev && selfDev.ProductKey && selfDev.DeviceName) {
+        // 设备自身就是中继/带密钥 → 直接发送
+        that._doSendDTU(selfDev, deviceId, cmdText)
+        return
+      }
+      // 查找信号最好的中继（转发过该设备消息且RSSI最优的上传设备）
+      that._queryBestRelay(deviceId, cmdText)
+    }, false)
+  },
+
+  // 通过 getDeviceBestRssibyId 查询该设备记录里信号最好的中继（上传设备）
+  _queryBestRelay(targetDeviceId, cmdText) {
+    const that = this
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'getDeviceBestRssibyId',
+        info: { limit: 2, deviceId: targetDeviceId, wechatid: getApp().getWechatId() }
+      },
+      success: (res) => {
+        console.log('[定位刷新] getDeviceBestRssibyId 返回:', JSON.stringify(res.data))
+        let rawList = []
+        if (res.data && res.data.data && Array.isArray(res.data.data)) {
+          rawList = res.data.data
+        } else if (Array.isArray(res.data)) {
+          rawList = res.data
+        }
+
+        if (rawList.length === 0) {
+          wx.hideLoading()
+          wx.showToast({ title: '该设备当天无记录，无法获取中继', icon: 'none', duration: 2500 })
+          return
+        }
+
+        const parsedRecords = rawList.map(record => {
+          const attr = {}
+          if (record.attributes) {
+            record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+          }
+          if (record.primaryKey) {
+            record.primaryKey.forEach(item => { attr[item.name] = item.value })
+          }
+          const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
+          const rssi = this._parseRssi(attr.rssi || attr.RSSI || record.rssi || record.RSSI)
+          return { upDateDevice, rssi }
+        }).filter(r => r.upDateDevice && r.upDateDevice !== '-')
+
+        if (parsedRecords.length === 0) {
+          wx.hideLoading()
+          wx.showToast({ title: '记录中未找到有效中继', icon: 'none', duration: 2500 })
+          return
+        }
+
+        const deviceBestRssi = {}
+        const deviceCount = {}
+        parsedRecords.forEach(r => {
+          if (!deviceBestRssi[r.upDateDevice] || r.rssi > deviceBestRssi[r.upDateDevice]) {
+            deviceBestRssi[r.upDateDevice] = r.rssi
+          }
+          deviceCount[r.upDateDevice] = (deviceCount[r.upDateDevice] || 0) + 1
+        })
+
+        let bestDevice = null
+        let bestRssi = -999
+        let bestCount = 0
+        Object.keys(deviceBestRssi).forEach(devId => {
+          const r = deviceBestRssi[devId]
+          const c = deviceCount[devId]
+          const hasRssi = r > -999
+          if (hasRssi) {
+            // RSSI 越大（越接近0）信号越好，用 > 比较
+            if (r > bestRssi || (r === bestRssi && c > bestCount)) {
+              bestRssi = r; bestCount = c; bestDevice = devId
+            }
+          } else if (bestRssi <= -999) {
+            if (c > bestCount) { bestCount = c; bestDevice = devId }
+          }
+        })
+        console.log('[定位刷新] 信号最好的中继:', bestDevice, 'RSSI:', bestRssi)
+
+        if (!bestDevice) {
+          wx.hideLoading()
+          wx.showToast({ title: '未找到可用中继', icon: 'none', duration: 2500 })
+          return
+        }
+        // 从设备缓存中取中继密钥并发送
+        dataCache.getDeviceList((deviceData) => {
+          const allDevices = (deviceData && deviceData.recordList) ? deviceData.recordList : []
+          const relayDev = allDevices.find(d => d.deviceId === bestDevice)
+          if (!relayDev) {
+            wx.hideLoading()
+            wx.showToast({ title: '中继 ' + bestDevice + ' 不在设备列表中', icon: 'none', duration: 2500 })
+            return
+          }
+          if (!relayDev.ProductKey || !relayDev.DeviceName) {
+            wx.hideLoading()
+            wx.showToast({ title: '中继 ' + bestDevice + ' 缺少密钥', icon: 'none', duration: 2500 })
+            return
+          }
+          that._doSendDTU(relayDev, targetDeviceId, cmdText)
+        }, false)
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('[定位刷新] 查询中继失败:', err)
+        wx.showToast({ title: '查询中继失败', icon: 'error' })
+      }
+    })
+  },
+
+  // 实际执行DTU发送：向中继的DTU下发给目标设备的 upgps 指令
+  _doSendDTU(credDevice, targetDeviceId, cmdText) {
+    let msgObj
+    try {
+      msgObj = JSON.parse(cmdText)
+    } catch (e) {
+      msgObj = { text: cmdText }
+    }
+    msgObj.deviceId = targetDeviceId
+    const finalMsg = JSON.stringify(msgObj)
+
+    const payload = {
+      action: 'com',
+      deviceName: credDevice.DeviceName,
+      productKey: credDevice.ProductKey,
+      msg: finalMsg,
+      timestamp: Date.now(),
+      info: { wechatid: getApp().getWechatId() }
+    }
+
+    console.log('[定位刷新] 发送DTU:', JSON.stringify(payload))
+    wx.request({
+      url: FC_URL,
+      method: 'POST',
+      data: payload,
+      timeout: 10000,
+      success: (res) => {
+        wx.hideLoading()
+        console.log('[定位刷新] DTU返回:', JSON.stringify(res.data))
+        wx.showToast({ title: '定位指令已发送 → ' + targetDeviceId, icon: 'success' })
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('[定位刷新] DTU发送失败:', err)
+        wx.showToast({ title: '发送失败', icon: 'error' })
+      }
+    })
+  },
+
+  // 解析 RSSI
+  _parseRssi(val) {
+    if (val === undefined || val === null || val === '' || val === '-') return -999
+    const n = parseInt(val, 10)
+    return isNaN(n) ? -999 : n
   },
 
   // 页面销毁：停止位置轮询

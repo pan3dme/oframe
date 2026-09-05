@@ -17,6 +17,12 @@
   bindmarkertap="onMarkerTap"
   bindcallouttap="onCalloutTap" />
 
+<!-- 左上角：请求设备上报最新位置（向DTU发送 upgps 指令） -->
+<view class="upgps-btn" bindtap="onRefreshUpgpsTap">
+  <text class="upgps-icon">📡</text>
+  <text class="upgps-label">上报</text>
+</view>
+
 <!-- 右上角悬浮信息栏 -->
 <view class="info-bar" wx:if="{{originLat}}">
   <view class="info-row">
