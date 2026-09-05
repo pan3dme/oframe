@@ -1,62 +1,89 @@
-<!--index.wxml-->
-<navigation-bar title="首页" back="{{false}}" color="black" background="#FFF"></navigation-bar>
+<!--index.wxml - 首页：显示最近选中设备的详情-->
+<navigation-bar title="{{navTitle}}" back="{{false}}" color="black" background="#FFF"></navigation-bar>
 
-<scroll-view class="scrollarea" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refresherTriggered}}" bindrefresherrefresh="onRefresh">
-  <!-- 设备摘要 -->
-  <view class="summary-card" bindtap="goToDevice">
-    <view class="summary-icon summary-icon-device">📡</view>
-    <view class="summary-info">
-      <view class="summary-count">{{deviceCount}} 台设备</view>
-      <view class="summary-detail" wx:if="{{deviceUpdateTime}}">最后更新 {{deviceUpdateTime}}</view>
-    </view>
+<!-- 未选择设备：引导去设备列表 -->
+<block wx:if="{{!hasSelected}}">
+  <view class="home-empty">
+    <view class="home-empty-icon">📡</view>
+    <view class="home-empty-title">暂未选择设备</view>
+    <view class="home-empty-desc">请在设备列表中选择一台设备，选择后会被记住，下次打开小程序会直接显示该设备详情</view>
+    <button class="home-empty-btn" bindtap="goDeviceTab">去设备列表选择</button>
   </view>
+</block>
 
-  <!-- 牛羊摘要 -->
-  <view class="summary-card" bindtap="goToLivestock">
-    <view class="summary-icon summary-icon-livestock">🐮</view>
-    <view class="summary-info">
-      <view class="summary-count">{{livestockCount}} 头牛羊</view>
-      <view class="summary-detail">已有 {{boundCount}} 头连接设备</view>
-    </view>
-  </view>
+<!-- 已选择设备：设备详情 -->
+<block wx:else>
+  <scroll-view class="home-scroll" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{isRefreshing}}" bindrefresherrefresh="onRefreshNow" bindscrolltolower="onLoadMoreRecords" lower-threshold="80">
 
-  <!-- 统计告警 -->
-  <view class="alert-card">
-    <view class="alert-title">📋 统计信息</view>
-    <view class="alert-item">
-      <view class="alert-dot" style="background:#1976d2"></view>
-      <text class="alert-icon">📡</text>
-      <text class="alert-text">{{fastReportCount}} 台定位设备上报周期≤5分钟：{{fastReportDevices}}</text>
-    </view>
-    <view class="alert-item" wx:for="{{alerts}}" wx:key="text">
-      <view class="alert-dot" style="background:{{item.color}}"></view>
-      <text class="alert-icon">{{item.icon}}</text>
-      <text class="alert-text">{{item.text}}</text>
-    </view>
-  </view>
+    <!-- 加载中 -->
+    <view class="empty-tip" wx:if="{{loading && !deviceInfo}}">加载中...</view>
 
-  <view class="section-placeholder"></view>
-</scroll-view>
+    <block wx:if="{{deviceInfo}}">
+      <!-- 设备头部卡片：左图片 + 右基本信息 -->
+      <view class="detail-header">
+        <view class="pic-area" bindtap="onPreviewImage">
+          <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" />
+          <view class="detail-pic-placeholder" wx:else>
+            <view class="placeholder-icon">📡</view>
+            <text class="placeholder-text">设备图片</text>
+          </view>
+        </view>
 
-<!-- 快捷功能（固定在页面底部） -->
-<view class="section">
-  <view class="section-title">快捷功能</view>
-  <view class="btn-bar">
-    <view class="icon-item">
-      <button class="btn-device" bindtap="goToDevice">💻</button>
-      <text class="icon-label">设备管理</text>
-    </view>
-    <view class="icon-item">
-      <button class="btn-bluetooth" bindtap="goToBluetooth">🤝</button>
-      <text class="icon-label">连接蓝牙</text>
-    </view>
-    <view class="icon-item">
-      <button class="btn-features" bindtap="goToFeatures">🔨</button>
-      <text class="icon-label">功能</text>
-    </view>
-    <view class="icon-item">
-      <button class="btn-map" bindtap="goToMap">🗺️</button>
-      <text class="icon-label">地图</text>
-    </view>
-  </view>
-</view>
+        <view class="header-info">
+          <view class="header-title-row">
+            <text class="header-title">{{deviceInfo.deviceId}}<block wx:if="{{deviceInfo.rename}}"> ({{deviceInfo.rename}})</block></text>
+          </view>
+          <view class="header-info-grid">
+            <view class="hi-item">
+              <text class="hi-label">上报周期</text>
+              <text class="hi-value">
+                <text class="{{deviceInfo.inPowerOn ? 'hi-val-main' : 'hi-val-dim'}}">{{deviceInfo.reportInterval || '-'}}分钟</text>
+                <block wx:if="{{deviceInfo.mainPeriod}}">
+                  <text class="{{deviceInfo.inPowerOn ? 'hi-val-dim' : 'hi-val-main'}}">（{{deviceInfo.mainPeriod * 10}}分钟）</text>
+                </block>
+              </text>
+            </view>
+            <view class="hi-item">
+              <text class="hi-label">开机时间</text>
+              <text class="hi-value">{{deviceInfo.powerOnTime || '-'}}</text>
+            </view>
+            <!-- 中继设备(有ProductKey)太阳能供电，无GPS定位，不显示GPS时间与换电 -->
+            <view class="hi-item" wx:if="{{!deviceInfo.ProductKey}}">
+              <text class="hi-label">GPS时间</text>
+              <text class="hi-value">{{deviceInfo.gpsReportTime || '-'}}</text>
+            </view>
+            <view class="hi-item">
+              <block wx:if="{{!deviceInfo.ProductKey}}">
+                <text class="hi-label">上次换电</text>
+                <text class="hi-value {{deviceInfo.swapTimeRel ? 'hi-value-highlight' : ''}}">{{deviceInfo.swapTimeRel || '-'}}</text>
+              </block>
+              <view class="hi-item-links {{deviceInfo.ProductKey ? 'hi-item-links-relay' : ''}}">
+                <view class="send-cmd-link" bindtap="onSendCmdTap">
+                  <text class="send-cmd-icon">📤</text>
+                </view>
+                <view class="get-location-link" wx:if="{{!deviceInfo.ProductKey}}" bindtap="onGetLocationTap">
+                  <text class="get-location-icon">📍</text>
+                </view>
+                <view class="track-link" wx:if="{{!deviceInfo.ProductKey}}" bindtap="onViewTrackTap">
+                  <text class="track-icon">🗺</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 设备功能按钮（每行3个） -->
+      <view class="home-features">
+        <view class="home-feature" wx:for="{{featureBtns}}" wx:key="id" bindtap="onFeatureBtnTap" data-id="{{item.id}}">
+          <view class="home-feature-icon" style="background:{{item.color}}">
+            <text class="home-feature-emoji">{{item.icon}}</text>
+          </view>
+          <text class="home-feature-label">{{item.label}}</text>
+        </view>
+      </view>
+
+      <view class="home-bottom"></view>
+    </block>
+  </scroll-view>
+</block>

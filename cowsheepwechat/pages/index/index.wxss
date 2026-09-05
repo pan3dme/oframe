@@ -1,246 +1,102 @@
 /**index.wxss**/
+/* 复用设备详情页样式（头部卡片 / 数据记录列表等），保证首页详情与详情页视觉一致 */
+@import "../device-detail/device-detail.wxss";
+
 page {
-  height: 100vh;
+  background: #f0f2f5;
+}
+
+.home-scroll {
+  flex: 1;
+  height: 0;
+}
+
+.home-bottom {
+  height: 60rpx;
+}
+
+/* ========== 设备功能按钮（每行3个） ========== */
+.home-features {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 16rpx 24rpx 8rpx;
+  margin-top: 15px;
+}
+
+.home-feature {
+  width: 33.333%;
   display: flex;
   flex-direction: column;
-  background: #f5f5f5;
-}
-.scrollarea {
-  flex: 1;
-}
-
-/* 摘要卡片 */
-.summary-card {
-  margin: 24rpx 24rpx 0;
-  padding: 28rpx 28rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  display: flex;
   align-items: center;
-  gap: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+  margin-bottom: 28rpx;
 }
 
-.summary-icon {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 20rpx;
+.home-feature-icon {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40rpx;
-  flex-shrink: 0;
-}
-.summary-icon-device {
-  background: #e3f2fd;
-}
-.summary-icon-livestock {
-  background: #fbe9e7;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
 }
 
-.summary-info {
-  flex: 1;
+.home-feature-emoji {
+  font-size: 44rpx;
+  line-height: 1;
+  color: #fff;
 }
 
-.summary-count {
-  font-size: 32rpx;
-  font-weight: 700;
+.home-feature-label {
+  margin-top: 14rpx;
+  font-size: 26rpx;
   color: #333;
 }
 
-.summary-detail {
-  font-size: 24rpx;
-  color: #999;
-  margin-top: 6rpx;
+/* ========== 未选择设备：空状态 ========== */
+.home-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 220rpx 80rpx 0;
 }
 
-/* 统计告警卡片 */
-.alert-card {
-  margin: 24rpx 24rpx 0;
-  padding: 24rpx 28rpx;
-  background: #fff;
-  border-radius: 16rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+.home-empty-icon {
+  font-size: 120rpx;
+  line-height: 1;
+  margin-bottom: 40rpx;
+  opacity: 0.8;
 }
 
-.alert-title {
-  font-size: 28rpx;
+.home-empty-title {
+  font-size: 34rpx;
   font-weight: 700;
   color: #333;
   margin-bottom: 20rpx;
-  padding-bottom: 16rpx;
-  border-bottom: 1rpx solid #f0f0f0;
 }
 
-.alert-item {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 14rpx 0;
-}
-.alert-item:last-child {
-  padding-bottom: 0;
-}
-
-.alert-dot {
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.alert-icon {
-  font-size: 30rpx;
-  flex-shrink: 0;
-}
-
-.alert-text {
-  font-size: 26rpx;
-  color: #555;
-  flex: 1;
-  word-break: break-all;
-}
-
-.section-placeholder {
-  height: 180rpx;
-}
-
-/* 快捷功能区（固定底部） */
-.section {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 0 24rpx 40rpx;
-  padding-bottom: calc(40rpx + env(safe-area-inset-bottom));
-  background: #f5f5f5;
-  z-index: 100;
-}
-
-.section-title {
+.home-empty-desc {
   font-size: 26rpx;
   color: #999;
-  padding: 16rpx 0 24rpx;
   text-align: center;
+  line-height: 1.7;
+  margin-bottom: 48rpx;
 }
 
-.section .btn-bar {
-  display: flex;
-  padding: 0;
-  justify-content: center;
-  gap: 32rpx;
-}
-
-.icon-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.icon-label {
-  font-size: 22rpx;
-  color: #999;
-}
-
-.btn-features {
-  width: 100rpx;
-  height: 100rpx;
-  min-width: 100rpx;
-  max-width: 100rpx;
-  line-height: 100rpx;
-  font-size: 48rpx;
+.home-empty-btn {
+  width: 360rpx;
+  height: 88rpx;
+  line-height: 88rpx;
+  font-size: 30rpx;
   color: #fff;
-  background: #ff9500;
-  border-radius: 50%;
-  border: none;
+  background: #1a73e8;
+  border-radius: 44rpx;
   padding: 0;
-  box-sizing: border-box;
   margin: 0;
-}
-
-.btn-features::after {
   border: none;
 }
 
-.btn-livestock {
-  width: 100rpx;
-  height: 100rpx;
-  min-width: 100rpx;
-  max-width: 100rpx;
-  line-height: 100rpx;
-  font-size: 48rpx;
-  color: #fff;
-  background: #8B5E3C;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  box-sizing: border-box;
-  margin: 0;
-}
-
-.btn-livestock::after {
+.home-empty-btn::after {
   border: none;
 }
-
-.btn-bluetooth {
-  width: 100rpx;
-  height: 100rpx;
-  min-width: 100rpx;
-  max-width: 100rpx;
-  line-height: 100rpx;
-  font-size: 48rpx;
-  color: #fff;
-  background: #1976d2;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  box-sizing: border-box;
-  margin: 0;
-}
-
-.btn-bluetooth::after {
-  border: none;
-}
-
-.btn-device {
-  width: 100rpx;
-  height: 100rpx;
-  min-width: 100rpx;
-  max-width: 100rpx;
-  line-height: 100rpx;
-  font-size: 48rpx;
-  color: #fff;
-  background: #1565c0;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  box-sizing: border-box;
-  margin: 0;
-}
-
-.btn-device::after {
-  border: none;
-}
-
-.btn-map {
-  width: 100rpx;
-  height: 100rpx;
-  min-width: 100rpx;
-  max-width: 100rpx;
-  line-height: 100rpx;
-  font-size: 48rpx;
-  color: #fff;
-  background: #2e7d32;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  box-sizing: border-box;
-  margin: 0;
-}
-
-.btn-map::after {
-  border: none;
-}
-
 

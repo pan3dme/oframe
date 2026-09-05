@@ -1,8 +1,8 @@
 <!--device-detail.wxml-->
-<navigation-bar title="设备详情" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="{{navTitle}}" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <block wx:if="{{deviceInfo}}">
   <!-- 设备头部卡片：左图片 + 右基本信息（固定不动） -->
-  <view class="detail-header">
+  <view class="detail-header" wx:if="{{!hideDeviceInfo}}">
     <!-- 左边：设备图片 -->
     <view class="pic-area" bindtap="onPreviewImage">
       <image class="detail-pic" wx:if="{{deviceInfo.picurl}}" src="{{deviceInfo.picurl}}" mode="aspectFill" />

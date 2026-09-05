@@ -1,5 +1,5 @@
 <!--device.wxml-->
-<navigation-bar title="设备管理" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="设备列表" back="{{false}}" color="black" background="#FFF"></navigation-bar>
 <canvas type="2d" id="compressCanvas" style="width:512px;height:512px;position:fixed;left:-9999px"></canvas>
 <scroll-view class="scrollarea" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refresherTriggered}}" bindrefresherrefresh="onPullDownRefresh">
 

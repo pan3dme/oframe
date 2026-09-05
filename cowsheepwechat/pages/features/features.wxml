@@ -1,5 +1,5 @@
 <!--features.wxml-->
-<navigation-bar title="功能列表" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="功能列表" back="{{false}}" color="black" background="#FFF"></navigation-bar>
 <scroll-view class="scrollarea" scroll-y type="list">
   <!-- 功能面板 -->
   <view class="feature-panel">

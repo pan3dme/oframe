@@ -89,8 +89,8 @@ Page({
       })
 
     } else if (id === 3) {
-      // 设备最新数据 - 直接跳转设备列表页
-      wx.navigateTo({ url: '/pages/device/device' })
+      // 设备最新数据 - 切换到设备 TAB
+      wx.switchTab({ url: '/pages/device/device' })
     } else if (id === 4) {
       // 设置 → 跳转设置页面
       wx.navigateTo({ url: '/pages/settings/settings' })
@@ -117,8 +117,8 @@ Page({
       // DTU发送指令
       wx.navigateTo({ url: '/pages/dtu-cmd/dtu-cmd' })
     } else if (id === 11) {
-      // 前往首页
-      wx.reLaunch({ url: '/pages/index/index' })
+      // 切换到首页 TAB
+      wx.switchTab({ url: '/pages/index/index' })
     }
   },
 

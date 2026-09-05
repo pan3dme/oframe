@@ -524,15 +524,17 @@ Page({
     })
   },
 
-  // ========== 点击设备进入详情 ==========
+  // ========== 点击设备：选中并回首页展示该设备详情 ==========
   onTapDevice(e) {
     const deviceId = e.currentTarget.dataset.deviceid
     if (!deviceId) return
 
-    wx.navigateTo({
-      url: '/pages/device-detail/device-detail?deviceId=' + encodeURIComponent(deviceId),
+    // 缓存选中的设备，首页每次打开都恢复该设备详情
+    dataCache.setHomeSelectedDevice(deviceId)
+    wx.switchTab({
+      url: '/pages/index/index',
       fail: (err) => {
-        console.error('跳转设备详情失败:', err)
+        console.error('切回首页失败:', err)
         wx.showToast({ title: '页面跳转失败', icon: 'none' })
       }
     })

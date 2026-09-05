@@ -8,6 +8,8 @@ const STORAGE_KEY_AUTO_LOGIN = 'setting_auto_login'
 // 主程序依赖这份数据取用户身份，缺失时必须重新输入用户名密码获取
 const SERVER_DATA_KEY = 'login_server_data'
 
+const dataCache = require('../../config/data-cache.js')
+
 Page({
   data: {
     username: '',      // 用户名
@@ -180,8 +182,9 @@ Page({
     app.globalData.sessionConfirmed = true
 
     wx.showToast({ title: '登录成功', icon: 'success' })
-    setTimeout(() => {
+    // 登录成功后预加载设备配置表缓存，避免首页首次打开时上报周期/开机时间/GPS时间显示"-"
+    dataCache.getDeviceConfigAll(() => {
       wx.reLaunch({ url: '/pages/index/index' })
-    }, 600)
+    }, false)
   }
 })

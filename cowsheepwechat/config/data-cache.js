@@ -388,9 +388,9 @@ function _parseDeviceConfigRecords(data) {
       record.primaryKey.forEach(item => { attr[item.name] = item.value })
     }
     if (record.lorastr) attr.lorastr = record.lorastr
-    const deviceId = attr.deviceId || ''
+    const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || ''
     if (!deviceId) return
-    const configLorastr = attr.lorastr || ''
+    const configLorastr = attr.lorastr || record.lorastr || ''
     let reportInterval = null
     if (configLorastr) {
       const parts = configLorastr.split('|')
@@ -595,6 +595,37 @@ function clearPlaceCache() {
   app.globalData.placeCacheTime = null
 }
 
+// ==================== 首页选中设备缓存（持久化，每天打开首页恢复上次选择的设备） ====================
+
+const HOME_SELECTED_KEY = 'home_selected_device_id'
+
+/**
+ * 读取首页选中的设备ID
+ * @returns {string} 设备ID，未选择时返回 ''
+ */
+function getHomeSelectedDevice() {
+  try {
+    const v = wx.getStorageSync(HOME_SELECTED_KEY)
+    return v ? String(v) : ''
+  } catch (e) {
+    return ''
+  }
+}
+
+/**
+ * 保存首页选中的设备ID（设备列表点击设备时写入）
+ * @param {string} deviceId - 设备ID，传空串表示清除
+ */
+function setHomeSelectedDevice(deviceId) {
+  try {
+    if (deviceId) {
+      wx.setStorageSync(HOME_SELECTED_KEY, String(deviceId))
+    } else {
+      wx.removeStorageSync(HOME_SELECTED_KEY)
+    }
+  } catch (e) { /* ignore */ }
+}
+
 /**
  * 清除所有缓存（一般不需要手动调用）
  */
@@ -627,5 +658,7 @@ module.exports = {
   getPlaceListFromCache,
   refreshPlaceList,
   clearPlaceCache,
+  getHomeSelectedDevice,
+  setHomeSelectedDevice,
   clearCache
 }

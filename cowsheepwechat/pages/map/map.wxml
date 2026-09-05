@@ -1,5 +1,5 @@
 <!--map.wxml-->
-<navigation-bar title="地图中心" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="地图中心" back="{{false}}" color="black" background="#FFF"></navigation-bar>
 <canvas type="2d" id="pinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
 <canvas type="2d" id="cowPinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
 <canvas type="2d" id="devPinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>

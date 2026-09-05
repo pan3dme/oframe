@@ -23,6 +23,38 @@
     "pages/relay-dtu-cmd/relay-dtu-cmd",
     "pages/location-map/location-map"
   ],
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#07c160",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "images/tab_home.png",
+        "selectedIconPath": "images/tab_home_active.png"
+      },
+      {
+        "pagePath": "pages/device/device",
+        "text": "设备",
+        "iconPath": "images/tab_device.png",
+        "selectedIconPath": "images/tab_device_active.png"
+      },
+      {
+        "pagePath": "pages/features/features",
+        "text": "功能",
+        "iconPath": "images/tab_features.png",
+        "selectedIconPath": "images/tab_features_active.png"
+      },
+      {
+        "pagePath": "pages/map/map",
+        "text": "地图",
+        "iconPath": "images/tab_map.png",
+        "selectedIconPath": "images/tab_map_active.png"
+      }
+    ]
+  },
   "window": {
     "navigationBarTextStyle": "black",
     "navigationStyle": "custom"

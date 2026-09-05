@@ -15,6 +15,10 @@ Page({
   data: {
     deviceId: '',
     deviceInfo: null,
+    // 页面标题（从数据列表进入为“设备记录”，完整管理为“设备详情”）
+    navTitle: '设备详情',
+    // 是否隐藏设备信息头部（数据列表模式只展示记录）
+    hideDeviceInfo: false,
     // 列出数据（表格展示）
     showRecordTable: false,
     recordList: [],
@@ -131,9 +135,14 @@ Page({
 
   onLoad(options) {
     const deviceId = options.deviceId || ''
+    const mode = options.mode || ''
     // 读取管理员设置与LORA显示设置
     this._readSettings()
-    this.setData({ deviceId })
+    this.setData({
+      deviceId,
+      navTitle: mode === 'records' ? '设备记录' : '设备详情',
+      hideDeviceInfo: mode === 'records'
+    })
     this._swapTime = ''
     if (deviceId) {
       this.loadDeviceInfo(deviceId)
