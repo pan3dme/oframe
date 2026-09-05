@@ -44,13 +44,20 @@ Page({
     // 是否展开中继配置输入框（ProductKey/DeviceName/DeviceSecret）：
     // 设备已有 ProductKey 时默认展开；否则隐藏，点击"设为中继"后才展开
     showRelayFields: false,
-    // 设备功能按钮（每行3个）
+    // 普通设备功能按钮（每行3个）
     featureBtns: [
       { id: 'location', label: '实时定位', color: '#F56C6C', icon: '📍' },
       { id: 'track',    label: '轨迹地图', color: '#F0A020', icon: '🗺' },
       { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
       { id: 'alarm',    label: '报警信息', color: '#1E88E5', icon: '🔔' },
+      { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
+      { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' }
+    ],
+    // 中继设备功能按钮（有ProductKey，太阳能供电、无GPS定位）：数据列表/设备设置/修改密码/电子栅栏，与普通设备不同
+    relayFeatureBtns: [
+      { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
+      { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
       { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' }
     ]
@@ -837,7 +844,10 @@ Page({
   // ========== 设备功能按钮 ==========
   onFeatureBtnTap(e) {
     const id = e.currentTarget.dataset.id
-    const btn = this.data.featureBtns.find(b => b.id === id)
+    // 中继设备(有ProductKey)用 relayFeatureBtns，普通设备用 featureBtns
+    const isRelay = this.data.deviceInfo && this.data.deviceInfo.ProductKey
+    const btns = isRelay ? this.data.relayFeatureBtns : this.data.featureBtns
+    const btn = btns.find(b => b.id === id)
     console.log('功能按钮点击:', id, btn && btn.label)
     if (id === 'location') {
       this.onRealtimeLocateTap()

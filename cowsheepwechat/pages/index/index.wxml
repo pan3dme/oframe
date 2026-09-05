@@ -67,14 +67,16 @@
         </view>
       </view>
 
-      <!-- 设备功能按钮（每行3个） -->
+      <!-- 设备功能按钮（每行3个）：中继设备(有ProductKey)与普通设备的按钮数据不同 -->
       <view class="home-features">
-        <view class="home-feature" wx:for="{{featureBtns}}" wx:key="id" bindtap="onFeatureBtnTap" data-id="{{item.id}}">
-          <view class="home-feature-icon" style="background:{{item.color}}">
-            <text class="home-feature-emoji">{{item.icon}}</text>
+        <block wx:for="{{deviceInfo.ProductKey ? relayFeatureBtns : featureBtns}}" wx:key="id">
+          <view class="home-feature" bindtap="onFeatureBtnTap" data-id="{{item.id}}">
+            <view class="home-feature-icon" style="background:{{item.color}}">
+              <text class="home-feature-emoji">{{item.icon}}</text>
+            </view>
+            <text class="home-feature-label">{{item.label}}</text>
           </view>
-          <text class="home-feature-label">{{item.label}}</text>
-        </view>
+        </block>
       </view>
 
       <view class="home-bottom"></view>
