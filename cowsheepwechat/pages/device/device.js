@@ -268,8 +268,9 @@ Page({
         // 中继设备不在工作区间 → 灰色；其它设备超过2个上报周期未上报 → 灰色；其余黑色
         const nameColor = signalColor === '#999999' ? '#999999' : ''
 
-        return {
-          ...item,
+        // 注意：不使用对象展开 {...item}，展开会被增强编译转成 require('@babel/runtime/helpers/objectSpread2')
+        // → 其内部 require('./defineProperty') 在小程序运行时会找不到该模块导致页面崩溃，改用 Object.assign 等价实现
+        return Object.assign({}, item, {
           date: lastDate,
           time_part: lastTimePart,
           rawTime: lastRaw,
@@ -292,7 +293,7 @@ Page({
           powerOnTime: (cfg && cfg.powerOnTime) || '-',
           signalColor: signalColor,
           nameColor: nameColor
-        }
+        })
       })
 
       // 排序：无ProductKey的在前，有ProductKey的排到最后，各自内部按设备ID中"-"后面的序号数字排序

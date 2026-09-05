@@ -431,6 +431,24 @@ page {
   border-radius: 16rpx 16rpx 0 0;
 }
 
+/* 设备详情页"数据记录"入口：整行可点击，左侧标题 + 右侧箭头 */
+.track-date-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.track-date-bar-btn:active {
+  background: #eef4fb;
+}
+.track-date-arrow {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  font-size: 40rpx;
+  font-weight: 600;
+  line-height: 1;
+  color: #1565c0;
+}
+
 .record-list {
   border-radius: 0;
   overflow: hidden;

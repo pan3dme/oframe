@@ -58,6 +58,13 @@
             </view>
           </view>
         </view>
+
+        <!-- 右上角操作图标：管理员可编辑（弹出编辑设备弹窗） -->
+        <view class="header-actions" wx:if="{{isAdmin}}">
+          <view class="header-icon-btn" bindtap="onDetailEdit">
+            <text class="header-icon">✏️</text>
+          </view>
+        </view>
       </view>
 
       <!-- 设备功能按钮（每行3个） -->
@@ -74,3 +81,68 @@
     </block>
   </scroll-view>
 </block>
+
+<!-- 编辑设备弹窗 -->
+<view class="modal" wx:if="{{showEditModal}}">
+  <view class="modal-mask" bindtap="onEditClose"></view>
+  <view class="modal-dialog">
+    <view class="modal-close" bindtap="onEditClose">✕</view>
+    <view class="modal-title">编辑设备</view>
+
+    <!-- 设备图片 -->
+    <view class="modal-label">设备图片</view>
+    <view class="edit-pic-wrap" bindtap="onEditPic">
+      <image class="edit-pic-img" wx:if="{{editPicurl}}" src="{{editPicurl}}" mode="aspectFill" />
+      <view class="edit-pic-placeholder" wx:else>📡 点击选图</view>
+    </view>
+
+    <!-- 别名 -->
+    <view class="modal-label">别名</view>
+    <input class="modal-input"
+      value="{{editRename}}"
+      placeholder="请输入别名"
+      bindinput="onEditRenameInput" />
+
+    <!-- 中继配置：设备无 ProductKey 时显示"设为中继"按钮 -->
+    <view class="modal-set-relay" wx:if="{{!showRelayFields}}" bindtap="onSetRelayTap">
+      <text class="modal-set-relay-icon">📡</text>
+      <text class="modal-set-relay-text">设为中继</text>
+    </view>
+
+    <!-- 中继配置输入框（已有 ProductKey 直接显示，或点击"设为中继"后展开，弹框自动变长） -->
+    <block wx:if="{{showRelayFields}}">
+      <!-- ProductKey -->
+      <view class="modal-label">ProductKey</view>
+      <input class="modal-input"
+        value="{{editProductKey}}"
+        placeholder="请输入ProductKey"
+        bindinput="onEditProductKeyInput" />
+
+      <!-- DeviceName -->
+      <view class="modal-label">DeviceName</view>
+      <input class="modal-input"
+        value="{{editDeviceName}}"
+        placeholder="请输入DeviceName"
+        bindinput="onEditDeviceNameInput" />
+
+      <!-- DeviceSecret -->
+      <view class="modal-label">DeviceSecret</view>
+      <input class="modal-input"
+        value="{{editDeviceSecret}}"
+        placeholder="请输入DeviceSecret"
+        bindinput="onEditDeviceSecretInput" />
+    </block>
+
+    <!-- 是否可见 -->
+    <view class="modal-label">是否可见</view>
+    <switch checked="{{editVisible}}" bindchange="onEditVisibleChange" class="modal-switch" />
+
+    <view class="modal-btns">
+      <button class="modal-btn modal-btn-gray" bindtap="onEditClose">取消</button>
+      <button class="modal-btn modal-btn-confirm" bindtap="onEditConfirm">确认修改</button>
+    </view>
+  </view>
+</view>
+
+<!-- 图片压缩 canvas（编辑图片上传时压缩用） -->
+<canvas type="2d" id="compressCanvas" class="compress-canvas"></canvas>

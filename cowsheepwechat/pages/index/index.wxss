@@ -100,3 +100,14 @@ page {
   border: none;
 }
 
+/* ========== 图片压缩 canvas（隐藏，编辑设备图片压缩用） ========== */
+.compress-canvas {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  width: 512px;
+  height: 512px;
+  opacity: 0;
+  pointer-events: none;
+}
+

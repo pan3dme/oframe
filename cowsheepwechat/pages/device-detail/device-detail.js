@@ -183,7 +183,9 @@ Page({
         }
       }
 
-      const enriched = { ...deviceItem }
+      // 注意：不使用对象展开 {...deviceItem}，展开会被增强编译转成 require('@babel/runtime/helpers/objectSpread2')
+      // → 其内部 require('./defineProperty') 在小程序运行时会找不到该模块导致页面崩溃，改用 Object.assign 等价实现
+      const enriched = Object.assign({}, deviceItem)
 
       // 保存设备表原始时间作为"上次充电时间"
       const devDate = deviceItem.date && deviceItem.date !== '-' ? deviceItem.date : ''
@@ -251,7 +253,7 @@ Page({
     const swapTime = this._swapTime || ''
     const swapTimeRel = this._swapTimeTs ? batterySwap.formatRelativeTime(this._swapTimeTs) : ''
     if (!item.link_cowsheep_id) {
-      this.setData({ deviceInfo: { ...item, bindName: '', swapTime, swapTimeRel, inPowerOn: true } })
+      this.setData({ deviceInfo: Object.assign({}, item, { bindName: '', swapTime, swapTimeRel, inPowerOn: true }) })
       this._updateDormant()
       this.loadTodayRecords(0)
       return
@@ -261,7 +263,7 @@ Page({
       const list = (livestockData && livestockData.livestockList) ? livestockData.livestockList : []
       const found = list.find(v => v.cowsheepId === item.link_cowsheep_id)
       if (found) bindName = found.name
-      this.setData({ deviceInfo: { ...item, bindName, swapTime, swapTimeRel, inPowerOn: true } })
+      this.setData({ deviceInfo: Object.assign({}, item, { bindName, swapTime, swapTimeRel, inPowerOn: true }) })
       this._updateDormant()
       this.loadTodayRecords(0)
     })
@@ -431,10 +433,10 @@ Page({
       const isDormant = this._isDormantNow(configLorastr, rawTime)
       // 当前是否在开机时间窗口内（仅按窗口判断），用于"上报周期 X分钟（Y分钟）"高亮当前生效周期
       const inPowerOn = this._isInPowerOnNow(configLorastr)
-      const updated = { ...this.data.deviceInfo, configLorastr, reportInterval, mainPeriod, powerOnTime, gpsReportTime, isDormant, inPowerOn }
-      this.setData({ deviceInfo: updated, deviceConfig: { ...this.data.deviceConfig, lorastr: configLorastr } })
+      const updated = Object.assign({}, this.data.deviceInfo, { configLorastr, reportInterval, mainPeriod, powerOnTime, gpsReportTime, isDormant, inPowerOn })
+      this.setData({ deviceInfo: updated, deviceConfig: Object.assign({}, this.data.deviceConfig, { lorastr: configLorastr }) })
     } else {
-      this.setData({ deviceConfig: { ...this.data.deviceConfig, lorastr: configLorastr } })
+      this.setData({ deviceConfig: Object.assign({}, this.data.deviceConfig, { lorastr: configLorastr }) })
     }
     // 配置周期就绪后尝试上报周期校验（需记录也已就绪）
     this._maybeCheckReportInterval()
@@ -486,15 +488,15 @@ Page({
           } else {
             // 未匹配到当前设备，清空显示
             if (that.data.deviceInfo) {
-              const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true }
-              that.setData({ deviceInfo: updated, deviceConfig: { ...that.data.deviceConfig, lorastr: '' } })
+              const updated = Object.assign({}, that.data.deviceInfo, { reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true })
+              that.setData({ deviceInfo: updated, deviceConfig: Object.assign({}, that.data.deviceConfig, { lorastr: '' }) })
             }
           }
         } else {
           // 无配置数据，清空显示
           if (that.data.deviceInfo) {
-            const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true }
-            that.setData({ deviceInfo: updated, deviceConfig: { ...that.data.deviceConfig, lorastr: '' } })
+            const updated = Object.assign({}, that.data.deviceInfo, { reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true })
+            that.setData({ deviceInfo: updated, deviceConfig: Object.assign({}, that.data.deviceConfig, { lorastr: '' }) })
           }
         }
       },
@@ -645,22 +647,33 @@ Page({
 
 
   // ========== 编辑设备弹窗 ==========
+  // 弹窗初始信息从设备表（缓存）读取：ProductKey/DeviceName/DeviceSecret/rename/picurl/visible 均取设备表最新值
+  // 有 ProductKey 即为中继设备 → 默认展开中继配置输入框
   onDetailEdit() {
     const info = this.data.deviceInfo
     if (!info) return
-    this.setData({
-      showEditModal: true,
-      editOldDeviceKey: info.deviceId,
-      editRename: info.rename || '',
-      editProductKey: info.ProductKey || '',
-      editDeviceName: info.DeviceName || '',
-      editDeviceSecret: info.DeviceSecret || '',
-      editPicurl: info.picurl || '',
-      editPicFilePath: '',
-      editVisible: info.visible === true || info.visible === 'true' || info.visible === 1,
-      // 已有 ProductKey 的设备：直接显示中继配置输入框（保留原样式）
-      // 没有 ProductKey 的设备：隐藏，需点击"设为中继"才展开
-      showRelayFields: !!(info.ProductKey)
+    const deviceId = info.deviceId
+    dataCache.getDeviceList((deviceData) => {
+      let dev = null
+      if (deviceData && deviceData.recordList) {
+        dev = deviceData.recordList.find(v => v.deviceId === deviceId) || null
+      }
+      // 设备表缓存未命中时，回退到当前 deviceInfo
+      dev = dev || info
+      this.setData({
+        showEditModal: true,
+        editOldDeviceKey: info.deviceId,
+        editRename: dev.rename || '',
+        editProductKey: dev.ProductKey || '',
+        editDeviceName: dev.DeviceName || '',
+        editDeviceSecret: dev.DeviceSecret || '',
+        editPicurl: dev.picurl || '',
+        editPicFilePath: '',
+        editVisible: dev.visible === true || dev.visible === 'true' || dev.visible === 1,
+        // 有 ProductKey 即为中继：设备表已有则直接显示中继配置输入框（保留原样式）
+        // 没有 ProductKey：隐藏，需点击"设为中继"才展开
+        showRelayFields: !!(dev.ProductKey)
+      })
     })
   },
 
@@ -1039,6 +1052,17 @@ Page({
   _getTodayStr() {
     const d = new Date()
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  },
+
+  // 点击"数据记录"标题栏：打开下一页展示这台设备的数据记录（隐藏设备信息，仅展示记录）
+  onOpenRecordsTap() {
+    // 当前已在记录页（records 模式）时不重复跳转
+    if (this.data.hideDeviceInfo) return
+    const deviceId = this.data.deviceId
+    if (!deviceId) return
+    wx.navigateTo({
+      url: '/pages/device-detail/device-detail?deviceId=' + encodeURIComponent(deviceId) + '&mode=records'
+    })
   },
 
   // 点击数据记录：如果是定位记录(msgType=1)，跳转到定位地图页

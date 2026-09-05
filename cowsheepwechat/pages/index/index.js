@@ -5,6 +5,8 @@ const API_URL = getApp().globalData.api_device_Url
 const dataCache = require('../../config/data-cache.js')
 const batterySwap = require('../../config/battery-swap.js')
 const timeWindowCodec = require('../../utils/time-window-codec.js')
+const { compressImage } = require('../../utils/image-compress.js')
+const { uploadToOSS } = require('../../utils/oss-upload.js')
 
 // DTU 指令转发云函数地址
 const FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
@@ -25,8 +27,23 @@ Page({
     hasMore: true,
     isLoadingMore: false,
     isRefreshing: false,
+    // 管理员：显示头部编辑按钮（管理入口统一跳完整详情页）
+    isAdmin: false,
     // 是否显示转换（设置页开关控制）：开启后对时/配置记录显示可读内容
     showConverted: false,
+    // 编辑设备弹窗
+    showEditModal: false,
+    editOldDeviceKey: '',
+    editRename: '',
+    editProductKey: '',
+    editDeviceName: '',
+    editDeviceSecret: '',
+    editPicurl: '',
+    editPicFilePath: '',
+    editVisible: false,
+    // 是否展开中继配置输入框（ProductKey/DeviceName/DeviceSecret）：
+    // 设备已有 ProductKey 时默认展开；否则隐藏，点击"设为中继"后才展开
+    showRelayFields: false,
     // 设备功能按钮（每行3个）
     featureBtns: [
       { id: 'location', label: '实时定位', color: '#F56C6C', icon: '📍' },
@@ -99,16 +116,21 @@ Page({
     return false
   },
 
-  // 读取本地设置（管理员无需在此判断，管理按钮统一跳完整详情页）
+  // 读取本地设置（管理员控制头部编辑按钮，管理按钮统一跳完整详情页）
   _readSettings() {
+    let isAdmin = false
     let showConverted = false
+    try {
+      const adminVal = wx.getStorageSync('setting_is_admin')
+      isAdmin = !!(getApp().globalData.isAdmin || adminVal)
+    } catch (e) { /* ignore */ }
     try {
       const conv = wx.getStorageSync('setting_show_converted')
       if (conv !== '' && conv !== undefined && conv !== null) {
         showConverted = conv === true || conv === 'true' || conv === 1 || conv === '1'
       }
     } catch (e) { /* ignore */ }
-    this.setData({ showConverted })
+    this.setData({ isAdmin, showConverted })
     this._refreshDisplayLorastr()
   },
 
@@ -243,10 +265,15 @@ Page({
 
       const that = this
       const showInfo = () => {
+        const baseInfo = Object.assign({}, enriched, { bindName: that._bindName || '' })
+        // 若配置接口在设备信息就绪前已返回，合并解析结果，避免开机时间/上报周期显示为 '-'
+        if (that._configParsed) {
+          Object.assign(baseInfo, that._configParsed)
+        }
         that.setData({
-          deviceInfo: Object.assign({}, enriched, { bindName: that._bindName || '' }),
+          deviceInfo: baseInfo,
           hasSelected: true,
-          navTitle: enriched.rename ? (deviceId + ' · ' + enriched.rename) : deviceId
+          navTitle: '设备详情'
         })
         if (done) done()
       }
@@ -312,13 +339,23 @@ Page({
   loadDeviceConfig(deviceId, force) {
     if (!deviceId) return
     const that = this
+    // 切换设备时清空上一台设备的缓存解析结果，避免串设备
+    this._configParsed = null
+    this._configLorastr = ''
+    // 缓存预显示：网络数据未返回前先用配置表缓存立即显示
+    const cachedConfig = dataCache.getCachedDeviceConfig(deviceId)
+    if (cachedConfig && cachedConfig.lorastr) {
+      that._applyConfigFromLorastr(cachedConfig.lorastr)
+    }
     dataCache.getDeviceConfigAll((configData) => {
       const configMap = (configData && configData.configMap) ? configData.configMap : {}
       const config = configMap[deviceId]
       if (config && config.lorastr) {
         that._applyConfigFromLorastr(config.lorastr)
       } else {
-        // 配置表无该设备记录：清空显示
+        // 配置表无该设备记录：清空显示，并清空已缓存的解析结果
+        that._configParsed = null
+        that._configLorastr = ''
         if (that.data.deviceInfo) {
           const updated = Object.assign({}, that.data.deviceInfo, {
             reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true
@@ -331,6 +368,9 @@ Page({
 
   // 解析配置 lorastr：上报周期/开机时间/GPS工作时间/主周期
   _applyConfigFromLorastr(configLorastr) {
+    // 保存原始配置，供 deviceInfo 尚未就绪时稍后应用
+    this._configLorastr = configLorastr
+
     let reportInterval = '-'
     let mainPeriod = 0
     let powerOnTime = '-'
@@ -348,10 +388,15 @@ Page({
         }
       }
     }
+    const parsed = {
+      reportInterval, mainPeriod, powerOnTime, gpsReportTime,
+      inPowerOn: this._isInPowerOnNow(configLorastr)
+    }
+    // 缓存解析结果：deviceInfo 尚未就绪时先记录，就绪后再由 loadDeviceInfo 应用
+    this._configParsed = parsed
+
     if (this.data.deviceInfo) {
-      const updated = Object.assign({}, this.data.deviceInfo, {
-        reportInterval, mainPeriod, powerOnTime, gpsReportTime, inPowerOn: this._isInPowerOnNow(configLorastr)
-      })
+      const updated = Object.assign({}, this.data.deviceInfo, parsed)
       this.setData({ deviceInfo: updated })
     }
   },
@@ -897,6 +942,147 @@ Page({
   // 无选中设备/想换设备 → 去设备列表
   goDeviceTab() {
     wx.switchTab({ url: '/pages/device/device' })
+  },
+
+  // ========== 编辑设备弹窗 ==========
+  // 弹窗初始信息从设备表（缓存）读取：ProductKey/DeviceName/DeviceSecret/rename/picurl/visible 均取设备表最新值
+  // 有 ProductKey 即为中继设备 → 默认展开中继配置输入框
+  onDetailEdit() {
+    const info = this.data.deviceInfo
+    if (!info) return
+    const deviceId = info.deviceId
+    dataCache.getDeviceList((deviceData) => {
+      let dev = null
+      if (deviceData && deviceData.recordList) {
+        dev = deviceData.recordList.find(v => v.deviceId === deviceId) || null
+      }
+      // 设备表缓存未命中时，回退到当前 deviceInfo
+      dev = dev || info
+      this.setData({
+        showEditModal: true,
+        editOldDeviceKey: info.deviceId,
+        editRename: dev.rename || '',
+        editProductKey: dev.ProductKey || '',
+        editDeviceName: dev.DeviceName || '',
+        editDeviceSecret: dev.DeviceSecret || '',
+        editPicurl: dev.picurl || '',
+        editPicFilePath: '',
+        editVisible: dev.visible === true || dev.visible === 'true' || dev.visible === 1,
+        // 有 ProductKey 即为中继：设备表已有则直接显示中继配置输入框（保留原样式）
+        // 没有 ProductKey：隐藏，需点击"设为中继"才展开
+        showRelayFields: !!(dev.ProductKey)
+      })
+    })
+  },
+
+  // 点击"设为中继"：展开 ProductKey/DeviceName/DeviceSecret 输入框（弹框自动变长）
+  onSetRelayTap() {
+    this.setData({ showRelayFields: true })
+  },
+
+  onEditRenameInput(e) {
+    this.setData({ editRename: e.detail.value })
+  },
+
+  onEditProductKeyInput(e) {
+    this.setData({ editProductKey: e.detail.value })
+  },
+
+  onEditDeviceNameInput(e) {
+    this.setData({ editDeviceName: e.detail.value })
+  },
+
+  onEditDeviceSecretInput(e) {
+    this.setData({ editDeviceSecret: e.detail.value })
+  },
+
+  onEditVisibleChange(e) {
+    this.setData({ editVisible: e.detail.value })
+  },
+
+  onEditPic() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['compressed'],
+      success: (res) => {
+        const file = res.tempFiles[0]
+        this.setData({
+          editPicFilePath: file.tempFilePath,
+          editPicurl: file.tempFilePath
+        })
+      },
+      fail: () => { console.log('取消选择图片') }
+    })
+  },
+
+  onEditClose() {
+    this.setData({ showEditModal: false })
+  },
+
+  onEditConfirm() {
+    const oldKey = this.data.editOldDeviceKey
+    const rename = this.data.editRename.trim()
+    const ProductKey = this.data.editProductKey.trim()
+    const DeviceName = this.data.editDeviceName.trim()
+    const DeviceSecret = this.data.editDeviceSecret.trim()
+    const visible = this.data.editVisible
+    const picFilePath = this.data.editPicFilePath
+
+    this.setData({ showEditModal: false })
+
+    if (picFilePath) {
+      wx.showLoading({ title: '压缩上传...' })
+      const objectKey = 'device/' + oldKey + '_' + Date.now() + '.jpg'
+      compressImage(picFilePath).then((compressedPath) => {
+        return uploadToOSS(compressedPath, objectKey, 'device/')
+      }).then((ossUrl) => {
+        this._doEditConfirm(oldKey, rename, ProductKey, DeviceName, DeviceSecret, visible, ossUrl)
+      }).catch((err) => {
+        wx.hideLoading()
+        console.error('OSS 上传失败:', err)
+        wx.showToast({ title: '上传失败', icon: 'error', duration: 2000 })
+      })
+    } else {
+      this._doEditConfirm(oldKey, rename, ProductKey, DeviceName, DeviceSecret, visible, this.data.editPicurl)
+    }
+  },
+
+  _doEditConfirm(oldKey, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl) {
+    wx.showLoading({ title: '更新中...' })
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'updateDevice',
+        info: { deviceId: oldKey, rename, ProductKey, DeviceName, DeviceSecret, visible, picurl, wechatid: getApp().getWechatId() }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('编辑设备返回:', JSON.stringify(res.data))
+        let result = res.data
+        if (typeof result === 'string') {
+          try { result = JSON.parse(result) } catch (e) {}
+        }
+        if (result && result.status === 'success') {
+          wx.showToast({ title: result.msg || '更新成功', icon: 'success', duration: 1500 })
+          dataCache.clearCache()
+          // 刷新当前选中的设备详情
+          const id = this.data.selectedDeviceId || oldKey
+          if (id) {
+            this._loadAll(id, true, () => {})
+          }
+        } else {
+          wx.showToast({ title: (result && result.msg) || '更新失败', icon: 'none', duration: 2500 })
+        }
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('编辑设备失败:', err)
+        wx.showToast({ title: '网络请求失败', icon: 'error', duration: 2000 })
+      }
+    })
   },
 
   // 完整管理（编辑/绑定/发指令等都在原设备详情页）

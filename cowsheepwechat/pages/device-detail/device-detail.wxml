@@ -69,8 +69,11 @@
     </view>
   </view>
 
-  <!-- 轨迹记录标题（固定不动） -->
-  <view class="track-date-bar" wx:if="{{showRecordTable}}">数据记录 ({{recordList.length}}条)</view>
+  <!-- 轨迹记录标题（固定不动）：设备详情页点击"数据记录"打开下一页查看该设备数据记录 -->
+  <view class="track-date-bar {{!hideDeviceInfo ? 'track-date-bar-btn' : ''}}" wx:if="{{showRecordTable}}" bindtap="onOpenRecordsTap">
+    <text>数据记录 ({{recordList.length}}条)</text>
+    <text class="track-date-arrow" wx:if="{{!hideDeviceInfo}}">›</text>
+  </view>
 
   <!-- 轨迹数据列表（可滑动刷新 + 无限加载） -->
   <scroll-view

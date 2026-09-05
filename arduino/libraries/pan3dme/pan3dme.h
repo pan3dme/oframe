@@ -15,7 +15,7 @@
 
 // ==================== 调试开关 ====================
 // 1=开发模式（输出所有调试信息） 0=正式模式（仅输出关键信息）
-#define DEBUG_MODE 0
+#define DEBUG_MODE 1
 
 #if DEBUG_MODE
 #define DEBUG_PRINT(x) Serial.print(x)
