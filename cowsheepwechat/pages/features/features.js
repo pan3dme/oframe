@@ -44,15 +44,15 @@ Page({
       },
       {
         id: 9,
-        label: '电量分析'
-      },
-      {
-        id: 10,
         label: '道路优化'
       },
       {
-        id: 11,
+        id: 10,
         label: 'DTU发送指令'
+      },
+      {
+        id: 11,
+        label: '前往首页'
       },
     ]
   },
@@ -111,14 +111,14 @@ Page({
         url: '/pages/bluetooth/bluetooth'
       })
     } else if (id === 9) {
-      // 电量分析
-      wx.navigateTo({ url: '/pages/battery-analysis/battery-analysis' })
-    } else if (id === 10) {
       // 道路优化
       wx.navigateTo({ url: '/pages/road-optimize/road-optimize' })
-    } else if (id === 11) {
+    } else if (id === 10) {
       // DTU发送指令
       wx.navigateTo({ url: '/pages/dtu-cmd/dtu-cmd' })
+    } else if (id === 11) {
+      // 前往首页
+      wx.reLaunch({ url: '/pages/index/index' })
     }
   },
 

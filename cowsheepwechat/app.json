@@ -3,7 +3,6 @@
     "pages/index/index",
     "pages/login/login",
     "pages/features/features",
-    "pages/battery-analysis/battery-analysis",
     "pages/bluetooth/bluetooth",
     "pages/detail/detail",
     "pages/map/map",

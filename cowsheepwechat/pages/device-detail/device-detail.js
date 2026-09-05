@@ -242,7 +242,7 @@ Page({
     const swapTime = this._swapTime || ''
     const swapTimeRel = this._swapTimeTs ? batterySwap.formatRelativeTime(this._swapTimeTs) : ''
     if (!item.link_cowsheep_id) {
-      this.setData({ deviceInfo: { ...item, bindName: '', swapTime, swapTimeRel } })
+      this.setData({ deviceInfo: { ...item, bindName: '', swapTime, swapTimeRel, inPowerOn: true } })
       this._updateDormant()
       this.loadTodayRecords(0)
       return
@@ -252,7 +252,7 @@ Page({
       const list = (livestockData && livestockData.livestockList) ? livestockData.livestockList : []
       const found = list.find(v => v.cowsheepId === item.link_cowsheep_id)
       if (found) bindName = found.name
-      this.setData({ deviceInfo: { ...item, bindName, swapTime, swapTimeRel } })
+      this.setData({ deviceInfo: { ...item, bindName, swapTime, swapTimeRel, inPowerOn: true } })
       this._updateDormant()
       this.loadTodayRecords(0)
     })
@@ -360,6 +360,9 @@ Page({
   // 页面重新展示时刷新相对时间（如返回前台），并重新读取设置
   onShow() {
     this._readSettings()
+    // 回到页面时刷新"是否在开机时间"并启动窗口边界自动刷新
+    this._refreshInPowerOn()
+    this._startWindowTimer()
     if (!this._swapTimeTs) return
     const rel = batterySwap.formatRelativeTime(this._swapTimeTs)
     if (this.data.deviceInfo) {
@@ -367,7 +370,15 @@ Page({
     }
   },
 
-  // 根据已加载的 deviceConfig 和 deviceInfo 重新计算 isDormant
+  onHide() {
+    this._stopWindowTimer()
+  },
+
+  onUnload() {
+    this._stopWindowTimer()
+  },
+
+  // 根据已加载的 deviceConfig 和 deviceInfo 重新计算 isDormant / inPowerOn
   _updateDormant() {
     const deviceConfig = this.data.deviceConfig
     const deviceInfo = this.data.deviceInfo
@@ -375,7 +386,8 @@ Page({
       const configLorastr = deviceConfig.lorastr || ''
       const rawTime = deviceInfo.rawTime || ''
       const isDormant = this._isDormantNow(configLorastr, rawTime)
-      this.setData({ 'deviceInfo.isDormant': isDormant })
+      const inPowerOn = this._isInPowerOnNow(configLorastr)
+      this.setData({ 'deviceInfo.isDormant': isDormant, 'deviceInfo.inPowerOn': inPowerOn })
     }
   },
 
@@ -408,7 +420,9 @@ Page({
       // 判断是否在休眠时间内（含最后上报时间>1小时的判断）
       const rawTime = this.data.deviceInfo.rawTime || ''
       const isDormant = this._isDormantNow(configLorastr, rawTime)
-      const updated = { ...this.data.deviceInfo, configLorastr, reportInterval, mainPeriod, powerOnTime, gpsReportTime, isDormant }
+      // 当前是否在开机时间窗口内（仅按窗口判断），用于"上报周期 X分钟（Y分钟）"高亮当前生效周期
+      const inPowerOn = this._isInPowerOnNow(configLorastr)
+      const updated = { ...this.data.deviceInfo, configLorastr, reportInterval, mainPeriod, powerOnTime, gpsReportTime, isDormant, inPowerOn }
       this.setData({ deviceInfo: updated, deviceConfig: { ...this.data.deviceConfig, lorastr: configLorastr } })
     } else {
       this.setData({ deviceConfig: { ...this.data.deviceConfig, lorastr: configLorastr } })
@@ -463,15 +477,15 @@ Page({
           } else {
             // 未匹配到当前设备，清空显示
             if (that.data.deviceInfo) {
-              const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-' }
-              that.setData({ deviceInfo: updated })
+              const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true }
+              that.setData({ deviceInfo: updated, deviceConfig: { ...that.data.deviceConfig, lorastr: '' } })
             }
           }
         } else {
           // 无配置数据，清空显示
           if (that.data.deviceInfo) {
-            const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-' }
-            that.setData({ deviceInfo: updated })
+            const updated = { ...that.data.deviceInfo, reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true }
+            that.setData({ deviceInfo: updated, deviceConfig: { ...that.data.deviceConfig, lorastr: '' } })
           }
         }
       },
@@ -509,6 +523,50 @@ Page({
     // end=23 代表 23:59
     const endMinutes = win.end === 23 ? 23 * 60 + 59 : win.end * 60
     return currentMinutes < startMinutes || currentMinutes >= endMinutes
+  },
+
+  // 当前时刻是否处于开机时间窗口内（仅按配置窗口与当前时钟判断，不受"最后上报超1小时视为休眠"影响）
+  // 用于"上报周期 X分钟（Y分钟）"高亮当前生效周期：
+  //   开机时间内 → X分钟(上报周期)白色、括号内(主周期)灰色；不在开机时间 → 反之
+  _isInPowerOnNow(configLorastr) {
+    if (!configLorastr) return true
+    const parts = configLorastr.split('|')
+    if (parts.length < 3 || !parts[2]) return true
+    const configParts = parts[2].split(',')
+    if (configParts.length < 2 || !configParts[1]) return true
+    const win = timeWindowCodec.parseTimeWindow(configParts[1].trim())
+    if (!win) return true
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const startMinutes = win.start * 60
+    // end=23 代表 23:59
+    const endMinutes = win.end === 23 ? 23 * 60 + 59 : win.end * 60
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes
+  },
+
+  // 按当前时间刷新"是否在开机时间内"状态（页面长开跨窗口边界时也能自动切换高亮）
+  _refreshInPowerOn() {
+    const deviceInfo = this.data.deviceInfo
+    if (!deviceInfo) return
+    const configLorastr = (this.data.deviceConfig && this.data.deviceConfig.lorastr) || ''
+    const inPowerOn = this._isInPowerOnNow(configLorastr)
+    if (deviceInfo.inPowerOn !== inPowerOn) {
+      this.setData({ 'deviceInfo.inPowerOn': inPowerOn })
+    }
+  },
+
+  _startWindowTimer() {
+    this._stopWindowTimer()
+    this._windowTimer = setInterval(() => {
+      this._refreshInPowerOn()
+    }, 30000)
+  },
+
+  _stopWindowTimer() {
+    if (this._windowTimer) {
+      clearInterval(this._windowTimer)
+      this._windowTimer = null
+    }
   },
 
   // 自动加载轨迹记录

@@ -20,7 +20,12 @@
       <view class="header-info-grid">
         <view class="hi-item">
           <text class="hi-label">上报周期</text>
-          <text class="hi-value">{{deviceInfo.reportInterval || '-'}}分钟<block wx:if="{{deviceInfo.mainPeriod}}">（{{deviceInfo.mainPeriod * 10}}分钟）</block></text>
+          <text class="hi-value">
+            <text class="{{deviceInfo.inPowerOn ? 'hi-val-main' : 'hi-val-dim'}}">{{deviceInfo.reportInterval || '-'}}分钟</text>
+            <block wx:if="{{deviceInfo.mainPeriod}}">
+              <text class="{{deviceInfo.inPowerOn ? 'hi-val-dim' : 'hi-val-main'}}">（{{deviceInfo.mainPeriod * 10}}分钟）</text>
+            </block>
+          </text>
           <text class="hi-value-abnormal" wx:if="{{reportIntervalAbnormal}}">{{reportActualInterval}}</text>
         </view>
         <view class="hi-item">

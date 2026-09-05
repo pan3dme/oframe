@@ -123,6 +123,13 @@ page {
   word-break: break-all;
   line-height: 1.5;
 }
+/* 上报周期当前生效区间：白色高亮；另一区间灰色弱化 */
+.hi-val-main {
+  color: #ffffff;
+}
+.hi-val-dim {
+  color: rgba(255, 255, 255, 0.4);
+}
 .hi-value-abnormal {
   flex-shrink: 0;
   margin-left: 8rpx;

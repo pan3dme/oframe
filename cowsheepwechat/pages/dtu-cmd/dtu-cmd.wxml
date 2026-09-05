@@ -73,9 +73,9 @@
     <view class="modal-title">⚙️ 配置下发</view>
 
     <view class="config-scroll">
-      <!-- ① 上报周期（输入框 5-60） -->
+      <!-- ① 上报周期（输入框 5-60，开机/工作时间内GPS上报间隔） -->
       <view class="config-group">
-        <view class="config-group-title">① 上报周期（秒）<text class="config-group-range">5-60</text></view>
+        <view class="config-group-title">① 上报周期（分钟）<text class="config-group-range">5-60</text></view>
         <input class="config-input" type="number" value="{{configPeriod}}" bindinput="onConfigPeriodInput" placeholder="请输入5-60" />
       </view>
 
@@ -129,7 +129,7 @@
       </view>
     </view>
 
-    <view class="config-hint">仅支持当天时间窗口（持续≥1小时），确定后将编码为两位代号填入指令内容</view>
+    <view class="config-hint">开机时间窗口内按①上报周期上报（如5分钟）；不在开机时间（非工作时间）按④主周期上报（如20分钟）。③ GPS工作时间仅展示，不影响本判断。仅支持当天时间窗口（持续≥1小时），确定后编码为两位代号填入指令内容</view>
 
     <view class="modal-footer">
       <button class="modal-btn modal-btn-cancel" bindtap="onConfigModalCancel">取消</button>

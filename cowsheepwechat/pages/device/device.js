@@ -100,10 +100,11 @@ Page({
   },
 
   // 根据配置lorastr判断当前是否在工作时间内，同时提取上报周期（分钟）与主周期（分钟）
-  // lorastr格式: 6|v4-16|30,0M,38,2|1.0|4.2|18
+  // lorastr格式: 6|v4-16|5,0M,38,2|1.0|4.2|18
   // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间[,主周期]
+  // 上报周期=开机(工作)时间内GPS上报间隔(分钟，如5分钟)；GPS工作时间仅展示，不影响工作期判断
   // 开机时间/GPS工作时间为两位base62代号（兼容旧格式 "8-6" = 8:00开始持续6小时）
-  // 主周期为第4个参数 1-10（=10-100分钟，参数×10）：不在工作时段时设备按主周期上报
+  // 主周期为第4个参数 1-10（=10-100分钟，参数×10，如2=20分钟）：不在开机时间(非工作时间)时设备按主周期上报
   _checkWorkingHours(configLorastr) {
     const result = { isDormant: false, powerOnTime: '-', reportInterval: 30, mainPeriodMin: 0, powerWin: null, gpsWin: null }
     if (!configLorastr) return result
@@ -134,7 +135,7 @@ Page({
     if (!win) return result
     result.powerWin = { start: win.start, end: win.end }
 
-    // GPS工作时间窗口（仅当天）：区间内为"工作期"（GPS按上报周期上报），区间外按主周期上报
+    // GPS工作时间窗口（仅当天）：仅作信息展示（详情页"GPS时间"），不参与倒计时/工作期判断
     if (configParts.length >= 3 && configParts[2]) {
       const gpsWin = timeWindowCodec.parseTimeWindow(configParts[2].trim())
       if (gpsWin) result.gpsWin = { start: gpsWin.start, end: gpsWin.end }
@@ -150,8 +151,8 @@ Page({
   },
 
   // 当前时间应采用的推算周期（分钟）：
-  // "工作期"指 GPS工作时间段（无GPS窗口时回退到开机时间段）——期内用上报周期；
-  // 不在工作时段 → 用主周期（第4个参数×10分钟）；未配置主周期时回退到上报周期（保持原逻辑）
+  // "工作期"只按"开机时间窗口"判断（不使用GPS时间窗口）——开机时间内用上报周期（第3段第1项，如5分钟）；
+  // 不在开机时间（非工作时间）→ 用主周期（第4个参数×10分钟，如参数2=20分钟）；未配置主周期时回退到上报周期
   _effectiveIntervalFor(item, now) {
     const work = (item && item.reportIntervalMin > 0) ? item.reportIntervalMin : 0
     const win = (item && item.cadenceWin) || null
@@ -244,9 +245,10 @@ Page({
         const reportIntervalMin = (cfg && cfg.reportInterval && cfg.reportInterval > 0) ? cfg.reportInterval : 0
         // 主周期（分钟）：配置第3段第4个参数 1-10 = 10-100分钟；不在工作时段时设备按主周期上报
         const mainPeriodMin = (cfg && cfg.mainPeriodMin && cfg.mainPeriodMin > 0) ? cfg.mainPeriodMin : 0
-        // "工作期"边界：GPS设备取 GPS工作时间窗口，无GPS窗口（中继/旧配置）回退到开机时间窗口
-        // 用于判断当前时段，跨时段由每秒定时器动态切换推算周期
-        const cadenceWin = (cfg && (cfg.gpsWin || cfg.powerWin)) || null
+        // "工作期"边界：只按设备"开机时间窗口"判断（不使用GPS时间窗口）——
+        // 开机时间内按上报周期(第3段第1项，如5分钟)推算；不在开机时间(非工作时间)按主周期(第4项×10，如20分钟)
+        // 跨时段由每秒定时器动态切换推算周期
+        const cadenceWin = (cfg && cfg.powerWin) || null
 
         // 倒计时初始状态（进入页面后由定时器每秒刷新文本）
         // 工作时段内按"上报周期"推算；不在工作时段按"主周期"推算（未配置主周期则回退上报周期）
@@ -387,9 +389,10 @@ Page({
 
     const past = -remain
     if (past >= periodMs) {
-      // 超过1个完整周期未再上报 → 灰色（久未上报）
+      // 超过1个完整周期未再上报 → 灰色（久未上报）：
+      // 徽章由静态"久未上报"改为"自上次上报时间至今"的累计时长（随每秒定时器实时跳动）
       return {
-        text: '久未上报',
+        text: '未上报 ' + this._formatLongClock(now - lastTs),
         color: '#999',
         bgColor: '#f5f5f5',
         nextText: '最后上报 ' + fmtTime(lastTs),
@@ -416,6 +419,20 @@ Page({
     return h > 0 ? p2(h) + ':' + p2(m) + ':' + p2(s) : p2(m) + ':' + p2(s)
   },
 
+  // 毫秒 → 累计时长文本（"上次上报时间至今"的正计时）：
+  // ≥1天 → "X天HH:MM:SS"；≥1小时 → "HH:MM:SS"；不足1小时 → "MM:SS"
+  _formatLongClock(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000))
+    const d = Math.floor(total / 86400)
+    const h = Math.floor((total % 86400) / 3600)
+    const m = Math.floor((total % 3600) / 60)
+    const s = total % 60
+    const p2 = (n) => String(n).padStart(2, '0')
+    if (d > 0) return d + '天 ' + p2(h) + ':' + p2(m) + ':' + p2(s)
+    if (h > 0) return p2(h) + ':' + p2(m) + ':' + p2(s)
+    return p2(m) + ':' + p2(s)
+  },
+
   // 时间戳 → "YYYY/M/D HH:mm:ss"
   _formatFullTime(ts) {
     const d = new Date(ts)
@@ -425,7 +442,7 @@ Page({
   },
 
   // 每秒刷新列表中每台设备的倒计时文本/颜色
-  // 推算周期随当前时段动态切换：工作时段内用上报周期，不在工作时段用主周期（见 _effectiveIntervalFor）
+  // 推算周期随当前时段动态切换：开机时间窗口内用上报周期（如5分钟），不在开机时间（非工作时间）用主周期（如20分钟）
   _tickCountdown() {
     const list = this.data.deviceList
     if (!list || !list.length) return
