@@ -50,7 +50,7 @@ function getDeviceList(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL,
       method: 'POST',
-      data: { action: 'getDeviceTaleAll', info: { limit: 20, wechatid: getApp().getWechatId() } },
+      data: { action: 'getDeviceTaleAll', info: { limit: 30, wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const recordList = _parseDeviceRecords(res.data)
