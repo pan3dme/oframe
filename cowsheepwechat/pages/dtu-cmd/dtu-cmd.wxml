@@ -24,7 +24,7 @@
       <picker mode="selector" range="{{relayDisplayList}}" value="{{relayIndex}}" bindchange="onRelayChange">
         <view class="cmd-picker relay-picker">{{relayDisplayList[relayIndex] || '自动'}}</view>
       </picker>
-      <view class="relay-hint">自动模式下将根据RSSI信号自动选择最佳转发设备</view>
+      <view class="relay-hint">自动模式下将根据RSSI信号自动选择信号最好的两台中继同时下发（仅有一台时只发一条）</view>
     </block>
   </view>
 

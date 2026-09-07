@@ -426,7 +426,9 @@ Page({
     }
   },
 
-  // 通过 getDeviceBestRssibyId 查询目标设备的最新记录，找到信号最佳的上传设备以获取密钥
+  // 自动模式：通过 getDeviceBestRssibyId 查询目标设备的最新记录，
+  // 找到信号最好的两台中继（上传设备）获取密钥，各发送一条指令；
+  // 若候选/可用中继去重后只有一台，则只发一条
   _queryUploadDevice(targetDeviceId, cmdText) {
     const that = this
     wx.request({
@@ -434,7 +436,7 @@ Page({
       method: 'POST',
       data: {
         action: 'getDeviceBestRssibyId',
-        info: { limit: 2, deviceId: targetDeviceId, wechatid: getApp().getWechatId() }
+        info: { limit: 10, deviceId: targetDeviceId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         wx.hideLoading()
@@ -470,6 +472,7 @@ Page({
           return
         }
 
+        // 按中继聚合：每台中继的最佳 RSSI + 出现次数
         const deviceBestRssi = {}
         const deviceCount = {}
         parsedRecords.forEach(r => {
@@ -479,42 +482,51 @@ Page({
           deviceCount[r.upDateDevice] = (deviceCount[r.upDateDevice] || 0) + 1
         })
 
-        let bestDevice = null
-        let bestRssi = -999
-        let bestCount = 0
-        Object.keys(deviceBestRssi).forEach(devId => {
-          const r = deviceBestRssi[devId]
-          const c = deviceCount[devId]
-          const hasRssi = r > -999
-          if (hasRssi) {
-            // RSSI 越大（越接近0）信号越好，用 > 比较
-            if (r > bestRssi || (r === bestRssi && c > bestCount)) {
-              bestRssi = r; bestCount = c; bestDevice = devId
-            }
-          } else if (bestRssi <= -999) {
-            if (c > bestCount) { bestCount = c; bestDevice = devId }
-          }
+        // 按信号从好到差排序：有有效 RSSI 的排在前面 → RSSI 越大（越接近0）越好 → 出现次数越多越稳
+        const sortedCandidates = Object.keys(deviceBestRssi).map(devId => ({
+          deviceId: devId,
+          bestRssi: deviceBestRssi[devId],
+          count: deviceCount[devId]
+        })).sort((a, b) => {
+          const aHas = a.bestRssi > -999
+          const bHas = b.bestRssi > -999
+          if (aHas !== bHas) return aHas ? -1 : 1
+          if (a.bestRssi !== b.bestRssi) return b.bestRssi - a.bestRssi
+          return b.count - a.count
         })
 
         console.log('[DTU指令] 候选上传设备:', JSON.stringify(deviceBestRssi),
           '出现次数:', JSON.stringify(deviceCount),
-          '最佳设备:', bestDevice, 'RSSI:', bestRssi)
+          '信号排序:', sortedCandidates.map(c => c.deviceId + '(RSSI:' + c.bestRssi + ')').join(', '))
 
-        // 在设备列表中查找上传设备
-        const uploadDevice = that.data.deviceList.find(d => d.deviceId === bestDevice)
-        if (!uploadDevice) {
-          wx.showToast({ title: '上传设备 ' + bestDevice + ' 不在设备列表中', icon: 'none', duration: 2500 })
+        // 依次在设备列表中解析为可用中继（须有密钥），取信号最好的至多 2 台（同一台中继只算一次）
+        const usableRelays = []
+        sortedCandidates.forEach(cand => {
+          if (usableRelays.length >= 2) return
+          const dev = that.data.deviceList.find(d => d.deviceId === cand.deviceId)
+          if (dev && dev.ProductKey && dev.DeviceName) {
+            usableRelays.push({ device: dev, bestRssi: cand.bestRssi })
+          }
+        })
+
+        if (usableRelays.length === 0) {
+          const first = sortedCandidates[0]
+          const hint = first ? first.deviceId : ''
+          wx.showToast({ title: '上传设备 ' + hint + ' 不在设备列表中或无密钥', icon: 'none', duration: 2500 })
           return
         }
 
-        if (!uploadDevice.ProductKey || !uploadDevice.DeviceName) {
-          wx.showToast({ title: '上传设备 ' + bestDevice + ' 也缺少密钥', icon: 'none', duration: 2500 })
+        // 只有 1 台中继可用：保持原有单发流程
+        if (usableRelays.length === 1) {
+          const item = usableRelays[0]
+          const rssiInfo = item.bestRssi > -999 ? ' RSSI:' + item.bestRssi : ''
+          that.addLog('info', '通过上传设备 ' + item.device.deviceId + rssiInfo + ' 获取密钥')
+          that._doSend(item.device, targetDeviceId, cmdText)
           return
         }
 
-        const rssiInfo = bestRssi > -999 ? ' RSSI:' + bestRssi : ''
-        that.addLog('info', '通过上传设备 ' + bestDevice + rssiInfo + ' 获取密钥')
-        that._doSend(uploadDevice, targetDeviceId, cmdText)
+        // 信号最好的 2 台中继：各发一条（消息都指向同一目标设备）
+        that._sendToRelays(usableRelays, targetDeviceId, cmdText)
       },
       fail: (err) => {
         wx.hideLoading()
@@ -612,6 +624,74 @@ Page({
         that.addLog('error', '发送失败: ' + (err.errMsg || '网络错误'))
         wx.showToast({ title: '发送失败', icon: 'error' })
       }
+    })
+  },
+
+  // 自动模式双中继发送：同一条指令经信号最好的至多 2 台中继各发送一条
+  // 统一管理 loading 与结果提示，避免多次 showLoading/hideLoading 互相干扰
+  _sendToRelays(relayList, targetDeviceId, cmdText) {
+    const that = this
+    const total = relayList.length
+    let done = 0
+    const failed = []
+
+    wx.showLoading({ title: total > 1 ? '双中继发送中...' : '发送中...' })
+
+    const finish = () => {
+      if (done < total) return
+      wx.hideLoading()
+      if (failed.length === 0) {
+        wx.showToast({ title: total > 1 ? '指令已通过2台中继发送' : '指令已发送', icon: 'success' })
+      } else if (failed.length === total) {
+        wx.showToast({ title: '发送失败', icon: 'error' })
+      } else {
+        wx.showToast({ title: (total - failed.length) + '台成功 ' + failed.length + '台失败', icon: 'none' })
+      }
+    }
+
+    relayList.forEach((item) => {
+      // 消息处理与载荷构造，与 _doSend 保持一致
+      let msgObj
+      try {
+        msgObj = JSON.parse(cmdText)
+      } catch (e) {
+        msgObj = { text: cmdText }
+      }
+      msgObj.deviceId = targetDeviceId
+      const finalMsg = JSON.stringify(msgObj)
+
+      const payload = {
+        action: 'com',
+        deviceName: item.device.DeviceName,
+        productKey: item.device.ProductKey,
+        msg: finalMsg,
+        timestamp: Date.now(),
+        info: { wechatid: getApp().getWechatId() }
+      }
+
+      const rssiInfo = item.bestRssi > -999 ? ' RSSI:' + item.bestRssi : ''
+      that.addLog('info', '经中继 ' + item.device.deviceId + rssiInfo + ' 发送 → ' + targetDeviceId + ': ' + finalMsg)
+      console.log('[DTU指令] 经 ' + item.device.deviceId + ' 发送:', JSON.stringify(payload))
+
+      wx.request({
+        url: FC_URL,
+        method: 'POST',
+        data: payload,
+        timeout: 10000,
+        success: (res) => {
+          done++
+          console.log('[DTU指令] ' + item.device.deviceId + ' 返回:', JSON.stringify(res.data))
+          that.addLog('success', item.device.deviceId + ' 返回: ' + JSON.stringify(res.data))
+          finish()
+        },
+        fail: (err) => {
+          done++
+          console.error('[DTU指令] ' + item.device.deviceId + ' 发送失败:', err)
+          failed.push(item.device.deviceId)
+          that.addLog('error', item.device.deviceId + ' 发送失败: ' + (err.errMsg || '网络错误'))
+          finish()
+        }
+      })
     })
   },
 
