@@ -1,5 +1,6 @@
 // config/data-cache.js — 全局数据缓存模块
 // 设备列表和牛羊列表缓存，避免每次页面切换都请求服务器
+const timeWindowCodec = require('../utils/time-window-codec.js')
 
 const app = getApp()
 const API_DEVICE_URL = app.globalData.api_device_Url
@@ -424,6 +425,113 @@ function getCachedDeviceConfig(deviceId) {
   return null
 }
 
+// ==================== 上报GPS(upgps)取值：按目标设备工作周期/大周期 ====================
+// 设备配置 lorastr 第3段(按|分)再按,分：
+//   [0]上报周期(分钟，工作/开机时间内GPS上报间隔) [1]开机时间代号 [2]GPS工作时间代号 [,3]主周期参数(1-10 = 10-100分钟，非工作时间使用)
+// 例 "30,0M,3t,6"：工作时间内按 30 分钟，不在工作时间(大周期)按 6*10=60 分钟
+
+/**
+ * 解析设备配置 lorastr → { reportIntervalMin, mainPeriodMin, powerWin, gpsWin }
+ * powerWin/gpsWin 为 { start, end } 或 null
+ */
+function parseDeviceConfigLorastr(configLorastr) {
+  const res = { reportIntervalMin: 0, mainPeriodMin: 0, powerWin: null, gpsWin: null }
+  if (!configLorastr) return res
+  const parts = String(configLorastr).split('|')
+  if (parts.length < 3 || !parts[2]) return res
+  const cfg = parts[2].split(',')
+  if (!cfg.length) return res
+
+  const intervalNum = parseInt((cfg[0] || '').trim(), 10)
+  if (!isNaN(intervalNum) && intervalNum > 0) res.reportIntervalMin = intervalNum
+
+  if (cfg.length >= 2) {
+    const win = timeWindowCodec.parseTimeWindow((cfg[1] || '').trim())
+    if (win) res.powerWin = { start: win.start, end: win.end }
+  }
+  if (cfg.length >= 3) {
+    const win = timeWindowCodec.parseTimeWindow((cfg[2] || '').trim())
+    if (win) res.gpsWin = { start: win.start, end: win.end }
+  }
+  if (cfg.length >= 4) {
+    const mp = parseInt((cfg[3] || '').trim(), 10)
+    if (!isNaN(mp) && mp >= 1 && mp <= 10) res.mainPeriodMin = mp * 10
+  }
+  return res
+}
+
+/**
+ * 当前应生效的 GPS 上报间隔（分钟），供 {"cmd":"upgps","value":X} 使用
+ * 工作周期(在开机时间窗口内) → 上报周期(cfg[0]，如30分钟)
+ * 大周期(不在开机时间)     → 主周期(cfg[3]*10，如6*10=60分钟)，未配置主周期时回退上报周期
+ * 无配置/无法解析 → 0（保持旧逻辑，不改变设备行为）
+ */
+function calcUpgpsValue(configLorastr, now) {
+  const cfg = parseDeviceConfigLorastr(configLorastr)
+  if (!cfg.reportIntervalMin && !cfg.mainPeriodMin) return 0
+  const d = now ? new Date(now) : new Date()
+  const currentMinutes = d.getHours() * 60 + d.getMinutes()
+  // 开机时间窗口用于区分"工作周期/大周期"（与设备列表页 isDormant 判断一致）
+  if (cfg.powerWin) {
+    const startMinutes = cfg.powerWin.start * 60
+    // end=23 代表 23:59
+    const endMinutes = cfg.powerWin.end === 23 ? 23 * 60 + 59 : cfg.powerWin.end * 60
+    const inWork = currentMinutes >= startMinutes && currentMinutes < endMinutes
+    if (!inWork && cfg.mainPeriodMin > 0) {
+      // 大周期（非工作时间）
+      return cfg.mainPeriodMin
+    }
+  }
+  // 工作周期（或未配置窗口视为全天工作）
+  return cfg.reportIntervalMin || 0
+}
+
+/**
+ * 取指定设备当前应使用的 upgps value（分钟）；无配置返回 0
+ * 先读缓存，缓存无该设备时再从网络配置表取
+ */
+function getUpgpsValue(deviceId, callback) {
+  const cached = getCachedDeviceConfig(deviceId)
+  if (cached && cached.lorastr) {
+    const v = calcUpgpsValue(cached.lorastr)
+    if (v > 0) {
+      console.log('[upgps] 设备 ' + deviceId + ' 上报间隔(缓存): ' + v + ' 分钟')
+      if (callback) callback(v)
+      return
+    }
+  }
+  getDeviceConfigAll((data) => {
+    const map = (data && data.configMap) || {}
+    const cfg = map[deviceId]
+    const v = calcUpgpsValue((cfg && cfg.lorastr) || '')
+    console.log('[upgps] 设备 ' + deviceId + ' 上报间隔: ' + v + ' 分钟(工作周期/大周期判定)')
+    if (callback) callback(v)
+  }, false)
+}
+
+/**
+ * 生成 upgps 指令文本：优先用调用方内存中已解析的配置 lorastr（免网络），
+ * 其次查全局配置缓存/网络，取不到配置时 value 保持 0
+ * @param {string} deviceId - 目标设备ID
+ * @param {string} localLorastr - 页面内存中的设备配置 lorastr（可为空）
+ * @param {function} callback - (cmdText)
+ */
+function resolveUpgpsCmdText(deviceId, localLorastr, callback) {
+  if (!deviceId) {
+    if (callback) callback(JSON.stringify({ cmd: 'upgps', value: 0 }))
+    return
+  }
+  const localVal = calcUpgpsValue(localLorastr || '')
+  if (localVal > 0) {
+    console.log('[upgps] 设备 ' + deviceId + ' 上报间隔(内存配置): ' + localVal + ' 分钟')
+    if (callback) callback(JSON.stringify({ cmd: 'upgps', value: localVal }))
+    return
+  }
+  getUpgpsValue(deviceId, (v) => {
+    if (callback) callback(JSON.stringify({ cmd: 'upgps', value: v || 0 }))
+  })
+}
+
 // ==================== 道路列表缓存（按天：一天只请求一次网络） ====================
 
 /**
@@ -652,6 +760,10 @@ module.exports = {
   getDeviceConfigAll,
   refreshDeviceConfigAll,
   getCachedDeviceConfig,
+  parseDeviceConfigLorastr,
+  calcUpgpsValue,
+  getUpgpsValue,
+  resolveUpgpsCmdText,
   getRoadListFromCache,
   refreshRoadList,
   clearRoadCache,

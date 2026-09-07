@@ -521,14 +521,18 @@ Page({
   onGetLocationTap() {
     const deviceId = this.data.selectedDeviceId
     if (!deviceId) return
-    const cmdText = JSON.stringify({ cmd: 'upgps', value: 0 })
-    const deviceInfo = this.data.deviceInfo
-    if (deviceInfo && deviceInfo.ProductKey && deviceInfo.DeviceName) {
-      this._doSendDTU(deviceInfo, deviceId, cmdText)
-    } else {
-      wx.showLoading({ title: '查询上传设备...' })
-      this._queryUploadDevice(deviceId, cmdText)
+    const that = this
+    const send = (cmdText) => {
+      const deviceInfo = that.data.deviceInfo
+      if (deviceInfo && deviceInfo.ProductKey && deviceInfo.DeviceName) {
+        that._doSendDTU(deviceInfo, deviceId, cmdText)
+      } else {
+        wx.showLoading({ title: '查询上传设备...' })
+        that._queryUploadDevice(deviceId, cmdText)
+      }
     }
+    // upgps value = 目标设备当前应生效的上报间隔（工作周期用上报周期，大周期用主周期），取不到配置保持 0
+    dataCache.resolveUpgpsCmdText(deviceId, that._configLorastr || '', send)
   },
 
   _queryUploadDevice(targetDeviceId, cmdText) {

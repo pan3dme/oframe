@@ -724,19 +724,21 @@ Page({
     const that = this
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const cmdText = JSON.stringify({ cmd: 'upgps', value: 0 })
     wx.showLoading({ title: '正在刷新定位...' })
-    dataCache.getDeviceList((deviceData) => {
-      const allDevices = (deviceData && deviceData.recordList) ? deviceData.recordList : []
-      const selfDev = allDevices.find(d => d.deviceId === deviceId)
-      if (selfDev && selfDev.ProductKey && selfDev.DeviceName) {
-        // 设备自身就是中继/带密钥 → 直接发送
-        that._doSendDTU(selfDev, deviceId, cmdText)
-        return
-      }
-      // 查找信号最好的中继（转发过该设备消息且RSSI最优的上传设备）
-      that._queryBestRelay(deviceId, cmdText)
-    }, false)
+    // upgps value = 目标设备当前应生效的上报间隔（工作周期用上报周期，大周期用主周期），取不到配置保持 0
+    dataCache.resolveUpgpsCmdText(deviceId, '', (cmdText) => {
+      dataCache.getDeviceList((deviceData) => {
+        const allDevices = (deviceData && deviceData.recordList) ? deviceData.recordList : []
+        const selfDev = allDevices.find(d => d.deviceId === deviceId)
+        if (selfDev && selfDev.ProductKey && selfDev.DeviceName) {
+          // 设备自身就是中继/带密钥 → 直接发送
+          that._doSendDTU(selfDev, deviceId, cmdText)
+          return
+        }
+        // 查找信号最好的中继（转发过该设备消息且RSSI最优的上传设备）
+        that._queryBestRelay(deviceId, cmdText)
+      }, false)
+    })
   },
 
   // 通过 getDeviceBestRssibyId 查询该设备记录里信号最好的中继（上传设备）

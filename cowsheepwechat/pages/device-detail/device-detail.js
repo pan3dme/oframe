@@ -888,17 +888,23 @@ Page({
   onGetLocationTap() {
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const cmdText = JSON.stringify({ cmd: 'upgps', value: 0 })
-    const deviceInfo = this.data.deviceInfo
-
-    // 设备已有密钥，直接发送
-    if (deviceInfo && deviceInfo.ProductKey && deviceInfo.DeviceName) {
-      this._doSendDTU(deviceInfo, deviceId, cmdText)
-    } else {
-      // 设备缺少密钥，通过 getDeviceLogbyId 查找上传设备获取密钥
-      wx.showLoading({ title: '查询上传设备...' })
-      this._queryUploadDevice(deviceId, cmdText)
+    const that = this
+    // 页面内存中的设备配置 lorastr（网络已返回/缓存预填），供工作周期/大周期判断
+    const configLorastr = (this.data.deviceConfig && this.data.deviceConfig.lorastr) ||
+      (this.data.deviceInfo && this.data.deviceInfo.configLorastr) || ''
+    const send = (cmdText) => {
+      const deviceInfo = that.data.deviceInfo
+      // 设备已有密钥，直接发送
+      if (deviceInfo && deviceInfo.ProductKey && deviceInfo.DeviceName) {
+        that._doSendDTU(deviceInfo, deviceId, cmdText)
+      } else {
+        // 设备缺少密钥，通过 getDeviceLogbyId 查找上传设备获取密钥
+        wx.showLoading({ title: '查询上传设备...' })
+        that._queryUploadDevice(deviceId, cmdText)
+      }
     }
+    // upgps value = 目标设备当前应生效的上报间隔（工作周期用上报周期，大周期用主周期），取不到配置保持 0
+    dataCache.resolveUpgpsCmdText(deviceId, configLorastr, send)
   },
 
   // 通过 getDeviceLogbyId 查询目标设备的最新记录，找到信号最佳的上传设备以获取密钥

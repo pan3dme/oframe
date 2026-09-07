@@ -161,8 +161,17 @@ Page({
   },
 
   // ========== 快捷按钮 ==========
+  // 上报GPS：value 填目标设备当前应生效的上报间隔（工作周期用上报周期，大周期用主周期），取不到配置保持 0
   onQuickReportGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'upgps', value: 0 }), quickSelected: 5 })
+    const device = this.data.deviceList && this.data.deviceList[this.data.deviceIndex]
+    const that = this
+    if (device && device.deviceId) {
+      dataCache.resolveUpgpsCmdText(device.deviceId, '', (cmdText) => {
+        that.setData({ cmdText, quickSelected: 5 })
+      })
+    } else {
+      this.setData({ cmdText: JSON.stringify({ cmd: 'upgps', value: 0 }), quickSelected: 5 })
+    }
   },
 
   onQuickNormalMode() {
