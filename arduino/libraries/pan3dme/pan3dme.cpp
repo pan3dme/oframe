@@ -35,13 +35,13 @@ uint64_t allowedDevices[] = {
     0x7002A78FCBA4, //     8
     0x000DA78FCBA4,
     0x00E7A7B2F180, //     10
-    0x9875555,
+    0x6CFF61F61B44, //     11 
     0xB01796A65688, //     12
-    0x9875555,
+    0xFCCABE1B5BF8, //     13
     0xF478B549FD8C, //     14
-    0x9875555,
+    0x300CA78FCBA4, //     15
     0x10ADB749FD8C, //     16
-    0x9875555,
+    0x6C08A78FCBA4, //     17
     0x301BA21B5BF8, //     18
     0x8442AAAC85D8, //     19
     0xD4A284697090, //     20
