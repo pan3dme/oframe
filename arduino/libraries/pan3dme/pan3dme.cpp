@@ -282,7 +282,7 @@ String getGpsInfoStr()
   }
   else
   {
-    return "0.00000,0.00000";
+    return "0.0,0.0";
   }
 }
 

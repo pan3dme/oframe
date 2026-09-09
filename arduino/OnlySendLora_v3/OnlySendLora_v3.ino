@@ -35,7 +35,7 @@ RTC_DATA_ATTR uint32_t rtcMagic;
 RTC_DATA_ATTR long long lastSyncTime;
 
 
-
+RTC_DATA_ATTR bool lastCanthGpsOk;
 RTC_DATA_ATTR int loraTxPower;
 RTC_DATA_ATTR int sendModeidx;
 
@@ -48,7 +48,7 @@ RTC_DATA_ATTR double rtc_gps_lat;
 RTC_DATA_ATTR double rtc_gps_lon;
 
 RTC_DATA_ATTR bool configConfirmed;
-RTC_DATA_ATTR bool isNeedGpsWork;
+
 RTC_DATA_ATTR int rtcSendCount;
 RTC_DATA_ATTR int rtcResiveIdx;
 RTC_DATA_ATTR int roundTime;
@@ -71,16 +71,16 @@ void printTimeToString(String str, unsigned long ms);  // 前向声明
 //返回毫秒
 unsigned long get_send_interval_ms() {
   if (rtcSendCount <= 4) {
-    DEBUG_PRINTLN("u前4次就5分钟启动。");
+    DEBUG_PRINTLN("前4次就5分钟启动。");
     return 1000 * 60 * 5;  //前2次默认间隔5份钟 这有利于开机快速配置，
   }
   bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
   if (inWorkTime || !isBoardDateTimeOK()) {
-    printTimestampSec(roundTime / 1000, "工作期间。。");
+    printTimestampSec(roundTime / 1000, "工作期间:");
     return roundTime;
   } else {
 
-    printTimestampSec(60 * 10 * big_interval_tm, "不在工作期使用大周期时间。");
+    printTimestampSec(60 * 10 * big_interval_tm, "不在工作期使用大周期时间:");
     return 1000 * 60 * 10 * big_interval_tm;  //不在工作区间就用大周期
   }
 }
@@ -530,13 +530,16 @@ void meshGpsInfoFun(bool closeGps = true) {
       strncpy(lastrelayName, "", sizeof(lastrelayName) - 1);
       lastrelayName[sizeof(lastrelayName) - 1] = '\0';
       timeSyncFlag = true;
-
+      lastCanthGpsOk = true;
       break;
     }
     if (!timeoutOk) {
+
       DEBUG_PRINT("==== 搜星 ");
       DEBUG_PRINT(seacthTm / 1000);
       DEBUG_PRINTLN(" 秒超时，强制退出 ====");
+
+      lastCanthGpsOk = false;
       break;
     }
     delay(1000);
@@ -573,6 +576,11 @@ void batteryLowSleep(int minValue) {
 }
 
 unsigned long num6000 = 5000;  // 暂时提前20秒开机
+
+bool isNeedOpenGpsMask() {
+
+  return isTimeInRange(getCurrentTimestampSec(), gps_time_str) || lastCanthGpsOk == false;
+}
 void testSheepFun(bool driftComp) {
 
   unsigned long waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
@@ -592,14 +600,11 @@ void testSheepFun(bool driftComp) {
     uint64_t sleepTime = (waittm - num6000);  //毫秒
     //判断下个时间段是否需要开启GPS是的话就提前搜星
     //判断是否需要GPS工作
-    isNeedGpsWork = isTimeInRange(getCurrentTimestampSec(), gps_time_str);
-    if (isNeedGpsWork && strlen(needSendGpsStr) == 0) {
+
+    if (isNeedOpenGpsMask() && strlen(needSendGpsStr) == 0) {
       DEBUG_PRINTLN("工作模式上报GPS，需要提前开启GPS");
-      if (sleepTime > (seacthTm)) {
+      if (sleepTime > seacthTm) {
         sleepTime = sleepTime - (seacthTm);
-      } else {
-        //小于时间周期，10秒就马上重启 应该不会到这里，有空测试一下
-        sleepTime = 10 * 1000ULL;
       }
     }
     //现在还不是在工作时间，但下个周期为工作时间
@@ -664,12 +669,12 @@ void setup() {
     lastRssi = 0;
     lastSnr = 0;
 
-
+    lastCanthGpsOk = true;
     rtc_gps_lat = static_gps_lat;
     rtc_gps_lon = static_gps_lon;
 
     configConfirmed = true;
-    isNeedGpsWork = false;
+
     rtcSendCount = -1;
     rtcResiveIdx = 0;
 
@@ -722,8 +727,8 @@ void setup() {
   }
 
 
-  batteryLowSleep(30);
-  if (isNeedGpsWork && strlen(needSendGpsStr) == 0) {
+  batteryLowSleep(50);
+  if (isNeedOpenGpsMask() && strlen(needSendGpsStr) == 0) {
     meshGpsInfoFun(true);
     strncpy(needSendGpsStr, getGpsInfoStr().c_str(), sizeof(needSendGpsStr) - 1);
     needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
@@ -803,7 +808,6 @@ void loop() {
       if (nextSendTime < millis() || rtcSendCount == 0) {
         typeindex = FLAG_TYPE_1;
         if (strlen(needSendGpsStr) > 0) {
-          //lastSeacthStatTm
           sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr) + "|" + String(lastSeacthStatTm), false);
           strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
           needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
