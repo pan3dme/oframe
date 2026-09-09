@@ -3,12 +3,15 @@
 <canvas type="2d" id="pinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
 <canvas type="2d" id="cowPinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
 <canvas type="2d" id="devPinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
+<canvas type="2d" id="devGrayPinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
+<canvas type="2d" id="devLightGreenPinCanvas" style="width:28px;height:28px;position:fixed;left:-9999px"></canvas>
 <canvas type="2d" id="placeTextCanvas" style="width:120px;height:60px;position:fixed;left:-9999px"></canvas>
 
 <map id="cowMap" class="map"
   latitude="{{nativeLat}}" longitude="{{nativeLng}}" scale="{{nativeScale}}"
   markers="{{markers}}" polyline="{{polylines}}" show-location="{{true}}" enable-satellite="{{isSatellite}}"
-  bindregionchange="onRegionChange" />
+  bindregionchange="onRegionChange"
+  bindmarkertap="onMarkerTap" bindcallouttap="onCalloutTap" />
 
 <!-- 左下角图层切换按钮 -->
 <view class="layer-toggle {{showRoadLayer ? 'layer-on' : ''}}" bindtap="toggleLayer">
@@ -30,4 +33,10 @@
     <text class="tool-icon">▸</text>
     <text class="tool-label">巡点</text>
   </view>
+</view>
+
+<!-- 右上角：向所有"工作期间"的中继发送 GPS 定时指令 {"cmd":"gpstim","value":30} -->
+<view class="tool-btn gpstim-btn" bindtap="onGpstimAllTap">
+  <text class="tool-icon">📡</text>
+  <text class="tool-label">全体</text>
 </view>

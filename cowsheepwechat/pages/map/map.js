@@ -1,7 +1,11 @@
 // map.js
 const app = getApp()
 const dataCache = require('../../config/data-cache.js')
+const timeWindowCodec = require('../../utils/time-window-codec.js')
 const { wgs84ToGcj02, parseRoadPoints } = require('../../utils/coord-transform.js')
+
+// 中继DTU指令转发云函数地址（与 中继DTU指令页 relay-dtu-cmd 一致）
+const RELAY_FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
 
 Page({
   data: {
@@ -17,6 +21,7 @@ Page({
     layerLabel: '图层',
     isSatellite: true,     // 全程开启卫星底图
     currentMarker: -1,
+    activeCalloutId: -1,   // 当前唯一展开的气泡 marker id
     groundOverlays: []
   },
 
@@ -30,10 +35,17 @@ Page({
   _fullPlaceList: [],
   _cowIconPath: '',
   _deviceIconPath: '',
+  _deviceGrayIconPath: '',   // 最后定位超过1小时且最近无对时时使用的灰色图标
+  _deviceLightGreenIconPath: '', // 最后定位超过1小时但最近1小时内有对时时使用的浅绿色图标
   _cowIconReady: false,
   _devIconReady: false,
   _pendingCrowData: null,
   _pendingDeviceArgs: null,
+  _deviceLotList: null,      // 最近一次设备LOT原始数据（用于图标老化重算）
+  _deviceInfoMap: null,      // 最近一次设备信息映射
+  _deviceSyncMap: {},        // deviceId -> device_sync 对时同步表记录 { rawTime,... }（用于浅绿色图标判断）
+  _staleTimer: null,         // 设备图标老化检测定时器
+  _lastCalloutHideTs: 0,     // 上次点击气泡收起的时间戳，用于避免 markertap 误触发
 
   onLoad() {
     // 数据请求先发起；图标在 onReady 中绘制，避免 canvas 节点未就绪导致失败
@@ -321,14 +333,88 @@ Page({
         }
       })
 
+      // 对时同步表（device_sync）：用于 GPS 超1小时但最近1小时内有对时时显示浅绿色图标
+      dataCache.getDeviceSyncAll((syncData) => {
+        this._deviceSyncMap = (syncData && syncData.syncMap) || {}
+        console.log('[地图] 设备对时同步数据:', Object.keys(this._deviceSyncMap).length, '条')
+        // LOT 数据已就绪时，按最新对时信息重算设备图标颜色
+        if (this._deviceLotList && this._deviceLotList.length > 0) {
+          this._renderDeviceMarkers(this._deviceLotList, deviceInfoMap)
+          this._applyAllMarkers()
+        }
+      }, true)
+
       dataCache.getDeviceLotRefresh((lotData) => {
         const lotList = lotData.lotList || []
         console.log('[地图] 设备LOT数据:', lotList.length, '条')
+        this._deviceLotList = lotList
+        this._deviceInfoMap = deviceInfoMap
         this._renderDeviceMarkers(lotList, deviceInfoMap)
         this._applyAllMarkers()
+        if (lotList.length > 0) this._startStaleTimer()
         wx.hideLoading()
       }, true)
     })
+  },
+
+  // 把各种格式的"时间字符串/时间戳"统一解析为毫秒时间戳，解析失败返回 NaN
+  // 兼容 "YYYY/M/D H:m:s"、"YYYY-MM-DD H:m:s"、秒/毫秒时间戳等格式
+  _parseTimeToTs(timeStr) {
+    if (timeStr === undefined || timeStr === null || timeStr === '' || timeStr === '-') return NaN
+    let ts = NaN
+    if (typeof timeStr === 'number') {
+      ts = timeStr > 1e12 ? timeStr : timeStr * 1000
+    } else {
+      const s = String(timeStr).trim()
+      if (/^\d+$/.test(s)) {
+        const n = parseInt(s, 10)
+        ts = n > 1e12 ? n : n * 1000
+      } else {
+        // 部分机型(如 iOS)对 "2026/8/10 23:13:33" 直接 new Date 会解析失败，先规范化
+        const norm = s.replace(/\//g, '-').replace(' ', 'T')
+        ts = new Date(norm).getTime()
+        if (isNaN(ts)) {
+          const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/)
+          if (m) ts = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)).getTime()
+        }
+      }
+    }
+    return ts
+  },
+
+  // 判断设备"最后定位时间"距今是否已超过 1 小时（超过 → 图标置灰/置浅绿）
+  _deviceIsStale(timeStr) {
+    const ts = this._parseTimeToTs(timeStr)
+    if (isNaN(ts)) return false
+    return Date.now() - ts > 3600 * 1000
+  },
+
+  // 判断设备最近 1 小时内是否有对时同步记录（有 → GPS超1小时时用浅绿色图标显示）
+  _deviceHasRecentSync(deviceId) {
+    const sync = (this._deviceSyncMap || {})[deviceId]
+    if (!sync) return false
+    const ts = this._parseTimeToTs(sync.rawTime || sync.time || '')
+    if (isNaN(ts)) return false
+    return Date.now() - ts <= 3600 * 1000
+  },
+
+  // 启动设备图标老化检测：页面停留时每分钟重算一次，
+  // 设备最后定位时间跨过 1 小时阈值时自动把图标由绿色切为灰色
+  _startStaleTimer() {
+    if (this._staleTimer) return
+    const that = this
+    this._staleTimer = setInterval(() => {
+      that._refreshDeviceIconByStale()
+    }, 60000)
+  },
+
+  _refreshDeviceIconByStale() {
+    if (!this._devIconReady || !this._deviceLotList || this._deviceLotList.length === 0) return
+    const prevIcons = (this._deviceMarkers || []).map(m => m.iconPath).join(',')
+    this._renderDeviceMarkers(this._deviceLotList, this._deviceInfoMap || {})
+    const nextIcons = (this._deviceMarkers || []).map(m => m.iconPath).join(',')
+    // 仅当有图标颜色变化时才刷新地图，避免每60秒无意义地整组重绘
+    if (prevIcons !== nextIcons) this._applyAllMarkers()
   },
 
   _renderDeviceMarkers(lotList, deviceInfoMap) {
@@ -387,17 +473,32 @@ Page({
       //   labelText = labelText.substring(0, 15) + '...'
       // }
       devAnchorX=((labelText.length) * 11.0)/2 +15
-    
+
+      // 图标颜色：
+      //   绿色(#00C853) = 最后定位(GPS)在 1 小时内
+      //   浅绿色(#66BB6A) = GPS 超过 1 小时，但最近 1 小时内有对时同步记录（设备仍在活，只是没更新位置）
+      //   灰色 = GPS 超过 1 小时且最近 1 小时内无对时（设备长时间失联）
+      const stale = this._deviceIsStale(item.rawTime || item.time || '')
+      const recentSync = this._deviceHasRecentSync(item.deviceId)
+      let iconPath = this._deviceIconPath || ''
+      if (stale) {
+        iconPath = recentSync
+          ? (this._deviceLightGreenIconPath || this._deviceGrayIconPath || this._deviceIconPath || '')
+          : (this._deviceGrayIconPath || this._deviceIconPath || '')
+      }
+      const syncInfo = (this._deviceSyncMap || {})[item.deviceId]
+      const syncRaw = (syncInfo && (syncInfo.rawTime || syncInfo.time)) || '-'
+
       markers.push({
         id: index + 50000,
         latitude: gcj.lat,
         longitude: gcj.lng,
         width: 28,
         height: 28,
-        iconPath: this._deviceIconPath || '',
+        iconPath: iconPath,
         title: '设备 ' + (item.deviceId || '-'),
         callout: {
-          content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng + '\n更新:' + (item.rawTime || '-'),
+          content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng + '\n更新:' + (item.rawTime || '-') + '\n对时:' + syncRaw,
           display: 'BYCLICK',
           textAlign: 'center',
           fontSize: 13,
@@ -429,8 +530,19 @@ Page({
   _applyAllMarkers() {
     const base = [...(this._cowMarkers || []), ...(this._deviceMarkers || [])]
     const places = this.data.showRoadLayer ? (this._placeMarkers || []) : []
-    const all = [...base, ...places]
-    all.forEach((m, i) => { m.id = i })
+    const activeId = this.data.activeCalloutId
+    // 深拷贝并保留稳定 id（牛/设备/地名在各自生成时已分配不冲突 id），
+    // 仅根据 activeCalloutId 控制唯一气泡显隐，避免 id 重排导致“点 A 显 B”
+    const all = [...base, ...places].map(m => {
+      const clone = { ...m }
+      if (m.callout) {
+        clone.callout = {
+          ...m.callout,
+          display: (activeId !== -1 && m.id === activeId) ? 'ALWAYS' : 'BYCLICK'
+        }
+      }
+      return clone
+    })
 
     console.log('[地图] 合并标记点总数:', all.length)
     this.setData({ markers: all, currentMarker: -1 })
@@ -615,6 +727,27 @@ Page({
     })
   },
 
+  // 点击 marker：展开该点气泡，同时收起其它气泡（地图中心最多只显示一个气泡）
+  onMarkerTap(e) {
+    const markerId = e && e.detail ? e.detail.markerId : -1
+    if (markerId === -1) return
+    // 部分平台点击气泡会连带触发 markertap，隐藏后短暂忽略，避免"刚隐藏又显示"
+    if (Date.now() - (this._lastCalloutHideTs || 0) < 350) return
+    this.setData({ activeCalloutId: markerId }, () => {
+      this._applyAllMarkers()
+    })
+  },
+
+  // 点击已展开的气泡：收起气泡
+  onCalloutTap(e) {
+    const markerId = e && e.detail ? e.detail.markerId : -1
+    if (markerId === -1 || markerId !== this.data.activeCalloutId) return
+    this._lastCalloutHideTs = Date.now()
+    this.setData({ activeCalloutId: -1 }, () => {
+      this._applyAllMarkers()
+    })
+  },
+
   toggleMapType() {
     // 切换腾讯卫星图/标准地图
     const next = !this.data.isSatellite
@@ -643,7 +776,7 @@ Page({
   /**
    * 通用图钉绘制：canvas选择器 → fillColor/strokeColor → 导图
    */
-  _drawPin(canvasSelector, fillColor, strokeColor, targetPath, cb) {
+  _drawPin(canvasSelector, fillColor, strokeColor, targetPath, cb, triangleColor) {
     const query = wx.createSelectorQuery()
     query.select(canvasSelector).fields({ node: true, size: true }).exec((res) => {
       if (!res || !res[0] || !res[0].node) return
@@ -665,13 +798,13 @@ Page({
       ctx.lineWidth = 2
       ctx.stroke()
 
-      // 内部绿色倒三角
+      // 内部倒三角：默认与描边同色；如需单独指定颜色可传 triangleColor
       ctx.beginPath()
       ctx.moveTo(cx - 5, cy - 5)
       ctx.lineTo(cx, cy + 5)
       ctx.lineTo(cx + 5, cy - 5)
       ctx.closePath()
-      ctx.fillStyle = fillColor
+      ctx.fillStyle = triangleColor || fillColor
       ctx.fill()
 
       wx.canvasToTempFilePath({
@@ -779,28 +912,54 @@ Page({
   },
 
   /**
-   * 用 Canvas 绘制设备定位图钉图标（绿色），固定路径，每次覆盖不累积
+   * 用 Canvas 绘制设备定位图钉图标，固定路径，每次覆盖不累积
+   * 绿色（#00C853）：最后定位(GPS)时间在 1 小时内
+   * 浅绿色（#66BB6A）：GPS 超过 1 小时，但最近 1 小时内有对时同步记录（圆圈浅绿，内部倒三角灰色）
+   * 灰色（#9E9E9E）：GPS 超过 1 小时且最近无对时（长时间未上报）
+   * 三个图标都生成完成后才允许渲染设备标记点，避免出现"空 iconPath 红点"或漏色图标
    */
   _generateDevPin() {
     const that = this
-    const targetPath = (wx.env.USER_DATA_PATH || '') + '/dev_pin.png'
-    this._drawPin('#devPinCanvas', '#00C853', '#1B5E20', targetPath, (filePath) => {
-      that._deviceIconPath = filePath
+    const greenPath = (wx.env.USER_DATA_PATH || '') + '/dev_pin.png'
+    const grayPath = (wx.env.USER_DATA_PATH || '') + '/dev_pin_gray.png'
+    const lightGreenPath = (wx.env.USER_DATA_PATH || '') + '/dev_pin_lightgreen.png'
+    let done = 0
+    const finish = function() {
+      done++
+      if (done < 3) return
       that._devIconReady = true
       // 如果设备数据先返回、图标后生成，在这里补渲染
       if (that._pendingDeviceArgs) {
         const { lotList, deviceInfoMap } = that._pendingDeviceArgs
         that._pendingDeviceArgs = null
+        that._deviceLotList = lotList
+        that._deviceInfoMap = deviceInfoMap
         that._renderDeviceMarkers(lotList, deviceInfoMap)
         that._applyAllMarkers()
         return
       }
-      // 兜底：已生成的标记点 iconPath 为空时补上并刷新地图
+      // 兜底：已生成的标记点 iconPath 为空时按最新数据重算并刷新地图
       if ((that._deviceMarkers || []).length > 0) {
-        that._deviceMarkers.forEach(m => { m.iconPath = that._deviceIconPath })
+        that._renderDeviceMarkers(that._deviceLotList || [], that._deviceInfoMap || {})
         that._applyAllMarkers()
       }
+    }
+    // 绿色图钉：GPS 1 小时内正常在线
+    this._drawPin('#devPinCanvas', '#00C853', '#1B5E20', greenPath, (filePath) => {
+      that._deviceIconPath = filePath
+      finish()
     })
+    // 灰色图钉：GPS 超过 1 小时且最近无对时（长时间未上报）
+    this._drawPin('#devGrayPinCanvas', '#9E9E9E', '#616161', grayPath, (filePath) => {
+      that._deviceGrayIconPath = filePath
+      finish()
+    })
+    // 浅绿色图钉：GPS 超过 1 小时但最近 1 小时内有对时同步记录（设备仍在活）
+    // 圆圈用浅绿 #66BB6A，内部倒三角单独改为灰色（示意位置信息已偏旧）
+    this._drawPin('#devLightGreenPinCanvas', '#66BB6A', '#2E7D32', lightGreenPath, (filePath) => {
+      that._deviceLightGreenIconPath = filePath
+      finish()
+    }, '#9E9E9E')
   },
 
   /**
@@ -997,4 +1156,153 @@ Page({
     console.log('[道路] 构建折线:', polylines.length, '条')
     this._roadPolylines = polylines
   },
+
+  // ==================== 全体工作期间中继：GPS定时指令(gpstim=30) ====================
+  // 中继 = 设备表中带 ProductKey 的设备（太阳能DTU）。中继只在其"开机时间窗口"（工作期间）内
+  // 处于工作状态，故只向当前处于工作期间的中继下发指令，发送方式与 中继DTU指令页(relay-dtu-cmd) 一致。
+  onGpstimAllTap() {
+    const that = this
+    wx.showLoading({ title: '查询中继...' })
+    this._loadRelaysAndWorkPeriod((relays, workRelays) => {
+      wx.hideLoading()
+      if (relays.length === 0) {
+        wx.showToast({ title: '未找到可用中继（无ProductKey/密钥）', icon: 'none' })
+        return
+      }
+      if (workRelays.length === 0) {
+        wx.showToast({ title: '当前没有处于工作期间的中继', icon: 'none' })
+        return
+      }
+      const cmdText = JSON.stringify({ cmd: 'gpstim', value: 30 })
+      wx.showModal({
+        title: '全体中继 GPS 指令',
+        content: '将向 ' + workRelays.length + ' 台工作期间的中继发送：\n' + cmdText + '\n（共 ' + relays.length + ' 台中继）',
+        confirmText: '发送',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm) that._broadcastCmdToRelays(workRelays, cmdText)
+        }
+      })
+    })
+  },
+
+  // 加载设备列表 + 设备配置，筛出全部中继与当前"工作期间"的中继
+  _loadRelaysAndWorkPeriod(callback) {
+    let devData = null
+    let cfgData = null
+    let done = 0
+    const finish = () => {
+      done++
+      if (done < 2) return
+      const recordList = (devData && devData.recordList) || []
+      const configMap = (cfgData && cfgData.configMap) || {}
+      const seen = {}
+      const relays = []
+      recordList.forEach(r => {
+        if (!r.deviceId || r.deviceId === '-') return
+        if (seen[r.deviceId]) return
+        // 中继设备：带 ProductKey + DeviceName（云密钥），与 中继DTU指令页 过滤一致
+        if (!r.ProductKey || r.ProductKey === '-' || !r.DeviceName) return
+        seen[r.deviceId] = true
+        relays.push(r)
+      })
+      const now = new Date()
+      const workRelays = relays.filter(r => this._isRelayInWorkPeriod(r.deviceId, configMap, now))
+      console.log('[地图] 中继总数:', relays.length, '，工作期间中继:', workRelays.length,
+        workRelays.map(r => r.deviceId).join(','))
+      callback(relays, workRelays)
+    }
+    dataCache.getDeviceList((d) => { devData = d; finish() })
+    dataCache.getDeviceConfigAll((d) => { cfgData = d; finish() })
+  },
+
+  // 判断中继当前是否处于工作期间：取其配置"开机时间窗口"（lorastr 第3段第2项，两位代号/旧格式均可）
+  // 当前时间在窗口内=工作；无配置/无窗口=视为全天工作（与设备列表页 isDormant 判断一致）
+  _isRelayInWorkPeriod(deviceId, configMap, now) {
+    const cfg = (configMap && configMap[deviceId]) || null
+    const lorastr = (cfg && cfg.lorastr) || ''
+    if (!lorastr) return true
+    const parts = String(lorastr).split('|')
+    if (parts.length < 3 || !parts[2]) return true
+    const cfgParts = parts[2].split(',')
+    if (cfgParts.length < 2 || !cfgParts[1]) return true
+    const win = timeWindowCodec.parseTimeWindow(cfgParts[1].trim())
+    if (!win) return true
+    const d = now || new Date()
+    const currentMinutes = d.getHours() * 60 + d.getMinutes()
+    const startMinutes = win.start * 60
+    // end=23 代表 23:59
+    const endMinutes = win.end === 23 ? 23 * 60 + 59 : win.end * 60
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes
+  },
+
+  // 并发向多台中继下发同一指令（消息注入该中继自身 deviceId，与 relay-dtu-cmd 一致），
+  // 统一管理 loading 与成功/失败统计
+  _broadcastCmdToRelays(relayList, cmdText) {
+    const total = relayList.length
+    let done = 0
+    let okCount = 0
+    const failed = []
+
+    wx.showLoading({ title: '发送中(' + total + '台)...' })
+
+    const finish = () => {
+      if (done < total) return
+      wx.hideLoading()
+      if (failed.length === 0) {
+        wx.showToast({ title: '已发送 ' + total + ' 台中继', icon: 'success' })
+      } else if (failed.length === total) {
+        wx.showToast({ title: '全部发送失败', icon: 'error' })
+      } else {
+        wx.showToast({ title: okCount + ' 台成功 ' + failed.length + ' 台失败', icon: 'none' })
+      }
+    }
+
+    relayList.forEach(r => {
+      // 解析指令并注入目标设备ID（即该中继自身）
+      let msgObj
+      try {
+        msgObj = JSON.parse(cmdText)
+      } catch (e) {
+        msgObj = { text: cmdText }
+      }
+      msgObj.deviceId = r.deviceId
+      const payload = {
+        action: 'com',
+        deviceName: r.DeviceName,
+        productKey: r.ProductKey,
+        msg: JSON.stringify(msgObj),
+        timestamp: Date.now(),
+        info: { wechatid: getApp().getWechatId() }
+      }
+      console.log('[地图] 中继GPS指令 → ' + r.deviceId + ': ' + payload.msg)
+
+      wx.request({
+        url: RELAY_FC_URL,
+        method: 'POST',
+        data: payload,
+        timeout: 10000,
+        success: (res) => {
+          done++
+          okCount++
+          console.log('[地图] 中继 ' + r.deviceId + ' 返回:', JSON.stringify(res.data))
+          finish()
+        },
+        fail: (err) => {
+          done++
+          failed.push(r.deviceId)
+          console.error('[地图] 中继 ' + r.deviceId + ' 发送失败:', err)
+          finish()
+        }
+      })
+    })
+  },
+
+  // 页面销毁：停止设备图标老化检测定时器
+  onUnload() {
+    if (this._staleTimer) {
+      clearInterval(this._staleTimer)
+      this._staleTimer = null
+    }
+  }
 })

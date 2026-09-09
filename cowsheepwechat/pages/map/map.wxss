@@ -93,4 +93,13 @@ page {
   margin-top: 2rpx;
 }
 
+/* 右上角：全体工作期间中继 GPS 指令按钮（样式与右下功能按钮一致） */
+.gpstim-btn {
+  position: fixed;
+  right: 20rpx;
+  top: 200rpx;
+  z-index: 999;
+}
+
+
 
