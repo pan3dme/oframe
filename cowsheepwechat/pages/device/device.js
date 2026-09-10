@@ -11,11 +11,19 @@ Page({
 
     // 设备列表
     deviceList: [],
+    // 分类筛选：设备(device，无ProductKey) / 中继(relay，有ProductKey)
+    activeCategory: 'device',
+    categoryCount: { all: 0, device: 0, relay: 0 },
     isAdmin: false,
     showAllDevices: false,
     refresherTriggered: false,
     // 设备配置休眠状态映射 deviceId -> { isDormant, powerOnTime }
     deviceConfigMap: {}
+  },
+
+  // 是否为中继设备：有有效 ProductKey
+  _isRelay(item) {
+    return !!(item && item.ProductKey && item.ProductKey !== '-')
   },
 
   _readSettings() {
@@ -315,7 +323,9 @@ Page({
         ? deviceList
         : deviceList.filter(item => item.visible === true)
 
-      this.setData({ deviceList: filteredList })
+      // 保存全量列表（已按设置过滤），再按当前分类筛选后展示
+      this._allDeviceList = filteredList
+      this._applyCategoryFilter()
       // 列表就绪后启动倒计时刷新
       this._startCountdownTimer()
       if (forceRefresh) {
@@ -329,6 +339,29 @@ Page({
     dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
     dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, forceRefresh)
     this.fetchDeviceConfigAll(forceRefresh, (configMap) => { configMapData = configMap; merge() })
+  },
+
+  // 按当前分类筛选并写入展示列表，同时刷新各分类数量
+  _applyCategoryFilter() {
+    const all = this._allDeviceList || []
+    const deviceCount = all.filter(item => !this._isRelay(item)).length
+    const relayCount = all.length - deviceCount
+    const cat = this.data.activeCategory || 'device'
+    let list = cat === 'relay' ? all.filter(item => this._isRelay(item)) : all.filter(item => !this._isRelay(item))
+    this.setData({
+      deviceList: list,
+      categoryCount: { all: all.length, device: deviceCount, relay: relayCount }
+    })
+  },
+
+  // 切换分类：设备 / 中继
+  onSwitchCategory(e) {
+    const cat = (e && e.currentTarget && e.currentTarget.dataset.cat) || 'device'
+    if (cat === this.data.activeCategory) return
+    this.setData({ activeCategory: cat })
+    this._applyCategoryFilter()
+    // 重新按当前时间刷新一次倒计时（切换后索引变化）
+    this._startCountdownTimer()
   },
 
   refreshDeviceList() {

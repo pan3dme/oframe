@@ -6,37 +6,98 @@ page {
   background: #f5f5f5;
 }
 
-/* ========== 工具栏 ========== */
-.toolbar {
+/* ========== 固定头部（操作栏 + 分类筛选，固定在页面顶部） ========== */
+.page-header {
+  flex: none;
+  background: #fff;
+  z-index: 10;
+}
+
+/* ========== 新增按钮（与分类按钮同一行） ========== */
+.toolbar-btn {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 24rpx;
-  background: #fff;
-  border-bottom: 1rpx solid #eee;
-}
-
-.toolbar-count {
-  font-size: 26rpx;
-  color: #999;
-}
-
-.toolbar-btn {
-  background: #07c160;
+  justify-content: center;
+  background: linear-gradient(135deg, #1fd97b 0%, #07a854 100%);
   color: #fff;
-  font-size: 26rpx;
-  padding: 12rpx 28rpx;
+  font-size: 24rpx;
+  padding: 0 24rpx;
+  height: 64rpx;
   border-radius: 32rpx;
   font-weight: 600;
+  letter-spacing: 1rpx;
+  white-space: nowrap;
+  box-shadow: 0 6rpx 14rpx rgba(7, 168, 84, 0.28);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .toolbar-btn:active {
-  opacity: 0.8;
+  transform: scale(0.96);
+  box-shadow: 0 3rpx 8rpx rgba(7, 168, 84, 0.24);
 }
 
 .scrollarea {
   flex: 1;
   overflow-y: hidden;
+}
+
+/* ========== 分类筛选（设备 / 中继）+ 新增按钮，同一行 ========== */
+.category-bar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 24rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.category-tab {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  color: #8a8f99;
+  background: #f3f4f6;
+  border: 1rpx solid transparent;
+  border-radius: 32rpx;
+  font-weight: 500;
+  letter-spacing: 1rpx;
+  transition: color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+.category-tab:active {
+  transform: scale(0.97);
+}
+
+.category-tab-active {
+  background: linear-gradient(135deg, #1fd97b 0%, #07a854 100%);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 6rpx 16rpx rgba(7, 168, 84, 0.28);
+}
+
+.category-tab-num {
+  margin-left: 10rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  line-height: 32rpx;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+  font-size: 22rpx;
+  font-weight: 600;
+  text-align: center;
+  color: #8a8f99;
+  background: #e5e7eb;
+  border-radius: 16rpx;
+}
+
+.category-tab-active .category-tab-num {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.28);
 }
 
 /* 功能面板 */
@@ -223,7 +284,7 @@ page {
 
 /* ========== 设备列表 ========== */
 .list-panel {
-  margin: 0 20rpx 24rpx;
+  margin: 16rpx 20rpx 24rpx;
   background: #fff;
   border-radius: 16rpx;
   padding: 24rpx;
