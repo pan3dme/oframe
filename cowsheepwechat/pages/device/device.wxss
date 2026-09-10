@@ -16,25 +16,25 @@ page {
 /* ========== 新增按钮（与分类按钮同一行） ========== */
 .toolbar-btn {
   flex-shrink: 0;
+  margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1fd97b 0%, #07a854 100%);
+  background: #07c160;
   color: #fff;
   font-size: 24rpx;
-  padding: 0 24rpx;
-  height: 64rpx;
-  border-radius: 32rpx;
+  padding: 0 20rpx;
+  height: 60rpx;
+  border-radius: 10rpx;
   font-weight: 600;
-  letter-spacing: 1rpx;
+  letter-spacing: 0.5rpx;
   white-space: nowrap;
-  box-shadow: 0 6rpx 14rpx rgba(7, 168, 84, 0.28);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
 .toolbar-btn:active {
   transform: scale(0.96);
-  box-shadow: 0 3rpx 8rpx rgba(7, 168, 84, 0.24);
+  opacity: 0.85;
 }
 
 .scrollarea {
@@ -42,31 +42,30 @@ page {
   overflow-y: hidden;
 }
 
-/* ========== 分类筛选（设备 / 中继）+ 新增按钮，同一行 ========== */
+/* ========== 分类筛选（设备 / 中继 / 离线）+ 新增按钮，同一行 ========== */
 .category-bar {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 16rpx 24rpx;
+  gap: 10rpx;
+  padding: 14rpx 16rpx 14rpx 8rpx;
   background: #fff;
   border-bottom: 1rpx solid #f0f0f0;
 }
 
 .category-tab {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
-  height: 64rpx;
+  padding: 0 26rpx;
+  height: 60rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 26rpx;
   color: #8a8f99;
-  background: #f3f4f6;
-  border: 1rpx solid transparent;
-  border-radius: 32rpx;
-  font-weight: 500;
-  letter-spacing: 1rpx;
-  transition: color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+  background: #f2f2f2;
+  border-radius: 10rpx;
+  font-weight: 600;
+  transition: color 0.25s ease, background 0.25s ease, transform 0.2s ease;
 }
 
 .category-tab:active {
@@ -74,30 +73,20 @@ page {
 }
 
 .category-tab-active {
-  background: linear-gradient(135deg, #1fd97b 0%, #07a854 100%);
+  background: #07c160;
   color: #fff;
-  font-weight: 600;
-  box-shadow: 0 6rpx 16rpx rgba(7, 168, 84, 0.28);
+  font-weight: 700;
 }
 
 .category-tab-num {
-  margin-left: 10rpx;
-  min-width: 32rpx;
-  height: 32rpx;
-  line-height: 32rpx;
-  padding: 0 8rpx;
-  box-sizing: border-box;
-  font-size: 22rpx;
-  font-weight: 600;
-  text-align: center;
-  color: #8a8f99;
-  background: #e5e7eb;
-  border-radius: 16rpx;
+  margin-left: 8rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #9aa0a6;
 }
 
 .category-tab-active .category-tab-num {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 /* 功能面板 */

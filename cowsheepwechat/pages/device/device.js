@@ -11,9 +11,9 @@ Page({
 
     // 设备列表
     deviceList: [],
-    // 分类筛选：设备(device，无ProductKey) / 中继(relay，有ProductKey)
+    // 分类筛选：设备(device，无ProductKey) / 中继(relay，有ProductKey) / 离线(offline，久未上报)
     activeCategory: 'device',
-    categoryCount: { all: 0, device: 0, relay: 0 },
+    categoryCount: { all: 0, device: 0, relay: 0, offline: 0 },
     isAdmin: false,
     showAllDevices: false,
     refresherTriggered: false,
@@ -276,6 +276,10 @@ Page({
         // 中继设备不在工作区间 → 灰色；其它设备超过2个上报周期未上报 → 灰色；其余黑色
         const nameColor = signalColor === '#999999' ? '#999999' : ''
 
+        // 离线判定：从未上报 或 超过1个完整上报周期仍未上报（久未上报）
+        // 注：中继设备处于休眠时段属正常现象，不计入离线
+        const isOffline = !hasReport || cd.overdue
+
         // 注意：不使用对象展开 {...item}，展开会被增强编译转成 require('@babel/runtime/helpers/objectSpread2')
         // → 其内部 require('./defineProperty') 在小程序运行时会找不到该模块导致页面崩溃，改用 Object.assign 等价实现
         return Object.assign({}, item, {
@@ -300,7 +304,8 @@ Page({
           isDormant: isDormant,
           powerOnTime: (cfg && cfg.powerOnTime) || '-',
           signalColor: signalColor,
-          nameColor: nameColor
+          nameColor: nameColor,
+          isOffline: isOffline
         })
       })
 
@@ -346,15 +351,19 @@ Page({
     const all = this._allDeviceList || []
     const deviceCount = all.filter(item => !this._isRelay(item)).length
     const relayCount = all.length - deviceCount
+    const offlineCount = all.filter(item => item.isOffline).length
     const cat = this.data.activeCategory || 'device'
-    let list = cat === 'relay' ? all.filter(item => this._isRelay(item)) : all.filter(item => !this._isRelay(item))
+    let list
+    if (cat === 'relay') list = all.filter(item => this._isRelay(item))
+    else if (cat === 'offline') list = all.filter(item => item.isOffline)
+    else list = all.filter(item => !this._isRelay(item))
     this.setData({
       deviceList: list,
-      categoryCount: { all: all.length, device: deviceCount, relay: relayCount }
+      categoryCount: { all: all.length, device: deviceCount, relay: relayCount, offline: offlineCount }
     })
   },
 
-  // 切换分类：设备 / 中继
+  // 切换分类：设备 / 中继 / 离线
   onSwitchCategory(e) {
     const cat = (e && e.currentTarget && e.currentTarget.dataset.cat) || 'device'
     if (cat === this.data.activeCategory) return

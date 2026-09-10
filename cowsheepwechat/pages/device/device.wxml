@@ -10,6 +10,9 @@
     <view class="category-tab {{activeCategory === 'relay' ? 'category-tab-active' : ''}}" bindtap="onSwitchCategory" data-cat="relay">
       <text>中继</text><text class="category-tab-num">{{categoryCount.relay}}</text>
     </view>
+    <view class="category-tab {{activeCategory === 'offline' ? 'category-tab-active' : ''}}" bindtap="onSwitchCategory" data-cat="offline">
+      <text>离线</text><text class="category-tab-num">{{categoryCount.offline}}</text>
+    </view>
     <view class="toolbar-btn" bindtap="onAdd" wx:if="{{isAdmin}}">＋ 新增设备</view>
   </view>
 </view>
@@ -35,7 +38,7 @@
 
   <!-- 空状态 -->
   <view class="list-panel" wx:else>
-    <view class="empty-tip">{{activeCategory === 'relay' ? '暂无中继设备' : (activeCategory === 'device' ? '暂无设备' : '暂无设备数据')}}</view>
+    <view class="empty-tip">{{activeCategory === 'relay' ? '暂无中继设备' : (activeCategory === 'offline' ? '暂无离线设备' : (activeCategory === 'device' ? '暂无设备' : '暂无设备数据'))}}</view>
   </view>
 </scroll-view>
 
