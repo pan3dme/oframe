@@ -584,7 +584,7 @@ Page({
   loadTodayRecords(offset, callback) {
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const info = { limit: this.data.recordLimit, deviceId: deviceId, offset: offset || 0, wechatid: getApp().getWechatId() }
+    const info = { limit: this.data.recordLimit, deviceId: deviceId,type:0, offset: offset || 0, wechatid: getApp().getWechatId() }
     wx.request({
       url: API_URL,
       method: 'POST',

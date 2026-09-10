@@ -897,8 +897,7 @@ Page({
           '&deviceId=' + encodeURIComponent(deviceId) +
           '&time=' + encodeURIComponent(rawTime || '') +
           '&lorastr=' + encodeURIComponent(lorastr || '') +
-          '&upDateDevice=' + encodeURIComponent(upDateDevice || '') +
-          '&autoUpgps=1'
+          '&upDateDevice=' + encodeURIComponent(upDateDevice || '')
       })
     }
 

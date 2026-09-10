@@ -30,9 +30,7 @@ Page({
     maxLevel: 0,
     layerLabel: '图层',
     // 设备气泡是否显示：默认显示；点击气泡隐藏；隐藏时点击设备图标恢复
-    deviceCalloutShow: true,
-    // 从实时定位进入：页面加载完后自动向DTU发送 upgps 刷新位置
-    autoUpgps: false
+    deviceCalloutShow: true
   },
 
   onLoad(options) {
@@ -42,7 +40,6 @@ Page({
     const recordTime = decodeURIComponent(options.time || '')
     const lorastr = decodeURIComponent(options.lorastr || '')
     const upDateDevice = decodeURIComponent(options.upDateDevice || '')
-    const autoUpgps = options.autoUpgps === '1' || options.autoUpgps === 'true'
 
     if (!isNaN(lat) && !isNaN(lng)) {
       // WGS-84 → GCJ-02 转换
@@ -54,7 +51,6 @@ Page({
         recordTime,
         lorastr,
         upDateDevice,
-        autoUpgps,
         originLat: lat.toFixed(5),
         originLng: lng.toFixed(5)
       })
@@ -74,14 +70,6 @@ Page({
       this._loadDeviceRename(deviceId, upDateDevice)
     } else {
       wx.showToast({ title: '坐标无效', icon: 'none' })
-    }
-  },
-
-  // 页面加载完成：从实时定位(autoUpgps=1)进入时自动向DTU发送 upgps，触发设备立即上报最新位置
-  onReady() {
-    if (this.data.autoUpgps && this.data.deviceId) {
-      const that = this
-      setTimeout(() => { that._autoSendUpgps() }, 600)
     }
   },
 
@@ -717,7 +705,7 @@ Page({
     this._applyOverlays()
   },
 
-  // ==================== 自动刷新位置（实时定位 → 定位详情：加载完发送 upgps） ====================
+  // ==================== 刷新位置（左上角"上报"按钮触发，向DTU下发 upgps） ====================
 
   // 目标设备自身带密钥则直接发送；否则先找信号最好的中继（上传设备）再发送
   _autoSendUpgps() {
