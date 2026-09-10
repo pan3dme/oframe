@@ -16,6 +16,47 @@ page {
   height: 0;
 }
 
+/* ========== 数据记录分类筛选（全部/定位/对时） ========== */
+.record-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 16rpx 24rpx 20rpx; /* 顶部 16rpx，底部 20rpx：与下方记录卡片拉开间隔，避免数据紧贴筛选栏“压线” */
+}
+.filter-chip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  height: 60rpx;
+  padding: 0 30rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  border: 2rpx solid #e5e5e5;
+  transition: all 0.2s;
+}
+.filter-chip:active {
+  opacity: 0.8;
+}
+.filter-chip-active {
+  background: #1565c0;
+  border-color: #1565c0;
+}
+.filter-chip-icon {
+  font-size: 28rpx;
+  line-height: 1;
+}
+.filter-chip-text {
+  font-size: 28rpx;
+  line-height: 1;
+  color: #666;
+}
+.filter-chip-active .filter-chip-text {
+  color: #fff;
+  font-weight: 600;
+}
+
 /* ========== 设备头部卡片：左图片 + 右基本信息 ========== */
 .detail-header {
   position: relative;
@@ -414,7 +455,7 @@ page {
 /* ========== 轨迹数据列表（卡片式，随机背景） ========== */
 .msg-panel {
   margin: 0 24rpx 0;
-  border-radius: 0 0 16rpx 16rpx;
+  border-radius: 16rpx; /* 与筛选栏拉开间隔后，卡片四周圆角，顶边不再与筛选栏相接 */
   overflow: hidden;
   box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.05);
 }

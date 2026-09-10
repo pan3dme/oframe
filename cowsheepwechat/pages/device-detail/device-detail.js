@@ -24,6 +24,8 @@ Page({
     recordList: [],
     recordLimit: 10,
     recordOffset: 0,
+    // 记录类型筛选：0=全部(所有) 1=定位 2=对时，下拉刷新与加载更多均按此类型请求
+    recordType: 0,
     hasMore: true,
     isLoadingMore: false,
     isRefreshing: false,
@@ -584,7 +586,7 @@ Page({
   loadTodayRecords(offset, callback) {
     const deviceId = this.data.deviceId
     if (!deviceId) return
-    const info = { limit: this.data.recordLimit, deviceId: deviceId,type:0, offset: offset || 0, wechatid: getApp().getWechatId() }
+    const info = { limit: this.data.recordLimit, deviceId: deviceId, type: this.data.recordType, offset: offset || 0, wechatid: getApp().getWechatId() }
     wx.request({
       url: API_URL,
       method: 'POST',
@@ -643,6 +645,24 @@ Page({
     if (this.data.isLoadingMore || !this.data.hasMore) return
     this.setData({ isLoadingMore: true })
     this.loadTodayRecords(this.data.recordOffset)
+  },
+
+  // 切换记录类型筛选（0=全部 1=定位 2=对时）
+  // 切换后清空当前列表并重新从 offset=0 拉取；下拉刷新与加载更多都按当前 recordType 请求
+  onRecordTypeTap(e) {
+    const type = parseInt(e.currentTarget.dataset.type, 10)
+    const nextType = isNaN(type) ? 0 : type
+    if (nextType === this.data.recordType) return
+    this.setData({
+      recordType: nextType,
+      recordList: [],
+      recordOffset: 0,
+      hasMore: true,
+      isLoadingMore: false,
+      isRefreshing: false,
+      showRecordTable: false
+    })
+    this.loadTodayRecords(0)
   },
 
 

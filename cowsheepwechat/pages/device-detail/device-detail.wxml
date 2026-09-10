@@ -69,10 +69,20 @@
     </view>
   </view>
 
-  <!-- 轨迹记录标题（固定不动）：设备详情页点击"数据记录"打开下一页查看该设备数据记录 -->
-  <view class="track-date-bar {{!hideDeviceInfo ? 'track-date-bar-btn' : ''}}" wx:if="{{showRecordTable}}" bindtap="onOpenRecordsTap">
-    <text>数据记录 ({{recordList.length}}条)</text>
-    <text class="track-date-arrow" wx:if="{{!hideDeviceInfo}}">›</text>
+  <!-- 数据记录分类筛选：全部(0) / 定位(1) / 对时(2)，切换后按类型重新获取 -->
+  <view class="record-filter-bar">
+    <view class="filter-chip {{recordType === 0 ? 'filter-chip-active' : ''}}" data-type="0" bindtap="onRecordTypeTap">
+      <text class="filter-chip-icon">📦</text>
+      <text class="filter-chip-text">全部</text>
+    </view>
+    <view class="filter-chip {{recordType === 1 ? 'filter-chip-active' : ''}}" data-type="1" bindtap="onRecordTypeTap">
+      <text class="filter-chip-icon">📍</text>
+      <text class="filter-chip-text">定位</text>
+    </view>
+    <view class="filter-chip {{recordType === 2 ? 'filter-chip-active' : ''}}" data-type="2" bindtap="onRecordTypeTap">
+      <text class="filter-chip-icon">⏱</text>
+      <text class="filter-chip-text">对时</text>
+    </view>
   </view>
 
   <!-- 轨迹数据列表（可滑动刷新 + 无限加载） -->
@@ -107,7 +117,7 @@
       <view class="load-more-tip" wx:if="{{isLoadingMore}}">加载中...</view>
       <view class="load-more-tip" wx:elif="{{!hasMore && recordList.length > 0}}">— 没有更多了 —</view>
     </view>
-    <view class="empty-tip" wx:else>暂无轨迹记录</view>
+    <view class="empty-tip" wx:else>{{recordType === 1 ? '暂无定位记录' : recordType === 2 ? '暂无对时记录' : '暂无轨迹记录'}}</view>
   </scroll-view>
 </block>
 
