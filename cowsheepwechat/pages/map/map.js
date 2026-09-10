@@ -1173,7 +1173,7 @@ Page({
         wx.showToast({ title: '当前没有处于工作期间的中继', icon: 'none' })
         return
       }
-      const cmdText = JSON.stringify({ cmd: 'gpstim', value: 30 })
+      const cmdText = JSON.stringify({ cmd: 'gpstm', value: 30 })
       wx.showModal({
         title: '全体中继 GPS 指令',
         content: '将向 ' + workRelays.length + ' 台工作期间的中继发送：\n' + cmdText + '\n（共 ' + relays.length + ' 台中继）',

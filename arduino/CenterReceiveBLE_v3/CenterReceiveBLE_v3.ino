@@ -53,6 +53,8 @@ bool loraReceivedFlag = false;
 int16_t lastRssi = 0;
 int8_t lastSnr = 0;
 
+int gpstimeAll = 0;
+
 // BLE指令解析用（全局复用）
 
 // 晶振偏差追踪
@@ -267,6 +269,12 @@ void meshCmdInfomsg(String rxValue) {
         if (power > 10 && power <= 28) {
           initRadio(power);
         }
+      } else if (cmd == "gpstm") {
+        int num = tmp.toInt();
+        if (num > 10 && num <= 60) {
+          gpstimeAll = millis() + num * 60*1000;
+        }
+
       } else if (cmd == "A") {
         //10,1m,38
         int rt;
@@ -511,7 +519,7 @@ void receiveDtuData() {
     sscanf(timePart.c_str(), "%d,%d,%d,%d,%d,%d,%d", &ntYear, &ntMon, &ntDay,
            &ntH, &ntM, &ntS, &ntMs);
     DEBUG_PRINTF("DTU网络时间: %4d/%d/%d %02d:%02d:%02d.%03d\n", ntYear, ntMon,
-                  ntDay, ntH, ntM, ntS, ntMs);
+                 ntDay, ntH, ntM, ntS, ntMs);
 
 
 
@@ -617,8 +625,14 @@ void sendDownInfo(String loraStr, String deviceId) {
       sendLoraToDeviceid(dataStr, 800);
     }
   } else {
-    needSyncTimeDeviceid = deviceId;
-    down_syn_time = millis() + 1500;
+    if (gpstimeAll > millis()) {
+      DEBUG_PRINTLN("现在是强制所有设备要上报GPS的时间");
+      dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|upgps|0";
+      sendLoraToDeviceid(dataStr, 800);
+    } else {
+      needSyncTimeDeviceid = deviceId;
+      down_syn_time = millis() + 1500;
+    }
   }
 }
 
