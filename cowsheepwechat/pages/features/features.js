@@ -20,39 +20,31 @@ Page({
       },
       {
         id: 3,
-        label: '管理设备'
-      },
-      {
-        id: 4,
         label: '设置'
       },
       {
-        id: 5,
+        id: 4,
         label: '管理牛羊'
       },
       {
-        id: 6,
+        id: 5,
         label: '道路管理'
       },
       {
-        id: 7,
+        id: 6,
         label: '地名管理'
       },
       {
-        id: 8,
+        id: 7,
         label: '连接蓝牙'
       },
       {
-        id: 9,
+        id: 8,
         label: '道路优化'
       },
       {
-        id: 10,
+        id: 9,
         label: 'DTU发送指令'
-      },
-      {
-        id: 11,
-        label: '前往首页'
       },
     ]
   },
@@ -89,36 +81,30 @@ Page({
       })
 
     } else if (id === 3) {
-      // 设备最新数据 - 切换到设备 TAB
-      wx.switchTab({ url: '/pages/device/device' })
-    } else if (id === 4) {
       // 设置 → 跳转设置页面
       wx.navigateTo({ url: '/pages/settings/settings' })
-    } else if (id === 5) {
+    } else if (id === 4) {
       // 管理牛羊 - 跳转管理页面
       wx.navigateTo({
         url: '/pages/livestock/livestock'
       })
-    } else if (id === 6) {
+    } else if (id === 5) {
       // 道路管理
       wx.navigateTo({ url: '/pages/road/road' })
-    } else if (id === 7) {
+    } else if (id === 6) {
       // 地名管理
       wx.navigateTo({ url: '/pages/places/places' })
-    } else if (id === 8) {
+    } else if (id === 7) {
       // 连接蓝牙 - 跳转蓝牙页面
       wx.navigateTo({
         url: '/pages/bluetooth/bluetooth'
       })
-    } else if (id === 9) {
+    } else if (id === 8) {
       // 道路优化
       wx.navigateTo({ url: '/pages/road-optimize/road-optimize' })
-    } else if (id === 10) {
+    } else if (id === 9) {
       // DTU发送指令
       wx.navigateTo({ url: '/pages/dtu-cmd/dtu-cmd' })
-    } else if (id === 11) {
-      // 切换到首页 TAB
-      wx.switchTab({ url: '/pages/index/index' })
     }
   },
 
