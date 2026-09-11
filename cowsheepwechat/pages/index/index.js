@@ -46,8 +46,8 @@ Page({
     showRelayFields: false,
     // 普通设备功能按钮（每行3个）
     featureBtns: [
-      { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
       { id: 'location', label: '实时定位', color: '#F56C6C', icon: '📍' },
+      { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
       { id: 'track',    label: '轨迹地图', color: '#F0A020', icon: '🗺' },
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
       { id: 'alarm',    label: '报警信息', color: '#1E88E5', icon: '🔔' },

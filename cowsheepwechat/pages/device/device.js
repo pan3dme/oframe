@@ -13,6 +13,8 @@ Page({
     deviceList: [],
     // 分类筛选：设备(device，无ProductKey) / 中继(relay，有ProductKey) / 离线(offline，久未上报)
     activeCategory: 'device',
+    // "设备"分类下的显示模式：false=全部设备，true=仅在线设备（再次点击"设备"切换）
+    deviceOnlineOnly: false,
     categoryCount: { all: 0, device: 0, relay: 0, offline: 0 },
     isAdmin: false,
     showAllDevices: false,
@@ -349,14 +351,20 @@ Page({
   // 按当前分类筛选并写入展示列表，同时刷新各分类数量
   _applyCategoryFilter() {
     const all = this._allDeviceList || []
-    const deviceCount = all.filter(item => !this._isRelay(item)).length
+    const nonRelayList = all.filter(item => !this._isRelay(item))
+    const deviceCount = nonRelayList.length
     const relayCount = all.length - deviceCount
     const offlineCount = all.filter(item => item.isOffline).length
     const cat = this.data.activeCategory || 'device'
     let list
     if (cat === 'relay') list = all.filter(item => this._isRelay(item))
     else if (cat === 'offline') list = all.filter(item => item.isOffline)
-    else list = all.filter(item => !this._isRelay(item))
+    else {
+      // "设备"分类：默认全部，点击"设备"再次切换为仅在线设备
+      list = this.data.deviceOnlineOnly
+        ? nonRelayList.filter(item => !item.isOffline)
+        : nonRelayList
+    }
     this.setData({
       deviceList: list,
       categoryCount: { all: all.length, device: deviceCount, relay: relayCount, offline: offlineCount }
@@ -364,9 +372,19 @@ Page({
   },
 
   // 切换分类：设备 / 中继 / 离线
+  // 再次点击已选中的"设备"：在 全部设备 / 仅在线设备 之间切换
   onSwitchCategory(e) {
     const cat = (e && e.currentTarget && e.currentTarget.dataset.cat) || 'device'
-    if (cat === this.data.activeCategory) return
+    if (cat === this.data.activeCategory) {
+      if (cat === 'device') {
+        const onlineOnly = !this.data.deviceOnlineOnly
+        this.setData({ deviceOnlineOnly: onlineOnly })
+        this._applyCategoryFilter()
+        this._startCountdownTimer()
+        wx.showToast({ title: onlineOnly ? '仅显示在线设备' : '显示全部设备', icon: 'none', duration: 1200 })
+      }
+      return
+    }
     this.setData({ activeCategory: cat })
     this._applyCategoryFilter()
     // 重新按当前时间刷新一次倒计时（切换后索引变化）

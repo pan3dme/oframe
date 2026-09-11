@@ -38,7 +38,7 @@
 
   <!-- 空状态 -->
   <view class="list-panel" wx:else>
-    <view class="empty-tip">{{activeCategory === 'relay' ? '暂无中继设备' : (activeCategory === 'offline' ? '暂无离线设备' : (activeCategory === 'device' ? '暂无设备' : '暂无设备数据'))}}</view>
+    <view class="empty-tip">{{activeCategory === 'relay' ? '暂无中继设备' : (activeCategory === 'offline' ? '暂无离线设备' : (activeCategory === 'device' ? (deviceOnlineOnly ? '暂无在线设备' : '暂无设备') : '暂无设备数据'))}}</view>
   </view>
 </scroll-view>
 
