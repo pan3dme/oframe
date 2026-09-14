@@ -25,10 +25,7 @@
     <text class="tool-icon">◎</text>
     <text class="tool-label">定位</text>
   </view>
-  <view class="tool-btn" bindtap="onToolBtn2">
-    <text class="tool-icon">↻</text>
-    <text class="tool-label">刷新</text>
-  </view>
+
   <view class="tool-btn" bindtap="nextMarker">
     <text class="tool-icon">▸</text>
     <text class="tool-label">巡点</text>

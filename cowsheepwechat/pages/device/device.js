@@ -48,6 +48,7 @@ Page({
   },
 
   onShow() {
+    this._syncTabBar()
     this._readSettings()
     // 页面重新可见：若有列表则立即按当前时间刷新一次倒计时并恢复每秒跳动
     if (this.data.deviceList && this.data.deviceList.length) {
@@ -55,12 +56,37 @@ Page({
     }
   },
 
+  // 同步自定义 tabBar 的选中态（设备为第 2 个 tab，下标 1）
+  _syncTabBar() {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 1 })
+    }
+  },
+
+  // 设置底部"设备"TAB 的转圈加载态
+  _setDeviceTabSpinning(spinning) {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ deviceRefreshing: !!spinning })
+    }
+  },
+
   onHide() {
     this._stopCountdownTimer()
+    // 页面隐藏时收回转圈态，避免下次进入残留
+    this._setDeviceTabSpinning(false)
   },
 
   onUnload() {
     this._stopCountdownTimer()
+  },
+
+  // 点击底部"设备"TAB（已在设备页）：无感刷新设备列表
+  // 不弹提示、不显示全局加载，仅在"设备"TAB 上显示转圈，刷新完成后恢复
+  onDeviceTabRefresh() {
+    this._setDeviceTabSpinning(true)
+    this.fetchDeviceList(true, () => {
+      this._setDeviceTabSpinning(false)
+    }, true)
   },
 
   // ========== 获取设备配置（工作时间判断休眠） ==========
@@ -178,7 +204,8 @@ Page({
   },
 
   // ========== 获取设备列表 ==========
-  fetchDeviceList(forceRefresh, onComplete) {
+  // silent=true 时强制刷新但不弹"已刷新"提示（用于点击底部"设备"TAB 的无感刷新）
+  fetchDeviceList(forceRefresh, onComplete, silent) {
     let deviceData, livestockData, lotData, syncData, configMapData
     let done = 0
     const merge = () => {
@@ -335,7 +362,7 @@ Page({
       this._applyCategoryFilter()
       // 列表就绪后启动倒计时刷新
       this._startCountdownTimer()
-      if (forceRefresh) {
+      if (forceRefresh && !silent) {
         wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
       }
       if (onComplete) onComplete()

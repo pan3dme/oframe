@@ -52,6 +52,13 @@ Page({
   onLoad() {
   },
 
+  onShow() {
+    // 同步自定义 tabBar 选中态（功能为第 3 个 tab，下标 2）
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 2 })
+    }
+  },
+
   // 功能按钮事件
   onFeatureTap(e) {
     const id = e.currentTarget.dataset.id

@@ -71,6 +71,10 @@ Page({
   },
 
   onShow() {
+    // 同步自定义 tabBar 选中态（首页为第 1 个 tab，下标 0）
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 0 })
+    }
     if (!this._checkLogin()) return
     this._readSettings()
     // 从"完整管理"页返回：设备可能已被编辑（改名/换图/绑定牛羊），静默刷新详情

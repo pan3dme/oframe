@@ -24,6 +24,7 @@
     "pages/location-map/location-map"
   ],
   "tabBar": {
+    "custom": true,
     "color": "#999999",
     "selectedColor": "#07c160",
     "backgroundColor": "#ffffff",

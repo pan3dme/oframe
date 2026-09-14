@@ -35,7 +35,7 @@ uint64_t allowedDevices[] = {
     0x7002A78FCBA4, //     8
     0x000DA78FCBA4,
     0x00E7A7B2F180, //     10
-    0x6CFF61F61B44, //     11 
+    0x6CFF61F61B44, //     11
     0xB01796A65688, //     12
     0xFCCABE1B5BF8, //     13
     0xF478B549FD8C, //     14
@@ -46,14 +46,14 @@ uint64_t allowedDevices[] = {
     0x8442AAAC85D8, //     19
     0xD4A284697090, //     20
     0x40BC0604A7AC,
-    0x3CB7A21B5BF8, //     22
-    0x248B9C697090, //     23
+    0x3CB7A21B5BF8,    //     22
+    0x248B9C697090,    //     23
     0x1C05A78FCB222A4, //     24
-    0xF89A3604A7AC, //     25
-    0x20A161F61B44, //     26
-    0x1C05A78FCBA4, //     27
-    0x20A261F61B44, //     28
-    0xE436A21B5BF8  //     29
+    0xF89A3604A7AC,    //     25
+    0x20A161F61B44,    //     26
+    0x1C05A78FCBA4,    //     27
+    0x20A261F61B44,    //     28
+    0xE436A21B5BF8     //     29
 };
 const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);
 
@@ -418,15 +418,13 @@ int readBatteryEndStr()
 
   digitalWrite(VBAT_CTRL_PIN, isV4 ? LOW : HIGH);
   delay(10);
- 
 
   // 这里填你自己算出来的数值
 
-  const float divFactor = 5.20;
-  float batteryVoltage = mvAvg * divFactor / 1000.0;
+  float batteryVoltage = mvAvg * 5.20 / 1000.0;
 
-  int soc = map(batteryVoltage * 1000, 3000, 4200, 0, 99);
-  soc = constrain(soc, 0, 99);
+  int soc = map(batteryVoltage * 1000, 3500, 4200, 0, 100);
+  soc = constrain(soc, 0, 99); // 限制在 0~100 之间，防止超出范围
   float socRatio = soc / 100.0;
 
   String outStr = String(socRatio, 1) + "|" + String(batteryVoltage, 1);

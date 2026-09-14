@@ -3,6 +3,10 @@
 @import "../device-detail/device-detail.wxss";
 
 page {
+  /* 自定义 tabBar 为固定定位覆盖在页面之上，页面高度需减去 tabBar 高度，避免内容底部被遮挡 */
+  height: calc(100vh - 100rpx);
+  height: calc(100vh - 100rpx - constant(safe-area-inset-bottom));
+  height: calc(100vh - 100rpx - env(safe-area-inset-bottom));
   background: #f0f2f5;
 }
 

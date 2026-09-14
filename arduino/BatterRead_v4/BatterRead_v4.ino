@@ -13,9 +13,8 @@
 String batterystr = "";
 // LoRa事件回调
 
-
 String readBatteryEndStrCopy(String deviceName) {
-   analogReadResolution(12);
+  analogReadResolution(12);
   pinMode(VBAT_CTRL_PIN, OUTPUT);
 
   // V4 与 V3 控制逻辑相反：V3 LOW 开启，V4 HIGH 开启
@@ -38,20 +37,21 @@ String readBatteryEndStrCopy(String deviceName) {
   delay(10);
   pinMode(VBAT_CTRL_PIN, INPUT_PULLDOWN);
 
+  // 保留你原有的电压转换逻辑（假设硬件分压比确实是 5.20）
   float batteryVoltage = mvAvg * 5.20 / 1000.0;
 
- Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
-               batteryVoltage);
+  Serial.printf("[BAT] raw=%.0f mv=%.0f V=%.2f\n", rawAvg, mvAvg,
+                batteryVoltage);
 
-  int soc = map(batteryVoltage * 1000, 3000, 4000, 0, 100);
-  soc = constrain(soc, 0, 100);
+  // 【核心修改】将 map 的范围从 (3000, 4000) 改为 (3500, 4200)
+  // 注意：map 函数处理的是整数，所以这里用 mV 单位（3500mV ~ 4200mV）
+  int soc = map(batteryVoltage * 1000, 3500, 4200, 0, 100);
+  soc = constrain(soc, 0, 100);  // 限制在 0~100 之间，防止超出范围
   float socRatio = soc / 100.0;
 
   String outStr = String(socRatio, 2) + "|" + String(batteryVoltage, 2);
- Serial.print("电量信息：");
- Serial.println(outStr);
-
-
+  Serial.print("电量信息：");
+  Serial.println(outStr);
 
   String socStr = String(batteryVoltage, 2) + "V   " + String(soc) + "%";
   String mvStr = "ADC:" + String((int)mvAvg) + "mV";

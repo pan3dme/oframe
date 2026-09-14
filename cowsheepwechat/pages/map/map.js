@@ -54,6 +54,51 @@ Page({
     this.fetchDeviceLotData()
   },
 
+  onShow() {
+    // 同步自定义 tabBar 选中态（地图为第 4 个 tab，下标 3）
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 3 })
+    }
+  },
+
+  onHide() {
+    // 页面隐藏时收回转圈态，避免下次进入残留
+    this._setMapTabSpinning(false)
+  },
+
+  // 设置底部"地图"TAB 的转圈加载态
+  _setMapTabSpinning(spinning) {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ mapRefreshing: !!spinning })
+    }
+  },
+
+  // 点击底部"地图"TAB（已在地图页）：无感刷新地图数据
+  // 不弹全局加载、不清空现有标记点，仅在"地图"TAB 上显示转圈，牛群/设备数据刷新完成后恢复
+  onMapTabRefresh() {
+    this._setMapTabSpinning(true)
+    let done = 0
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      if (this._mapRefreshTimer) {
+        clearTimeout(this._mapRefreshTimer)
+        this._mapRefreshTimer = null
+      }
+      this._setMapTabSpinning(false)
+    }
+    const onOne = () => {
+      done++
+      if (done >= 2) finish()
+    }
+    // 兜底：请求异常/超时也不能让转圈一直停不下来
+    if (this._mapRefreshTimer) clearTimeout(this._mapRefreshTimer)
+    this._mapRefreshTimer = setTimeout(finish, 15000)
+    this.fetchCrowData(onOne)
+    this.fetchDeviceLotData(onOne)
+  },
+
   onReady() {
     // 页面渲染完成后再绘制 canvas 图标，并刷新已拿到数据的 marker
     this._generateCowPin()
@@ -316,7 +361,7 @@ Page({
 
   // ==================== 设备 LOT 标记点 ====================
 
-  fetchDeviceLotData() {
+  fetchDeviceLotData(onComplete) {
     // 先获取设备列表（含rename别名、visible、ProductKey），构建映射
     dataCache.getDeviceList((devData) => {
       const deviceInfoMap = {} // deviceId -> { rename, visible, hasProductKey }
@@ -353,6 +398,7 @@ Page({
         this._applyAllMarkers()
         if (lotList.length > 0) this._startStaleTimer()
         wx.hideLoading()
+        if (onComplete) onComplete()
       }, true)
     })
   },
@@ -548,7 +594,7 @@ Page({
     this.setData({ markers: all, currentMarker: -1 })
   },
 
-  fetchCrowData() {
+  fetchCrowData(onComplete) {
     const crowAllData = {
       time: new Date().toLocaleString(),
       action: "getCowTableAll",
@@ -590,11 +636,13 @@ Page({
         console.log('地图页最终 recordList:', JSON.stringify(recordList))
         this.renderMarkersFromData(recordList)
         wx.hideLoading()
+        if (onComplete) onComplete()
       },
       fail: (err) => {
         console.error('地图页请求牛群数据失败:', JSON.stringify(err))
         wx.hideLoading()
         wx.showToast({ title: '牛群数据加载失败', icon: 'none' })
+        if (onComplete) onComplete()
       }
     })
   },

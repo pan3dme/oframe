@@ -194,7 +194,7 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
   long long epochSec = atoll(timeStr.c_str());
 
   if (!is_valid_epoch_sec(epochSec)) {
-    if (sendModeidx > 0) {
+    if (sendModeidx == 1) {
       sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|err|" + timeStr, true);
     }
     return;
@@ -227,7 +227,7 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
         DEBUG_PRINTLN(" 秒");
         printDurationSec(hourlyDriftSec, "每小时偏差: ");
         // 每小时小于3分钟的偏差才通过，防止出乱子
-        if (sendModeidx > 0) {
+        if (sendModeidx == 1) {
           sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|hourTm|" + hourlyDriftSec, true);
         }
       }
@@ -307,6 +307,8 @@ void meshCmdType(String infoStr, String tmp) {
     } else {
       DEBUG_PRINT("❌配置格式错误 ");
     }
+
+
   } else if (thirdField == "minbattery") {
     int modeVal = tmp.toInt();
 
@@ -361,6 +363,9 @@ void meshCmdType(String infoStr, String tmp) {
       // 没有逗号的处理逻辑
       DEBUG_PRINTLN("没有找到逗号");
     }
+  } else if (thirdField == "C") {
+    
+    // rtc_gps_lat
 
   } else {
     DEBUG_PRINTLN("❌❌❌❌ 需要补充功能列表");
@@ -417,8 +422,9 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   if (addBatter == true) {
     dataStr += "|" + String(batteryNum);
   }
-
-  dataStr += "|" + String(rtcSendCount++);
+  if (sendModeidx == 1) {
+    dataStr += "|" + String(rtcSendCount++);
+  }
 
 
   sendData[0] = 0;
@@ -768,7 +774,12 @@ void loop() {
     strncpy(gpsStr, getGpsInfoStr().c_str(), sizeof(gpsStr) - 1);
     gpsStr[sizeof(gpsStr) - 1] = '\0';
 
-    sendLoraToMid(String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr) + "|" + String(lastSeacthStatTm), false);
+    String str = String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr);
+    if (sendModeidx == 1) {
+      str = str + "|" + String(lastSeacthStatTm);
+    }
+
+    sendLoraToMid(str, false);
     delay(2000);  // 上报LORA需要2秒钟间隔
 
 
@@ -808,7 +819,11 @@ void loop() {
       if (nextSendTime < millis() || rtcSendCount == 0) {
         typeindex = FLAG_TYPE_1;
         if (strlen(needSendGpsStr) > 0) {
-          sendLoraToMid(String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr) + "|" + String(lastSeacthStatTm), false);
+          String str = String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr);
+          if (sendModeidx == 1) {
+            str = str + "|" + String(lastSeacthStatTm);
+          }
+          sendLoraToMid(str, false);
           strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
           needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
         } else {

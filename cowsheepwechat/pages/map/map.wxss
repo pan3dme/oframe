@@ -1,6 +1,9 @@
 /**map.wxss**/
 page {
-  height: 100vh;
+  /* 自定义 tabBar 为固定定位覆盖在页面之上，页面高度需减去 tabBar 高度，避免地图被遮挡 */
+  height: calc(100vh - 100rpx);
+  height: calc(100vh - 100rpx - constant(safe-area-inset-bottom));
+  height: calc(100vh - 100rpx - env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -12,11 +15,13 @@ page {
   width: 100%;
 }
 
-/* 左下角图层切换按钮 */
+/* 左下角图层切换按钮（bottom 需避开自定义 tabBar） */
 .layer-toggle {
   position: fixed;
   left: 20rpx;
-  bottom: 60rpx;
+  bottom: 120rpx;
+  bottom: calc(120rpx + constant(safe-area-inset-bottom));
+  bottom: calc(120rpx + env(safe-area-inset-bottom));
   width: 80rpx;
   height: 80rpx;
   border-radius: 12rpx;
@@ -54,11 +59,13 @@ page {
   margin-top: 2rpx;
 }
 
-/* 右下角功能按钮组 */
+/* 右下角功能按钮组（bottom 需避开自定义 tabBar） */
 .map-toolbar {
   position: fixed;
   right: 20rpx;
-  bottom: 60rpx;
+  bottom: 120rpx;
+  bottom: calc(120rpx + constant(safe-area-inset-bottom));
+  bottom: calc(120rpx + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 16rpx;
