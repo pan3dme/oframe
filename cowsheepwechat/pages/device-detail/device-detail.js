@@ -1111,7 +1111,7 @@ Page({
         }
       }
     }
-    if (isNaN(lat) || isNaN(lng)) {
+    if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
       wx.showToast({ title: '该记录无有效坐标', icon: 'none' })
       return
     }

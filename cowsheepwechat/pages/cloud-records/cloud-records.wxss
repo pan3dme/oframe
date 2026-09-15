@@ -127,6 +127,15 @@ page {
   border-bottom: none;
 }
 
+/* 定位/跟踪记录可点击：加按压反馈 */
+.record-item-tap {
+  cursor: pointer;
+}
+
+.record-item-tap:active {
+  opacity: 0.7;
+}
+
 .rec-row {
   display: flex;
   align-items: center;

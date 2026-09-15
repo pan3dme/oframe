@@ -41,7 +41,7 @@ Page({
     const lorastr = decodeURIComponent(options.lorastr || '')
     const upDateDevice = decodeURIComponent(options.upDateDevice || '')
 
-    if (!isNaN(lat) && !isNaN(lng)) {
+    if (!isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0)) {
       // WGS-84 → GCJ-02 转换
       const gcj = wgs84ToGcj02(lng, lat)
       this.setData({
