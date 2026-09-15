@@ -15,7 +15,7 @@
 
 // ==================== 调试开关 ====================
 // 1=开发模式（输出所有调试信息） 0=正式模式（仅输出关键信息）
-#define DEBUG_MODE 0
+#define DEBUG_MODE 1
 
 #if DEBUG_MODE
 #define DEBUG_PRINT(x) Serial.print(x)
@@ -96,8 +96,8 @@ extern unsigned long syncedMillis;
 
 const unsigned long SEND_INTERVAL_MS = 1000 * 60 * 5; // 现在设定5分钟一次
 
-static double static_gps_lat = 26.52958;  // 纬度，改成你的值
-static double static_gps_lon = 109.39087; // 经度
+// static double static_gps_lat = 26.52958;  // 纬度，改成你的值
+// static double static_gps_lon = 109.39087; // 经度
 
 struct BLECallbacks {
   BLEServer *pServer;

@@ -12,6 +12,12 @@
 #include <BLEUtils.h>
 #include <pan3dme.h>
 #include <time.h>
+#include <Preferences.h>
+Preferences prefs;
+// 全局参数
+
+double cfg_gps_lat = 26.52958;
+double cfg_gps_lon = 109.39087;
 HardwareSerial *dtuSerial;
 // ========================= BLE全局对象 =========================
 bool linkHub = true;
@@ -272,7 +278,7 @@ void meshCmdInfomsg(String rxValue) {
       } else if (cmd == "gpstm") {
         int num = tmp.toInt();
         if (num > 10 && num <= 60) {
-          gpstimeAll = millis() + num * 60*1000;
+          gpstimeAll = millis() + num * 60 * 1000;
         }
 
       } else if (cmd == "A") {
@@ -666,7 +672,8 @@ void changeReceivedRolaStr(char *value) {
       char segBuf[32];
       char outBuf[32];
       splitPipeSegment(value, segBuf, 2);
-      restoreGpsFromDiff(segBuf, outBuf, static_gps_lat, static_gps_lon);
+ 
+      restoreGpsFromDiff(segBuf, outBuf, cfg_gps_lat, cfg_gps_lon);
       replacePipeSegment(value, loraOut, 2, outBuf, sizeof(loraOut));
 
       strncpy(value, loraOut, BUFFER_SIZE - 1);
@@ -747,10 +754,27 @@ void processSendLoraTo() {
     nextLoraToDeviceidStr = "";
   }
 }
+void loadConfigNVS() {
+
+
+  // 开启命名空间 "devcfg"，最多15个字符
+  prefs.begin("devcfg");
+  // 参数不存在就返回默认值
+  cfg_gps_lat = prefs.getDouble("lat", 26.52958);
+  cfg_gps_lon = prefs.getDouble("lon", 109.39087);
+  prefs.end();
+
+  Serial.print("✅ 读取NVS：cfg_gps_lat=");
+  Serial.print(cfg_gps_lat, 5);  // 6位小数
+  Serial.print(" , cfg_gps_lon=");
+  Serial.println(cfg_gps_lon, 5);
+}
 // ========================= 系统初始化 =========================
 void setup() {
+
   Serial.begin(115200);
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+  loadConfigNVS();
 
   deviceName = makeDivceName();
   DEBUG_PRINTLN(deviceName);

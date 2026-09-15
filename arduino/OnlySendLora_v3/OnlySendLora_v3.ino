@@ -426,7 +426,7 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   }
   dataStr += "|";
   rtcSendCount++;
-  if (sendModeidx == 1||rtcSendCount<4) {
+  if (sendModeidx == 1 || rtcSendCount < 4) {
     dataStr += String(rtcSendCount);
   }
 
@@ -680,8 +680,11 @@ void setup() {
     lastSnr = 0;
 
     lastCanthGpsOk = true;
-    rtc_gps_lat = static_gps_lat;
-    rtc_gps_lon = static_gps_lon;
+
+    // static double static_gps_lat = 26.52958;  // 纬度，改成你的值
+    // static double static_gps_lon = 109.39087; // 经度
+    rtc_gps_lat = 26.52958;
+    rtc_gps_lon = 109.39087;
 
     configConfirmed = true;
 
