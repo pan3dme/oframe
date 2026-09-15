@@ -194,7 +194,7 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
   long long epochSec = atoll(timeStr.c_str());
 
   if (!is_valid_epoch_sec(epochSec)) {
-    if (sendModeidx == 1) {
+    if (sendModeidx == 2) {
       sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|err|" + timeStr, true);
     }
     return;
@@ -227,7 +227,7 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
         DEBUG_PRINTLN(" 秒");
         printDurationSec(hourlyDriftSec, "每小时偏差: ");
         // 每小时小于3分钟的偏差才通过，防止出乱子
-        if (sendModeidx == 1) {
+        if (sendModeidx == 2) {
           sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|hourTm|" + hourlyDriftSec, true);
         }
       }
@@ -302,7 +302,9 @@ void meshCmdType(String infoStr, String tmp) {
       DEBUG_PRINT("✅✅配置正常 ");
       DEBUG_PRINT(rt);
       DEBUG_PRINT(work_time_str);
+      DEBUG_PRINT("  ");
       DEBUG_PRINT(gps_time_str);
+      DEBUG_PRINT("  ");
       DEBUG_PRINT(bigrt);
     } else {
       DEBUG_PRINT("❌配置格式错误 ");
@@ -364,7 +366,7 @@ void meshCmdType(String infoStr, String tmp) {
       DEBUG_PRINTLN("没有找到逗号");
     }
   } else if (thirdField == "C") {
-    
+
     // rtc_gps_lat
 
   } else {
@@ -422,8 +424,10 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   if (addBatter == true) {
     dataStr += "|" + String(batteryNum);
   }
-  if (sendModeidx == 1) {
-    dataStr += "|" + String(rtcSendCount++);
+  dataStr += "|";
+  rtcSendCount++;
+  if (sendModeidx == 1||rtcSendCount<4) {
+    dataStr += String(rtcSendCount);
   }
 
 
@@ -776,7 +780,7 @@ void loop() {
 
     String str = String(MSG_TYPE_UP_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(gpsStr);
     if (sendModeidx == 1) {
-      str = str + "|" + String(lastSeacthStatTm);
+      str += "|" + String(lastSeacthStatTm);
     }
 
     sendLoraToMid(str, false);
@@ -821,7 +825,7 @@ void loop() {
         if (strlen(needSendGpsStr) > 0) {
           String str = String(MSG_TYPE_GPS) + "|" + deviceName + "|" + mathGpsRectByBaseStr(needSendGpsStr);
           if (sendModeidx == 1) {
-            str = str + "|" + String(lastSeacthStatTm);
+            str += "|" + String(lastSeacthStatTm);
           }
           sendLoraToMid(str, false);
           strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
@@ -850,5 +854,5 @@ void loop() {
   }
 
   printCurrentTime();
-  delay(10);
+  delay(100);
 }
