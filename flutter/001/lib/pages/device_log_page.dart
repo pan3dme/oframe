@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 /// FC 地址常量
 const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -60,6 +61,7 @@ class _DeviceLogPageState extends State<DeviceLogPage> {
           'info': {
             'page': currentPage,
             'limit': _pageSize,
+            'wechatid': globalWechatId,
           },
         }),
       );

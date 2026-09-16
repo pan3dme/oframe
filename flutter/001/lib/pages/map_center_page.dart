@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/coord_transform.dart';
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 class MapCenterPage extends StatefulWidget {
   const MapCenterPage({super.key});
@@ -811,7 +812,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       final resp = await http.post(
         Uri.parse('https://gpsmoveinfo.cn/fc/route_place'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'getroutetableall'}),
+        body: jsonEncode({'action': 'getroutetableall', 'info': {'wechatid': globalWechatId}}),
       );
 
       if (resp.statusCode == 200) {
@@ -842,7 +843,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       final resp = await http.post(
         Uri.parse('https://gpsmoveinfo.cn/fc/route_place'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'getplacetableall'}),
+        body: jsonEncode({'action': 'getplacetableall', 'info': {'wechatid': globalWechatId}}),
       );
 
       if (resp.statusCode == 200) {

@@ -113,7 +113,7 @@ class _LivestockManagePageState extends State<LivestockManagePage> with RouteAwa
       final resp = await http.post(
         Uri.parse(_cowSheepFcUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'getLivestockList'}),
+        body: jsonEncode({'action': 'getLivestockList', 'info': {'wechatid': globalWechatId}}),
       );
 
       debugPrint('[牛羊] FC 响应状态: ${resp.statusCode}');

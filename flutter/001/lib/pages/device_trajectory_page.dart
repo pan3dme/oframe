@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import '../utils/coord_transform.dart';
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 /// 设备今日GPS轨迹地图页面
 class DeviceTrajectoryPage extends StatefulWidget {
@@ -102,6 +103,7 @@ class _DeviceTrajectoryPageState extends State<DeviceTrajectoryPage> {
             'deviceId': widget.deviceId,
             'limit': 99,
             'curdate': curdate,
+            'wechatid': globalWechatId,
           },
         }),
       );
@@ -418,7 +420,7 @@ class _DeviceTrajectoryPageState extends State<DeviceTrajectoryPage> {
     final resp = await http.post(
       Uri.parse('https://gpsmoveinfo.cn/fc/route_place'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'action': 'getroutetableall'}),
+      body: jsonEncode({'action': 'getroutetableall', 'info': {'wechatid': globalWechatId}}),
     );
     if (resp.statusCode == 200) {
       final json = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -434,7 +436,7 @@ class _DeviceTrajectoryPageState extends State<DeviceTrajectoryPage> {
     final resp = await http.post(
       Uri.parse('https://gpsmoveinfo.cn/fc/route_place'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'action': 'getplacetableall'}),
+      body: jsonEncode({'action': 'getplacetableall', 'info': {'wechatid': globalWechatId}}),
     );
     if (resp.statusCode == 200) {
       final json = jsonDecode(resp.body) as Map<String, dynamic>;

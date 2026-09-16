@@ -7,6 +7,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart';
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 /// 格式化时间为：2026/6/12 12:21:10
 String formatTime(DateTime dateTime) {
@@ -236,6 +237,7 @@ class _BluetoothPageState extends State<BluetoothPage> {
                 'time': time,
                 'rssi': rssi,
                 'snr': snr,
+                'wechatid': globalWechatId,
               },
             }),
           );

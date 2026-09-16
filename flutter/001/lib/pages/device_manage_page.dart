@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 import 'device_detail_page.dart'; // 导入设备详情页面
 
 /// FC 地址常量
@@ -115,6 +116,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         body: jsonEncode({'action': 'getDeviceLotRefreshAll',
           'info': {
             'limit': 99,
+            'wechatid': globalWechatId,
           }}),
       );
 
@@ -187,6 +189,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         body: jsonEncode({'action': 'getDevicesyncAll',
           'info': {
             'limit': 99,
+            'wechatid': globalWechatId,
           }}),
       );
 
@@ -448,7 +451,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'getDeviceConfigAll',
-          'info': {'limit': 99},
+          'info': {'limit': 99, 'wechatid': globalWechatId},
         }),
       );
 
@@ -612,6 +615,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
         body: jsonEncode({'action': 'getDeviceTaleAll',
           'info': {
             'limit': 99,
+            'wechatid': globalWechatId,
           },}),
       );
 

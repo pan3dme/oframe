@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 /// 设备DTU指令页面
 /// 当设备非断网状态时，通过此页面下发指令
@@ -134,7 +135,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'getDeviceBestRssibyId',
-          'info': {'limit': 3, 'deviceId': targetDeviceId},
+          'info': {'limit': 3, 'deviceId': targetDeviceId, 'wechatid': globalWechatId},
         }),
       );
 
@@ -249,6 +250,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
         'productKey': productKey,
         'msg': command,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'wechatid': globalWechatId,
       };
 
       debugPrint('[DTU] 请求body: ${jsonEncode(body)}');

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 import 'map_pick_location_page.dart';
 import 'place_detail_map_page.dart';
 
@@ -74,7 +75,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
       final resp = await http.post(
         Uri.parse(_placeFcUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'getplacetableall'}),
+        body: jsonEncode({'action': 'getplacetableall', 'info': {'wechatid': globalWechatId}}),
       );
 
       if (resp.statusCode == 200) {
@@ -559,6 +560,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
             'name': name,
             'gps': gps,
             'level': level,
+            'wechatid': globalWechatId,
           },
         }),
       );
@@ -720,6 +722,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
             'name': name,
             'gps': gps,
             'level': level,
+            'wechatid': globalWechatId,
           },
         }),
       );
@@ -795,7 +798,7 @@ class _PlaceManagePageState extends State<PlaceManagePage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'deletePlace',
-          'info': {'placeid': id},
+          'info': {'placeid': id, 'wechatid': globalWechatId},
         }),
       );
 

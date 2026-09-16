@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
+import 'pages/login_page.dart';
 import 'pages/device_manage_page.dart';
 import 'pages/livestock_manage_page.dart';
 import 'pages/bluetooth_page.dart';
@@ -8,6 +9,9 @@ import 'pages/function_list_page.dart';
 
 // 全局路由观察者，用于监听页面可见性
 final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+
+// 全局 wechatid（登录成功后由服务器返回，所有FC请求的info中携带）
+String globalWechatId = '';
 
 // 阿里云 FC 函数地址（HTTPS 公网接口）
 const deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -39,7 +43,11 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       navigatorObservers: [routeObserver], // 添加路由观察者
-      home: const HomePage(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const LoginPage(),
+        '/home': (context) => const HomePage(),
+      },
     );
   }
 }

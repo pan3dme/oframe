@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/coord_transform.dart';
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 /// 设备日志定位地图页面（卫星地图显示单条记录的GPS坐标）
 class DeviceLogMapPage extends StatefulWidget {
@@ -147,7 +148,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
     final resp = await http.post(
       Uri.parse('https://gpsmoveinfo.cn/fc/route_place'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'action': 'getroutetableall'}),
+      body: jsonEncode({'action': 'getroutetableall', 'info': {'wechatid': globalWechatId}}),
     );
     if (resp.statusCode == 200) {
       final json = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -163,7 +164,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
     final resp = await http.post(
       Uri.parse('https://gpsmoveinfo.cn/fc/route_place'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'action': 'getplacetableall'}),
+      body: jsonEncode({'action': 'getplacetableall', 'info': {'wechatid': globalWechatId}}),
     );
     if (resp.statusCode == 200) {
       final json = jsonDecode(resp.body) as Map<String, dynamic>;

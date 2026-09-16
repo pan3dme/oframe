@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:dio/dio.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 /// FC 地址常量
 const String _cowSheepVideoFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
@@ -61,6 +62,7 @@ class _LivestockDetailPageState extends State<LivestockDetailPage> {
           'action': 'getcowsheepvideo',
           'info': {
             'cowsheep_id': cowsheepId.toString(),
+            'wechatid': globalWechatId,
           },
         }),
       );
@@ -851,6 +853,7 @@ class _LivestockDetailPageState extends State<LivestockDetailPage> {
         data: jsonEncode({
           'action': 'getOssSignature',
           'fileName': fileName,
+          'wechatid': globalWechatId,
         }),
         options: Options(
           headers: {'Content-Type': 'application/json'},
@@ -906,6 +909,7 @@ class _LivestockDetailPageState extends State<LivestockDetailPage> {
             'ossUrl': ossUrl,
             'cowsheep_id': cowsheepId.toString(),
             'time': timeStr,
+            'wechatid': globalWechatId,
           },
         }),
         options: Options(

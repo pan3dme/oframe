@@ -4,8 +4,16 @@ import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
 import 'device_log_map_page.dart';
 import 'device_trajectory_page.dart';
-import 'device_dtu_command_page.dart';
 import 'bluetooth_page.dart';
+
+/// 功能按钮数据类
+class _FunctionButton {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  _FunctionButton({required this.icon, required this.label, required this.color, required this.onTap});
+}
 
 /// 设备详情页面
 class DeviceDetailPage extends StatefulWidget {
@@ -473,12 +481,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   Widget build(BuildContext context) {
     final deviceId = _str(widget.device['deviceId']);
     final rename = _str(widget.device['rename']);
-    final deviceKey = _str(widget.device['device_key']);
-    final productKey = _str(widget.device['ProductKey']);
     final picurl = widget.device['picurl']?.toString() ?? '';
     
     // LOT数据
     final timeRaw = widget.deviceLot != null ? _str(widget.deviceLot!['time']) : '—';
+    // ignore: unused_local_variable
 
     // 构建显示名称
     String displayName = deviceId;
@@ -490,180 +497,17 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         title: Text(_isFromCache ? '设备详情(断网)' : '设备详情'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Column(
-        children: [
-          // 固定头部区域
-          Container(
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1976D2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Stack(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 左侧设备图像区域
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.4),
-                              width: 2,
-                            ),
-                          ),
-                          child: picurl.isNotEmpty
-                              ? Image.network(
-                                  picurl,
-                                  width: 80,
-                                  height: 80,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    color: Colors.white.withValues(alpha: 0.2),
-                                    child: const Icon(
-                                      Icons.gps_fixed,
-                                      size: 40,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : Container(
-                                  color: Colors.white.withValues(alpha: 0.2),
-                                  child: const Icon(
-                                    Icons.gps_fixed,
-                                    size: 40,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      // 右侧信息区域
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'id: $displayName',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-
-                            _buildInfoRowWhite('上报周期', _reportInterval),
-                            _buildInfoRowWhite('开机时间', _bootTime),
-                            _buildInfoRowWhite('定位时间', _locationTime),
-                            _buildInfoRowWhite('上次换电', '—'),
-                            const SizedBox(height: 8),
-
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // 右上角操作按钮
-                Positioned(
-                  right: 16,
-                  bottom: 16,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 查看轨迹按钮
-                      InkWell(
-                        onTap: () => _openTrajectory(),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2196F3),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.route,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // 指令按钮
-                      InkWell(
-                        onTap: () {
-                          if (_isFromCache) {
-                            // 断网状态：使用蓝牙指令对话框
-                            if (_isBluetoothConnected) {
-                              _showSendCommandDialog();
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('请连接蓝牙')),
-                              );
-                            }
-                          } else {
-                            // 非断网状态：打开DTU指令页面
-                            final deviceId = _str(widget.device['deviceId']);
-                            final rename = _str(widget.device['rename']);
-                            final deviceKey = _str(widget.device['device_key']);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => DeviceDtuCommandPage(
-                                  deviceId: deviceId,
-                                  deviceName: rename,
-                                  deviceKey: deviceKey,
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: (!_isFromCache || _isBluetoothConnected)
-                                ? const Color(0xFF4CAF50)
-                                : Colors.grey.withOpacity(0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.send,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              ],
-            ),
-          ),
-
-          // 数据记录区域（可滚动 + 下拉刷新 + 上拉加载）
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: RefreshIndicator(
-                onRefresh: () => _loadLogs(reset: true),
-                child: _buildLogList(),
-              ),
-            ),
-          ),
-        ],
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // 蓝色头部信息卡片
+            _buildHeaderCard(displayName, picurl),
+            const SizedBox(height: 16),
+            // 功能按钮网格
+            _buildFunctionGrid(),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
@@ -918,6 +762,204 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     );
   }
 
+  /// 蓝色头部信息卡片
+  Widget _buildHeaderCard(String displayName, String picurl) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1976D2),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 左侧设备图像
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    width: 1.5,
+                  ),
+                ),
+                child: picurl.isNotEmpty
+                    ? Image.network(
+                        picurl,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildDeviceImagePlaceholder(),
+                      )
+                    : _buildDeviceImagePlaceholder(),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // 右侧信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 设备名称
+                  Text(
+                    displayName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildInfoRowWhite('上报周期', _reportInterval),
+                  _buildInfoRowWhite('开机时间', _bootTime),
+                  _buildInfoRowWhite('GPS时间', _locationTime),
+                  _buildInfoRowWhite('上次换电', '—', valueColor: const Color(0xFFFFB74D)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 设备图像占位符
+  Widget _buildDeviceImagePlaceholder() {
+    return Container(
+      color: Colors.white.withValues(alpha: 0.15),
+      child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.gps_fixed, size: 28, color: Colors.white),
+          SizedBox(height: 2),
+          Text('设备图片', style: TextStyle(fontSize: 9, color: Colors.white)),
+        ],
+      ),
+    );
+  }
+
+  /// 功能按钮网格
+  Widget _buildFunctionGrid() {
+    final buttons = <_FunctionButton>[
+      _FunctionButton(icon: Icons.my_location, label: '实时定位', color: const Color(0xFFEF5350), onTap: _onRealtimeLocation),
+      _FunctionButton(icon: Icons.list_alt, label: '数据列表', color: const Color(0xFF26A69A), onTap: _onDataList),
+      _FunctionButton(icon: Icons.route, label: '轨迹地图', color: const Color(0xFFFFA726), onTap: _openTrajectory),
+      _FunctionButton(icon: Icons.settings, label: '设备设置', color: const Color(0xFF66BB6A), onTap: _onDeviceSettings),
+      _FunctionButton(icon: Icons.notifications_active, label: '报警信息', color: const Color(0xFF42A5F5), onTap: _onAlarmInfo),
+      _FunctionButton(icon: Icons.lock_reset, label: '修改密码', color: const Color(0xFF7E57C2), onTap: _onChangePassword),
+      _FunctionButton(icon: Icons.fence, label: '电子栅栏', color: const Color(0xFF42A5F5), onTap: _onGeofence),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 20,
+        alignment: WrapAlignment.start,
+        children: buttons.map((btn) {
+          return SizedBox(
+            width: 80,
+            child: Column(
+              children: [
+                InkWell(
+                  onTap: btn.onTap,
+                  borderRadius: BorderRadius.circular(32),
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: btn.color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(btn.icon, size: 30, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  btn.label,
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // --- 功能按钮点击事件 ---
+
+  void _onRealtimeLocation() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('实时定位功能开发中...')),
+    );
+  }
+
+  void _onDataList() {
+    // 显示数据列表（原来的日志列表）
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('数据列表', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () => _loadLogs(reset: true),
+                child: _buildLogList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onDeviceSettings() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('设备设置功能开发中...')),
+    );
+  }
+
+  void _onAlarmInfo() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('报警信息功能开发中...')),
+    );
+  }
+
+  void _onChangePassword() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('修改密码功能开发中...')),
+    );
+  }
+
+  void _onGeofence() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('电子栅栏功能开发中...')),
+    );
+  }
+
   /// 白色文字信息行
   Widget _buildInfoRowWhite(String label, String value, {Color? valueColor}) {
     return Padding(
@@ -928,7 +970,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             '$label  ',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withValues(alpha: 0.8),
             ),
           ),
           Text(
@@ -940,38 +982,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// 操作按钮
-  Widget _buildActionButton(IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.2),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 20, color: color),
-      ),
-    );
-  }
-
-  /// 底部小图标
-  Widget _buildSmallIcon(IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 18, color: Colors.white),
       ),
     );
   }

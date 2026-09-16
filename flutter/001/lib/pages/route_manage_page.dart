@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 全局 globalWechatId
 import 'gps_path_record_page.dart';
 import 'route_detail_map_page.dart';
 
@@ -84,7 +85,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
       final resp = await http.post(
         Uri.parse(_routeFcUrl),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'getroutetableall'}),
+        body: jsonEncode({'action': 'getroutetableall', 'info': {'wechatid': globalWechatId}}),
       );
 
       if (resp.statusCode == 200) {
@@ -247,7 +248,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
         final resp = await http.post(
           Uri.parse(_routeFcUrl),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'action': opType, 'info': opData}),
+          body: jsonEncode({'action': opType, 'info': {...opData, 'wechatid': globalWechatId}}),
         );
 
         if (resp.statusCode == 200) {
@@ -1027,6 +1028,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
             'roadname': name,
             'level': level,
             'roadinfo': roadinfo,
+            'wechatid': globalWechatId,
           },
         }),
       );
@@ -1276,6 +1278,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
             'roadname': name,
             'level': level,
             'roadinfo': roadinfo,
+            'wechatid': globalWechatId,
           },
         }),
       );
@@ -1372,7 +1375,7 @@ class _RouteManagePageState extends State<RouteManagePage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'deleteRoad',
-          'info': {'route_id': id},
+          'info': {'route_id': id, 'wechatid': globalWechatId},
         }),
       );
 

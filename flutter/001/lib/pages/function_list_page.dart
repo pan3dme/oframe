@@ -8,6 +8,7 @@ import 'settings_page.dart';
 import 'route_manage_page.dart';
 import 'place_manage_page.dart';
 import 'device_log_page.dart';
+import '../main.dart'; // 全局 globalWechatId
 
 /// FC 地址常量
 const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -242,6 +243,7 @@ class _FunctionListPageState extends State<FunctionListPage> {
             'lorastr': loraData,
             'upDateDevice': 'FLUTTER',
             'time': timeStr,
+            'wechatid': globalWechatId,
           },
         }),
       );
