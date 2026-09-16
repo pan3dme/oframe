@@ -9,7 +9,8 @@ import 'device_detail_page.dart'; // 导入设备详情页面
 const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 
 class DeviceManagePage extends StatefulWidget {
-  const DeviceManagePage({super.key});
+  final void Function(Map<String, dynamic> device, Map<String, dynamic>? deviceLot)? onDeviceTap;
+  const DeviceManagePage({super.key, this.onDeviceTap});
 
   @override
   State<DeviceManagePage> createState() => _DeviceManagePageState();
@@ -27,6 +28,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   String _loadStatus = '';
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
+  int _filterTab = 0; // 0=设备, 1=中继, 2=离线
 
   
   // 编辑表单控制器
@@ -738,38 +740,105 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
     }).toList();
   }
 
+  /// 判断设备是否有ProductKey（中继设备）
+  bool _hasProductKey(Map<String, dynamic> item) {
+    final pk = item['ProductKey']?.toString() ?? '';
+    return pk.isNotEmpty;
+  }
+
+  /// 判断设备是否离线（时间颜色级别为2=灰色）
+  bool _isDeviceOffline(Map<String, dynamic> item) {
+    final deviceId = item['deviceId']?.toString() ?? '';
+    // 获取该设备的最终时间
+    final deviceLot = _deviceLotMap[deviceId];
+    final lotTimeRaw = deviceLot != null ? _str(deviceLot, 'time') : '—';
+    final deviceSync = _deviceSyncMap[deviceId];
+    final syncTimeRaw = deviceSync != null ? _str(deviceSync, 'time') : '—';
+    final bluetoothTimeRaw = _bluetoothTimeMap[deviceId] ?? '—';
+
+    DateTime? latestDt;
+    if (_parseTimeToDateTime(lotTimeRaw) != null) {
+      latestDt = _parseTimeToDateTime(lotTimeRaw);
+    }
+    final syncDt = _parseTimeToDateTime(syncTimeRaw);
+    if (syncDt != null && (latestDt == null || syncDt.isAfter(latestDt))) {
+      latestDt = syncDt;
+    }
+    final btDt = _parseTimeToDateTime(bluetoothTimeRaw);
+    if (btDt != null && (latestDt == null || btDt.isAfter(latestDt))) {
+      latestDt = btDt;
+    }
+
+    if (latestDt == null) return true;
+    final intervalMinutes = _deviceIntervalMap[deviceId];
+    if (intervalMinutes == null || intervalMinutes <= 0) return false;
+    final diffMinutes = DateTime.now().difference(latestDt).inMinutes;
+    return diffMinutes > intervalMinutes * 2;
+  }
+
+  /// 根据当前标签过滤设备列表
+  List<Map<String, dynamic>> _getFilteredData() {
+    return _data.where((item) {
+      final hasPK = _hasProductKey(item);
+      if (_filterTab == 0) return !hasPK; // 设备：无ProductKey
+      if (_filterTab == 1) return hasPK; // 中继：有ProductKey
+      if (_filterTab == 2) return _isDeviceOffline(item); // 离线
+      return true;
+    }).toList();
+  }
+
+  /// 计算各标签计数
+  Map<String, int> _getTabCounts() {
+    int deviceCount = 0;
+    int relayCount = 0;
+    int offlineCount = 0;
+    for (final item in _data) {
+      final hasPK = _hasProductKey(item);
+      if (!hasPK) deviceCount++;
+      if (hasPK) relayCount++;
+      if (_isDeviceOffline(item)) offlineCount++;
+    }
+    return {'device': deviceCount, 'relay': relayCount, 'offline': offlineCount};
+  }
+
   @override
   Widget build(BuildContext context) {
+    final counts = _getTabCounts();
+    final filteredData = _getFilteredData();
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: Text(_isFromCache ? '设备管理(断网)' : '设备管理'),
+        title: Text(_isFromCache ? '设备列表(断网)' : '设备列表'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-
-                // 顶部信息栏：设备计数
+                // 顶部标签栏：设备 / 中继 / 离线
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  child: Text(
-                    '共 ${_data.length} 台设备',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  child: Row(
+                    children: [
+                      _buildFilterTab('设备', counts['device'] ?? 0, 0),
+                      const SizedBox(width: 8),
+                      _buildFilterTab('中继', counts['relay'] ?? 0, 1),
+                      const SizedBox(width: 8),
+                      _buildFilterTab('离线', counts['offline'] ?? 0, 2),
+                    ],
                   ),
                 ),
                 Expanded(
-                  child: _data.isEmpty
+                  child: filteredData.isEmpty
                       ? const Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.devices, size: 64, color: Colors.grey),
                               SizedBox(height: 16),
-                              Text('设备管理', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                              Text('暂无数据', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                               SizedBox(height: 8),
-                              Text('暂无数据', style: TextStyle(color: Colors.grey)),
+                              Text('该分类下没有设备', style: TextStyle(color: Colors.grey)),
                             ],
                           ),
                         )
@@ -784,9 +853,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                               onRefresh: _handleRefresh,
                               child: ListView.builder(
                                 padding: EdgeInsets.zero,
-                                itemCount: _data.length,
+                                itemCount: filteredData.length,
                                 itemBuilder: (context, index) {
-                                  final item = _data[index];
+                                  final item = filteredData[index];
                                   
                                   final deviceId = _str(item, 'deviceId');
                                   final rename = _str(item, 'rename');
@@ -866,6 +935,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                   String displayName = deviceId;
                                   if (rename != '—') displayName += ' ($rename)';
 
+                                  // 中继设备标记
+                                  final isRelay = _hasProductKey(item);
+
                             // 单行显示：序号 + 设备名 + 状态图标 + 时间标签
                             return Column(
                               children: [
@@ -876,15 +948,21 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                   ),
                                 InkWell(
                                   onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => DeviceDetailPage(
-                                          device: item,
-                                          deviceLot: deviceLot,
+                                    if (widget.onDeviceTap != null) {
+                                      // 有回调时（作为TAB使用）：通知主页切换到设备详情TAB
+                                      widget.onDeviceTap!(item, deviceLot);
+                                    } else {
+                                      // 无回调时（独立使用）：push新页面
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => DeviceDetailPage(
+                                            device: item,
+                                            deviceLot: deviceLot,
+                                          ),
                                         ),
-                                      ),
-                                    );
+                                      );
+                                    }
                                   },
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -905,15 +983,40 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                         const SizedBox(width: 4),
                                         // 设备名称
                                         Expanded(
-                                          child: Text(
-                                            displayName,
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w700,
-                                              color: isWorking ? const Color(0xFF333333) : Colors.grey[400],
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                          child: Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  displayName,
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: isWorking ? const Color(0xFF333333) : Colors.grey[400],
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (isRelay) ...[
+                                                const SizedBox(width: 4),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFFFF3E0),
+                                                    borderRadius: BorderRadius.circular(3),
+                                                    border: Border.all(color: const Color(0xFFFFB74D), width: 0.5),
+                                                  ),
+                                                  child: const Text(
+                                                    '中继',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Color(0xFFE65100),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
                                           ),
                                         ),
                                         // 电量
@@ -972,6 +1075,41 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                 ),
               ],
             ),
+    );
+  }
+
+  /// 构建过滤标签按钮
+  Widget _buildFilterTab(String label, int count, int tabIndex) {
+    final isSelected = _filterTab == tabIndex;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _filterTab = tabIndex;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF2ECC71) : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF2ECC71) : Colors.grey[300]!,
+              width: 1,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              '$label $count',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : Colors.grey[700],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

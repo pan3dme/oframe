@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
+import '../main.dart'; // 导入全局 globalSelectedDevice, globalSelectedDeviceLot, deviceSelectedNotifier
 import 'device_log_map_page.dart';
 import 'device_trajectory_page.dart';
+import 'device_record_page.dart';
 import 'bluetooth_page.dart';
 
 /// 功能按钮数据类
@@ -41,6 +44,8 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   String _bootTime = '—';       // 开机时间
   String _locationTime = '—';   // 定位时间
   String _rawConfigValue = '';  // 原始配置值（用于配置下发指令）
+  String _rawLorastr = '';  // 原始完整lorastr（调试显示用）
+  Map<String, dynamic> _configAttributes = {};  // getDeviceConfigAll完整属性
   bool _isBluetoothConnected = false; // 蓝牙连接状态
   bool _isFromCache = false; // 标记是否使用缓存数据（断网）
 
@@ -71,7 +76,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'action': 'getDeviceConfigAll',
-          'info': {'limit': 99},
+          'info': {'limit': 99, 'wechatid': globalWechatId},
         }),
       );
 
@@ -104,11 +109,14 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
               await DBHelper().saveDeviceConfig(configDeviceId, parsed);
             }
 
-            // 找到当前设备，解析显示
+            // 找到当前设备，保存完整配置并解析显示
             if (configDeviceId == deviceId) {
+              setState(() {
+                _configAttributes = Map<String, dynamic>.from(parsed);
+              });
               final lorastr = parsed['lorastr']?.toString() ?? '';
               _parseConfigLorastr(lorastr);
-              debugPrint('设备配置匹配: deviceId=$deviceId, lorastr=$lorastr');
+              debugPrint('设备配置匹配: deviceId=$deviceId, lorastr=$lorastr, 属性数=${parsed.length}');
             }
           }
           debugPrint('设备配置缓存完成: 共 ${rawRows.length} 条');
@@ -166,9 +174,11 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     }
 
     // 第二步：从device_config表缓存中找
+    Map<String, dynamic>? cachedConfigFull;
     try {
       final cachedConfig = await DBHelper().getDeviceConfig(deviceId);
       if (cachedConfig != null) {
+        cachedConfigFull = cachedConfig;
         configLorastr = cachedConfig['lorastr']?.toString() ?? '';
         configCachedAt = await DBHelper().getDeviceConfigCachedAt(deviceId);
       }
@@ -186,6 +196,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         debugPrint('[离线配置] 蓝牙更新(bt=$btTime > cfg=$cfgTime)，使用蓝牙数据');
       } else {
         _parseConfigLorastr(configLorastr);
+        if (cachedConfigFull != null) {
+          setState(() => _configAttributes = Map<String, dynamic>.from(cachedConfigFull!));
+        }
         debugPrint('[离线配置] 表缓存更新(cfg=$cfgTime >= bt=$btTime)，使用表缓存数据');
       }
     } else if (bluetoothLorastr != null) {
@@ -193,49 +206,106 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       debugPrint('[离线配置] 仅有蓝牙数据，使用蓝牙数据');
     } else if (configLorastr != null) {
       _parseConfigLorastr(configLorastr);
+      if (cachedConfigFull != null) {
+        setState(() => _configAttributes = Map<String, dynamic>.from(cachedConfigFull!));
+      }
       debugPrint('[离线配置] 仅有表缓存数据，使用表缓存数据');
     } else {
       debugPrint('[离线配置] 两个缓存都没有该设备的配置数据');
     }
   }
 
+  /// TIME_DICT for base62 encoding (same as C++ TIME_DICT)
+  static const String _timeDict = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+  /// 将2字符转换为索引值（对应C++ twoCharToIndex）
+  int _twoCharToIndex(String str) {
+    if (str.length != 2) return -1;
+    final h = _timeDict.indexOf(str[0]);
+    final l = _timeDict.indexOf(str[1]);
+    if (h == -1 || l == -1) return -1;
+    return h * 62 + l;
+  }
+
+  /// 将索引转换为时间窗口（对应C++ indexToTimeWindow）
+  /// 返回 [startHour, endHour] 或 null
+  List<int>? _indexToTimeWindow(int idx) {
+    if (idx < 0) return null;
+    int sum = 0;
+    for (int s = 0; s <= 23; s++) {
+      // 最小间隔1小时
+      int valid = 23 - (s + 1) + 1;
+      if (valid <= 0) continue;
+      if (idx < sum + valid) {
+        int off = idx - sum;
+        int endHour = s + 1 + off;
+        return [s, endHour];
+      }
+      sum += valid;
+    }
+    return null;
+  }
+
   /// 解析设备配置lorastr
-  /// 格式: type|deviceId|30,12-6,12-4|...
-  /// 第三段用逗号分隔: 上报周期(分钟),开机时间(起始-持续),定位时间(起始-持续)
+  /// 格式: type|deviceId|30,0M,3t,6|...
+  /// 第三段用逗号分隔: 上报周期(分钟),开机时间(2字符编码),GPS时间(2字符编码),其它字段
   void _parseConfigLorastr(String lorastr) {
     if (lorastr.isEmpty) return;
+    // 始终保存原始lorastr用于显示，即使解析失败
+    setState(() {
+      _rawLorastr = lorastr;
+    });
     try {
       final parts = lorastr.split('|');
       if (parts.length < 3) return;
-      final configStr = parts[2]; // "30,12-6,12-4"
+      final configStr = parts[2]; // "30,0M,3t,6"
       final configs = configStr.split(',');
-      if (configs.length < 3) return;
+      if (configs.isEmpty) return;
 
-      // 上报周期
+      // 上报周期（第一个字段）+ 大周期（第四个字段）
       final interval = configs[0]; // "30"
-      final intervalDisplay = '$interval分钟';
+      String intervalDisplay = '$interval分钟';
+      if (configs.length >= 4) {
+        final bigCycle = int.tryParse(configs[3]); // "6"
+        if (bigCycle != null) {
+          final bigCycleMinutes = bigCycle * 10; // 6 * 10 = 60
+          intervalDisplay = '$interval分钟（$bigCycleMinutes分钟）';
+        }
+      }
 
-      // 开机时间: "12-6" → 12:00-18:00
-      final bootParts = configs[1].split('-'); // ["12", "6"]
-      final bootStart = int.tryParse(bootParts[0]) ?? 0;
-      final bootDuration = int.tryParse(bootParts[1]) ?? 0;
-      final bootEnd = bootStart + bootDuration;
-      final bootDisplay = '${bootStart.toString().padLeft(2, '0')}:00-${bootEnd.toString().padLeft(2, '0')}:00';
+      // 开机时间（第二个字段，2字符编码）
+      String bootDisplay = '—';
+      if (configs.length >= 2) {
+        final bootCode = configs[1]; // "0M"
+        final bootIndex = _twoCharToIndex(bootCode);
+        final timeWindow = _indexToTimeWindow(bootIndex);
+        if (timeWindow != null) {
+          final startHour = timeWindow[0];
+          final endHour = timeWindow[1];
+          bootDisplay = '${startHour.toString().padLeft(2, '0')}:00-${endHour.toString().padLeft(2, '0')}:00';
+        }
+      }
 
-      // 定位时间: "12-4" → 12:00-16:00
-      final locParts = configs[2].split('-'); // ["12", "4"]
-      final locStart = int.tryParse(locParts[0]) ?? 0;
-      final locDuration = int.tryParse(locParts[1]) ?? 0;
-      final locEnd = locStart + locDuration;
-      final locDisplay = '${locStart.toString().padLeft(2, '0')}:00-${locEnd.toString().padLeft(2, '0')}:00';
+      // GPS时间（第三个字段，2字符编码）
+      String gpsDisplay = '—';
+      if (configs.length >= 3) {
+        final gpsCode = configs[2]; // "3t"
+        final gpsIndex = _twoCharToIndex(gpsCode);
+        final gpsWindow = _indexToTimeWindow(gpsIndex);
+        if (gpsWindow != null) {
+          final startHour = gpsWindow[0];
+          final endHour = gpsWindow[1];
+          gpsDisplay = '${startHour.toString().padLeft(2, '0')}:00-${endHour.toString().padLeft(2, '0')}:00';
+        }
+      }
 
       setState(() {
         _reportInterval = intervalDisplay;
         _bootTime = bootDisplay;
-        _locationTime = locDisplay;
+        _locationTime = gpsDisplay;
         _rawConfigValue = configStr; // 保存原始配置值
       });
-      debugPrint('解析配置: 上报周期=$intervalDisplay, 开机时间=$bootDisplay, 定位时间=$locDisplay');
+      debugPrint('解析配置: 上报周期=$intervalDisplay, 开机时间=$bootDisplay, GPS时间=$gpsDisplay, 原始配置=$configStr');
     } catch (e) {
       debugPrint('解析设备配置失败: $e, lorastr=$lorastr');
     }
@@ -505,7 +575,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
             const SizedBox(height: 16),
             // 功能按钮网格
             _buildFunctionGrid(),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -817,7 +886,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                   _buildInfoRowWhite('上报周期', _reportInterval),
                   _buildInfoRowWhite('开机时间', _bootTime),
                   _buildInfoRowWhite('GPS时间', _locationTime),
-                  _buildInfoRowWhite('上次换电', '—', valueColor: const Color(0xFFFFB74D)),
                 ],
               ),
             ),
@@ -894,6 +962,75 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
 
   // --- 功能按钮点击事件 ---
 
+  /// 设备配置信息区域（getDeviceConfigAll返回的全部属性）
+  Widget _buildConfigSection() {
+    // 过滤掉已在头部显示的字段
+    final skipKeys = {'deviceId'};
+    final entries = _configAttributes.entries
+        .where((e) => !skipKeys.contains(e.key))
+        .toList();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.settings_suggest, size: 18, color: Colors.blue[700]),
+                const SizedBox(width: 6),
+                const Text(
+                  '设备配置信息',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, indent: 16, endIndent: 16),
+          // 属性列表
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              children: entries.map((e) {
+                final key = e.key;
+                final value = e.value?.toString() ?? '—';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 110,
+                        child: Text(
+                          key,
+                          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          value,
+                          style: const TextStyle(fontSize: 13, color: Colors.black87),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
   void _onRealtimeLocation() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('实时定位功能开发中...')),
@@ -901,36 +1038,13 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   }
 
   void _onDataList() {
-    // 显示数据列表（原来的日志列表）
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text('数据列表', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () => _loadLogs(reset: true),
-                child: _buildLogList(),
-              ),
-            ),
-          ],
+    // 打开设备记录页面
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DeviceRecordPage(
+          device: widget.device,
+          deviceLot: widget.deviceLot,
         ),
       ),
     );
@@ -957,6 +1071,18 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   void _onGeofence() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('电子栅栏功能开发中...')),
+    );
+  }
+
+  /// 复制配置数据到剪贴板
+  void _copyConfigToClipboard() {
+    if (_rawLorastr.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: _rawLorastr));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('配置数据已复制: $_rawLorastr'),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -1168,6 +1294,84 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
           type: type,
         ),
       ),
+    );
+  }
+}
+
+/// 设备详情 TAB 页（作为底部导航第一个TAB）
+/// 监听全局选中设备变化，自动刷新显示
+class DeviceDetailTabPage extends StatefulWidget {
+  final VoidCallback? onSwitchTab;
+  const DeviceDetailTabPage({super.key, this.onSwitchTab});
+
+  @override
+  State<DeviceDetailTabPage> createState() => _DeviceDetailTabPageState();
+}
+
+class _DeviceDetailTabPageState extends State<DeviceDetailTabPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 监听设备选择变化
+    deviceSelectedNotifier.addListener(_onDeviceChanged);
+  }
+
+  @override
+  void dispose() {
+    deviceSelectedNotifier.removeListener(_onDeviceChanged);
+    super.dispose();
+  }
+
+  void _onDeviceChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final device = globalSelectedDevice;
+    final deviceLot = globalSelectedDeviceLot;
+
+    // 没有选中设备时显示占位
+    if (device == null || device.isEmpty) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F5F5),
+        appBar: AppBar(
+          title: const Text('设备详情'),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.devices_other, size: 80, color: Colors.grey[300]),
+              const SizedBox(height: 16),
+              Text(
+                '请先在设备管理中选择一个设备',
+                style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: widget.onSwitchTab,
+                icon: const Icon(Icons.devices),
+                label: const Text('去设备管理'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 有选中设备时显示详情
+    return DeviceDetailPage(
+      device: device,
+      deviceLot: deviceLot,
     );
   }
 }
