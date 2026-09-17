@@ -8,6 +8,7 @@ import 'device_log_map_page.dart';
 import 'device_trajectory_page.dart';
 import 'device_record_page.dart';
 import 'bluetooth_page.dart';
+import 'device_dtu_command_page.dart';
 
 /// 功能按钮数据类
 class _FunctionButton {
@@ -57,7 +58,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     super.initState();
     _checkBluetoothConnection();
     _loadLogs(reset: true);
-    _loadDeviceConfig();
+    // 初始化直接读缓存，不下拉刷新不发网络请求
+    final deviceId = widget.device['deviceId']?.toString() ?? '';
+    _loadDeviceConfigFromCache(deviceId);
   }
 
   /// 检查蓝牙连接状态
@@ -130,6 +133,79 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       debugPrint('加载设备配置失败: $e，尝试从缓存加载');
       // 从缓存加载
       await _loadDeviceConfigFromCache(deviceId);
+    }
+  }
+
+  /// 下拉刷新：通过getDeviceConfigById获取指定设备的配置信息并缓存
+  Future<void> _refreshDeviceConfig() async {
+    final deviceId = widget.device['deviceId']?.toString() ?? '';
+    if (deviceId.isEmpty) return;
+
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'getDeviceConfigById',
+          'info': {'deviceId': deviceId, 'wechatid': globalWechatId},
+        }),
+      );
+
+      debugPrint('[下拉刷新] 设备配置响应: ${resp.statusCode}');
+
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          // getDeviceConfigById返回单条Map，getDeviceConfigAll返回List
+          final rawData = json['data'];
+          final List<dynamic> rawRows;
+          if (rawData is Map<String, dynamic>) {
+            rawRows = [rawData];
+          } else if (rawData is List) {
+            rawRows = rawData;
+          } else {
+            rawRows = [];
+          }
+          for (final rawRow in rawRows) {
+            final row = rawRow as Map<String, dynamic>;
+            final parsed = <String, dynamic>{};
+
+            final pkList = row['primaryKey'] as List<dynamic>? ?? [];
+            for (final pk in pkList) {
+              final pkMap = pk as Map<String, dynamic>;
+              parsed[pkMap['name'] as String] = pkMap['value'];
+            }
+
+            final attrList = row['attributes'] as List<dynamic>? ?? [];
+            for (final attr in attrList) {
+              final attrMap = attr as Map<String, dynamic>;
+              parsed[attrMap['columnName'] as String] = attrMap['columnValue'];
+            }
+
+            final configDeviceId = parsed['deviceId']?.toString() ?? '';
+            if (configDeviceId.isNotEmpty) {
+              // 缓存到所有设备的配置信息中
+              await DBHelper().saveDeviceConfig(configDeviceId, parsed);
+            }
+
+            // 更新当前设备显示
+            if (configDeviceId == deviceId) {
+              setState(() {
+                _configAttributes = Map<String, dynamic>.from(parsed);
+                _isFromCache = false; // 网络成功，恢复标题
+              });
+              final lorastr = parsed['lorastr']?.toString() ?? '';
+              _parseConfigLorastr(lorastr);
+              debugPrint('[下拉刷新] 配置已更新: deviceId=$deviceId, lorastr=$lorastr');
+            }
+          }
+          debugPrint('[下拉刷新] 配置缓存完成: 共 ${rawRows.length} 条');
+        } else {
+          debugPrint('[下拉刷新] 配置请求错误: ${json['msg']}');
+        }
+      }
+    } catch (e) {
+      debugPrint('[下拉刷新] 刷新配置失败: $e');
     }
   }
 
@@ -567,15 +643,19 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         title: Text(_isFromCache ? '设备详情(断网)' : '设备详情'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // 蓝色头部信息卡片
-            _buildHeaderCard(displayName, picurl),
-            const SizedBox(height: 16),
-            // 功能按钮网格
-            _buildFunctionGrid(),
-          ],
+      body: RefreshIndicator(
+        onRefresh: _refreshDeviceConfig,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              // 蓝色头部信息卡片
+              _buildHeaderCard(displayName, picurl),
+              const SizedBox(height: 16),
+              // 功能按钮网格
+              _buildFunctionGrid(),
+            ],
+          ),
         ),
       ),
     );
@@ -1051,8 +1131,18 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   }
 
   void _onDeviceSettings() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('设备设置功能开发中...')),
+    final deviceId = _str(widget.device['deviceId']);
+    final deviceName = _str(widget.device['rename']);
+    final deviceKey = _str(widget.device['device_key']);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DeviceDtuCommandPage(
+          deviceId: deviceId,
+          deviceName: deviceName,
+          deviceKey: deviceKey,
+        ),
+      ),
     );
   }
 

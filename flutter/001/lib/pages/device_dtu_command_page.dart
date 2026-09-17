@@ -32,6 +32,14 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
   bool _isSending = false;
   String _currentConfigValue = ''; // 当前设备配置值（从缓存读取的lorastr配置段）
 
+  // 配置弹框状态
+  int _configReportInterval = 30; // 上报周期（分钟）
+  int _configBootStart = 0;       // 开机开始时间
+  int _configBootEnd = 24;        // 开机结束时间
+  int _configGpsStart = 12;       // GPS开始时间
+  int _configGpsEnd = 6;          // GPS结束时间
+  int _configMainCycle = 60;      // 主周期（分钟）
+
   // 设备列表
   List<Map<String, dynamic>> _targetDevices = []; // ProductKey为空的设备
   List<Map<String, dynamic>> _relayDevices = []; // 有ProductKey的设备
@@ -119,6 +127,380 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
     } catch (e) {
       debugPrint('[DTU] 加载设备配置失败: $e');
     }
+  }
+
+  // --- 配置弹框辅助方法 ---
+
+  static const String _timeDict = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+  /// 将2字符编码转换为索引
+  int _twoCharToIndex(String str) {
+    if (str.length != 2) return -1;
+    final h = _timeDict.indexOf(str[0]);
+    final l = _timeDict.indexOf(str[1]);
+    if (h == -1 || l == -1) return -1;
+    return h * 62 + l;
+  }
+
+  /// 将索引转换为时间窗口 [startHour, endHour]
+  List<int>? _indexToTimeWindow(int idx) {
+    if (idx < 0) return null;
+    int sum = 0;
+    for (int s = 0; s <= 23; s++) {
+      int valid = 23 - (s + 1) + 1;
+      if (valid <= 0) continue;
+      if (idx < sum + valid) {
+        int off = idx - sum;
+        int endHour = s + 1 + off;
+        return [s, endHour];
+      }
+      sum += valid;
+    }
+    return null;
+  }
+
+  /// 将时间窗口转换为索引
+  int _timeWindowToIndex(int startHour, int endHour) {
+    int idx = 0;
+    for (int s = 0; s < startHour; s++) {
+      idx += 23 - (s + 1) + 1;
+    }
+    idx += endHour - (startHour + 1);
+    return idx;
+  }
+
+  /// 将索引转换为2字符编码
+  String _indexToTwoChar(int idx) {
+    final h = idx ~/ 62;
+    final l = idx % 62;
+    return '${_timeDict[h]}${_timeDict[l]}';
+  }
+
+  /// 解析配置字符串到弹框状态
+  void _parseConfigToDialog(String configStr) {
+    final configs = configStr.split(',');
+    if (configs.isEmpty) return;
+
+    // 上报周期
+    final interval = int.tryParse(configs[0]) ?? 30;
+
+    // 开机时间
+    int bootStart = 0, bootEnd = 24;
+    if (configs.length >= 2) {
+      final bootIndex = _twoCharToIndex(configs[1]);
+      final tw = _indexToTimeWindow(bootIndex);
+      if (tw != null) {
+        bootStart = tw[0];
+        bootEnd = tw[1];
+      }
+    }
+
+    // GPS时间
+    int gpsStart = 12, gpsEnd = 6;
+    if (configs.length >= 3) {
+      final gpsIndex = _twoCharToIndex(configs[2]);
+      final tw = _indexToTimeWindow(gpsIndex);
+      if (tw != null) {
+        gpsStart = tw[0];
+        gpsEnd = tw[1];
+      }
+    }
+
+    // 主周期
+    int mainCycle = 60;
+    if (configs.length >= 4) {
+      final bigCycle = int.tryParse(configs[3]);
+      if (bigCycle != null) {
+        mainCycle = bigCycle * 10;
+      }
+    }
+
+    setState(() {
+      _configReportInterval = interval;
+      _configBootStart = bootStart;
+      _configBootEnd = bootEnd;
+      _configGpsStart = gpsStart;
+      _configGpsEnd = gpsEnd;
+      _configMainCycle = mainCycle;
+    });
+  }
+
+  /// 从弹框状态生成配置字符串
+  String _generateConfigString() {
+    final bootIndex = _timeWindowToIndex(_configBootStart, _configBootEnd);
+    final gpsIndex = _timeWindowToIndex(_configGpsStart, _configGpsEnd);
+    final bootCode = _indexToTwoChar(bootIndex);
+    final gpsCode = _indexToTwoChar(gpsIndex);
+    final mainCycleUnit = _configMainCycle ~/ 10;
+    return '${_configReportInterval},$bootCode,$gpsCode,$mainCycleUnit';
+  }
+
+  /// 显示配置下发弹框
+  void _showConfigDialog() {
+    // 用当前配置值初始化弹框
+    if (_currentConfigValue.isNotEmpty) {
+      _parseConfigToDialog(_currentConfigValue);
+    } else {
+      // 默认值
+      setState(() {
+        _configReportInterval = 30;
+        _configBootStart = 0;
+        _configBootEnd = 24;
+        _configGpsStart = 12;
+        _configGpsEnd = 6;
+        _configMainCycle = 60;
+      });
+    }
+
+    // 上报周期输入框controller（局部变量，确定时读取当前值）
+    final reportIntervalController = TextEditingController(
+      text: _configReportInterval.toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.settings, size: 20),
+                SizedBox(width: 8),
+                Text('配置下发', style: TextStyle(fontSize: 16)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ① 上报周期
+                  const Text(
+                    '① 上报周期（分钟）',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            hintText: '5-60',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          controller: reportIntervalController,
+                          onSubmitted: (v) {
+                            final val = int.tryParse(v) ?? _configReportInterval;
+                            setDialogState(() {
+                              _configReportInterval = val.clamp(5, 60);
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ② 开机时间
+                  const Text(
+                    '② 开机时间（小时）',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('开始时间', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            const SizedBox(height: 4),
+                            _buildTimeDropdown(
+                              _configBootStart,
+                              setDialogState,
+                              min: 0,
+                              max: 23,
+                              onChanged: (v) {
+                                _configBootStart = v;
+                                if (_configBootEnd <= v) _configBootEnd = v + 1;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('结束时间', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            const SizedBox(height: 4),
+                            _buildTimeDropdown(
+                              _configBootEnd,
+                              setDialogState,
+                              min: _configBootStart + 1,
+                              max: 24,
+                              onChanged: (v) => _configBootEnd = v,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ③ GPS工作时间
+                  const Text(
+                    '③ GPS工作时间（小时）',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('开始时间', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            const SizedBox(height: 4),
+                            _buildTimeDropdown(
+                              _configGpsStart,
+                              setDialogState,
+                              min: 0,
+                              max: 23,
+                              onChanged: (v) {
+                                _configGpsStart = v;
+                                if (_configGpsEnd <= v) _configGpsEnd = v + 1;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('结束时间', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            const SizedBox(height: 4),
+                            _buildTimeDropdown(
+                              _configGpsEnd,
+                              setDialogState,
+                              min: _configGpsStart + 1,
+                              max: 24,
+                              onChanged: (v) => _configGpsEnd = v,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ④ 主周期
+                  const Text(
+                    '④ 主周期（分钟）',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('主周期', style: TextStyle(fontSize: 13)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: Text(
+                          '$_configMainCycle 分钟',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.blue),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: _configMainCycle.toDouble(),
+                    min: 10,
+                    max: 100,
+                    divisions: 9,
+                    label: '$_configMainCycle 分钟',
+                    activeColor: Colors.blue,
+                    onChanged: (v) {
+                      setDialogState(() {
+                        _configMainCycle = v.round();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () {
+                  // 确定前先同步上报周期TextField的当前输入值
+                  final inputVal = int.tryParse(reportIntervalController.text.trim());
+                  if (inputVal != null) {
+                    _configReportInterval = inputVal.clamp(5, 60);
+                  }
+                  final configStr = _generateConfigString();
+                  _commandController.text = '{"cmd":"A","value":"$configStr"}';
+                  Navigator.pop(dialogContext);
+                },
+                style: TextButton.styleFrom(foregroundColor: Colors.blue),
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 构建时间选择下拉框
+  Widget _buildTimeDropdown(
+    int value,
+    StateSetter setDialogState, {
+    required void Function(int val) onChanged,
+    required int min,
+    required int max,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: DropdownButton<int>(
+        value: value,
+        isExpanded: true,
+        underline: const SizedBox(),
+        items: List.generate(max - min + 1, (i) {
+          final hour = min + i;
+          return DropdownMenuItem(
+            value: hour,
+            child: Text('$hour 时', style: const TextStyle(fontSize: 14)),
+          );
+        }),
+        onChanged: (v) {
+          if (v != null) {
+            setDialogState(() {
+              onChanged(v);
+            });
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -732,12 +1114,7 @@ class _DeviceDtuCommandPageState extends State<DeviceDtuCommandPage> {
                   icon: Icons.settings,
                   label: '配置下发',
                   iconColor: Colors.green,
-                  onTap: () {
-                    final configValue = _currentConfigValue.isNotEmpty
-                        ? _currentConfigValue
-                        : '10,0-24,12-6';
-                    _commandController.text = '{"cmd":"config","value":"$configValue"}';
-                  },
+                  onTap: _showConfigDialog,
                 ),
               ],
             ),
