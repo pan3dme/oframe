@@ -50,7 +50,7 @@ Page({
     livestockNames: [],
     // 管理员模式
     isAdmin: false,
-    // 设备配置（getDeviceConfigAll）
+    // 设备配置（getDeviceConfigById，按 deviceId 查询单条）
     deviceConfig: null,
     // 是否显示转换（设置页开关控制）：开启后对时记录(TYPE=2)显示换算日期时间，关闭显示原始LORA数据
     showConverted: false,
@@ -445,6 +445,7 @@ Page({
   },
 
   // 拉取设备配置（上报周期/开机时间/GPS工作时间等）
+  // 通过 getDeviceConfigById 按 deviceId 只查询当前设备的一条配置记录
   // 网络数据未返回前先从缓存取对应设备配置立即显示，网络返回后再刷新覆盖
   loadDeviceConfig(deviceId) {
     if (!deviceId) return
@@ -458,42 +459,39 @@ Page({
       url: API_URL,
       method: 'POST',
       data: {
-        action: 'getDeviceConfigAll',
+        action: 'getDeviceConfigById',
         info: { deviceId: deviceId, wechatid: getApp().getWechatId() }
       },
       success: (res) => {
         console.log('设备配置查询返回:', JSON.stringify(res.data))
-        let rawList = []
-        if (res.data && res.data.data && Array.isArray(res.data.data)) {
-          rawList = res.data.data
-        } else if (Array.isArray(res.data)) {
-          rawList = res.data
-        }
-        if (rawList.length > 0) {
-          // 按 deviceId 匹配当前设备
-          const record = rawList.find(r => {
-            const devId = r.deviceId || (r.primaryKey && r.primaryKey.find(p => p.name === 'deviceId') ? r.primaryKey.find(p => p.name === 'deviceId').value : null)
-            return devId === deviceId
-          })
-          if (record) {
-            const attr = {}
-            if (record.attributes) {
-              record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
-            }
-            if (record.primaryKey) {
-              record.primaryKey.forEach(item => { attr[item.name] = item.value })
-            }
-            // 也取直接的属性
-            if (record.lorastr) attr.lorastr = record.lorastr
-            // 更新 deviceInfo 中的配置信息
-            that._applyConfigFromLorastr(attr.lorastr || '')
-          } else {
-            // 未匹配到当前设备，清空显示
-            if (that.data.deviceInfo) {
-              const updated = Object.assign({}, that.data.deviceInfo, { reportInterval: '-', mainPeriod: 0, powerOnTime: '-', gpsReportTime: '-', inPowerOn: true })
-              that.setData({ deviceInfo: updated, deviceConfig: Object.assign({}, that.data.deviceConfig, { lorastr: '' }) })
-            }
+        // getDeviceConfigById 只返回当前设备的一条记录
+        // 兼容三种返回形态：data.data 为单条对象 / data.data 为单元素数组 / 直接返回对象
+        let record = null
+        if (res.data && res.data.data) {
+          if (Array.isArray(res.data.data)) {
+            const devId = deviceId
+            record = res.data.data.find(r => {
+              const id = r.deviceId || (r.primaryKey && r.primaryKey.find(p => p.name === 'deviceId') ? r.primaryKey.find(p => p.name === 'deviceId').value : null)
+              return id === devId
+            }) || res.data.data[0] || null
+          } else if (typeof res.data.data === 'object') {
+            record = res.data.data
           }
+        } else if (res.data && typeof res.data === 'object' && !Array.isArray(res.data) && (res.data.lorastr || res.data.attributes)) {
+          record = res.data
+        }
+        if (record) {
+          const attr = {}
+          if (record.attributes) {
+            record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+          }
+          if (record.primaryKey) {
+            record.primaryKey.forEach(item => { attr[item.name] = item.value })
+          }
+          // 也取直接的属性
+          if (record.lorastr) attr.lorastr = record.lorastr
+          // 更新 deviceInfo 中的配置信息
+          that._applyConfigFromLorastr(attr.lorastr || '')
         } else {
           // 无配置数据，清空显示
           if (that.data.deviceInfo) {
