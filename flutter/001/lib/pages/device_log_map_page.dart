@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
@@ -53,6 +54,10 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
   // 我的位置
   LatLng? _myLocation;
   String _distanceText = '';
+  double _distanceMeters = 0;
+  bool _showDistanceLabel = true;
+  LatLng? _deviceMarkerPoint; // 设备标记点（GCJ-02）
+  bool _showBubble = true; // 是否显示设备信息气泡
 
   /// 生成虚线段（手动模拟，因当前flutter_map版本不支持dashPattern）
   /// dashLen: 每段虚线长度(米)，gapLen: 间隔长度(米)
@@ -76,6 +81,23 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       ));
     }
     return result;
+  }
+
+  /// 检查像素距离，决定是否显示距离标签
+  void _checkPixelDistance() {
+    if (_myLocation == null || _deviceMarkerPoint == null || _distanceMeters < 10) return;
+    try {
+      final camera = _mapController.camera;
+      final p1 = camera.project(_myLocation!);
+      final p2 = camera.project(_deviceMarkerPoint!);
+      final dx = p2.x - p1.x;
+      final dy = p2.y - p1.y;
+      final pixelDist = math.sqrt(dx * dx + dy * dy);
+      final shouldShow = pixelDist >= 50;
+      if (shouldShow != _showDistanceLabel) {
+        setState(() { _showDistanceLabel = shouldShow; });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -122,6 +144,10 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       setState(() {
         _myLocation = myPoint;
         _distanceText = distText;
+        _distanceMeters = distance;
+        _deviceMarkerPoint = devicePoint;
+        // 距离小于10米不显示距离标签
+        _showDistanceLabel = distance >= 10;
       });
     } catch (e) {
       debugPrint('[定位详情] 获取位置失败: $e');
@@ -410,6 +436,10 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                   _mapStatus = '';
                 });
               },
+              onMapEvent: (event) {
+                // 地图缩放/移动结束后检查像素距离
+                _checkPixelDistance();
+              },
             ),
             children: [
               // 高德卫星影像瓦片
@@ -477,7 +507,8 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                     ),
                   ],
                 ),
-                // 距离标签（两点中点位置）
+                // 距离标签（两点中点位置）—— 距离<10米或像素距离<50px时隐藏
+                if (_showDistanceLabel && _distanceMeters >= 10)
                 MarkerLayer(
                   markers: [
                     Marker(
@@ -516,7 +547,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                 ),
               ],
 
-              // 设备位置标记（绿色圆圈 + 设备名标签，与地图中心样式一致）
+              // 设备位置标记（绿色圆圈 + 上方合并气泡：设备名+时间+向下箭头）
               MarkerLayer(
                 markers: [
                   Marker(
@@ -527,47 +558,91 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        // 绿色圆圈图标（固定在GPS坐标点）
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_drop_down,
-                            color: Colors.white,
-                            size: 18,
+                        // 绿色圆圈图标（固定在GPS坐标点）—— 点击显示气泡
+                        GestureDetector(
+                          onTap: () => setState(() { _showBubble = true; }),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_drop_down,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                           ),
                         ),
-                        // 设备名称标签（向右延伸，不影响图标位置）
-                        if (widget.deviceName.isNotEmpty)
+                        // 合并气泡（设备名+时间+向下箭头，位于图标上方）—— 点击隐藏
+                        if (_showBubble && (widget.deviceName.isNotEmpty || (widget.time.isNotEmpty && widget.time != '—')))
                           Positioned(
-                            left: 30,
-                            top: 2,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(6),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.15),
-                                    blurRadius: 3,
-                                    offset: const Offset(0, 1),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                widget.deviceName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.black87,
+                            left: 12,
+                            bottom: 24,
+                            child: GestureDetector(
+                              onTap: () => setState(() { _showBubble = false; }),
+                              behavior: HitTestBehavior.opaque,
+                              child: SizedBox(
+                                width: 240,
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    return Transform.translate(
+                                      offset: const Offset(-120, 0),
+                                      transformHitTests: true, // 关键：让点击区域跟随视觉内容移动
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(8),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black.withValues(alpha: 0.15),
+                                                  blurRadius: 4,
+                                                  offset: const Offset(0, 1),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                if (widget.deviceName.isNotEmpty)
+                                                  Text(
+                                                    widget.deviceName,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.black,
+                                                    ),
+                                                  ),
+                                                if (widget.time.isNotEmpty && widget.time != '—')
+                                                  Text(
+                                                    widget.time,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.black54,
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                          CustomPaint(
+                                            size: const Size(10, 6),
+                                            painter: _TrianglePainter(),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                             ),
@@ -800,4 +875,23 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
       ),
     );
   }
+}
+
+/// 向下小三角箭头绘制器（用于气泡底部指向图标）
+class _TrianglePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final path = ui.Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

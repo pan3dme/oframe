@@ -914,7 +914,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// 蓝色头部信息卡片
   Widget _buildHeaderCard(String displayName, String picurl) {
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFF1976D2),
         borderRadius: BorderRadius.circular(16),
@@ -1003,9 +1003,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     ];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Wrap(
-        spacing: 16,
+        spacing: 28,
         runSpacing: 20,
         alignment: WrapAlignment.start,
         children: buttons.map((btn) {
@@ -1209,11 +1209,91 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
         );
       }
     } catch (e) {
-      debugPrint('[实时定位] 请求异常: $e');
+      debugPrint('[实时定位] 网络请求异常: $e，尝试从缓存获取');
+      // 网络失败，从缓存获取
+      await _openLocationFromCache(deviceId, rename);
+    }
+  }
+
+  /// 从缓存中获取设备定位并跳转到定位详情
+  Future<void> _openLocationFromCache(String deviceId, String rename) async {
+    try {
+      Map<String, dynamic>? lotData = widget.deviceLot;
+      // 如果 widget.deviceLot 为空，从数据库查询
+      if (lotData == null || lotData.isEmpty) {
+        lotData = await DBHelper().getDeviceLotByDeviceId(deviceId);
+      }
+      if (lotData == null || lotData.isEmpty) {
+        if (mounted) Navigator.pop(context); // 关闭加载框
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无网络且无缓存数据，无法获取定位')),
+          );
+        }
+        return;
+      }
+
+      final lorastr = lotData['lorastr']?.toString() ?? '';
+      final time = lotData['time']?.toString() ?? '';
+      debugPrint('[实时定位-缓存] lorastr=$lorastr, time=$time');
+
+      if (lorastr.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('缓存中无该设备的定位数据')),
+          );
+        }
+        return;
+      }
+
+      // 从 lorastr 解析 GPS 坐标
+      final parts = lorastr.split('|');
+      if (parts.length >= 3) {
+        final gpsStr = parts[2];
+        final gpsParts = gpsStr.split(',');
+        if (gpsParts.length >= 2) {
+          final lat = double.tryParse(gpsParts[0].trim());
+          final lng = double.tryParse(gpsParts[1].trim());
+          if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+            if (mounted) Navigator.pop(context); // 关闭加载框
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('无网络，使用缓存定位数据'), duration: Duration(seconds: 2)),
+              );
+            }
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DeviceLogMapPage(
+                  latitude: lat,
+                  longitude: lng,
+                  time: time,
+                  deviceId: deviceId,
+                  type: parts[0],
+                  deviceName: rename != '—' ? '$deviceId ($rename)' : deviceId,
+                ),
+              ),
+            );
+            return;
+          }
+        }
+      }
+      // 缓存数据解析失败
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('获取实时定位失败: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('缓存定位数据解析失败')),
+        );
+      }
+    } catch (e) {
+      debugPrint('[实时定位-缓存] 异常: $e');
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('缓存定位失败: $e')),
+        );
+      }
     }
   }
 
