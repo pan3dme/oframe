@@ -1536,7 +1536,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                     );
                   }).whereType<Marker>().toList(),
                 ),
-              // 显示设备位置
+              // 显示设备位置（图标+名称标签）
               if (_showDevices && _devicePositions.isNotEmpty)
                 MarkerLayer(
                   markers: _devicePositions.map((device) {
@@ -1544,7 +1544,6 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                     String safeDeviceName = _sanitizeString(device['name'].toString());
                     final fromBluetooth = device['fromBluetooth'] as bool? ?? false;
                     final gpsExpired = device['gps_expired'] as bool? ?? false;
-                    final gpsTimeStr = device['gpsTime']?.toString() ?? '';
                     
                     return Marker(
                       point: LatLng(device['lat'], device['lng']),
@@ -1616,8 +1615,31 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                               ),
                             ),
                           ),
-                          // 合并气泡（设备名+时间+向下箭头）—— 点击隐藏，放在Stack最后（最上层）
-                          if (_selectedDeviceId == deviceId)
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              // 气泡层（独立MarkerLayer，渲染在图标层之上，确保不被遮挡）
+              if (_showDevices && _selectedDeviceId != null)
+                MarkerLayer(
+                  markers: () {
+                    final devices = _devicePositions.where(
+                      (d) => d['deviceId'] == _selectedDeviceId,
+                    ).toList();
+                    if (devices.isEmpty) return <Marker>[];
+                    final device = devices.first;
+                    final gpsTimeStr = device['gpsTime']?.toString() ?? '';
+                    final safeDeviceName = _sanitizeString(device['name'].toString());
+                    return [
+                      Marker(
+                        point: LatLng(device['lat'], device['lng']),
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
                             Positioned(
                               left: 12,
                               bottom: 24,
@@ -1630,7 +1652,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                                     builder: (context, constraints) {
                                       return Transform.translate(
                                         offset: const Offset(-120, 0),
-                                        transformHitTests: true, // 点击区域跟随视觉内容移动
+                                        transformHitTests: true,
                                         child: Column(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
@@ -1687,10 +1709,11 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                                 ),
                               ),
                             ),
-                        ],
+                          ],
+                        ),
                       ),
-                    );
-                  }).toList(),
+                    ];
+                  }(),
                 ),
             ],
           ),
