@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
 import '../utils/coord_transform.dart';
 import '../utils/db_helper.dart';
 import '../main.dart'; // 全局 globalWechatId
@@ -16,6 +18,7 @@ class DeviceLogMapPage extends StatefulWidget {
   final String time;
   final String deviceId;
   final String type;
+  final String deviceName;
 
   const DeviceLogMapPage({
     super.key,
@@ -24,6 +27,7 @@ class DeviceLogMapPage extends StatefulWidget {
     required this.time,
     required this.deviceId,
     required this.type,
+    this.deviceName = '',
   });
 
   @override
@@ -46,10 +50,82 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
   int _maxAvailableLevel = 1;
   String? _lastRoutePlaceFetchDate;
 
+  // 我的位置
+  LatLng? _myLocation;
+  String _distanceText = '';
+
+  /// 生成虚线段（手动模拟，因当前flutter_map版本不支持dashPattern）
+  /// dashLen: 每段虚线长度(米)，gapLen: 间隔长度(米)
+  List<Polyline> _buildDashedLine(LatLng from, LatLng to, {double dashLen = 30.0, double gapLen = 20.0}) {
+    final distance = const Distance();
+    final totalMeters = distance.as(LengthUnit.Meter, from, to);
+    if (totalMeters < 1) return [];
+
+    final bearing = distance.bearing(from, to);
+    final step = dashLen + gapLen;
+    final result = <Polyline>[];
+
+    for (double d = 0; d < totalMeters; d += step) {
+      final dashEnd = math.min(d + dashLen, totalMeters);
+      final p1 = distance.offset(from, d, bearing);
+      final p2 = distance.offset(from, dashEnd, bearing);
+      result.add(Polyline(
+        points: [p1, p2],
+        strokeWidth: 2,
+        color: Colors.cyanAccent,
+      ));
+    }
+    return result;
+  }
+
   @override
   void initState() {
     super.initState();
     _restoreLastFetchDate();
+    _getCurrentLocation();
+  }
+
+  /// 获取我的当前位置
+  Future<void> _getCurrentLocation() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('[定位详情] 位置权限被拒绝');
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('[定位详情] 位置权限被永久拒绝');
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      // WGS-84 转 GCJ-02（与高德地图对齐）
+      final gcj02 = CoordTransform.wgs84ToGcj02(position.latitude, position.longitude);
+      final myPoint = LatLng(gcj02[0], gcj02[1]);
+
+      // 计算与设备位置的距离
+      final deviceGcj02 = CoordTransform.wgs84ToGcj02(widget.latitude, widget.longitude);
+      final devicePoint = LatLng(deviceGcj02[0], deviceGcj02[1]);
+      final distance = const Distance().as(LengthUnit.Meter, myPoint, devicePoint);
+      String distText;
+      if (distance >= 1000) {
+        distText = '${(distance / 1000).toStringAsFixed(1)}km';
+      } else {
+        distText = '${distance.toStringAsFixed(0)}m';
+      }
+      debugPrint('[定位详情] 我的位置: ($myPoint), 距离: $distText');
+
+      setState(() {
+        _myLocation = myPoint;
+        _distanceText = distText;
+      });
+    } catch (e) {
+      debugPrint('[定位详情] 获取位置失败: $e');
+    }
   }
 
   Future<void> _restoreLastFetchDate() async {
@@ -368,34 +444,135 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                   settings: FMTCTileProviderSettings(),
                 ),
               ),
-              // 坐标圆点（独立层，位置始终固定）
+              // 我的位置到设备的虚线连接 + 距离
+              if (_myLocation != null) ...[
+                // 虚线（手动分段模拟）
+                PolylineLayer(
+                  polylines: _buildDashedLine(_myLocation!, markerPoint),
+                ),
+                // 我的位置蓝色圆点
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _myLocation!,
+                      width: 20,
+                      height: 20,
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2196F3),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF2196F3).withValues(alpha: 0.5),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // 距离标签（两点中点位置）
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: LatLng(
+                        (_myLocation!.latitude + markerPoint.latitude) / 2,
+                        (_myLocation!.longitude + markerPoint.longitude) / 2,
+                      ),
+                      width: 80,
+                      height: 28,
+                      alignment: Alignment.center,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.cyanAccent.withValues(alpha: 0.6), width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.straighten, size: 13, color: Colors.cyanAccent),
+                            const SizedBox(width: 3),
+                            Text(
+                              _distanceText,
+                              style: const TextStyle(
+                                color: Colors.cyanAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // 设备位置标记（绿色圆圈 + 设备名标签，与地图中心样式一致）
               MarkerLayer(
                 markers: [
                   Marker(
                     point: markerPoint,
                     width: 24,
                     height: 24,
-                    alignment: Alignment.bottomCenter,
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: _typeColor,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _typeColor.withValues(alpha: 0.4),
-                            blurRadius: 5,
-                            spreadRadius: 1,
+                    alignment: Alignment.center,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // 绿色圆圈图标（固定在GPS坐标点）
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
                           ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.arrow_drop_down,
-                        color: Colors.white,
-                        size: 18,
-                      ),
+                          child: const Icon(
+                            Icons.arrow_drop_down,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                        // 设备名称标签（向右延伸，不影响图标位置）
+                        if (widget.deviceName.isNotEmpty)
+                          Positioned(
+                            left: 30,
+                            top: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.15),
+                                    blurRadius: 3,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              child: Text(
+                                widget.deviceName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
@@ -415,18 +592,8 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                           final columnName = attrMap['columnName']?.toString() ?? '';
                           final columnValue = attrMap['columnValue']?.toString() ?? '';
                           if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                              debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
-                            }
+                            roadPoints = CoordTransform.parseRoadinfoToGcj02(columnValue);
+                            debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
                           } else if (columnName == 'roadname') {
                             name = _sanitizeString(columnValue);
                           }
@@ -458,17 +625,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                           final columnName = attrMap['columnName']?.toString() ?? '';
                           final columnValue = attrMap['columnValue']?.toString() ?? '';
                           if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                            }
+                            roadPoints = CoordTransform.parseRoadinfoToGcj02(columnValue);
                           } else if (columnName == 'roadname') {
                             name = _sanitizeString(columnValue);
                           }

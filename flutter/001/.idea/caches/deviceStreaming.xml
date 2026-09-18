@@ -28,6 +28,18 @@
           <option name="screenY" value="1280" />
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
+          <option name="api" value="36" />
+          <option name="brand" value="qti" />
+          <option name="codename" value="Frogger" />
+          <option name="id" value="Frogger" />
+          <option name="labId" value="google" />
+          <option name="manufacturer" value="Nothing" />
+          <option name="name" value="Phone (4a)" />
+          <option name="screenDensity" value="480" />
+          <option name="screenX" value="1224" />
+          <option name="screenY" value="2720" />
+        </PersistentDeviceSelectionData>
+        <PersistentDeviceSelectionData>
           <option name="api" value="33" />
           <option name="brand" value="Infinix" />
           <option name="codename" value="Infinix-X6525" />
@@ -807,11 +819,6 @@
           <option name="screenDensity" value="420" />
           <option name="screenX" value="1080" />
           <option name="screenY" value="2410" />
-          <option name="tags">
-            <list>
-              <option value="dda-default" />
-            </list>
-          </option>
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="32" />
@@ -1054,6 +1061,18 @@
           <option name="screenY" value="3088" />
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
+          <option name="api" value="36" />
+          <option name="brand" value="samsung" />
+          <option name="codename" value="dm3qksx" />
+          <option name="id" value="dm3qksx" />
+          <option name="labId" value="google" />
+          <option name="manufacturer" value="Samsung" />
+          <option name="name" value="Galaxy S23 Ultra" />
+          <option name="screenDensity" value="450" />
+          <option name="screenX" value="1080" />
+          <option name="screenY" value="2316" />
+        </PersistentDeviceSelectionData>
+        <PersistentDeviceSelectionData>
           <option name="api" value="34" />
           <option name="brand" value="motorola" />
           <option name="codename" value="dubai" />
@@ -1293,11 +1312,6 @@
           <option name="screenDensity" value="420" />
           <option name="screenX" value="1080" />
           <option name="screenY" value="2424" />
-          <option name="tags">
-            <list>
-              <option value="dda-default" />
-            </list>
-          </option>
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="34" />
@@ -1507,6 +1521,18 @@
           <option name="screenY" value="1600" />
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
+          <option name="api" value="35" />
+          <option name="brand" value="Xiaomi" />
+          <option name="codename" value="houji" />
+          <option name="id" value="houji" />
+          <option name="labId" value="google" />
+          <option name="manufacturer" value="Xiaomi" />
+          <option name="name" value="14" />
+          <option name="screenDensity" value="480" />
+          <option name="screenX" value="1200" />
+          <option name="screenY" value="2670" />
+        </PersistentDeviceSelectionData>
+        <PersistentDeviceSelectionData>
           <option name="api" value="34" />
           <option name="brand" value="google" />
           <option name="codename" value="husky" />
@@ -1698,11 +1724,6 @@
           <option name="screenDensity" value="390" />
           <option name="screenX" value="1080" />
           <option name="screenY" value="2404" />
-          <option name="tags">
-            <list>
-              <option value="dda-default" />
-            </list>
-          </option>
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="34" />
@@ -1824,11 +1845,6 @@
           <option name="screenDensity" value="450" />
           <option name="screenX" value="1080" />
           <option name="screenY" value="2340" />
-          <option name="tags">
-            <list>
-              <option value="dda-default" />
-            </list>
-          </option>
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="36" />
@@ -1842,11 +1858,6 @@
           <option name="screenDensity" value="450" />
           <option name="screenX" value="1080" />
           <option name="screenY" value="2340" />
-          <option name="tags">
-            <list>
-              <option value="dda-default" />
-            </list>
-          </option>
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="33" />
@@ -2150,11 +2161,6 @@
           <option name="screenDensity" value="390" />
           <option name="screenX" value="2076" />
           <option name="screenY" value="2152" />
-          <option name="tags">
-            <list>
-              <option value="dda-default" />
-            </list>
-          </option>
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="30" />
@@ -2167,11 +2173,6 @@
           <option name="screenDensity" value="440" />
           <option name="screenX" value="1080" />
           <option name="screenY" value="2340" />
-          <option name="tags">
-            <list>
-              <option value="default" />
-            </list>
-          </option>
         </PersistentDeviceSelectionData>
         <PersistentDeviceSelectionData>
           <option name="api" value="34" />

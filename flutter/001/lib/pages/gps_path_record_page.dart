@@ -8,7 +8,7 @@ import '../utils/coord_transform.dart';
 
 // GPS路径记录页面
 // 返回值: Map<String, dynamic>，包含:
-//   - 'roadinfo': String  坐标字符串 "lat1,lng1,lat2,lng2,..." (WGS-84)
+//   - 'roadinfo': String  坐标字符串 "lat1,lng1,dLat2,dLng2,dLat3,dLng3,..." (第一组为WGS-84绝对坐标，后续为相对前一点的偏移量)
 //   - 'points': List of LatLng  记录的路径点列表 (GCJ-02)
 class GpsPathRecordPage extends StatefulWidget {
   const GpsPathRecordPage({super.key});
@@ -266,13 +266,32 @@ class _GpsPathRecordPageState extends State<GpsPathRecordPage> {
 
   /// 返回结果给上一页
   void _returnResult() {
-    // 构建 roadinfo 字符串: "lat1,lng1,lat2,lng2,..." (WGS-84坐标)
-    final roadinfo = _recordedWgs84Points
-        .map((p) => '${p.latitude.toStringAsFixed(6)},${p.longitude.toStringAsFixed(6)}')
-        .join(',');
+    // 构建 roadinfo 字符串（整数放大格式）:
+    // "lat1,lng1,dLat2,dLng2,dLat3,dLng3,..."
+    // 全部数据统一缩小 10^5 (÷100000)
+    if (_recordedWgs84Points.isEmpty) {
+      Navigator.pop(context, {
+        'roadinfo': '',
+        'points': <LatLng>[],
+        'pointCount': 0,
+      });
+      return;
+    }
+
+    const scale = 100000; // 10^5
+    final first = _recordedWgs84Points.first;
+    final buffer = StringBuffer('${(first.latitude * scale).round()},${(first.longitude * scale).round()}');
+
+    for (int i = 1; i < _recordedWgs84Points.length; i++) {
+      final prev = _recordedWgs84Points[i - 1];
+      final curr = _recordedWgs84Points[i];
+      final dLat = ((curr.latitude - prev.latitude) * scale).round();
+      final dLng = ((curr.longitude - prev.longitude) * scale).round();
+      buffer.write(',$dLat,$dLng');
+    }
 
     Navigator.pop(context, {
-      'roadinfo': roadinfo,
+      'roadinfo': buffer.toString(),
       'points': List<LatLng>.from(_displayedGcj02Points),
       'pointCount': _recordedWgs84Points.length,
     });

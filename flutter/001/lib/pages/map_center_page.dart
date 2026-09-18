@@ -591,14 +591,40 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
 
   /// 清除地图瓦片缓存
   Future<void> _clearTileCache() async {
+    // 显示加载对话框
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('正在清除缓存...'),
+          ],
+        ),
+      ),
+    );
+    
     try {
-      setState(() {
-        _mapStatus = '正在清除缓存...';
-      });
+      // 等待对话框显示
+      await Future.delayed(const Duration(milliseconds: 50));
       
-      // 销毁并重新创建存储
-      await FMTCStore(_cacheStoreName).manage.delete();
+      final backend = FMTCObjectBoxBackend();
+      
+      // 快速方案：销毁整个 worker + 数据库目录（而不是逐个删除瓦片）
+      // immediate: true 跳过等待进行中的操作
+      await backend.uninitialise(deleteRoot: true, immediate: true);
+      
+      // 重新初始化 FMTC 后端
+      await backend.initialise();
+      
+      // 重新创建存储
       await FMTCStore(_cacheStoreName).manage.create();
+      
+      // 关闭加载对话框
+      if (mounted) Navigator.pop(context);
       
       setState(() {
         _cachedTileCount = -1;
@@ -617,6 +643,8 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       });
     } catch (e) {
       debugPrint('[瓦片缓存] 清除失败: $e');
+      // 关闭加载对话框
+      if (mounted) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('清除缓存失败: $e')),
@@ -1306,21 +1334,9 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                           final columnValue = attrMap['columnValue']?.toString() ?? '';
                           
                           if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            // 解析道路坐标点序列："lat1,lng1,lat2,lng2,..."
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                
-                                // 将 WGS-84 坐标转换为 GCJ-02（火星坐标）
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                              debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
-                            }
+                            // 解析道路坐标（新格式：第一组绝对坐标，后续为偏移量）
+                            roadPoints = CoordTransform.parseRoadinfoToGcj02(columnValue);
+                            debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
                           } else if (columnName == 'roadname') {
                             // 清理道路名称，确保UTF-16安全
                             name = _sanitizeString(columnValue);
@@ -1361,18 +1377,8 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                           final columnValue = attrMap['columnValue']?.toString() ?? '';
                           
                           if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                            }
+                            // 解析道路坐标（新格式：第一组绝对坐标，后续为偏移量）
+                            roadPoints = CoordTransform.parseRoadinfoToGcj02(columnValue);
                           } else if (columnName == 'roadname') {
                             // 清理道路名称，确保UTF-16安全
                             name = _sanitizeString(columnValue);

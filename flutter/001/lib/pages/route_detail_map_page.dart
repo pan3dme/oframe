@@ -42,18 +42,9 @@ class _RouteDetailMapPageState extends State<RouteDetailMapPage> {
     }
 
     try {
-      // roadinfo 格式: "lat1,lng1,lat2,lng2,..." (WGS-84)
-      final parts = roadinfo.split(',');
-      final points = <LatLng>[];
-      for (int i = 0; i < parts.length - 1; i += 2) {
-        final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-        final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-        if (wgs84Lat != 0 && wgs84Lng != 0) {
-          // WGS-84 转 GCJ-02
-          final gcj02 = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-          points.add(LatLng(gcj02[0], gcj02[1]));
-        }
-      }
+      // roadinfo 新格式: "lat1,lng1,dLat2,dLng2,dLat3,dLng3,..."
+      // 第一组为绝对坐标，后续为相对前一点的偏移量
+      final points = CoordTransform.parseRoadinfoToGcj02(roadinfo);
       setState(() {
         _pathPoints = points;
         _hasError = points.isEmpty;

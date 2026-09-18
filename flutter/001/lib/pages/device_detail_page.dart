@@ -1111,10 +1111,127 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     );
   }
 
-  void _onRealtimeLocation() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('实时定位功能开发中...')),
+  /// 实时定位：通过getDeviceLotById获取最新定位坐标并跳转到定位详情
+  void _onRealtimeLocation() async {
+    final deviceId = _str(widget.device['deviceId']);
+    final rename = _str(widget.device['rename']);
+    if (deviceId.isEmpty || deviceId == '—') return;
+
+    // 显示加载指示
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(),
+      ),
     );
+
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'getDeviceLotById',
+          'info': {'deviceId': deviceId, 'wechatid': globalWechatId},
+        }),
+      );
+
+      debugPrint('[实时定位] getDeviceLotById响应: ${resp.statusCode}');
+
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          // getDeviceLotById返回单条Map
+          final rawData = json['data'];
+          Map<String, dynamic>? parsed;
+          if (rawData is Map<String, dynamic>) {
+            parsed = _parseOtsRow(rawData);
+          } else if (rawData is List && rawData.isNotEmpty) {
+            parsed = _parseOtsRow(rawData.first);
+          }
+
+          if (parsed != null) {
+            final lorastr = parsed['lorastr']?.toString() ?? '';
+            final time = parsed['time']?.toString() ?? '';
+            debugPrint('[实时定位] lorastr=$lorastr, time=$time');
+
+            // 从lorastr解析GPS坐标：格式 "type|deviceMarker|lat,lng|value"
+            final parts = lorastr.split('|');
+            if (parts.length >= 3) {
+              final gpsStr = parts[2]; // "lat,lng"
+              final gpsParts = gpsStr.split(',');
+              if (gpsParts.length >= 2) {
+                final lat = double.tryParse(gpsParts[0].trim());
+                final lng = double.tryParse(gpsParts[1].trim());
+                if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+                  // 关闭加载
+                  if (mounted) Navigator.pop(context);
+                  // 跳转到定位详情页
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DeviceLogMapPage(
+                        latitude: lat,
+                        longitude: lng,
+                        time: time,
+                        deviceId: deviceId,
+                        type: parts[0], // type在parts[0]
+                        deviceName: rename != '—' ? '$deviceId ($rename)' : deviceId,
+                      ),
+                    ),
+                  );
+                  return;
+                }
+              }
+            }
+            // 坐标解析失败
+            if (mounted) Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('定位坐标解析失败，该设备可能尚未上报GPS数据')),
+            );
+          } else {
+            if (mounted) Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('未获取到该设备的定位数据')),
+            );
+          }
+        } else {
+          debugPrint('[实时定位] 请求错误: ${json['msg']}');
+          if (mounted) Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('获取定位失败: ${json['msg']}')),
+          );
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('网络请求失败: HTTP ${resp.statusCode}')),
+        );
+      }
+    } catch (e) {
+      debugPrint('[实时定位] 请求异常: $e');
+      if (mounted) Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('获取实时定位失败: $e')),
+      );
+    }
+  }
+
+  /// 解析OTS返回的原始行数据
+  Map<String, dynamic> _parseOtsRow(dynamic rawRow) {
+    final row = rawRow as Map<String, dynamic>;
+    final parsed = <String, dynamic>{};
+    final pkList = row['primaryKey'] as List<dynamic>? ?? [];
+    for (final pk in pkList) {
+      final pkMap = pk as Map<String, dynamic>;
+      parsed[pkMap['name'] as String] = pkMap['value'];
+    }
+    final attrList = row['attributes'] as List<dynamic>? ?? [];
+    for (final attr in attrList) {
+      final attrMap = attr as Map<String, dynamic>;
+      parsed[attrMap['columnName'] as String] = attrMap['columnValue'];
+    }
+    return parsed;
   }
 
   void _onDataList() {
@@ -1372,6 +1489,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       return;
     }
     final time = _str(log['time']);
+    final rename = _str(widget.device['rename']);
 
     Navigator.push(
       context,
@@ -1382,6 +1500,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
           time: time,
           deviceId: deviceId,
           type: type,
+          deviceName: rename != '—' ? '$deviceId ($rename)' : deviceId,
         ),
       ),
     );

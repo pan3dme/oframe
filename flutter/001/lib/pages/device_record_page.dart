@@ -263,6 +263,9 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
       return;
     }
 
+    final rename = widget.device['rename']?.toString() ?? '';
+    final deviceName = rename.isNotEmpty ? '$deviceId ($rename)' : deviceId;
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -272,6 +275,7 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
           time: _str(log['time']),
           deviceId: deviceId,
           type: type,
+          deviceName: deviceName,
         ),
       ),
     );
