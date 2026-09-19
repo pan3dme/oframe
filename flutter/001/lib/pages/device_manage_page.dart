@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../utils/db_helper.dart';
 import '../main.dart'; // 全局 globalWechatId
 import 'device_detail_page.dart'; // 导入设备详情页面
+import 'dart:async';
 
 /// FC 地址常量
 const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
@@ -29,6 +30,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   bool _isLoading = true;
   bool _isFromCache = false; // 标记是否使用缓存数据
   int _filterTab = 0; // 0=设备, 1=中继, 2=离线
+  Timer? _countdownTimer; // 倒计时刷新定时器
 
   
   // 编辑表单控制器
@@ -41,6 +43,15 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   void initState() {
     super.initState();
     _loadData();
+    _countdownTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
   }
   
 
@@ -843,7 +854,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                           ),
                         )
                       : Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                           child: Container(
                             decoration: BoxDecoration(
                               color: Colors.white,
@@ -920,10 +931,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                     timeFromSync = false;
                                   }
                                   
-                                  // 计算相对时间
-                                  String timeAgo = _calcTimeAgo(finalTimeRaw);
-                                  // 根据上报周期计算颜色级别: 0=绿, 1=红, 2=灰
-                                  int timeColorLevel = _getTimeColorLevel(finalTimeRaw, deviceId);
+                                  // 计算倒计时显示
+                                  String countdownStr = _calcCountdownString(finalTimeRaw, deviceId);
+                                  int timeColorLevel = _getCountdownColorLevel(deviceId, finalTimeRaw);
                                   
                                   // 图标：LOT表→绿点，对时表→时钟
                                   bool showGreenDot = !timeFromSync;
@@ -989,7 +999,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                                 child: Text(
                                                   displayName,
                                                   style: TextStyle(
-                                                    fontSize: 14,
+                                                    fontSize: 13,
                                                     fontWeight: FontWeight.w700,
                                                     color: isWorking ? const Color(0xFF333333) : Colors.grey[400],
                                                   ),
@@ -997,6 +1007,18 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
                                               ),
+                                              // 电量（紧跟设备名后）
+                                              if (batteryLevel.isNotEmpty) ...[
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  '(${batteryLevel})',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.grey[600],
+                                                  ),
+                                                ),
+                                              ],
                                               if (isRelay) ...[
                                                 const SizedBox(width: 4),
                                                 Container(
@@ -1019,18 +1041,6 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                             ],
                                           ),
                                         ),
-                                        // 电量
-                                        if (batteryLevel.isNotEmpty) ...[
-                                         
-                                          Text(
-                                            '${batteryLevel}',
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.grey[600],
-                                            ),
-                                          ),
-                                        ],
                                         const SizedBox(width: 8),
                                         // 状态图标：颜色跟随时间
                                         showGreenDot
@@ -1049,7 +1059,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                             borderRadius: BorderRadius.circular(4),
                                           ),
                                           child: Text(
-                                            timeAgo.isNotEmpty ? timeAgo : '—',
+                                            countdownStr.isNotEmpty ? countdownStr : '—',
                                             style: TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600,
@@ -1116,6 +1126,97 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   /// 处理下拉刷新
   Future<void> _handleRefresh() async {
     await _loadData();
+  }
+
+  /// 计算倒计时显示字符串
+  /// 工作时间内：用上报周期，从每天0点算起，得到距下次上报的倒计时
+  /// 非工作时间内：用大周期（距下次开机的时间）
+  String _calcCountdownString(String timeRaw, String deviceId) {
+    if (timeRaw == '—' || timeRaw.isEmpty) return '';
+    final intervalMinutes = _deviceIntervalMap[deviceId];
+    if (intervalMinutes == null || intervalMinutes <= 0) {
+      // 无上报周期配置，回退显示相对时间
+      return _calcTimeAgo(timeRaw);
+    }
+
+    final now = DateTime.now();
+    final workHours = _deviceWorkHoursMap[deviceId];
+
+    if (workHours != null && !_isDeviceWorking(deviceId)) {
+      // 非工作时间：计算距下次开机的倒计时（大周期）
+      final startHour = workHours[0];
+      final todayStart = DateTime(now.year, now.month, now.day, startHour, 0, 0);
+      DateTime nextStart;
+      if (now.isBefore(todayStart)) {
+        nextStart = todayStart;
+      } else {
+        nextStart = todayStart.add(const Duration(days: 1));
+      }
+      final remaining = nextStart.difference(now);
+      return _formatCountdown(remaining);
+    }
+
+    // 工作时间内：用上报周期计算下次上报时间
+    final midnight = DateTime(now.year, now.month, now.day);
+    final minutesSinceMidnight = now.difference(midnight).inMinutes;
+    final periodsSinceMidnight = minutesSinceMidnight ~/ intervalMinutes;
+    final nextPeriodMinutes = (periodsSinceMidnight + 1) * intervalMinutes;
+    final nextReportTime = midnight.add(Duration(minutes: nextPeriodMinutes));
+    final remaining = nextReportTime.difference(now);
+    return _formatCountdown(remaining);
+  }
+
+  /// 格式化倒计时为可读字符串
+  String _formatCountdown(Duration remaining) {
+    if (remaining.inSeconds <= 0) return '即将上报';
+    final totalMinutes = remaining.inMinutes;
+    if (totalMinutes < 1) return '${remaining.inSeconds}秒';
+    if (totalMinutes < 60) return '${totalMinutes}分钟';
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    if (hours >= 24) {
+      final days = hours ~/ 24;
+      final remHours = hours % 24;
+      return remHours > 0 ? '${days}天${remHours}时' : '${days}天';
+    }
+    if (minutes == 0) return '${hours}时';
+    return '${hours}时${minutes}分';
+  }
+
+  /// 根据倒计时计算颜色级别
+  /// 返回: 0=绿色(≤1周期), 1=红色(1~2周期), 2=灰色(>2周期或无数据)
+  int _getCountdownColorLevel(String deviceId, String timeRaw) {
+    if (timeRaw == '—' || timeRaw.isEmpty) return 2;
+    final intervalMinutes = _deviceIntervalMap[deviceId];
+    if (intervalMinutes == null || intervalMinutes <= 0) return 0;
+
+    final now = DateTime.now();
+    final workHours = _deviceWorkHoursMap[deviceId];
+
+    int remainingMinutes;
+    if (workHours != null && !_isDeviceWorking(deviceId)) {
+      // 非工作时间，剩余时间很长，通常>2周期
+      final startHour = workHours[0];
+      final todayStart = DateTime(now.year, now.month, now.day, startHour, 0, 0);
+      DateTime nextStart;
+      if (now.isBefore(todayStart)) {
+        nextStart = todayStart;
+      } else {
+        nextStart = todayStart.add(const Duration(days: 1));
+      }
+      remainingMinutes = nextStart.difference(now).inMinutes;
+    } else {
+      // 工作时间内
+      final midnight = DateTime(now.year, now.month, now.day);
+      final minutesSinceMidnight = now.difference(midnight).inMinutes;
+      final periodsSinceMidnight = minutesSinceMidnight ~/ intervalMinutes;
+      final nextPeriodMinutes = (periodsSinceMidnight + 1) * intervalMinutes;
+      remainingMinutes = nextPeriodMinutes - minutesSinceMidnight;
+    }
+
+    if (remainingMinutes <= intervalMinutes) return 0; // ≤1周期：绿色
+    if (remainingMinutes <= intervalMinutes * 2) return 1; // 1~2周期：红色
+    return 2; // >2周期：灰色
   }
 
   /// 解析时间字符串为DateTime
