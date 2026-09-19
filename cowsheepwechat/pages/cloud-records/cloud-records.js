@@ -2,22 +2,35 @@
 const API_URL = getApp().globalData.api_device_Url
 const dataCache = require('../../config/data-cache.js')
 
+// 各筛选项对应的 getlastlog type 参数：GPS记录 type=2，对时记录 type=1，全部不带 type 属性
+const FILTER_TYPE_PARAMS = {
+  all: null, // 全部：不带 type 属性
+  gps: 1,    // GPS：type=1
+  sync: 2    // 对时：type=2
+}
+
 Page({
   data: {
     loading: true,
     errorMsg: '',
     refreshing: false,
-    // 全部原始记录
-    allRecords: [],
-    // 当前筛选类型：''=全部, '1'=GPS, '2'=对时, 'other'=其它（除GPS、对时外）
-    filterType: '',
-    // 筛选后显示的记录
+    // 当前筛选选项：'all'=全部, 'gps'=GPS记录, 'sync'=对时记录
+    filterType: 'all',
+    // 当前筛选下显示的记录
     filteredRecords: [],
-    // 分页相关
-    currentPage: 0,
-    pageSize: 10,
+    // 三个选项独立的数据与分页状态（独立显示内容、独立加载更多）
+    recordsByType: {
+      all: { list: [], page: 0, hasMore: true, loaded: false },
+      gps: { list: [], page: 0, hasMore: true, loaded: false },
+      sync: { list: [], page: 0, hasMore: true, loaded: false }
+    },
+    // 当前选项是否已完成首次加载
+    tabLoaded: false,
+    // 当前选项是否还有更多数据
     hasMore: true,
-    loadingMore: false
+    loadingMore: false,
+    // 分页大小
+    pageSize: 10
   },
 
   onLoad() {
@@ -31,92 +44,106 @@ Page({
         })
       }
       that._deviceRenameMap = renameMap
-      // 若记录已先返回，则补充别名后刷新显示
-      if (that.data.allRecords.length > 0) {
-        const updated = that.data.allRecords.map(r => Object.assign({}, r, {
-          upDateDeviceAlias: renameMap[r.upDateDevice] || ''
-        }))
-        that.setData({ allRecords: updated }, () => that.applyFilter())
+      // 若记录已先返回，则补充别名后刷新各选项数据
+      const byType = that.data.recordsByType
+      let updated = null
+      Object.keys(byType).forEach(k => {
+        if (byType[k].list.length > 0) {
+          if (!updated) updated = Object.assign({}, byType)
+          updated[k] = Object.assign({}, byType[k], {
+            list: byType[k].list.map(r => Object.assign({}, r, {
+              upDateDeviceAlias: renameMap[r.upDateDevice] || ''
+            }))
+          })
+        }
+      })
+      if (updated) {
+        that.setData({ recordsByType: updated }, () => that.refreshCurrentTabView())
       }
     })
-    this.fetchRecords()
+    this.fetchRecords(false, 0, false)
+  },
+
+  // 将当前选项对应的数据同步到显示列表
+  refreshCurrentTabView() {
+    const tab = this.data.recordsByType[this.data.filterType]
+    this.setData({
+      filteredRecords: tab ? tab.list : [],
+      tabLoaded: tab ? tab.loaded : false,
+      hasMore: tab ? tab.hasMore : true
+    })
   },
 
   // ========== 数据获取 ==========
-  // silent=true 用于下拉刷新：不显示全屏 loading，避免顶部筛选栏闪动
+  // silent=true 用于下拉刷新/切换选项：不重置错误提示
   // page: 指定页码，不传时默认第1页
   // append: true=追加到已有列表（加载更多），false/不传=替换列表
+  // 根据当前筛选选项决定是否携带 type 参数：GPS记录 type=2，对时记录 type=1，全部不带 type 属性
   fetchRecords(silent = false, page = 0, append = false) {
-    if (!silent && !append) {
-      this.setData({ loading: true, errorMsg: '' })
-    }
+    const tabKey = this.data.filterType
+    const typeParam = FILTER_TYPE_PARAMS[tabKey]
     if (append) {
       this.setData({ loadingMore: true })
+    } else if (!silent) {
+      this.setData({ tabLoaded: false, errorMsg: '' })
+    } else {
+      this.setData({ errorMsg: '' })
     }
 
+    const info = {
+      page: page,
+      limit: this.data.pageSize,
+      wechatid: getApp().getWechatId()
+    }
+    // 全部时不传 type 属性
+    if (typeParam != null) {
+      info.type = typeParam
+    }
+     
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
         action: 'getlastlog',
-        info: {
-          page: page,
-          limit: this.data.pageSize,
-          wechatid: getApp().getWechatId()
-        },
+        info: info,
         time: getApp().formatTime()
       },
       success: (res) => {
-        console.log('云端记录返回(page=' + page + '):', JSON.stringify(res.data))
+        console.log('云端记录返回(type=' + tabKey + ', page=' + page + '):', JSON.stringify(res.data))
         const records = this.parseRecordList(res.data)
         const hasMore = records.length >= this.data.pageSize
-
+        const tab = this.data.recordsByType[tabKey]
+        let newList
         if (append) {
-          // 加载更多：合并去重
-          const existing = this.data.allRecords
-          const existKeys = new Set(existing.map(r => r.rawTime + '|' + r.lorastr))
+          // 加载更多：合并去重（各选项独立）
+          const existKeys = new Set(tab.list.map(r => r.rawTime + '|' + r.lorastr))
           const newRecords = records.filter(r => !existKeys.has(r.rawTime + '|' + r.lorastr))
-
           if (newRecords.length === 0) {
-            this.setData({ loadingMore: false, hasMore: false })
-            return
-          }
-          const merged = [...existing, ...newRecords]
-          this.setData({
-            allRecords: merged,
-            currentPage: page,
-            hasMore: hasMore,
-            loadingMore: false
-          }, () => {
-            this.applyFilter()
-          })
-        } else {
-          // 首次加载或刷新
-          if (records.length === 0) {
             this.setData({
-              loading: false,
-              refreshing: false,
-              allRecords: [],
-              filteredRecords: [],
-              currentPage: page,
-              hasMore: false,
               loadingMore: false,
-              errorMsg: silent ? '' : '暂无记录'
+              hasMore: false,
+              ['recordsByType.' + tabKey + '.hasMore']: false
             })
             return
           }
-          this.setData({
-            allRecords: records,
-            loading: false,
-            errorMsg: '',
-            refreshing: false,
-            currentPage: page,
-            hasMore: hasMore,
-            loadingMore: false
-          }, () => {
-            this.applyFilter()
-          })
+          newList = [...tab.list, ...newRecords]
+        } else {
+          newList = records
         }
+
+        const patch = {
+          ['recordsByType.' + tabKey]: { list: newList, page: page, hasMore: hasMore, loaded: true },
+          refreshing: false,
+          loadingMore: false
+        }
+        // 请求返回时若用户已切换到其它选项，仅更新该选项缓存，不改动当前显示
+        if (tabKey === this.data.filterType) {
+          patch.filteredRecords = newList
+          patch.tabLoaded = true
+          patch.hasMore = hasMore
+          patch.errorMsg = ''
+        }
+        this.setData(patch)
       },
       fail: (err) => {
         console.error('获取云端记录失败:', err)
@@ -125,12 +152,12 @@ Page({
           refreshing: false,
           loadingMore: false
         })
-        if (silent) {
-          wx.showToast({ title: '刷新失败', icon: 'none' })
-        } else if (append) {
+        if (append) {
           wx.showToast({ title: '加载失败', icon: 'none' })
+        } else if (silent && this.data.recordsByType[tabKey].loaded) {
+          wx.showToast({ title: '刷新失败', icon: 'none' })
         } else {
-          this.setData({ errorMsg: '网络请求失败，请下拉重试' })
+          this.setData({ tabLoaded: true, errorMsg: '网络请求失败，请下拉重试' })
         }
       }
     })
@@ -246,51 +273,52 @@ Page({
     return vividColors[idx]
   },
 
-  // ========== 筛选 ==========
-  applyFilter() {
-    const type = this.data.filterType
-    let filtered
-    if (type === 'other') {
-      // 其它 = 除 GPS(1)、对时(2) 外的所有类型
-      filtered = this.data.allRecords.filter(item => item.msgType !== '1' && item.msgType !== '2')
-    } else {
-      filtered = type
-        ? this.data.allRecords.filter(item => item.msgType === type)
-        : this.data.allRecords.slice()
-    }
-    this.setData({ filteredRecords: filtered })
-  },
-
+  // ========== 筛选：三个选项独立显示内容 ==========
   onFilterTap(e) {
     const type = e.currentTarget.dataset.type
-    // 点同一个按钮时切换回全部
-    if (type === this.data.filterType) {
-      this.setData({ filterType: '' }, () => {
-        this.applyFilter()
+    if (type === this.data.filterType) return
+    const tab = this.data.recordsByType[type]
+    if (!tab) return
+    if (tab.loaded) {
+      // 已加载过：直接切换显示该选项的独立内容（保留各自的分页进度）
+      this.setData({ filterType: type, errorMsg: '' })
+      this.refreshCurrentTabView()
+    } else {
+      // 未加载过：切换后按类型请求（GPS type=2，对时 type=1）
+      this.setData({
+        filterType: type,
+        filteredRecords: [],
+        tabLoaded: false,
+        hasMore: true,
+        errorMsg: ''
       })
-      return
+      this.fetchRecords(true, 0, false)
     }
-    this.setData({ filterType: type }, () => {
-      this.applyFilter()
-    })
   },
 
-  // ========== 下拉刷新（scroll-view 内置） ==========
+  // ========== 下拉刷新（scroll-view 内置）：刷新当前选项 ==========
   onScrollRefresh() {
-    this.setData({ refreshing: true, currentPage: 0, hasMore: true })
+    const tabKey = this.data.filterType
+    const patch = { refreshing: true }
+    patch['recordsByType.' + tabKey + '.hasMore'] = true
+    this.setData(patch)
     this.fetchRecords(true, 0, false)
   },
 
-  // ========== 触底加载下一页 ==========
+  // ========== 触底加载下一页：按当前选项各自的分页进度 ==========
   onScrollToLower() {
     if (this.data.loadingMore || !this.data.hasMore) return
-    const nextPage = this.data.currentPage + 1
+    const tabKey = this.data.filterType
+    const nextPage = this.data.recordsByType[tabKey].page + 1
     this.fetchRecords(true, nextPage, true)
   },
 
   // ========== 重试按钮 ==========
   onRetry() {
-    this.setData({ currentPage: 0, hasMore: true })
+    const tabKey = this.data.filterType
+    const patch = {}
+    patch['recordsByType.' + tabKey + '.hasMore'] = true
+    this.setData(patch)
     this.fetchRecords(false, 0, false)
   },
 

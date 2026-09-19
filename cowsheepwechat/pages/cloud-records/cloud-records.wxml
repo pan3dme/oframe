@@ -1,65 +1,60 @@
 <!--cloud-records.wxml-->
 <navigation-bar title="云端记录" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <view class="page-body">
-  <!-- 加载中：仅在首次无数据时显示全屏加载，避免刷新时顶部筛选栏闪动 -->
-  <view class="loading-box" wx:if="{{loading && allRecords.length === 0}}">
-    <text class="loading-text">⏳ 加载中...</text>
+  <!-- 标题 + 筛选栏（固定不动，三个选项独立显示内容：全部/GPS/对时） -->
+  <view class="recv-header">
+    <text class="recv-label">☁️ 云端记录</text>
+    <view class="recv-filters">
+      <text class="recv-filter-btn {{filterType === 'all' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="all">📋 全部</text>
+      <text class="recv-filter-btn {{filterType === 'gps' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="gps">📍 GPS</text>
+      <text class="recv-filter-btn {{filterType === 'sync' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="sync">🕐 对时</text>
+    </view>
+    <text class="recv-count">{{filteredRecords.length}} 条</text>
   </view>
 
   <!-- 错误状态 -->
-  <view class="error-box" wx:elif="{{errorMsg}}">
+  <view class="error-box" wx:if="{{errorMsg}}">
     <text class="error-icon">😞</text>
     <text class="error-text">{{errorMsg}}</text>
     <button class="retry-btn" bindtap="onRetry" wx:if="{{errorMsg === '网络请求失败，请下拉重试'}}">🔄 点击重试</button>
   </view>
 
-  <!-- 数据展示 -->
-  <block wx:else>
-    <!-- 标题 + 筛选栏（固定不动，排版参照设备详情"数据记录"标题栏） -->
-    <view class="recv-header">
-      <text class="recv-label">☁️ 云端记录</text>
-      <view class="recv-filters">
-        <text class="recv-filter-btn {{filterType === '1' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="1">📍 GPS</text>
-        <text class="recv-filter-btn {{filterType === '2' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="2">🕐 对时</text>
-        <text class="recv-filter-btn {{filterType === 'other' ? 'recv-filter-on' : ''}}" bindtap="onFilterTap" data-type="other">📦 其它</text>
-      </view>
-      <text class="recv-count">{{filteredRecords.length}} 条</text>
-    </view>
-
-    <!-- 记录列表（排版参照设备详情"数据记录"，可滑动刷新 + 无限加载） -->
-    <scroll-view
-      class="recv-scroll"
-      scroll-y enhanced
-      show-scrollbar="{{false}}"
-      refresher-enabled="{{true}}"
-      refresher-triggered="{{refreshing}}"
-      bindrefresherrefresh="onScrollRefresh"
-      refresher-threshold="60"
-      bindscrolltolower="onScrollToLower"
-      lower-threshold="80"
-    >
-      <view class="msg-panel">
-        <view class="record-item {{item.msgType === '1' || item.msgType === '5' ? 'record-item-tap' : ''}}" wx:for="{{filteredRecords}}" wx:key="_key" style="background-color:{{item.bgColor}}" bindtap="onRecordTap" data-index="{{index}}">
-          <view class="rec-row rec-row-time">
-            <text class="rec-val rec-val-time">{{item.date}} {{item.time_part}}</text>
-            <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}<text wx:if="{{item.upDateDeviceAlias}}" class="rec-val-alias">({{item.upDateDeviceAlias}})</text></text>
-          </view>
-          <view class="rec-row rec-row-content">
-            <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType === '6' ? '设置' : item.msgType}}</text>
-            <text class="rec-val rec-val-lora">{{item.displayLorastr}}</text>
-            <text class="rec-tap-arrow" wx:if="{{item.msgType === '1' || item.msgType === '5'}}">›</text>
-          </view>
-          <view class="rec-row rec-row-rssi" wx:if="{{item.rssi !== '' || item.snr !== ''}}">
-            <text class="rec-val rec-val-rssi" wx:if="{{item.rssi !== ''}}">RSSI: {{item.rssi}}dBm</text>
-            <text class="rec-val rec-val-snr" wx:if="{{item.snr !== ''}}">SNR: {{item.snr}}</text>
-          </view>
+  <!-- 记录列表（排版参照设备详情"数据记录"，可滑动刷新 + 无限加载） -->
+  <scroll-view
+    wx:else
+    class="recv-scroll"
+    scroll-y enhanced
+    show-scrollbar="{{false}}"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onScrollRefresh"
+    refresher-threshold="60"
+    bindscrolltolower="onScrollToLower"
+    lower-threshold="80"
+  >
+    <view class="msg-panel">
+      <view class="record-item {{item.msgType === '1' || item.msgType === '5' ? 'record-item-tap' : ''}}" wx:for="{{filteredRecords}}" wx:key="_key" style="background-color:{{item.bgColor}}" bindtap="onRecordTap" data-index="{{index}}">
+        <view class="rec-row rec-row-time">
+          <text class="rec-val rec-val-time">{{item.date}} {{item.time_part}}</text>
+          <text class="rec-val rec-val-update" style="color:{{item.deviceColor}}" wx:if="{{item.upDateDevice && item.upDateDevice !== '-'}}">| {{item.upDateDevice}}<text wx:if="{{item.upDateDeviceAlias}}" class="rec-val-alias">({{item.upDateDeviceAlias}})</text></text>
         </view>
-        <!-- 空状态 -->
-        <view class="empty-tip" wx:if="{{filteredRecords.length === 0}}">暂无记录</view>
-        <!-- 加载更多状态 -->
-        <view class="load-more-tip" wx:if="{{loadingMore}}">加载中...</view>
-        <view class="load-more-tip" wx:elif="{{!hasMore && filteredRecords.length > 0}}">— 没有更多了 —</view>
+        <view class="rec-row rec-row-content">
+          <text class="rec-icon-lora type-{{item.msgType}}">{{item.msgType === '1' ? '定位' : item.msgType === '2' ? '对时' : item.msgType === '3' ? '电量' : item.msgType === '5' ? '跟踪' : item.msgType === '6' ? '设置' : item.msgType}}</text>
+          <text class="rec-val rec-val-lora">{{item.displayLorastr}}</text>
+          <text class="rec-tap-arrow" wx:if="{{item.msgType === '1' || item.msgType === '5'}}">›</text>
+        </view>
+        <view class="rec-row rec-row-rssi" wx:if="{{item.rssi !== '' || item.snr !== ''}}">
+          <text class="rec-val rec-val-rssi" wx:if="{{item.rssi !== ''}}">RSSI: {{item.rssi}}dBm</text>
+          <text class="rec-val rec-val-snr" wx:if="{{item.snr !== ''}}">SNR: {{item.snr}}</text>
+        </view>
       </view>
-    </scroll-view>
-  </block>
+      <!-- 当前选项加载中 -->
+      <view class="load-more-tip" wx:if="{{!tabLoaded}}">⏳ 加载中...</view>
+      <!-- 当前选项空状态 -->
+      <view class="empty-tip" wx:elif="{{filteredRecords.length === 0}}">暂无记录</view>
+      <!-- 加载更多状态 -->
+      <view class="load-more-tip" wx:elif="{{loadingMore}}">加载中...</view>
+      <view class="load-more-tip" wx:elif="{{!hasMore && filteredRecords.length > 0}}">— 没有更多了 —</view>
+    </view>
+  </scroll-view>
 </view>
