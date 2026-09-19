@@ -43,7 +43,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
   void initState() {
     super.initState();
     _loadData();
-    _countdownTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
   }
@@ -1158,29 +1158,29 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
 
     // 工作时间内：用上报周期计算下次上报时间
     final midnight = DateTime(now.year, now.month, now.day);
-    final minutesSinceMidnight = now.difference(midnight).inMinutes;
-    final periodsSinceMidnight = minutesSinceMidnight ~/ intervalMinutes;
-    final nextPeriodMinutes = (periodsSinceMidnight + 1) * intervalMinutes;
-    final nextReportTime = midnight.add(Duration(minutes: nextPeriodMinutes));
+    final secondsSinceMidnight = now.difference(midnight).inSeconds;
+    final intervalSeconds = intervalMinutes * 60;
+    final periodsSinceMidnight = secondsSinceMidnight ~/ intervalSeconds;
+    final nextPeriodSeconds = (periodsSinceMidnight + 1) * intervalSeconds;
+    final nextReportTime = midnight.add(Duration(seconds: nextPeriodSeconds));
     final remaining = nextReportTime.difference(now);
     return _formatCountdown(remaining);
   }
 
-  /// 格式化倒计时为可读字符串
+  /// 格式化倒计时为 mm:ss 或 HH:mm:ss
   String _formatCountdown(Duration remaining) {
-    if (remaining.inSeconds <= 0) return '即将上报';
-    final totalMinutes = remaining.inMinutes;
-    if (totalMinutes < 1) return '${remaining.inSeconds}秒';
-    if (totalMinutes < 60) return '${totalMinutes}分钟';
-    final hours = totalMinutes ~/ 60;
-    final minutes = totalMinutes % 60;
-    if (hours >= 24) {
-      final days = hours ~/ 24;
-      final remHours = hours % 24;
-      return remHours > 0 ? '${days}天${remHours}时' : '${days}天';
+    if (remaining.inSeconds <= 0) return '00:00';
+    final totalSeconds = remaining.inSeconds;
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+    final mm = minutes.toString().padLeft(2, '0');
+    final ss = seconds.toString().padLeft(2, '0');
+    if (hours > 0) {
+      final hh = hours.toString().padLeft(2, '0');
+      return '$hh:$mm:$ss';
     }
-    if (minutes == 0) return '${hours}时';
-    return '${hours}时${minutes}分';
+    return '$mm:$ss';
   }
 
   /// 根据倒计时计算颜色级别
