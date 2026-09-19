@@ -252,11 +252,28 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     }
   }
 
-  /// 获取设备ID颜色
+  /// 7种鲜艳颜色用于区分不同上报设备
+  static const List<Color> _deviceColors = [
+    Color(0xFF2196F3), // 蓝色
+    Color(0xFF4CAF50), // 绿色
+    Color(0xFFF44336), // 红色
+    Color(0xFFFF9800), // 橙色
+    Color(0xFF9C27B0), // 紫色
+    Color(0xFF00BCD4), // 青色
+    Color(0xFFE91E63), // 粉色
+  ];
+
+  /// 获取设备ID颜色（根据设备ID分配7种颜色之一）
   Color _getDeviceIdColor(String deviceId) {
-    if (deviceId.contains('v4-27')) return const Color(0xFF1976D2);
-    if (deviceId.contains('v4-29')) return const Color(0xFF4CAF50);
-    return Colors.black87;
+    // 提取设备ID中的数字部分，用散列打散避免相邻数字碰撞
+    final match = RegExp(r'v4-(\d+)').firstMatch(deviceId);
+    if (match != null) {
+      final num = int.tryParse(match.group(1) ?? '') ?? 0;
+      // 先对11取模再映射到7色，避免差值为7的设备号碰撞
+      return _deviceColors[(num * 3) % 11 % _deviceColors.length];
+    }
+    // 无匹配时用hash分配
+    return _deviceColors[deviceId.hashCode.abs() % _deviceColors.length];
   }
 
   /// 打开日志定位地图
@@ -407,7 +424,7 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       itemCount: displayLogs.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= displayLogs.length) {
@@ -482,10 +499,10 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
                     if (_deviceRenameMap.containsKey(upDateDevice))
                       TextSpan(
                         text: ' (${_deviceRenameMap[upDateDevice]})',
-                        style: TextStyle(
-                          fontSize: 8,
+                        style: const TextStyle(
+                          fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: _getDeviceIdColor(upDateDevice),
+                          color: Colors.black87,
                         ),
                       ),
                   ],
