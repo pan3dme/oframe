@@ -42,12 +42,29 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
 
   // 设备ID -> 别名映射
   final Map<String, String> _deviceRenameMap = {};
+  bool _timestampConvertEnabled = false; // 对时时间戳转换开关
 
   @override
   void initState() {
     super.initState();
     _loadDeviceRenameMap();
+    _loadTimestampConvertSetting();
     _loadLogs(reset: true);
+  }
+
+  /// 加载对时时间戳转换设置
+  Future<void> _loadTimestampConvertSetting() async {
+    try {
+      final value = await DBHelper().getBoolSetting(
+        'timestamp_convert_enabled',
+        defaultValue: false,
+      );
+      setState(() {
+        _timestampConvertEnabled = value;
+      });
+    } catch (e) {
+      debugPrint('[设备记录] 加载时间戳转换设置失败: $e');
+    }
   }
 
   /// 加载所有设备别名映射
@@ -452,10 +469,18 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
   Widget _buildLogCard(Map<String, dynamic> log, bool isEven) {
     final time = _str(log['time']);
     final logDeviceId = _str(log['deviceId']);
-    final lorastr = _str(log['lorastr']);
+    final rawLorastr = _str(log['lorastr']);
     final upDateDevice = _str(log['upDateDevice']);
     final typeInfo = _getTypeInfo(log['type']);
     final typeStr = log['type']?.toString() ?? '';
+
+    // 对时记录且开启时间戳转换时，转换lorastr中的时间戳
+    final String lorastr;
+    if (typeStr == '2' && _timestampConvertEnabled) {
+      lorastr = _convertSyncLorastrTimestamp(rawLorastr);
+    } else {
+      lorastr = rawLorastr;
+    }
 
     final rssiVal = log['rssi'];
     final snrVal = log['snr'];
@@ -577,4 +602,22 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     }
     return card;
   }
+
+  /// 转换对时lorastr中的时间戳为可读时间
+  /// 格式: 2|deviceId|timestamp|battery -> 2|deviceId|2026-09-19 12:30:45|battery
+  String _convertSyncLorastrTimestamp(String lorastr) {
+    if (lorastr.isEmpty || !lorastr.contains('|')) return lorastr;
+    final parts = lorastr.split('|');
+    if (parts.length < 4) return lorastr;
+    // parts[2] 是时间戳（秒级Unix时间戳）
+    final timestamp = int.tryParse(parts[2]);
+    if (timestamp == null || timestamp < 1000000000) return lorastr; // 不是有效时间戳
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+    final timeStr = '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}';
+    parts[2] = timeStr;
+    return parts.join('|');
+  }
+
+  /// 数字补零
+  String _pad(int n) => n.toString().padLeft(2, '0');
 }

@@ -15,6 +15,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool _isAdmin = false; // 是否为管理员模式
   bool _bluetoothSoundEnabled = true; // 是否开启蓝牙接收声音
+  bool _timestampConvertEnabled = false; // 对时时间戳是否转换为时间
   final TextEditingController _tokenController = TextEditingController();
   bool _isLoading = true;
 
@@ -37,11 +38,17 @@ class _SettingsPageState extends State<SettingsPage> {
         defaultValue: true,
       );
 
+      final timestampConvert = await _dbHelper.getBoolSetting(
+        'timestamp_convert_enabled',
+        defaultValue: false,
+      );
+
       final savedToken = await _dbHelper.getSetting('tianditu_token');
 
       setState(() {
         _isAdmin = isAdmin;
         _bluetoothSoundEnabled = bluetoothSound;
+        _timestampConvertEnabled = timestampConvert;
         _tokenController.text = savedToken ?? MapTileConfig.tiandituToken;
         _isLoading = false;
       });
@@ -124,6 +131,39 @@ class _SettingsPageState extends State<SettingsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('已${value ? '开启' : '关闭'}蓝牙接收声音'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[设置] 保存设置失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('保存设置失败'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// 保存对时时间戳转换设置
+  Future<void> _saveTimestampConvert(bool value) async {
+    try {
+      await _dbHelper.saveSetting(
+        'timestamp_convert_enabled',
+        value.toString(),
+      );
+
+      setState(() {
+        _timestampConvertEnabled = value;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已${value ? '开启' : '关闭'}对时时间戳转换'),
             duration: const Duration(seconds: 1),
           ),
         );
@@ -235,6 +275,23 @@ class _SettingsPageState extends State<SettingsPage> {
                           value: _bluetoothSoundEnabled,
                           onChanged: (value) {
                             _saveBluetoothSoundEnabled(value);
+                          },
+                          activeColor: Colors.blue,
+                        ),
+                        const Divider(height: 1),
+                        // 对时时间戳转换开关
+                        SwitchListTile(
+                          title: const Text(
+                            '对时时间戳转换',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          subtitle: const Text(
+                            '开启后，对时记录中的时间戳将转换为可读时间',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          value: _timestampConvertEnabled,
+                          onChanged: (value) {
+                            _saveTimestampConvert(value);
                           },
                           activeColor: Colors.blue,
                         ),
