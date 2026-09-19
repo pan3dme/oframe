@@ -20,6 +20,9 @@ Map<String, dynamic>? globalSelectedDeviceLot;
 // 设备变更通知器（设备管理页点击设备时 notify，设备详情TAB监听刷新）
 final ValueNotifier<int> deviceSelectedNotifier = ValueNotifier<int>(0);
 
+// 设备列表页 GlobalKey（用于TAB重入时触发无感刷新）
+final GlobalKey<DeviceManagePageState> deviceListKey = GlobalKey<DeviceManagePageState>();
+
 // 阿里云 FC 函数地址（HTTPS 公网接口）
 const deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 const cowSheepFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
@@ -114,7 +117,7 @@ class _HomePageState extends State<HomePage> {
         index: _currentIndex,
         children: [
           DeviceDetailTabPage(onSwitchTab: switchToDeviceDetailTab),
-          DeviceManagePage(onDeviceTap: _onDeviceTap),
+          DeviceManagePage(key: deviceListKey, onDeviceTap: _onDeviceTap),
           FunctionListPage(),
           MapCenterPage(),
         ],
@@ -122,6 +125,10 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
+          // 重复点击当前TAB时触发无感刷新
+          if (index == _currentIndex && index == 1) {
+            deviceListKey.currentState?.silentRefresh();
+          }
           setState(() {
             _currentIndex = index;
           });
@@ -136,7 +143,7 @@ class _HomePageState extends State<HomePage> {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.devices),
-            label: '设备管理',
+            label: '设备列表',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.apps),

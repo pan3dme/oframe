@@ -14,10 +14,10 @@ class DeviceManagePage extends StatefulWidget {
   const DeviceManagePage({super.key, this.onDeviceTap});
 
   @override
-  State<DeviceManagePage> createState() => _DeviceManagePageState();
+  State<DeviceManagePage> createState() => DeviceManagePageState();
 }
 
-class _DeviceManagePageState extends State<DeviceManagePage> {
+class DeviceManagePageState extends State<DeviceManagePage> {
   List<Map<String, dynamic>> _data = [];
   Map<String, Map<String, dynamic>> _deviceLotMap = {}; // 设备LOT数据映射
   Map<String, Map<String, dynamic>> _deviceSyncMap = {}; // 设备对时表数据映射
@@ -931,9 +931,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                     timeFromSync = false;
                                   }
                                   
-                                  // 计算倒计时显示
-                                  String countdownStr = _calcCountdownString(finalTimeRaw, deviceId);
-                                  int timeColorLevel = _getCountdownColorLevel(deviceId, finalTimeRaw);
+                                  // 计算倒计时：最新数据时间 + 上报周期 = 下次预期上报时间
+                                  String countdownStr = _calcCountdownString(latestDt, deviceId);
+                                  int timeColorLevel = _getCountdownColorLevel(latestDt, deviceId);
                                   
                                   // 图标：LOT表→绿点，对时表→时钟
                                   bool showGreenDot = !timeFromSync;
@@ -1007,7 +1007,7 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
                                               ),
-                                              // 电量（紧跟设备名后）
+                                              // 电量（紧跟设备名后，<50红色）
                                               if (batteryLevel.isNotEmpty) ...[
                                                 const SizedBox(width: 4),
                                                 Text(
@@ -1015,7 +1015,9 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
                                                   style: TextStyle(
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.w600,
-                                                    color: Colors.grey[600],
+                                                    color: (_parseBatteryValue(batteryLevel) < 50)
+                                                        ? Colors.red
+                                                        : Colors.grey[600],
                                                   ),
                                                 ),
                                               ],
@@ -1128,43 +1130,43 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
     await _loadData();
   }
 
-  /// 计算倒计时显示字符串
-  /// 工作时间内：用上报周期，从每天0点算起，得到距下次上报的倒计时
-  /// 非工作时间内：用大周期（距下次开机的时间）
-  String _calcCountdownString(String timeRaw, String deviceId) {
-    if (timeRaw == '—' || timeRaw.isEmpty) return '';
+  /// 无感刷新（供外部TAB重入时调用）
+  void silentRefresh() {
+    if (mounted) _handleRefresh();
+  }
+
+  /// 计算倒计时显示字符串（含状态前缀）
+  /// 周期内：距下次 + 倒计时
+  /// 超时(1~2周期)：超时 + 超时时长
+  /// 未上报(>2周期)：未上报 + 距上次上报时间
+  String _calcCountdownString(DateTime? latestDt, String deviceId) {
+    if (latestDt == null) return '—';
     final intervalMinutes = _deviceIntervalMap[deviceId];
     if (intervalMinutes == null || intervalMinutes <= 0) {
-      // 无上报周期配置，回退显示相对时间
-      return _calcTimeAgo(timeRaw);
+      final diff = DateTime.now().difference(latestDt);
+      if (diff.inMinutes < 1) return '刚刚';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}分钟前';
+      if (diff.inHours < 24) return '${diff.inHours}小时前';
+      return '${diff.inDays}天前';
     }
 
     final now = DateTime.now();
-    final workHours = _deviceWorkHoursMap[deviceId];
+    final nextExpected = latestDt.add(Duration(minutes: intervalMinutes));
+    final elapsed = now.difference(latestDt).inMinutes;
 
-    if (workHours != null && !_isDeviceWorking(deviceId)) {
-      // 非工作时间：计算距下次开机的倒计时（大周期）
-      final startHour = workHours[0];
-      final todayStart = DateTime(now.year, now.month, now.day, startHour, 0, 0);
-      DateTime nextStart;
-      if (now.isBefore(todayStart)) {
-        nextStart = todayStart;
-      } else {
-        nextStart = todayStart.add(const Duration(days: 1));
-      }
-      final remaining = nextStart.difference(now);
-      return _formatCountdown(remaining);
+    if (elapsed <= intervalMinutes) {
+      // 周期内：显示距下次上报倒计时
+      final remaining = nextExpected.difference(now);
+      return '距下次${_formatCountdown(remaining)}';
+    } else if (elapsed <= intervalMinutes * 2) {
+      // 超时(1~2周期)：显示超时时长
+      final overdue = now.difference(nextExpected);
+      return '超时${_formatCountdown(overdue)}';
+    } else {
+      // 未上报(>2周期)：显示距上次上报的时间
+      final sinceLast = now.difference(latestDt);
+      return '未上报${_formatCountdown(sinceLast)}';
     }
-
-    // 工作时间内：用上报周期计算下次上报时间
-    final midnight = DateTime(now.year, now.month, now.day);
-    final secondsSinceMidnight = now.difference(midnight).inSeconds;
-    final intervalSeconds = intervalMinutes * 60;
-    final periodsSinceMidnight = secondsSinceMidnight ~/ intervalSeconds;
-    final nextPeriodSeconds = (periodsSinceMidnight + 1) * intervalSeconds;
-    final nextReportTime = midnight.add(Duration(seconds: nextPeriodSeconds));
-    final remaining = nextReportTime.difference(now);
-    return _formatCountdown(remaining);
   }
 
   /// 格式化倒计时为 mm:ss 或 HH:mm:ss
@@ -1183,40 +1185,25 @@ class _DeviceManagePageState extends State<DeviceManagePage> {
     return '$mm:$ss';
   }
 
-  /// 根据倒计时计算颜色级别
+  /// 根据距上次上报的时间计算颜色级别
   /// 返回: 0=绿色(≤1周期), 1=红色(1~2周期), 2=灰色(>2周期或无数据)
-  int _getCountdownColorLevel(String deviceId, String timeRaw) {
-    if (timeRaw == '—' || timeRaw.isEmpty) return 2;
+  int _getCountdownColorLevel(DateTime? latestDt, String deviceId) {
+    if (latestDt == null) return 2;
     final intervalMinutes = _deviceIntervalMap[deviceId];
     if (intervalMinutes == null || intervalMinutes <= 0) return 0;
-
-    final now = DateTime.now();
-    final workHours = _deviceWorkHoursMap[deviceId];
-
-    int remainingMinutes;
-    if (workHours != null && !_isDeviceWorking(deviceId)) {
-      // 非工作时间，剩余时间很长，通常>2周期
-      final startHour = workHours[0];
-      final todayStart = DateTime(now.year, now.month, now.day, startHour, 0, 0);
-      DateTime nextStart;
-      if (now.isBefore(todayStart)) {
-        nextStart = todayStart;
-      } else {
-        nextStart = todayStart.add(const Duration(days: 1));
-      }
-      remainingMinutes = nextStart.difference(now).inMinutes;
-    } else {
-      // 工作时间内
-      final midnight = DateTime(now.year, now.month, now.day);
-      final minutesSinceMidnight = now.difference(midnight).inMinutes;
-      final periodsSinceMidnight = minutesSinceMidnight ~/ intervalMinutes;
-      final nextPeriodMinutes = (periodsSinceMidnight + 1) * intervalMinutes;
-      remainingMinutes = nextPeriodMinutes - minutesSinceMidnight;
-    }
-
-    if (remainingMinutes <= intervalMinutes) return 0; // ≤1周期：绿色
-    if (remainingMinutes <= intervalMinutes * 2) return 1; // 1~2周期：红色
+    final elapsedMinutes = DateTime.now().difference(latestDt).inMinutes;
+    if (elapsedMinutes <= intervalMinutes) return 0; // ≤1周期：绿色
+    if (elapsedMinutes <= intervalMinutes * 2) return 1; // 1~2周期：红色
     return 2; // >2周期：灰色
+  }
+
+  /// 解析电量字符串中的数值（如 "45.2mA" -> 45.2）
+  double _parseBatteryValue(String battery) {
+    final match = RegExp(r'([\d.]+)').firstMatch(battery);
+    if (match != null) {
+      return double.tryParse(match.group(1) ?? '') ?? 999;
+    }
+    return 999;
   }
 
   /// 解析时间字符串为DateTime
