@@ -40,10 +40,32 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
 
   static const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 
+  // 设备ID -> 别名映射
+  final Map<String, String> _deviceRenameMap = {};
+
   @override
   void initState() {
     super.initState();
+    _loadDeviceRenameMap();
     _loadLogs(reset: true);
+  }
+
+  /// 加载所有设备别名映射
+  Future<void> _loadDeviceRenameMap() async {
+    try {
+      final devices = await DBHelper().getDevices();
+      setState(() {
+        for (final d in devices) {
+          final deviceId = d['deviceId']?.toString() ?? '';
+          final rename = d['rename']?.toString() ?? '';
+          if (deviceId.isNotEmpty && rename.isNotEmpty) {
+            _deviceRenameMap[deviceId] = rename;
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('[设备记录] 加载设备别名失败: $e');
+    }
   }
 
   /// 加载设备日志记录（每个tab独立数据）
@@ -220,9 +242,9 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
       case 1:
         return (label: '定位', color: const Color(0xFF1976D2));
       case 2:
-        return (label: '对时', color: const Color(0xFF4CAF50));
+        return (label: '对时', color: const Color(0xFFFFC107));
       case 5:
-        return (label: '跟踪', color: const Color(0xFFFF9800));
+        return (label: '跟踪', color: const Color(0xFF9C27B0));
       case 6:
         return (label: '配置', color: const Color(0xFF9C27B0));
       default:
@@ -426,7 +448,7 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     final bool hasGps = typeStr == '1' || typeStr == '5';
 
     Widget card = Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         color: isEven ? const Color(0xFFE8F5E9) : const Color(0xFFE3F2FD),
         borderRadius: BorderRadius.circular(8),
@@ -446,12 +468,27 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
                 ),
               ),
               const Spacer(),
-              Text(
-                '| $upDateDevice',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _getDeviceIdColor(upDateDevice),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '| $upDateDevice',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _getDeviceIdColor(upDateDevice),
+                      ),
+                    ),
+                    if (_deviceRenameMap.containsKey(upDateDevice))
+                      TextSpan(
+                        text: ' (${_deviceRenameMap[upDateDevice]})',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          color: _getDeviceIdColor(upDateDevice),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
