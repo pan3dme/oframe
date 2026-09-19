@@ -416,17 +416,7 @@ class _PlaceDetailMapPageState extends State<PlaceDetailMapPage> {
                           final columnName = attrMap['columnName']?.toString() ?? '';
                           final columnValue = attrMap['columnValue']?.toString() ?? '';
                           if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                            }
+                            roadPoints = CoordTransform.parseRoadinfoToGcj02(columnValue);
                           }
                         }
                       }

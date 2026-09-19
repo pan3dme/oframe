@@ -914,7 +914,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   /// 蓝色头部信息卡片
   Widget _buildHeaderCard(String displayName, String picurl) {
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFF1976D2),
         borderRadius: BorderRadius.circular(16),
@@ -1003,9 +1003,9 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     ];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Wrap(
-        spacing: 16,
+        spacing: 28,
         runSpacing: 20,
         alignment: WrapAlignment.start,
         children: buttons.map((btn) {
@@ -1111,10 +1111,207 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     );
   }
 
-  void _onRealtimeLocation() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('实时定位功能开发中...')),
+  /// 实时定位：通过getDeviceLotById获取最新定位坐标并跳转到定位详情
+  void _onRealtimeLocation() async {
+    final deviceId = _str(widget.device['deviceId']);
+    final rename = _str(widget.device['rename']);
+    if (deviceId.isEmpty || deviceId == '—') return;
+
+    // 显示加载指示
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(),
+      ),
     );
+
+    try {
+      final resp = await http.post(
+        Uri.parse(_deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'getDeviceLotById',
+          'info': {'deviceId': deviceId, 'wechatid': globalWechatId},
+        }),
+      );
+
+      debugPrint('[实时定位] getDeviceLotById响应: ${resp.statusCode}');
+
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          // getDeviceLotById返回单条Map
+          final rawData = json['data'];
+          Map<String, dynamic>? parsed;
+          if (rawData is Map<String, dynamic>) {
+            parsed = _parseOtsRow(rawData);
+          } else if (rawData is List && rawData.isNotEmpty) {
+            parsed = _parseOtsRow(rawData.first);
+          }
+
+          if (parsed != null) {
+            final lorastr = parsed['lorastr']?.toString() ?? '';
+            final time = parsed['time']?.toString() ?? '';
+            debugPrint('[实时定位] lorastr=$lorastr, time=$time');
+
+            // 从lorastr解析GPS坐标：格式 "type|deviceMarker|lat,lng|value"
+            final parts = lorastr.split('|');
+            if (parts.length >= 3) {
+              final gpsStr = parts[2]; // "lat,lng"
+              final gpsParts = gpsStr.split(',');
+              if (gpsParts.length >= 2) {
+                final lat = double.tryParse(gpsParts[0].trim());
+                final lng = double.tryParse(gpsParts[1].trim());
+                if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+                  // 关闭加载
+                  if (mounted) Navigator.pop(context);
+                  // 跳转到定位详情页
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DeviceLogMapPage(
+                        latitude: lat,
+                        longitude: lng,
+                        time: time,
+                        deviceId: deviceId,
+                        type: parts[0], // type在parts[0]
+                        deviceName: rename != '—' ? '$deviceId ($rename)' : deviceId,
+                      ),
+                    ),
+                  );
+                  return;
+                }
+              }
+            }
+            // 坐标解析失败
+            if (mounted) Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('定位坐标解析失败，该设备可能尚未上报GPS数据')),
+            );
+          } else {
+            if (mounted) Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('未获取到该设备的定位数据')),
+            );
+          }
+        } else {
+          debugPrint('[实时定位] 请求错误: ${json['msg']}');
+          if (mounted) Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('获取定位失败: ${json['msg']}')),
+          );
+        }
+      } else {
+        if (mounted) Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('网络请求失败: HTTP ${resp.statusCode}')),
+        );
+      }
+    } catch (e) {
+      debugPrint('[实时定位] 网络请求异常: $e，尝试从缓存获取');
+      // 网络失败，从缓存获取
+      await _openLocationFromCache(deviceId, rename);
+    }
+  }
+
+  /// 从缓存中获取设备定位并跳转到定位详情
+  Future<void> _openLocationFromCache(String deviceId, String rename) async {
+    try {
+      Map<String, dynamic>? lotData = widget.deviceLot;
+      // 如果 widget.deviceLot 为空，从数据库查询
+      if (lotData == null || lotData.isEmpty) {
+        lotData = await DBHelper().getDeviceLotByDeviceId(deviceId);
+      }
+      if (lotData == null || lotData.isEmpty) {
+        if (mounted) Navigator.pop(context); // 关闭加载框
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无网络且无缓存数据，无法获取定位')),
+          );
+        }
+        return;
+      }
+
+      final lorastr = lotData['lorastr']?.toString() ?? '';
+      final time = lotData['time']?.toString() ?? '';
+      debugPrint('[实时定位-缓存] lorastr=$lorastr, time=$time');
+
+      if (lorastr.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('缓存中无该设备的定位数据')),
+          );
+        }
+        return;
+      }
+
+      // 从 lorastr 解析 GPS 坐标
+      final parts = lorastr.split('|');
+      if (parts.length >= 3) {
+        final gpsStr = parts[2];
+        final gpsParts = gpsStr.split(',');
+        if (gpsParts.length >= 2) {
+          final lat = double.tryParse(gpsParts[0].trim());
+          final lng = double.tryParse(gpsParts[1].trim());
+          if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+            if (mounted) Navigator.pop(context); // 关闭加载框
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('无网络，使用缓存定位数据'), duration: Duration(seconds: 2)),
+              );
+            }
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DeviceLogMapPage(
+                  latitude: lat,
+                  longitude: lng,
+                  time: time,
+                  deviceId: deviceId,
+                  type: parts[0],
+                  deviceName: rename != '—' ? '$deviceId ($rename)' : deviceId,
+                ),
+              ),
+            );
+            return;
+          }
+        }
+      }
+      // 缓存数据解析失败
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('缓存定位数据解析失败')),
+        );
+      }
+    } catch (e) {
+      debugPrint('[实时定位-缓存] 异常: $e');
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('缓存定位失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 解析OTS返回的原始行数据
+  Map<String, dynamic> _parseOtsRow(dynamic rawRow) {
+    final row = rawRow as Map<String, dynamic>;
+    final parsed = <String, dynamic>{};
+    final pkList = row['primaryKey'] as List<dynamic>? ?? [];
+    for (final pk in pkList) {
+      final pkMap = pk as Map<String, dynamic>;
+      parsed[pkMap['name'] as String] = pkMap['value'];
+    }
+    final attrList = row['attributes'] as List<dynamic>? ?? [];
+    for (final attr in attrList) {
+      final attrMap = attr as Map<String, dynamic>;
+      parsed[attrMap['columnName'] as String] = attrMap['columnValue'];
+    }
+    return parsed;
   }
 
   void _onDataList() {
@@ -1372,6 +1569,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       return;
     }
     final time = _str(log['time']);
+    final rename = _str(widget.device['rename']);
 
     Navigator.push(
       context,
@@ -1382,6 +1580,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
           time: time,
           deviceId: deviceId,
           type: type,
+          deviceName: rename != '—' ? '$deviceId ($rename)' : deviceId,
         ),
       ),
     );

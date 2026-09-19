@@ -40,10 +40,49 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
 
   static const String _deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 
+  // 设备ID -> 别名映射
+  final Map<String, String> _deviceRenameMap = {};
+  bool _timestampConvertEnabled = false; // 对时时间戳转换开关
+
   @override
   void initState() {
     super.initState();
+    _loadDeviceRenameMap();
+    _loadTimestampConvertSetting();
     _loadLogs(reset: true);
+  }
+
+  /// 加载对时时间戳转换设置
+  Future<void> _loadTimestampConvertSetting() async {
+    try {
+      final value = await DBHelper().getBoolSetting(
+        'timestamp_convert_enabled',
+        defaultValue: false,
+      );
+      setState(() {
+        _timestampConvertEnabled = value;
+      });
+    } catch (e) {
+      debugPrint('[设备记录] 加载时间戳转换设置失败: $e');
+    }
+  }
+
+  /// 加载所有设备别名映射
+  Future<void> _loadDeviceRenameMap() async {
+    try {
+      final devices = await DBHelper().getDevices();
+      setState(() {
+        for (final d in devices) {
+          final deviceId = d['deviceId']?.toString() ?? '';
+          final rename = d['rename']?.toString() ?? '';
+          if (deviceId.isNotEmpty && rename.isNotEmpty) {
+            _deviceRenameMap[deviceId] = rename;
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('[设备记录] 加载设备别名失败: $e');
+    }
   }
 
   /// 加载设备日志记录（每个tab独立数据）
@@ -220,9 +259,9 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
       case 1:
         return (label: '定位', color: const Color(0xFF1976D2));
       case 2:
-        return (label: '对时', color: const Color(0xFF4CAF50));
+        return (label: '对时', color: const Color(0xFFFFC107));
       case 5:
-        return (label: '跟踪', color: const Color(0xFFFF9800));
+        return (label: '跟踪', color: const Color(0xFF9C27B0));
       case 6:
         return (label: '配置', color: const Color(0xFF9C27B0));
       default:
@@ -230,11 +269,28 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     }
   }
 
-  /// 获取设备ID颜色
+  /// 7种鲜艳颜色用于区分不同上报设备
+  static const List<Color> _deviceColors = [
+    Color(0xFF2196F3), // 蓝色
+    Color(0xFF4CAF50), // 绿色
+    Color(0xFFF44336), // 红色
+    Color(0xFFFF9800), // 橙色
+    Color(0xFF9C27B0), // 紫色
+    Color(0xFF00BCD4), // 青色
+    Color(0xFFE91E63), // 粉色
+  ];
+
+  /// 获取设备ID颜色（根据设备ID分配7种颜色之一）
   Color _getDeviceIdColor(String deviceId) {
-    if (deviceId.contains('v4-27')) return const Color(0xFF1976D2);
-    if (deviceId.contains('v4-29')) return const Color(0xFF4CAF50);
-    return Colors.black87;
+    // 提取设备ID中的数字部分，用散列打散避免相邻数字碰撞
+    final match = RegExp(r'v4-(\d+)').firstMatch(deviceId);
+    if (match != null) {
+      final num = int.tryParse(match.group(1) ?? '') ?? 0;
+      // 先对11取模再映射到7色，避免差值为7的设备号碰撞
+      return _deviceColors[(num * 3) % 11 % _deviceColors.length];
+    }
+    // 无匹配时用hash分配
+    return _deviceColors[deviceId.hashCode.abs() % _deviceColors.length];
   }
 
   /// 打开日志定位地图
@@ -263,6 +319,9 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
       return;
     }
 
+    final rename = widget.device['rename']?.toString() ?? '';
+    final deviceName = rename.isNotEmpty ? '$deviceId ($rename)' : deviceId;
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -272,6 +331,7 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
           time: _str(log['time']),
           deviceId: deviceId,
           type: type,
+          deviceName: deviceName,
         ),
       ),
     );
@@ -381,7 +441,7 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       itemCount: displayLogs.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= displayLogs.length) {
@@ -409,10 +469,18 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
   Widget _buildLogCard(Map<String, dynamic> log, bool isEven) {
     final time = _str(log['time']);
     final logDeviceId = _str(log['deviceId']);
-    final lorastr = _str(log['lorastr']);
+    final rawLorastr = _str(log['lorastr']);
     final upDateDevice = _str(log['upDateDevice']);
     final typeInfo = _getTypeInfo(log['type']);
     final typeStr = log['type']?.toString() ?? '';
+
+    // 对时记录且开启时间戳转换时，转换lorastr中的时间戳
+    final String lorastr;
+    if (typeStr == '2' && _timestampConvertEnabled) {
+      lorastr = _convertSyncLorastrTimestamp(rawLorastr);
+    } else {
+      lorastr = rawLorastr;
+    }
 
     final rssiVal = log['rssi'];
     final snrVal = log['snr'];
@@ -422,7 +490,7 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     final bool hasGps = typeStr == '1' || typeStr == '5';
 
     Widget card = Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.zero,
       decoration: BoxDecoration(
         color: isEven ? const Color(0xFFE8F5E9) : const Color(0xFFE3F2FD),
         borderRadius: BorderRadius.circular(8),
@@ -442,12 +510,27 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
                 ),
               ),
               const Spacer(),
-              Text(
-                '| $upDateDevice',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _getDeviceIdColor(upDateDevice),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '| $upDateDevice',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _getDeviceIdColor(upDateDevice),
+                      ),
+                    ),
+                    if (_deviceRenameMap.containsKey(upDateDevice))
+                      TextSpan(
+                        text: ' (${_deviceRenameMap[upDateDevice]})',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -519,4 +602,22 @@ class _DeviceRecordPageState extends State<DeviceRecordPage> {
     }
     return card;
   }
+
+  /// 转换对时lorastr中的时间戳为可读时间
+  /// 格式: 2|deviceId|timestamp|battery -> 2|deviceId|2026-09-19 12:30:45|battery
+  String _convertSyncLorastrTimestamp(String lorastr) {
+    if (lorastr.isEmpty || !lorastr.contains('|')) return lorastr;
+    final parts = lorastr.split('|');
+    if (parts.length < 4) return lorastr;
+    // parts[2] 是时间戳（秒级Unix时间戳）
+    final timestamp = int.tryParse(parts[2]);
+    if (timestamp == null || timestamp < 1000000000) return lorastr; // 不是有效时间戳
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
+    final timeStr = '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}';
+    parts[2] = timeStr;
+    return parts.join('|');
+  }
+
+  /// 数字补零
+  String _pad(int n) => n.toString().padLeft(2, '0');
 }

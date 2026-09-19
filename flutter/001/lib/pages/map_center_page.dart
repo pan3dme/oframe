@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
@@ -53,6 +54,9 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
   
   // 道路地名缓存时间管理
   String? _lastRoutePlaceFetchDate; // 上次请求道路地名数据的日期 (格式: yyyy-MM-dd)
+  
+  // 设备气泡显示控制
+  String? _selectedDeviceId; // 当前显示气泡的设备deviceId（同时只显示一个）
 
   @override
   void initState() {
@@ -301,12 +305,25 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
         if (lat != null && lng != null && lat.abs() > 0.0001 && lng.abs() > 0.0001) {
           final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
           
+          // 始终优先使用LOT时间判断GPS过期（LOT是服务器GPS上报时间，蓝牙时间只是接收时间，总是最近的）
+          final lotTimeStr = lotMap[deviceId]?['time']?.toString() ?? '';
+          final btTimeStr = bluetoothGps?['time']?.toString() ?? '';
+          final gpsTimeStr = lotTimeStr.isNotEmpty ? lotTimeStr : btTimeStr;
+          bool gpsExpired = false;
+          if (gpsTimeStr.isNotEmpty) {
+            final gpsTime = DateTime.tryParse(gpsTimeStr.replaceAll('/', '-'));
+            if (gpsTime != null) {
+              gpsExpired = DateTime.now().difference(gpsTime) > const Duration(hours: 1);
+            }
+          }
           positions.add({
             'deviceId': deviceId,
             'name': displayName,
             'lat': gcj02Coord[0],
             'lng': gcj02Coord[1],
-            'fromBluetooth': fromBluetooth, // 标记数据来源
+            'fromBluetooth': fromBluetooth,
+            'gpsTime': gpsTimeStr,
+            'gps_expired': gpsExpired,
           });
         }
       }
@@ -383,8 +400,9 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                 if (lat != null && lng != null && 
                     lat.abs() > 0.0001 && lng.abs() > 0.0001) {
                   // 只保留最新的GPS数据（后面的会覆盖前面的）
-                  gpsMap[deviceId] = {'lat': lat, 'lng': lng};
-                  debugPrint('[蓝牙GPS缓存] ✓ 设备[$deviceId]: ($lat, $lng)');
+                  final timeStr = jsonData['time']?.toString() ?? '';
+                  gpsMap[deviceId] = {'lat': lat, 'lng': lng, 'time': timeStr};
+                  debugPrint('[蓝牙GPS缓存] ✓ 设备[$deviceId]: ($lat, $lng) time=$timeStr');
                 } else {
                   invalidCount++;
                   debugPrint('[蓝牙GPS缓存] ✗ 设备[$deviceId] GPS无效: ($lat, $lng)');
@@ -536,15 +554,28 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
           // WGS-84转GCJ-02
           final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
           
+          // 始终优先使用LOT时间判断GPS过期（LOT是服务器GPS上报时间，蓝牙时间只是接收时间，总是最近的）
+          final lotTimeStr = lotMap[deviceId]?['time']?.toString() ?? '';
+          final btTimeStr = bluetoothGps?['time']?.toString() ?? '';
+          final gpsTimeStr = lotTimeStr.isNotEmpty ? lotTimeStr : btTimeStr;
+          bool gpsExpired = false;
+          if (gpsTimeStr.isNotEmpty) {
+            final gpsTime = DateTime.tryParse(gpsTimeStr.replaceAll('/', '-'));
+            if (gpsTime != null) {
+              gpsExpired = DateTime.now().difference(gpsTime) > const Duration(hours: 1);
+            }
+          }
           positions.add({
             'deviceId': deviceId,
             'name': displayName,
             'lat': gcj02Coord[0],
             'lng': gcj02Coord[1],
             'fromBluetooth': fromBluetooth, // 标记数据来源
+            'gpsTime': gpsTimeStr,
+            'gpsExpired': gpsExpired,
           });
           
-          debugPrint('[设备位置] ✓ $displayName: ($lat, $lng) -> (${gcj02Coord[0]}, ${gcj02Coord[1]})');
+          debugPrint('[设备位置] ✓ $displayName: ($lat, $lng) -> (${gcj02Coord[0]}, ${gcj02Coord[1]}) gpsTime=$gpsTimeStr expired=$gpsExpired');
         }
       }
       
@@ -591,14 +622,40 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
 
   /// 清除地图瓦片缓存
   Future<void> _clearTileCache() async {
+    // 显示加载对话框
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('正在清除缓存...'),
+          ],
+        ),
+      ),
+    );
+    
     try {
-      setState(() {
-        _mapStatus = '正在清除缓存...';
-      });
+      // 等待对话框显示
+      await Future.delayed(const Duration(milliseconds: 50));
       
-      // 销毁并重新创建存储
-      await FMTCStore(_cacheStoreName).manage.delete();
+      final backend = FMTCObjectBoxBackend();
+      
+      // 快速方案：销毁整个 worker + 数据库目录（而不是逐个删除瓦片）
+      // immediate: true 跳过等待进行中的操作
+      await backend.uninitialise(deleteRoot: true, immediate: true);
+      
+      // 重新初始化 FMTC 后端
+      await backend.initialise();
+      
+      // 重新创建存储
       await FMTCStore(_cacheStoreName).manage.create();
+      
+      // 关闭加载对话框
+      if (mounted) Navigator.pop(context);
       
       setState(() {
         _cachedTileCount = -1;
@@ -617,6 +674,8 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       });
     } catch (e) {
       debugPrint('[瓦片缓存] 清除失败: $e');
+      // 关闭加载对话框
+      if (mounted) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('清除缓存失败: $e')),
@@ -1306,21 +1365,9 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                           final columnValue = attrMap['columnValue']?.toString() ?? '';
                           
                           if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            // 解析道路坐标点序列："lat1,lng1,lat2,lng2,..."
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                
-                                // 将 WGS-84 坐标转换为 GCJ-02（火星坐标）
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                              debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
-                            }
+                            // 解析道路坐标（新格式：第一组绝对坐标，后续为偏移量）
+                            roadPoints = CoordTransform.parseRoadinfoToGcj02(columnValue);
+                            debugPrint('[道路] 名称: $name, 坐标点数: ${roadPoints.length}');
                           } else if (columnName == 'roadname') {
                             // 清理道路名称，确保UTF-16安全
                             name = _sanitizeString(columnValue);
@@ -1361,18 +1408,8 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                           final columnValue = attrMap['columnValue']?.toString() ?? '';
                           
                           if (columnName == 'roadinfo' && columnValue.contains(',')) {
-                            final parts = columnValue.split(',');
-                            if (parts.length >= 2) {
-                              for (int i = 0; i < parts.length - 1; i += 2) {
-                                final wgs84Lat = double.tryParse(parts[i].trim()) ?? 0;
-                                final wgs84Lng = double.tryParse(parts[i + 1].trim()) ?? 0;
-                                
-                                if (wgs84Lat != 0 && wgs84Lng != 0) {
-                                  final gcj02Coord = CoordTransform.wgs84ToGcj02(wgs84Lat, wgs84Lng);
-                                  roadPoints.add(LatLng(gcj02Coord[0], gcj02Coord[1]));
-                                }
-                              }
-                            }
+                            // 解析道路坐标（新格式：第一组绝对坐标，后续为偏移量）
+                            roadPoints = CoordTransform.parseRoadinfoToGcj02(columnValue);
                           } else if (columnName == 'roadname') {
                             // 清理道路名称，确保UTF-16安全
                             name = _sanitizeString(columnValue);
@@ -1499,12 +1536,14 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                     );
                   }).whereType<Marker>().toList(),
                 ),
-              // 显示设备位置
+              // 显示设备位置（图标+名称标签）
               if (_showDevices && _devicePositions.isNotEmpty)
                 MarkerLayer(
                   markers: _devicePositions.map((device) {
+                    final deviceId = device['deviceId'] as String;
                     String safeDeviceName = _sanitizeString(device['name'].toString());
                     final fromBluetooth = device['fromBluetooth'] as bool? ?? false;
+                    final gpsExpired = device['gps_expired'] as bool? ?? false;
                     
                     return Marker(
                       point: LatLng(device['lat'], device['lng']),
@@ -1514,38 +1553,40 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          // 绿色圆圈图标（固定在GPS坐标点）
-                          if (fromBluetooth)
-                            AnimatedBuilder(
-                              animation: _blinkAnimationController!,
-                              builder: (context, child) {
-                                final value = _blinkAnimationController!.value;
-                                final isRed = value >= 0.5;
-                                final dotColor = isRed ? Colors.red : Colors.green;
-                                return Container(
+                          // GPS图标：1小时内绿色，超过1小时灰色 —— 点击显示气泡
+                          GestureDetector(
+                            onTap: () => setState(() { _selectedDeviceId = deviceId; }),
+                            child: fromBluetooth
+                              ? AnimatedBuilder(
+                                  animation: _blinkAnimationController!,
+                                  builder: (context, child) {
+                                    final value = _blinkAnimationController!.value;
+                                    final isRed = value >= 0.5;
+                                    final dotColor = gpsExpired ? Colors.grey : (isRed ? Colors.red : Colors.green);
+                                    return Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color: dotColor,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 2),
+                                      ),
+                                      child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
+                                    );
+                                  },
+                                )
+                              : Container(
                                   width: 24,
                                   height: 24,
                                   decoration: BoxDecoration(
-                                    color: dotColor,
+                                    color: gpsExpired ? Colors.grey : Colors.green,
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.white, width: 2),
                                   ),
                                   child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
-                                );
-                              },
-                            )
-                          else
-                            Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
-                            ),
-                          // 名称标签（向右延伸，不影响图标位置）
+                                ),
+                          ),
+                          // 名称标签（始终显示，向右延伸）
                           Positioned(
                             left: 30,
                             top: 2,
@@ -1556,7 +1597,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                                 borderRadius: BorderRadius.circular(6),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.15),
+                                    color: Colors.black.withValues(alpha: 0.15),
                                     blurRadius: 3,
                                     offset: const Offset(0, 1),
                                   ),
@@ -1578,6 +1619,101 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                       ),
                     );
                   }).toList(),
+                ),
+              // 气泡层（独立MarkerLayer，渲染在图标层之上，确保不被遮挡）
+              if (_showDevices && _selectedDeviceId != null)
+                MarkerLayer(
+                  markers: () {
+                    final devices = _devicePositions.where(
+                      (d) => d['deviceId'] == _selectedDeviceId,
+                    ).toList();
+                    if (devices.isEmpty) return <Marker>[];
+                    final device = devices.first;
+                    final gpsTimeStr = device['gpsTime']?.toString() ?? '';
+                    final safeDeviceName = _sanitizeString(device['name'].toString());
+                    return [
+                      Marker(
+                        point: LatLng(device['lat'], device['lng']),
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Positioned(
+                              left: 12,
+                              bottom: 24,
+                              child: GestureDetector(
+                                onTap: () => setState(() { _selectedDeviceId = null; }),
+                                behavior: HitTestBehavior.opaque,
+                                child: SizedBox(
+                                  width: 240,
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      return Transform.translate(
+                                        offset: const Offset(-120, 0),
+                                        transformHitTests: true,
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius: BorderRadius.circular(8),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withValues(alpha: 0.15),
+                                                    blurRadius: 4,
+                                                    offset: const Offset(0, 1),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment: CrossAxisAlignment.center,
+                                                children: [
+                                                  if (safeDeviceName.isNotEmpty)
+                                                    Text(
+                                                      safeDeviceName,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 14,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.black,
+                                                      ),
+                                                    ),
+                                                  if (gpsTimeStr.isNotEmpty)
+                                                    Text(
+                                                      gpsTimeStr,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.black54,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                            CustomPaint(
+                                              size: const Size(10, 6),
+                                              painter: _TrianglePainter(),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ];
+                  }(),
                 ),
             ],
           ),
@@ -1659,4 +1795,23 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       ),
     );
   }
+}
+
+/// 向下小三角箭头绘制器（用于气泡底部指向图标）
+class _TrianglePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final path = ui.Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
