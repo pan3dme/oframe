@@ -23,6 +23,9 @@ final ValueNotifier<int> deviceSelectedNotifier = ValueNotifier<int>(0);
 // 设备列表页 GlobalKey（用于TAB重入时触发无感刷新）
 final GlobalKey<DeviceManagePageState> deviceListKey = GlobalKey<DeviceManagePageState>();
 
+// 地图中心页 GlobalKey（用于TAB重入时触发无感刷新）
+final GlobalKey<MapCenterPageState> mapCenterKey = GlobalKey<MapCenterPageState>();
+
 // 阿里云 FC 函数地址（HTTPS 公网接口）
 const deviceFcUrl = 'https://gpsmoveinfo.cn/fc/device';
 const cowSheepFcUrl = 'https://gpsmoveinfo.cn/fc/cowsheep';
@@ -119,7 +122,7 @@ class _HomePageState extends State<HomePage> {
           DeviceDetailTabPage(onSwitchTab: switchToDeviceDetailTab),
           DeviceManagePage(key: deviceListKey, onDeviceTap: _onDeviceTap),
           FunctionListPage(),
-          MapCenterPage(),
+          MapCenterPage(key: mapCenterKey),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -128,6 +131,9 @@ class _HomePageState extends State<HomePage> {
           // 重复点击当前TAB时触发无感刷新
           if (index == _currentIndex && index == 1) {
             deviceListKey.currentState?.silentRefresh();
+          }
+          if (index == _currentIndex && index == 3) {
+            mapCenterKey.currentState?.silentRefresh();
           }
           setState(() {
             _currentIndex = index;

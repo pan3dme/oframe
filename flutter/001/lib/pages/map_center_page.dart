@@ -15,10 +15,10 @@ class MapCenterPage extends StatefulWidget {
   const MapCenterPage({super.key});
 
   @override
-  State<MapCenterPage> createState() => _MapCenterPageState();
+  State<MapCenterPage> createState() => MapCenterPageState();
 }
 
-class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateMixin {
+class MapCenterPageState extends State<MapCenterPage> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   LatLng? _currentPosition;
   bool _isLocating = false;
@@ -96,6 +96,133 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
         }
       });
     });
+  }
+
+  /// 无感刷新：同时刷新LOT数据和对时数据，取两者最新时间判断GPS过期
+  void silentRefresh() async {
+    if (!mounted) return;
+    debugPrint('[地图中心] 触发无感刷新 LOT + 对时...');
+    try {
+      // 并行请求LOT数据和对时数据
+      final results = await Future.wait([
+        _fetchLotRefreshAll(),
+        _fetchSyncRefreshAll(),
+      ]);
+      final lotSuccess = results[0] as bool;
+      final syncSuccess = results[1] as bool;
+      debugPrint('[地图刷新] LOT=$lotSuccess, 对时=$syncSuccess');
+      // 重新加载设备位置
+      await _loadDevicePositions();
+      if (mounted) {
+        setState(() {
+          _showDevices = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('[地图刷新] 失败: $e');
+    }
+  }
+
+  /// 请求LOT刷新数据并保存到缓存，返回是否成功
+  Future<bool> _fetchLotRefreshAll() async {
+    try {
+      final resp = await http.post(
+        Uri.parse(deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'getDeviceLotRefreshAll',
+          'info': {
+            'limit': 99,
+            'wechatid': globalWechatId,
+          }}),
+      );
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          final rawRows = json['data'] as List<dynamic>;
+          final parsedData = rawRows.map((rawRow) {
+            final row = rawRow as Map<String, dynamic>;
+            final result = <String, dynamic>{};
+            final pkList = row['primaryKey'] as List<dynamic>? ?? [];
+            for (final pk in pkList) {
+              final pkMap = pk as Map<String, dynamic>;
+              result[pkMap['name'] as String] = pkMap['value'];
+            }
+            final attrList = row['attributes'] as List<dynamic>? ?? [];
+            for (final attr in attrList) {
+              final attrMap = attr as Map<String, dynamic>;
+              result[attrMap['columnName'] as String] = attrMap['columnValue'];
+            }
+            return result;
+          }).toList();
+          for (final lot in parsedData) {
+            final deviceId = lot['deviceId']?.toString() ?? '';
+            final time = lot['time']?.toString() ?? '';
+            debugPrint('[地图刷新] LOT 设备[$deviceId] TIME=$time');
+          }
+          await DBHelper().saveDeviceLot(parsedData);
+          debugPrint('[地图刷新] LOT数据已保存: ${parsedData.length}条');
+          return true;
+        } else {
+          debugPrint('[地图刷新] LOT请求错误: ${json['msg']}');
+        }
+      } else {
+        debugPrint('[地图刷新] LOT HTTP ${resp.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('[地图刷新] LOT失败: $e');
+    }
+    return false;
+  }
+
+  /// 请求对时刷新数据并保存到缓存，返回是否成功
+  Future<bool> _fetchSyncRefreshAll() async {
+    try {
+      final resp = await http.post(
+        Uri.parse(deviceFcUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'getDevicesyncAll',
+          'info': {
+            'limit': 99,
+            'wechatid': globalWechatId,
+          }}),
+      );
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        if (json['status'] == 'success') {
+          final rawRows = json['data'] as List<dynamic>;
+          final parsedData = rawRows.map((rawRow) {
+            final row = rawRow as Map<String, dynamic>;
+            final result = <String, dynamic>{};
+            final pkList = row['primaryKey'] as List<dynamic>? ?? [];
+            for (final pk in pkList) {
+              final pkMap = pk as Map<String, dynamic>;
+              result[pkMap['name'] as String] = pkMap['value'];
+            }
+            final attrList = row['attributes'] as List<dynamic>? ?? [];
+            for (final attr in attrList) {
+              final attrMap = attr as Map<String, dynamic>;
+              result[attrMap['columnName'] as String] = attrMap['columnValue'];
+            }
+            return result;
+          }).toList();
+          for (final sync in parsedData) {
+            final deviceId = sync['deviceId']?.toString() ?? '';
+            final time = sync['time']?.toString() ?? '';
+            debugPrint('[地图刷新] 对时 设备[$deviceId] TIME=$time');
+          }
+          await DBHelper().saveDeviceSync(parsedData);
+          debugPrint('[地图刷新] 对时数据已保存: ${parsedData.length}条');
+          return true;
+        } else {
+          debugPrint('[地图刷新] 对时请求错误: ${json['msg']}');
+        }
+      } else {
+        debugPrint('[地图刷新] 对时 HTTP ${resp.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('[地图刷新] 对时失败: $e');
+    }
+    return false;
   }
 
   @override
@@ -229,6 +356,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       
       final devices = await DBHelper().getDevices();
       final deviceLotList = await DBHelper().getDeviceLot();
+      final deviceSyncList = await DBHelper().getDeviceSync();
       
       if (devices.isEmpty || deviceLotList.isEmpty) {
         debugPrint('[设备位置] 缓存中没有数据');
@@ -243,6 +371,13 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       for (final lot in deviceLotList) {
         final deviceId = lot['deviceId'] as String;
         lotMap[deviceId] = lot;
+      }
+      
+      // 构建设备对时映射
+      final syncMap = <String, Map<String, dynamic>>{};
+      for (final sync in deviceSyncList) {
+        final deviceId = sync['deviceId'] as String;
+        syncMap[deviceId] = sync;
       }
       
       // 合并设备和位置信息
@@ -305,15 +440,33 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
         if (lat != null && lng != null && lat.abs() > 0.0001 && lng.abs() > 0.0001) {
           final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
           
-          // 始终优先使用LOT时间判断GPS过期（LOT是服务器GPS上报时间，蓝牙时间只是接收时间，总是最近的）
+          // 取LOT时间和对时时间中最新的，与当前时间对比判断GPS过期
           final lotTimeStr = lotMap[deviceId]?['time']?.toString() ?? '';
-          final btTimeStr = bluetoothGps?['time']?.toString() ?? '';
-          final gpsTimeStr = lotTimeStr.isNotEmpty ? lotTimeStr : btTimeStr;
+          final syncTimeStr = syncMap[deviceId]?['time']?.toString() ?? '';
+          final lotDt = _parseGpsTime(lotTimeStr);
+          final syncDt = _parseGpsTime(syncTimeStr);
+          // 取两者中最新的时间
+          DateTime? latestServerDt;
+          String gpsTimeStr = '';
+          if (lotDt != null && (syncDt == null || lotDt.isAfter(syncDt))) {
+            latestServerDt = lotDt;
+            gpsTimeStr = lotTimeStr;
+          } else if (syncDt != null) {
+            latestServerDt = syncDt;
+            gpsTimeStr = syncTimeStr;
+          }
+          // 如果服务器时间都没有，用蓝牙时间
+          if (latestServerDt == null) {
+            gpsTimeStr = bluetoothGps?['time']?.toString() ?? '';
+          }
           bool gpsExpired = false;
           if (gpsTimeStr.isNotEmpty) {
-            final gpsTime = DateTime.tryParse(gpsTimeStr.replaceAll('/', '-'));
+            final gpsTime = _parseGpsTime(gpsTimeStr);
             if (gpsTime != null) {
               gpsExpired = DateTime.now().difference(gpsTime) > const Duration(hours: 1);
+              debugPrint('[GPS过期] 设备[$deviceId] lotTime=$lotTimeStr syncTime=$syncTimeStr latest=$gpsTimeStr expired=$gpsExpired');
+            } else {
+              debugPrint('[GPS过期] 设备[$deviceId] 时间解析失败: time=$gpsTimeStr');
             }
           }
           positions.add({
@@ -437,6 +590,9 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       final deviceLotList = await DBHelper().getDeviceLot();
       debugPrint('[设备位置] LOT数据数量: ${deviceLotList.length}');
       
+      final deviceSyncList = await DBHelper().getDeviceSync();
+      debugPrint('[设备位置] 对时数据数量: ${deviceSyncList.length}');
+      
       if (devices.isEmpty) {
         debugPrint('[设备位置] 没有设备数据，请先在设备管理页面加载数据');
         return;
@@ -460,9 +616,18 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
       for (final lot in deviceLotList) {
         final deviceId = lot['deviceId'] as String;
         lotMap[deviceId] = lot;
+        debugPrint('[设备位置] LOT原始数据: deviceId=$deviceId, time=${lot['time']}, time类型=${lot['time']?.runtimeType}');
       }
       
       debugPrint('[设备位置] LOT映射构建完成，共${lotMap.length}个设备');
+      
+      // 构建设备对时映射
+      final syncMap = <String, Map<String, dynamic>>{};
+      for (final sync in deviceSyncList) {
+        final deviceId = sync['deviceId'] as String;
+        syncMap[deviceId] = sync;
+      }
+      debugPrint('[设备位置] 对时映射构建完成，共${syncMap.length}个设备');
       
       // 合并设备和位置信息
       final positions = <Map<String, dynamic>>[];
@@ -554,15 +719,33 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
           // WGS-84转GCJ-02
           final gcj02Coord = CoordTransform.wgs84ToGcj02(lat, lng);
           
-          // 始终优先使用LOT时间判断GPS过期（LOT是服务器GPS上报时间，蓝牙时间只是接收时间，总是最近的）
+          // 取LOT时间和对时时间中最新的，与当前时间对比判断GPS过期
           final lotTimeStr = lotMap[deviceId]?['time']?.toString() ?? '';
-          final btTimeStr = bluetoothGps?['time']?.toString() ?? '';
-          final gpsTimeStr = lotTimeStr.isNotEmpty ? lotTimeStr : btTimeStr;
+          final syncTimeStr = syncMap[deviceId]?['time']?.toString() ?? '';
+          final lotDt = _parseGpsTime(lotTimeStr);
+          final syncDt = _parseGpsTime(syncTimeStr);
+          // 取两者中最新的时间
+          DateTime? latestServerDt;
+          String gpsTimeStr = '';
+          if (lotDt != null && (syncDt == null || lotDt.isAfter(syncDt))) {
+            latestServerDt = lotDt;
+            gpsTimeStr = lotTimeStr;
+          } else if (syncDt != null) {
+            latestServerDt = syncDt;
+            gpsTimeStr = syncTimeStr;
+          }
+          // 如果服务器时间都没有，用蓝牙时间
+          if (latestServerDt == null) {
+            gpsTimeStr = bluetoothGps?['time']?.toString() ?? '';
+          }
           bool gpsExpired = false;
           if (gpsTimeStr.isNotEmpty) {
-            final gpsTime = DateTime.tryParse(gpsTimeStr.replaceAll('/', '-'));
+            final gpsTime = _parseGpsTime(gpsTimeStr);
             if (gpsTime != null) {
               gpsExpired = DateTime.now().difference(gpsTime) > const Duration(hours: 1);
+              debugPrint('[GPS过期] 设备[$deviceId] lotTime=$lotTimeStr syncTime=$syncTimeStr latest=$gpsTimeStr expired=$gpsExpired');
+            } else {
+              debugPrint('[GPS过期] 设备[$deviceId] 时间解析失败: time=$gpsTimeStr');
             }
           }
           positions.add({
@@ -572,7 +755,7 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
             'lng': gcj02Coord[1],
             'fromBluetooth': fromBluetooth, // 标记数据来源
             'gpsTime': gpsTimeStr,
-            'gpsExpired': gpsExpired,
+            'gps_expired': gpsExpired,
           });
           
           debugPrint('[设备位置] ✓ $displayName: ($lat, $lng) -> (${gcj02Coord[0]}, ${gcj02Coord[1]}) gpsTime=$gpsTimeStr expired=$gpsExpired');
@@ -1563,15 +1746,19 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                                     final value = _blinkAnimationController!.value;
                                     final isRed = value >= 0.5;
                                     final dotColor = gpsExpired ? Colors.grey : (isRed ? Colors.red : Colors.green);
+                                    final circleColor = gpsExpired ? Colors.grey[300] : Colors.white;
                                     return Container(
                                       width: 24,
                                       height: 24,
                                       decoration: BoxDecoration(
-                                        color: dotColor,
+                                        color: circleColor,
                                         shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 2),
+                                        border: Border.all(color: dotColor, width: 2),
                                       ),
-                                      child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
+                                      child: CustomPaint(
+                                        size: const Size(24, 24),
+                                        painter: _DeviceTrianglePainter(dotColor),
+                                      ),
                                     );
                                   },
                                 )
@@ -1579,11 +1766,14 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
                                   width: 24,
                                   height: 24,
                                   decoration: BoxDecoration(
-                                    color: gpsExpired ? Colors.grey : Colors.green,
+                                    color: gpsExpired ? Colors.grey[300] : Colors.white,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
+                                    border: Border.all(color: gpsExpired ? Colors.grey : Colors.green, width: 2),
                                   ),
-                                  child: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 18),
+                                  child: CustomPaint(
+                                    size: const Size(24, 24),
+                                    painter: _DeviceTrianglePainter(gpsExpired ? Colors.grey : Colors.green),
+                                  ),
                                 ),
                           ),
                           // 名称标签（始终显示，向右延伸）
@@ -1798,6 +1988,68 @@ class _MapCenterPageState extends State<MapCenterPage> with TickerProviderStateM
 }
 
 /// 向下小三角箭头绘制器（用于气泡底部指向图标）
+/// 设备图标内填充倒三角（正好以圆内径为最大容积）
+/// 通用GPS时间解析：支持多种格式
+/// - "2026/9/18 23:17:43"（斜线不补零）
+/// - "2026-09-18 23:17:43"（横线补零）
+/// - Unix时间戳（秒或毫秒）
+DateTime? _parseGpsTime(String timeStr) {
+  if (timeStr.isEmpty) return null;
+  // 1. 尝试纯数字（Unix时间戳）
+  final ts = int.tryParse(timeStr);
+  if (ts != null) {
+    // 毫秒级时间戳（13位以上）
+    if (ts > 9999999999) return DateTime.fromMillisecondsSinceEpoch(ts);
+    // 秒级时间戳
+    return DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+  }
+  // 2. 尝试日期字符串
+  try {
+    if (timeStr.contains(' ')) {
+      final parts = timeStr.split(' ');
+      if (parts.length >= 2) {
+        // 日期部分：支持 "/" 或 "-" 分隔
+        final dp = parts[0].replaceAll('/', '-').split('-');
+        final tp = parts[1].split(':');
+        if (dp.length >= 3 && tp.length >= 2) {
+          return DateTime(
+            int.parse(dp[0]), int.parse(dp[1]), int.parse(dp[2]),
+            int.parse(tp[0]), int.parse(tp[1]),
+            tp.length >= 3 ? int.parse(tp[2]) : 0,
+          );
+        }
+      }
+    }
+    // 3. 尝试 ISO 格式
+    return DateTime.tryParse(timeStr);
+  } catch (_) {}
+  return null;
+}
+
+class _DeviceTrianglePainter extends CustomPainter {
+  final Color color;
+  _DeviceTrianglePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final w = size.width;
+    final h = size.height;
+    // 倒三角填满圆内径：顶边在圆心偏上，底点在圆底部
+    final path = ui.Path()
+      ..moveTo(w * 0.15, h * 0.28)
+      ..lineTo(w * 0.85, h * 0.28)
+      ..lineTo(w * 0.5, h * 0.88)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DeviceTrianglePainter oldDelegate) => color != oldDelegate.color;
+}
+
 class _TrianglePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

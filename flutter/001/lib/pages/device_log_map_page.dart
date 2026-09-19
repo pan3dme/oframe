@@ -58,6 +58,7 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
   bool _showDistanceLabel = true;
   LatLng? _deviceMarkerPoint; // 设备标记点（GCJ-02）
   bool _showBubble = true; // 是否显示设备信息气泡
+  bool _isSendingGps = false; // 是否正在发送上报GPS指令
 
   /// 生成虚线段（手动模拟，因当前flutter_map版本不支持dashPattern）
   /// dashLen: 每段虚线长度(米)，gapLen: 间隔长度(米)
@@ -98,6 +99,136 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
         setState(() { _showDistanceLabel = shouldShow; });
       }
     } catch (_) {}
+  }
+
+  /// 发送上报GPS指令（通过最优2台中继转发）
+  Future<void> _sendUpGpsCommand() async {
+    if (_isSendingGps) return;
+    setState(() { _isSendingGps = true; });
+
+    try {
+      final targetDeviceId = widget.deviceId;
+
+      // 1. 获取RSSI最优的中继设备列表
+      final rssResp = await http.post(
+        Uri.parse('https://gpsmoveinfo.cn/fc/device'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'getDeviceBestRssibyId',
+          'info': {'limit': 3, 'deviceId': targetDeviceId, 'wechatid': globalWechatId},
+        }),
+      );
+      debugPrint('[上报GPS] BestRssi响应: ${rssResp.body}');
+
+      // 收集所有候选中继，按RSSI绝对值升序排列，取前2台
+      final List<Map<String, String>> relayList = []; // [{deviceId, deviceName, productKey}]
+
+      if (rssResp.statusCode == 200) {
+        final rssJson = jsonDecode(rssResp.body) as Map<String, dynamic>;
+        if (rssJson['status'] == 'success') {
+          final data = rssJson['data'];
+          if (data is List && data.isNotEmpty) {
+            // 解析每条记录的 upDateDevice 和 rssi
+            final candidates = <Map<String, dynamic>>[];
+            for (final item in data) {
+              final attrs = item['attributes'] as List<dynamic>? ?? [];
+              String? rssiStr;
+              String? upDateDeviceStr;
+              for (final attr in attrs) {
+                final name = attr['columnName']?.toString() ?? '';
+                final value = attr['columnValue'];
+                if (name == 'rssi') rssiStr = value?.toString();
+                if (name == 'upDateDevice') upDateDeviceStr = value?.toString();
+              }
+              final rssi = double.tryParse(rssiStr ?? '') ?? double.infinity;
+              if (upDateDeviceStr != null && upDateDeviceStr.isNotEmpty) {
+                candidates.add({'upDateDevice': upDateDeviceStr, 'absRssi': rssi.abs()});
+              }
+            }
+            // 按RSSI绝对值升序排序
+            candidates.sort((a, b) => (a['absRssi'] as double).compareTo(b['absRssi'] as double));
+
+            // 去重后取前2台，匹配本地中继设备信息
+            final allDevices = await DBHelper().getDevices();
+            final seen = <String>{};
+            for (final c in candidates) {
+              if (relayList.length >= 2) break;
+              final upDateDevice = c['upDateDevice'] as String;
+              if (seen.contains(upDateDevice)) continue;
+              seen.add(upDateDevice);
+              final matched = allDevices.firstWhere(
+                (d) => d['deviceId']?.toString() == upDateDevice,
+                orElse: () => <String, dynamic>{},
+              );
+              if (matched.isNotEmpty) {
+                final dn = matched['DeviceName']?.toString() ?? '';
+                final pk = matched['ProductKey']?.toString() ?? '';
+                if (dn.isNotEmpty && pk.isNotEmpty) {
+                  relayList.add({'deviceId': upDateDevice, 'deviceName': dn, 'productKey': pk});
+                  debugPrint('[上报GPS] 选中继#${relayList.length}: $upDateDevice, rssi=${c['absRssi']}');
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (relayList.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未找到可用的中继转发设备')),
+          );
+        }
+        return;
+      }
+
+      // 2. 构建指令（自动添加deviceId）
+      final command = jsonEncode({'cmd': 'upgps', 'value': '0', 'deviceId': targetDeviceId});
+
+      // 3. 并行向所有选中的中继发送指令
+      final futures = relayList.map((relay) async {
+        final resp = await http.post(
+          Uri.parse('https://gpsmoveinfo.cn/fc/sendtodtucmd'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'action': 'com',
+            'deviceName': relay['deviceName'],
+            'productKey': relay['productKey'],
+            'msg': command,
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'wechatid': globalWechatId,
+          }),
+        );
+        debugPrint('[上报GPS] 中继${relay['deviceId']} 响应: ${resp.statusCode} ${resp.body}');
+        return resp.statusCode == 200;
+      }).toList();
+
+      final results = await Future.wait(futures);
+      final successCount = results.where((r) => r).length;
+
+      if (mounted) {
+        if (successCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('上报GPS指令已发送（$successCount/${relayList.length}台中继）')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('发送失败，请检查网络')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[上报GPS] 发送失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('发送指令失败')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() { _isSendingGps = false; });
+      }
+    }
   }
 
   @override
@@ -869,6 +1000,25 @@ class _DeviceLogMapPageState extends State<DeviceLogMapPage> {
                       color: _showRouteAndPlace ? Colors.white : Colors.black54,
                     ),
               tooltip: _showRouteAndPlace ? '隐藏道路和地名' : '显示道路和地名',
+            ),
+          ),
+
+          // 左上角上报GPS指令按钮
+          Positioned(
+            left: 16,
+            top: 16,
+            child: FloatingActionButton.small(
+              heroTag: 'log_map_upgps_fab',
+              onPressed: _isSendingGps ? null : _sendUpGpsCommand,
+              backgroundColor: _isSendingGps ? Colors.grey : Colors.red,
+              child: _isSendingGps
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.location_on, color: Colors.white, size: 20),
+              tooltip: '上报GPS',
             ),
           ),
         ],

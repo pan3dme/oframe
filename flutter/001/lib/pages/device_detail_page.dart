@@ -47,6 +47,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
   String _rawConfigValue = '';  // 原始配置值（用于配置下发指令）
   String _rawLorastr = '';  // 原始完整lorastr（调试显示用）
   Map<String, dynamic> _configAttributes = {};  // getDeviceConfigAll完整属性
+  String _batteryLevel = '';  // 电量（来自对时数据）
   bool _isBluetoothConnected = false; // 蓝牙连接状态
   bool _isFromCache = false; // 标记是否使用缓存数据（断网）
 
@@ -61,6 +62,50 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     // 初始化直接读缓存，不下拉刷新不发网络请求
     final deviceId = widget.device['deviceId']?.toString() ?? '';
     _loadDeviceConfigFromCache(deviceId);
+    _loadBatteryLevel(deviceId);
+  }
+
+  @override
+  void didUpdateWidget(covariant DeviceDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 检测设备变化时重新加载数据
+    final oldDeviceId = oldWidget.device['deviceId']?.toString() ?? '';
+    final newDeviceId = widget.device['deviceId']?.toString() ?? '';
+    if (oldDeviceId != newDeviceId) {
+      _batteryLevel = ''; // 清空旧电量
+      _loadDeviceConfigFromCache(newDeviceId);
+      _loadBatteryLevel(newDeviceId);
+    }
+  }
+
+  /// 解析电量字符串中的数值（如 "45.2mA" -> 45.2）
+  double _parseBatteryValue(String battery) {
+    final match = RegExp(r'([\d.]+)').firstMatch(battery);
+    if (match != null) {
+      return double.tryParse(match.group(1) ?? '') ?? 100;
+    }
+    return 100;
+  }
+
+  /// 从对时缓存数据中加载电量
+  Future<void> _loadBatteryLevel(String deviceId) async {
+    try {
+      final syncList = await DBHelper().getDeviceSync();
+      for (final sync in syncList) {
+        if (sync['deviceId']?.toString() == deviceId) {
+          final lorastr = sync['lorastr']?.toString() ?? '';
+          if (lorastr.isNotEmpty) {
+            final parts = lorastr.split('|');
+            if (parts.length >= 4) {
+              setState(() { _batteryLevel = parts[3]; });
+            }
+          }
+          break;
+        }
+      }
+    } catch (e) {
+      debugPrint('[设备详情] 加载电量失败: $e');
+    }
   }
 
   /// 检查蓝牙连接状态
@@ -953,9 +998,22 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 设备名称
-                  Text(
-                    displayName,
+                  // 设备名称（含电量）
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: displayName),
+                        if (_batteryLevel.isNotEmpty)
+                          TextSpan(
+                            text: '($_batteryLevel)',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _parseBatteryValue(_batteryLevel) < 50 ? Colors.red : null,
+                            ),
+                          ),
+                      ],
+                    ),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
