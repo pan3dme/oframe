@@ -97,11 +97,24 @@ function _removeFromStorage(storageKey) {
  * @param {function} fetchFn - 发起请求的函数 (successCallback)
  * @param {function} callback - 外部回调
  * @param {boolean} forceRefresh - 是否强制刷新
+ * @param {string} [storageKey] - 本地持久化缓存 key（可选）。
+ *   传入后非强制刷新时多一层本地缓存：内存为空但本地有数据 → 回填内存并直接返回，
+ *   不发网络请求（与道路/地名列表的永久缓存模式一致）
  */
-function _loadWithDedup(key, cacheObj, fetchFn, callback, forceRefresh) {
+function _loadWithDedup(key, cacheObj, fetchFn, callback, forceRefresh, storageKey) {
+  // 第一层：内存缓存命中 → 直接返回，不请求网络
   if (!forceRefresh && gd()[cacheObj]) {
     callback(gd()[cacheObj])
     return
+  }
+  // 第二层：本地持久化缓存命中 → 回填内存后直接返回，不请求网络
+  if (!forceRefresh && storageKey) {
+    const localData = _loadFromStorage(storageKey)
+    if (localData) {
+      gd()[cacheObj] = localData
+      callback(localData)
+      return
+    }
   }
   if (_pendingCallbacks[key]) {
     _pendingCallbacks[key].push(callback)
@@ -121,6 +134,8 @@ function _loadWithDedup(key, cacheObj, fetchFn, callback, forceRefresh) {
 
 /**
  * 获取设备列表数据
+ * 有缓存就不请求网络：内存缓存 → 本地持久化缓存（cache_device_list）→ 才发网络请求。
+ * 非强制刷新时只要任一层有缓存即直接返回；forceRefresh=true（下拉刷新/新增设备后）才绕过缓存。
  * @param {function} callback - 回调 (cachedData)，cachedData 为 { recordList, deviceIdOptions, deviceBindMap }
  * @param {boolean} forceRefresh - 是否强制刷新
  */
@@ -160,7 +175,7 @@ function getDeviceList(callback, forceRefresh) {
         done(gd().deviceCache || null)
       }
     })
-  }, callback, forceRefresh)
+  }, callback, forceRefresh, _STORAGE_KEYS.deviceCache)
 }
 
 /**

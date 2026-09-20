@@ -53,8 +53,8 @@ Page({
     isAdmin: false,
     // 设备配置（getDeviceConfigById，按 deviceId 查询单条）
     deviceConfig: null,
-    // 是否显示转换（设置页开关控制）：开启后对时记录(TYPE=2)显示换算日期时间，关闭显示原始LORA数据
-    showConverted: false,
+    // 是否显示转换（设置页开关控制，默认开启）：开启后对时记录(TYPE=2)显示换算日期时间，关闭显示原始LORA数据
+    showConverted: true,
     // 上报周期与数据记录实际间隔不符时为 true，在"上报周期"后显示红色间隔时间
     reportIntervalAbnormal: false,
     // 异常时显示的实际上报间隔（如 "3.0分钟"）
@@ -101,7 +101,8 @@ Page({
   // 读取本地设置（管理员、LORA显示转换）
   _readSettings() {
     let isAdmin = false
-    let showConverted = false
+    // 默认开启"显示转换"；仅当用户在设置页明确关闭过（存储值为 false）时才关闭
+    let showConverted = true
     try {
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)

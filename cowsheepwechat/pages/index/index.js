@@ -29,8 +29,8 @@ Page({
     isRefreshing: false,
     // 管理员：显示头部编辑按钮（管理入口统一跳完整详情页）
     isAdmin: false,
-    // 是否显示转换（设置页开关控制）：开启后对时/配置记录显示可读内容
-    showConverted: false,
+    // 是否显示转换（设置页开关控制，默认开启）：开启后对时/配置记录显示可读内容
+    showConverted: true,
     // 编辑设备弹窗
     showEditModal: false,
     editOldDeviceKey: '',
@@ -158,7 +158,8 @@ Page({
   // 读取本地设置（管理员控制头部编辑按钮，管理按钮统一跳完整详情页）
   _readSettings() {
     let isAdmin = false
-    let showConverted = false
+    // 默认开启"显示转换"；仅当用户在设置页明确关闭过（存储值为 false）时才关闭
+    let showConverted = true
     try {
       const adminVal = wx.getStorageSync('setting_is_admin')
       isAdmin = !!(getApp().globalData.isAdmin || adminVal)

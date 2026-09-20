@@ -11,7 +11,7 @@ Page({
     bleSound: true,          // 默认开启蓝牙接收声音
     isAdmin: false,           // 默认不是管理员
     showAllDevices: false,     // 默认不显示所有设备（仅显示visible=true的）
-    showConverted: false       // 默认不显示转换（显示原始数据）
+    showConverted: true        // 默认显示转换（对时/配置记录显示换算后的可读内容）
   },
 
   _readSettings() {

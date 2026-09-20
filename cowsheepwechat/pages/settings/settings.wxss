@@ -55,14 +55,6 @@ page {
   color: #333;
 }
 
-/* 说明文字 */
-.desc-text {
-  font-size: 26rpx;
-  color: #999;
-  line-height: 1.8;
-  padding: 8rpx 0;
-}
-
 /* 操作行（清理缓存等） */
 .action-row {
   display: flex;

@@ -44,14 +44,6 @@
     </view>
   </view>
 
-  <!-- 说明 -->
-  <view class="section">
-    <view class="section-title">说明</view>
-    <view class="desc-text">
-      蓝牙接收声音：开启后，当接收到蓝牙设备消息时会播放提示音。该声音仅在 App 内播放，不会影响系统其他应用。
-    </view>
-  </view>
-
   <!-- 账户管理 -->
   <view class="section">
     <view class="section-title">账户管理</view>

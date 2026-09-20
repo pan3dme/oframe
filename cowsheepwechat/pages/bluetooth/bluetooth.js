@@ -17,8 +17,8 @@ Page({
     displayList: [],       // 过滤后的显示列表（已连接）
     cacheDisplayList: [],  // 缓存数据显示列表（未连接时展示）
     filterType: '',        // ''=全部, 'gps', 'time', 'battery'
-    // 是否显示转换（设置页开关控制）：开启后对时记录(TYPE=2)显示换算日期时间、配置记录(TYPE=6)显示时间窗
-    showConverted: false,
+    // 是否显示转换（设置页开关控制，默认开启）：开启后对时记录(TYPE=2)显示换算日期时间、配置记录(TYPE=6)显示时间窗
+    showConverted: true,
     // 数据缓存（先存后上传）
     cacheQueue: [],
     cacheCount: 0,
@@ -204,7 +204,8 @@ Page({
   // ========== 显示转换（与设备详情数据记录一致） ==========
   // 读取本地设置："显示转换"开关
   _readSettings() {
-    let showConverted = false
+    // 默认开启"显示转换"；仅当用户在设置页明确关闭过（存储值为 false）时才关闭
+    let showConverted = true
     try {
       const conv = wx.getStorageSync('setting_show_converted')
       if (conv !== '' && conv !== undefined && conv !== null) {
