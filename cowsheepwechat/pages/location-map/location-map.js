@@ -6,6 +6,10 @@ const API_URL = getApp().globalData.api_device_Url
 // DTU 指令转发云函数地址
 const FC_URL = 'https://gpsmoveinfo.cn/fc/sendtodtucmd'
 
+// 线中距离数字的最小显示间隔（屏幕像素）：
+// "我的位置"与设备图钉的屏幕间隔 >= 该值才显示线中距离，否则隐藏避免拥挤
+const DIST_LABEL_MIN_PX = 100
+
 Page({
   data: {
     nativeLat: 26.529950,
@@ -56,6 +60,10 @@ Page({
       })
       // 保存坐标引用，图标生成完成后重刷 marker
       this._markerGcj = { lat: gcj.lat, lng: gcj.lng, wgsLat: lat, wgsLng: lng }
+      // 线中距离标签默认显示，待拿到可视范围后按屏幕间隔（>=200px）校正
+      this._showDistLabel = true
+      // 获取地图节点像素尺寸（供经纬度 → 屏幕像素换算）
+      this._getMapSize()
       this.renderMarker(gcj.lat, gcj.lng, lat, lng)
       this._refreshOverlays(gcj.lat, gcj.lng, 17)
       // 生成绿色设备图钉图标（与地图中心设备一致），生成后自动刷新 marker
@@ -85,6 +93,8 @@ Page({
         this._applyOverlays()
         // 启动实时位置更新（轮询，每 3 秒）
         this._startLocationWatch()
+        // 首次拿到我的位置后，检查线中距离标签是否满足显示间隔（稍等地图渲染完成）
+        setTimeout(() => { this._refreshDistanceLabel() }, 500)
       },
       fail: () => {
         this.setData({ distanceText: '获取失败' })
@@ -123,6 +133,8 @@ Page({
           if (!moved) return
           this._myGcj = { lat: res.latitude, lng: res.longitude }
           this._applyOverlays()
+          // 我的位置变化后两点屏幕间隔随之变化，同步刷新距离标签显隐
+          this._refreshDistanceLabel()
         },
         fail: () => {}
       })
@@ -205,7 +217,9 @@ Page({
       }
 
       // 线中距离文字：透明占位 marker + callout，位于线段中点
-      if (this._transparentIconPath && this._markerGcj) {
+      // 两点屏幕间隔 < DIST_LABEL_MIN_PX(200px) 时隐藏，避免与图钉/气泡拥挤
+      // （顶部信息栏"距离"不受影响，始终显示）
+      if (this._transparentIconPath && this._markerGcj && this._showDistLabel !== false) {
         markers.push({
           id: 2,
           latitude: (this._markerGcj.lat + this._myGcj.lat) / 2,
@@ -233,6 +247,75 @@ Page({
     payload.polylines = polylines
     payload.markers = markers
     this.setData(payload)
+  },
+
+  // ==================== 线中距离标签显隐（两点屏幕间隔 >= 200px 才显示） ====================
+
+  // 获取地图节点的像素尺寸（用于经纬度 → 屏幕像素换算）
+  _getMapSize() {
+    wx.createSelectorQuery()
+      .select('#locMap')
+      .boundingClientRect((rect) => {
+        if (rect && rect.width && rect.height) {
+          this._mapSize = { width: rect.width, height: rect.height }
+        }
+      })
+      .exec()
+  },
+
+  // 刷新线中距离标签显隐：
+  // "我的位置"与设备图钉在当前缩放下屏幕间隔 >= 200px 才显示距离数字，
+  // 过近时数字会与图钉/气泡挤在一起，直接隐藏
+  _refreshDistanceLabel() {
+    const apply = (region) => {
+      const px = this._pixelDistBetween(region)
+      // 计算失败（地图未就绪/坐标缺失）时保持当前状态
+      if (px === null) return
+      const show = px >= DIST_LABEL_MIN_PX
+      if (show !== this._showDistLabel) {
+        this._showDistLabel = show
+        this._applyOverlays()
+      }
+    }
+    if (this._mapRegion) {
+      apply(this._mapRegion)
+    } else {
+      wx.createMapContext('locMap').getRegion({ success: apply })
+    }
+  },
+
+  // 按 Web Mercator 投影把"我的位置"和设备图钉换算成地图内像素坐标，返回两点屏幕像素距离
+  // 地图未就绪或坐标缺失时返回 null
+  // （纬度方向不可线性换算，需用墨卡托 Y 投影；经度线性）
+  _pixelDistBetween(region) {
+    if (!this._myGcj || !this._markerGcj || !region) return null
+    // 地图尺寸兜底：节点尺寸未取到时用窗口尺寸近似
+    if (!this._mapSize) {
+      try {
+        const sys = wx.getSystemInfoSync()
+        if (sys.windowWidth && sys.windowHeight) {
+          this._mapSize = { width: sys.windowWidth, height: sys.windowHeight }
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (!this._mapSize) return null
+    const sw = region.southwest
+    const ne = region.northeast
+    if (!sw || !ne) return null
+    const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))
+    const lngSpan = ne.longitude - sw.longitude
+    const latSpan = mercY(ne.latitude) - mercY(sw.latitude)
+    if (lngSpan <= 0 || latSpan <= 0) return null
+    const width = this._mapSize.width
+    const height = this._mapSize.height
+    // 换算到地图内像素坐标（y 轴向下）
+    const x1 = (this._myGcj.lng - sw.longitude) / lngSpan * width
+    const y1 = (mercY(ne.latitude) - mercY(this._myGcj.lat)) / latSpan * height
+    const x2 = (this._markerGcj.lng - sw.longitude) / lngSpan * width
+    const y2 = (mercY(ne.latitude) - mercY(this._markerGcj.lat)) / latSpan * height
+    const dx = x1 - x2
+    const dy = y1 - y2
+    return Math.sqrt(dx * dx + dy * dy)
   },
 
   // 生成蓝色"我的位置"圆点图标：白色描边 + 蓝色实心
@@ -531,19 +614,23 @@ Page({
     console.log('[overlay] 清除所有瓦片')
   },
 
-  // 手势缩放/拖动 → 刷新瓦片
+  // 手势缩放/拖动 → 刷新瓦片 + 线中距离标签显隐
   onRegionChange(e) {
     if (e.type !== 'end') return
-    if (this._refreshingTiles) {
-      console.log('[overlay] regionChange 被忽略（瓦片加载中）')
-      return
-    }
     const mapCtx = wx.createMapContext('locMap')
     const isProgrammatic = e.causedBy === 'update'
     const that = this
 
     mapCtx.getRegion({
       success: (region) => {
+        // 缓存可视范围（供 _refreshDistanceLabel 复用），并按缩放后两点屏幕间隔刷新距离标签
+        that._mapRegion = region
+        that._refreshDistanceLabel()
+
+        if (that._refreshingTiles) {
+          console.log('[overlay] regionChange 被忽略（瓦片加载中）')
+          return
+        }
         const sw = region.southwest || {}
         const ne = region.northeast || {}
         const cLat = (parseFloat(sw.latitude) + parseFloat(ne.latitude)) / 2
