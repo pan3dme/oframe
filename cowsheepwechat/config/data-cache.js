@@ -569,6 +569,36 @@ function getCachedDeviceConfig(deviceId) {
   return null
 }
 
+/**
+ * 将 getDeviceConfigById 返回的单条配置记录合并进 deviceConfigAll 表（deviceConfigCache.configMap）
+ * 详情页配置下发后调用，使首页/地图页/设备列表等依赖 getDeviceConfigAll 缓存的页面
+ * 能立即读到该设备的最新配置，避免显示过期数据或重复请求整表。
+ * 同时持久化到本地，断网重启也不丢。
+ * @param {string} deviceId - 设备ID
+ * @param {object} record - getDeviceConfigById 返回的单条记录（兼容 attributes/primaryKey/lorastr 三种形态）
+ * @returns {boolean} 是否成功写入缓存
+ */
+function setDeviceConfigById(deviceId, record) {
+  if (!deviceId || !record) return false
+  // 复用 _parseDeviceConfigRecords 解析逻辑，保证结构与 getDeviceConfigAll 完全一致
+  const tmp = _parseDeviceConfigRecords({ data: [record] })
+  const parsed = tmp[deviceId]
+  if (!parsed) return false
+  // 确保 deviceConfigCache / configMap 存在
+  let cache = gd().deviceConfigCache
+  if (!cache || typeof cache !== 'object') {
+    cache = { configMap: {} }
+    gd().deviceConfigCache = cache
+  }
+  if (!cache.configMap || typeof cache.configMap !== 'object') {
+    cache.configMap = {}
+  }
+  cache.configMap[deviceId] = parsed
+  // 持久化（断网重启后仍可读到该设备的最新配置）
+  _saveToStorage(_STORAGE_KEYS.deviceConfigCache, cache)
+  return true
+}
+
 // ==================== 上报GPS(upgps)取值：按目标设备工作周期/大周期 ====================
 // 设备配置 lorastr 第3段(按|分)再按,分：
 //   [0]上报周期(分钟，工作/开机时间内GPS上报间隔) [1]开机时间代号 [2]GPS工作时间代号 [,3]主周期参数(1-10 = 10-100分钟，非工作时间使用)
@@ -925,6 +955,7 @@ module.exports = {
   getDeviceConfigAll,
   refreshDeviceConfigAll,
   getCachedDeviceConfig,
+  setDeviceConfigById,
   parseDeviceConfigLorastr,
   calcUpgpsValue,
   getUpgpsValue,

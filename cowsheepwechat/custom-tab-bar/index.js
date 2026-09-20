@@ -1,12 +1,14 @@
 // custom-tab-bar/index.js — 自定义 tabBar
-// 目的：底部"设备"/"地图"TAB 在无感刷新（已在对应页面时单击该 TAB）期间显示"转圈"加载态
+// 目的：底部"设备详情"/"设备"/"地图"TAB 在无感刷新（已在对应页面时单击该 TAB）期间显示"转圈"加载态
 // 说明：原生 tabBar 无法做旋转动画，故改为自定义 tabBar；图标仍复用 images/ 下的原生图标
 Component({
   data: {
-    // 当前选中的 tab 下标（0首页 / 1设备 / 2功能 / 3地图），由各 tab 页 onShow 同步
+    // 当前选中的 tab 下标（0设备详情 / 1设备 / 2功能 / 3地图），由各 tab 页 onShow 同步
     selected: 0,
     color: '#999999',
     selectedColor: '#07c160',
+    // "设备详情"tab 是否处于"无感刷新"中（true 时用转圈替代设备详情图标）
+    homeRefreshing: false,
     // 设备 tab 是否处于"无感刷新"中（true 时用转圈替代设备图标）
     deviceRefreshing: false,
     // 地图 tab 是否处于"无感刷新"中（true 时用转圈替代地图图标）
@@ -44,13 +46,36 @@ Component({
       const index = Number(e.currentTarget.dataset.index)
       const pagePath = e.currentTarget.dataset.path
 
-      // 底部“设备”TAB：只要当前就停留在设备列表页，单击即触发无感刷新（无需双击/再次点击）
+      // 底部"设备详情"TAB（首页）：
+      //   - 当前已在首页：单击即触发首页无感刷新（无需双击/再次点击）
+      //   - 当前在设备详情子页(device-detail)：标记"待刷新"再 switchTab 回首页，
+      //     由首页 onShow 消费标记并执行无感刷新（带转圈态）
+      if (index === 0) {
+        if (this._isOnPage('pages/index/index')) {
+          this._triggerRefresh('home')
+          return
+        }
+        if (this._isOnPage('pages/device-detail/device-detail')) {
+          const app = getApp()
+          if (!app.globalData) app.globalData = {}
+          app.globalData._pendingHomeRefresh = true
+        }
+        wx.switchTab({
+          url: pagePath,
+          fail: (err) => {
+            console.error('切换 tab 失败:', err)
+          }
+        })
+        return
+      }
+
+      // 底部"设备"TAB：只要当前就停留在设备列表页，单击即触发无感刷新（无需双击/再次点击）
       if (index === 1 && this._isOnPage('pages/device/device')) {
         this._triggerRefresh('device')
         return
       }
 
-      // 底部“地图”TAB：只要当前就停留在地图页，单击即触发无感刷新（地图数据静默重载 + TAB 转圈）
+      // 底部"地图"TAB：只要当前就停留在地图页，单击即触发无感刷新（地图数据静默重载 + TAB 转圈）
       if (index === 3 && this._isOnPage('pages/map/map')) {
         this._triggerRefresh('map')
         return
@@ -58,7 +83,8 @@ Component({
 
       // 点击当前已选中的 tab：不重复跳转（兜底：route 不可用时仍按选中态处理无感刷新）
       if (index === this.data.selected) {
-        if (index === 1) this._triggerRefresh('device')
+        if (index === 0) this._triggerRefresh('home')
+        else if (index === 1) this._triggerRefresh('device')
         else if (index === 3) this._triggerRefresh('map')
         return
       }
@@ -80,13 +106,15 @@ Component({
       return currentRoute === route
     },
 
-    // 通知对应页面执行无感刷新；转圈状态由页面写入本组件（deviceRefreshing / mapRefreshing）
+    // 通知对应页面执行无感刷新；转圈状态由页面写入本组件（homeRefreshing / deviceRefreshing / mapRefreshing）
     _triggerRefresh(type) {
-      const refreshingKey = type === 'map' ? 'mapRefreshing' : 'deviceRefreshing'
+      const keyMap = { home: 'homeRefreshing', device: 'deviceRefreshing', map: 'mapRefreshing' }
+      const handlerMap = { home: 'onHomeTabRefresh', device: 'onDeviceTabRefresh', map: 'onMapTabRefresh' }
+      const refreshingKey = keyMap[type] || 'deviceRefreshing'
+      const handler = handlerMap[type] || 'onDeviceTabRefresh'
       if (this.data[refreshingKey]) return
       const pages = getCurrentPages()
       const current = pages[pages.length - 1]
-      const handler = type === 'map' ? 'onMapTabRefresh' : 'onDeviceTabRefresh'
       if (current && typeof current[handler] === 'function') {
         current[handler]()
       }

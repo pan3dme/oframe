@@ -77,6 +77,15 @@ Page({
     }
     if (!this._checkLogin()) return
     this._readSettings()
+    // 从"设备详情"子页（device-detail）通过底部 TAB 切回首页：消费"待刷新"标记并执行无感刷新
+    if (getApp().globalData && getApp().globalData._pendingHomeRefresh) {
+      getApp().globalData._pendingHomeRefresh = false
+      const id = dataCache.getHomeSelectedDevice()
+      if (id) {
+        this.onHomeTabRefresh()
+        return
+      }
+    }
     // 从"完整管理"页返回：设备可能已被编辑（改名/换图/绑定牛羊），静默刷新详情
     if (this._pendingManage) {
       this._pendingManage = false
@@ -104,7 +113,26 @@ Page({
   },
 
   onHide() {
-    // 无后台定时器
+    // 页面隐藏时收回首页 TAB 转圈态，避免下次进入残留
+    this._setHomeTabSpinning(false)
+  },
+
+  // 点击底部"设备详情"TAB（已在首页）：无感刷新设备信息/配置/当天记录
+  // 不弹"已刷新"提示，仅在"设备详情"TAB 上显示转圈，刷新完成后恢复
+  onHomeTabRefresh() {
+    const id = dataCache.getHomeSelectedDevice()
+    if (!id) return
+    this._setHomeTabSpinning(true)
+    this._loadAll(id, true, () => {
+      this._setHomeTabSpinning(false)
+    })
+  },
+
+  // 设置底部"设备详情"TAB 的转圈加载态
+  _setHomeTabSpinning(spinning) {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ homeRefreshing: !!spinning })
+    }
   },
 
   // 检查登录状态：本次会话未确认登录则跳转登录页

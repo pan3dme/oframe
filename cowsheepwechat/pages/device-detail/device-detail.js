@@ -447,8 +447,13 @@ Page({
   // 拉取设备配置（上报周期/开机时间/GPS工作时间等）
   // 通过 getDeviceConfigById 按 deviceId 只查询当前设备的一条配置记录
   // 网络数据未返回前先从缓存取对应设备配置立即显示，网络返回后再刷新覆盖
-  loadDeviceConfig(deviceId) {
-    if (!deviceId) return
+  // @param {string} deviceId - 设备ID
+  // @param {function} [callback] - 网络请求完成后的回调（无论成功失败均触发），用于下拉刷新关闭动画/提示
+  loadDeviceConfig(deviceId, callback) {
+    if (!deviceId) {
+      if (callback) callback()
+      return
+    }
     const that = this
     // 缓存预显示：配置下发后网络未返回前先用缓存配置
     const cachedConfig = dataCache.getCachedDeviceConfig(deviceId)
@@ -492,6 +497,13 @@ Page({
           if (record.lorastr) attr.lorastr = record.lorastr
           // 更新 deviceInfo 中的配置信息
           that._applyConfigFromLorastr(attr.lorastr || '')
+          // 将该设备的最新配置合并进 deviceConfigAll 缓存表，
+          // 使首页/地图页/设备列表等依赖 getDeviceConfigAll 的页面立即读到最新值
+          try {
+            dataCache.setDeviceConfigById(deviceId, record)
+          } catch (e) {
+            console.error('[device-detail] 写入设备配置缓存失败:', e)
+          }
         } else {
           // 无配置数据，清空显示
           if (that.data.deviceInfo) {
@@ -502,6 +514,10 @@ Page({
       },
       fail: (err) => {
         console.error('设备配置查询失败:', err)
+      },
+      complete: () => {
+        // 网络请求结束（成功/失败均触发），通知调用方关闭刷新动画
+        if (callback) callback()
       }
     })
   },
@@ -630,11 +646,15 @@ Page({
   },
 
   // 下拉刷新
+  // 仅重新拉取设备配置（getDeviceConfigById）；
+  // 其它数据（设备记录列表、设备表/LOT表基本信息、牛羊绑定名等）都用缓存，不再重新请求网络，
+  // 避免每次刷新都触发 getDeviceLogbyId 等接口造成冗余流量与服务器压力。
   onRefreshRecords() {
     if (this.data.isRefreshing) return
     this.setData({ isRefreshing: true })
-    this.loadTodayRecords(0, () => {
-      wx.showToast({ title: '刷新成功', icon: 'none', duration: 1000 })
+    this.loadDeviceConfig(this.data.deviceId, () => {
+      this.setData({ isRefreshing: false })
+      wx.showToast({ title: '配置已刷新', icon: 'none', duration: 1000 })
     })
   },
 

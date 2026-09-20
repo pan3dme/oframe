@@ -8,8 +8,10 @@
     data-path="{{item.pagePath}}"
     bindtap="onTabTap">
     <view class="tab-icon-box">
+      <!-- "设备详情"tab 无感刷新中：图标位置显示转圈 -->
+      <view wx:if="{{index === 0 && homeRefreshing}}" class="tab-spinner"></view>
       <!-- "设备"tab 无感刷新中：图标位置显示转圈 -->
-      <view wx:if="{{index === 1 && deviceRefreshing}}" class="tab-spinner"></view>
+      <view wx:elif="{{index === 1 && deviceRefreshing}}" class="tab-spinner"></view>
       <!-- "地图"tab 无感刷新中：图标位置显示转圈 -->
       <view wx:elif="{{index === 3 && mapRefreshing}}" class="tab-spinner"></view>
       <image
