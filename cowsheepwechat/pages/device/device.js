@@ -161,7 +161,8 @@ Page({
 
     const syncMap = (syncData && syncData.syncMap) || {}
 
-    const deviceList = (deviceData.recordList || []).map(item => {
+    // deviceData 可能为 null（网络失败且无本地缓存兜底时 getDeviceList 回传 null），此处做空值保护
+    const deviceList = ((deviceData && deviceData.recordList) || []).map(item => {
       const lotRec = lotMap[item.deviceId]
       const syncInfo = syncMap[item.deviceId]
 

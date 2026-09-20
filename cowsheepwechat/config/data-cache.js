@@ -8,22 +8,42 @@ const timeWindowCodec = require('../utils/time-window-codec.js')
 // "Cannot read properties of undefined"。改成惰性取值：首次访问时再调 getApp()。
 let _app = null
 function _getApp() {
-  if (!_app) {
-    const a = getApp()
-    // 防御：即便运行时尚未注册 App，也构造一个空对象保证调用方不报错
-    _app = (a && a.globalData) ? a : { globalData: {} }
-    if (!_app.globalData) _app.globalData = {}
+  // 只缓存"真实"的 App 实例；一旦拿到就长期复用
+  if (_app) return _app
+  const a = getApp()
+  if (a && a.globalData) {
+    _app = a
+    return _app
   }
-  return _app
+  // 关键修复：App 尚未注册完成时（lib 3.16.1 下 onLaunch 内 getApp() 可能返回 undefined），
+  // 只返回临时兜底对象、绝不缓存，等 App 注册完成后再次调用即可取到真实 globalData。
+  // 旧实现把兜底对象永久缓存，导致后续所有请求 URL 取到空串 → "request:fail invalid url"。
+  return { globalData: {} }
 }
 // 惰性 globalData 访问
 function gd() {
   return _getApp().globalData
 }
+// 服务器 API 地址（与 app.js globalData 保持一致）：作为最终兜底，
+// 即使 getApp() 暂时不可用，也不会把请求发到空 URL（避免 request:fail invalid url）
+const _DEFAULT_API_URLS = {
+  api_device_Url: 'https://gpsmoveinfo.cn/fc/device',
+  api_cowsheep_Url: 'https://gpsmoveinfo.cn/fc/cowsheep',
+  api_route_place_Url: 'https://gpsmoveinfo.cn/fc/route_place'
+}
 // 惰性 API URL 访问
-function API_DEVICE_URL()        { return gd().api_device_Url || '' }
-function API_COWSHEEP_URL()     { return gd().api_cowsheep_Url || '' }
-function API_ROUTE_PLACE_URL()  { return gd().api_route_place_Url || '' }
+function API_DEVICE_URL()        { return gd().api_device_Url || _DEFAULT_API_URLS.api_device_Url }
+function API_COWSHEEP_URL()     { return gd().api_cowsheep_Url || _DEFAULT_API_URLS.api_cowsheep_Url }
+function API_ROUTE_PLACE_URL()  { return gd().api_route_place_Url || _DEFAULT_API_URLS.api_route_place_Url }
+// 安全读取 wechatid（App 未就绪或没有 getWechatId 时返回空串，绝不抛错）
+function _getWechatId() {
+  try {
+    const a = _getApp()
+    return (a && typeof a.getWechatId === 'function') ? a.getWechatId() : ''
+  } catch (e) {
+    return ''
+  }
+}
 
 // ==================== 请求去重：避免同时发出多个相同请求 ====================
 
@@ -106,7 +126,7 @@ function getDeviceList(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL(),
       method: 'POST',
-      data: { action: 'getDeviceTaleAll', info: { limit: 30, wechatid: getApp().getWechatId() } },
+      data: { action: 'getDeviceTaleAll', info: { limit: 30, wechatid: _getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const recordList = _parseDeviceRecords(res.data)
@@ -204,7 +224,7 @@ function getLivestockList(callback, forceRefresh) {
     wx.request({
       url: API_COWSHEEP_URL(),
       method: 'POST',
-      data: { action: 'getLivestockList', info: { wechatid: getApp().getWechatId() } },
+      data: { action: 'getLivestockList', info: { wechatid: _getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const list = []
@@ -268,7 +288,7 @@ function getDeviceLotRefresh(callback, forceRefresh) {
       method: 'POST',
       data: { action: 'getDeviceGpsAll' , info: {
         limit: 30,
-        wechatid: getApp().getWechatId()
+        wechatid: _getWechatId()
       }},
       timeout: 8000,
       success: (res) => {
@@ -347,7 +367,7 @@ function getDeviceSyncAll(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL(),
       method: 'POST',
-      data: { action: 'getDevicesyncAll', info: { limit: 30, wechatid: getApp().getWechatId() } },
+      data: { action: 'getDevicesyncAll', info: { limit: 30, wechatid: _getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const syncMap = _parseDeviceSyncRecords(res.data)
@@ -426,7 +446,7 @@ function getDeviceConfigAll(callback, forceRefresh) {
     wx.request({
       url: API_DEVICE_URL(),
       method: 'POST',
-      data: { action: 'getDeviceConfigAll', info: { wechatid: getApp().getWechatId() } },
+      data: { action: 'getDeviceConfigAll', info: { wechatid: _getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const configMap = _parseDeviceConfigRecords(res.data)
@@ -684,7 +704,7 @@ function getRoadListFromCache(callback, forceRefresh) {
   wx.request({
     url: API_ROUTE_PLACE_URL(),
     method: 'POST',
-    data: { action: 'getroutetableall', info: { wechatid: getApp().getWechatId() } },
+    data: { action: 'getroutetableall', info: { wechatid: _getWechatId() } },
     success: (res) => {
       console.log('[道路缓存] 网络请求返回:', JSON.stringify(res.data))
       const roadList = _parseRoadRecords(res.data)
@@ -764,7 +784,7 @@ function getPlaceListFromCache(callback, forceRefresh) {
   wx.request({
     url: API_ROUTE_PLACE_URL(),
     method: 'POST',
-    data: { action: 'getplacetableall', info: { wechatid: getApp().getWechatId() } },
+    data: { action: 'getplacetableall', info: { wechatid: _getWechatId() } },
     success: (res) => {
       console.log('[地名缓存] 网络请求返回:', JSON.stringify(res.data))
       const placeList = _parsePlaceRecords(res.data)
@@ -877,14 +897,17 @@ function clearCache() {
 
 /**
  * App 启动时从本地存储恢复 4 张表的缓存到内存
+ * @param {object} [target] - 显式指定写入的 globalData（app.js 传 this.globalData）。
+ *   若不传则回退到 gd()：但 onLaunch 阶段 getApp() 可能不可用，务必显式传入以确保写入真实 App。
  * 仅在内存为空时填充（避免覆盖仍在使用的运行时数据）
  */
-function restoreFromStorage() {
+function restoreFromStorage(target) {
+  const g = (target && typeof target === 'object') ? target : gd()
   Object.keys(_STORAGE_KEYS).forEach((cacheField) => {
-    if (gd()[cacheField]) return
+    if (g[cacheField]) return
     const data = _loadFromStorage(_STORAGE_KEYS[cacheField])
     if (data) {
-      gd()[cacheField] = data
+      g[cacheField] = data
       console.log('[data-cache] 从本地恢复缓存:', cacheField)
     }
   })

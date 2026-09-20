@@ -7,10 +7,12 @@ App({
     // 初始化登录状态：读取本地登录记录 + 获取 wx.login code
     this.initLogin()
     // 恢复 4 张表的本地持久化缓存（设备/LOT/同步/配置），保证冷启动有数据 + 断网时使用本地数据
-    // 使用 require 而非顶部 import：data-cache.js 顶层会调用 getApp()，必须在 App() 注册后才能执行
+    // 使用 require 而非顶部 import：data-cache.js 内部惰性调用 getApp()，需在 App() 注册后执行
+    // 显式传入 this.globalData：onLaunch 阶段 getApp() 可能返回 undefined，
+    // 若让 data-cache 自行取 App 会把缓存写进临时对象而丢失
     try {
       const dataCache = require('./config/data-cache.js')
-      dataCache.restoreFromStorage()
+      dataCache.restoreFromStorage(this.globalData)
     } catch (e) {
       console.error('[app] 恢复持久化缓存失败:', e)
     }
