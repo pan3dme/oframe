@@ -1,5 +1,6 @@
 // device.js - 设备管理
 const dataCache = require('../../config/data-cache.js')
+const bleManager = require('../../utils/ble-manager.js')
 
 Page({
   data: {
@@ -48,9 +49,14 @@ Page({
   onShow() {
     this._syncTabBar()
     this._readSettings()
-    // 页面重新可见：若有列表则立即按当前时间刷新一次倒计时并恢复每秒跳动
+    // 页面重新可见：若有列表则用缓存重新合并一次（把离开期间蓝牙缓存新增的记录时间
+    // 也计入"最后上报时间"），并按当前时间刷新倒计时、恢复每秒跳动
     if (this.data.deviceList && this.data.deviceList.length) {
-      this._startCountdownTimer()
+      if (this._lastDeviceData) {
+        this._applyMergedData(this._lastLotData, this._lastSyncData, false)
+      } else {
+        this._startCountdownTimer()
+      }
     }
   },
 
@@ -132,6 +138,10 @@ Page({
   // 把 4 类原始数据(deviceList + lot + sync + config)合并成最终 UI 列表的统一入口
   // 供 fetchDeviceList（下拉刷新/首屏）与 _refreshLotAndSyncOnly（底部 TAB 无感刷新）复用
   _applyMergedData(lotData, syncData, showToast, onComplete) {
+    // 记录本次使用的 LOT / SYNC 原始数据，供 onShow 返回页面时用缓存重新合并
+    // （无需重新请求网络，即可把期间蓝牙缓存新增的记录时间计入"最后上报时间"）
+    this._lastLotData = lotData
+    this._lastSyncData = syncData
     const filteredList = this._buildMergedList(
       this._lastDeviceData,
       lotData,
@@ -161,12 +171,22 @@ Page({
 
     const syncMap = (syncData && syncData.syncMap) || {}
 
+    // 蓝牙缓存中"每台设备最新一条记录"的时间：这些数据刚通过蓝牙收到、尚未上传到服务器，
+    // LOT / 对时表里没有，需要一并作为"最后上报时间"的候选来源（读取失败不影响主流程）
+    let bleLatestMap = {}
+    try {
+      bleLatestMap = bleManager.getLatestRecordByDevice() || {}
+    } catch (e) {
+      console.error('读取蓝牙缓存最新记录时间失败:', e)
+      bleLatestMap = {}
+    }
+
     // deviceData 可能为 null（网络失败且无本地缓存兜底时 getDeviceList 回传 null），此处做空值保护
     const deviceList = ((deviceData && deviceData.recordList) || []).map(item => {
       const lotRec = lotMap[item.deviceId]
       const syncInfo = syncMap[item.deviceId]
 
-      // —— 最后上报时间：只从「对时/定位」两类来源取（LOT最新表 + 对时同步表），取两者中更晚的一次 ——
+      // —— 最后上报时间：从三类来源取（LOT最新表 + 对时同步表 + 蓝牙缓存），取其中更晚的一次 ——
       // LOT表 lorastr 首段为类型编号：1=GPS定位, 2=对时, 5=跟踪（视为定位）
       let lastTs = NaN            // 最后上报时间戳(ms)
       let lastRaw = ''            // 最后上报原始时间串
@@ -189,6 +209,16 @@ Page({
           lastRaw = syncInfo.rawTime
           lastType = 'time'   // 对时同步表记录 = 对时
         }
+      }
+
+      // —— 第三个来源：蓝牙缓存 ——
+      // 缓存里该设备最新一条记录的时间（尚未上传服务器），若比上述两表更晚也计为一次上报
+      const bleRec = bleLatestMap[item.deviceId]
+      if (bleRec && bleRec.ts && (isNaN(lastTs) || bleRec.ts > lastTs)) {
+        lastTs = bleRec.ts
+        lastRaw = bleRec.rawTime
+        const bleType = bleRec.type
+        lastType = (bleType === '1' || bleType === '5') ? 'gps' : (bleType === '2' ? 'time' : '')
       }
 
       const hasReport = !isNaN(lastTs)

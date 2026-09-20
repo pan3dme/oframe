@@ -665,6 +665,61 @@ function clearCache() {
   emit()
 }
 
+// ========== 供外部读取：缓存中"每台设备最新一条记录的时间" ==========
+// 用途：设备列表倒计时。缓存里的数据是设备刚通过蓝牙上报、但尚未上传到服务器的，
+// 服务器 LOT / 对时表里查不到，若只看服务器表会误判为"久未上报"。
+// 因此把缓存里对应设备最新一条记录的时间也算作一次"上报时间"。
+// 返回 { deviceId: { ts(毫秒), rawTime, type } }；无可用数据时返回 {}
+function getLatestRecordByDevice() {
+  // 未 init 时缓存尚未从本地读出，这里补读一次（幂等，不影响全局状态）
+  if (!_inited) loadCache()
+  const map = {}
+  const queue = state.cacheQueue
+  if (!queue || !queue.length) return map
+  for (let i = 0; i < queue.length; i++) {
+    const rec = _parseCacheRecordTime(queue[i])
+    if (!rec || !rec.deviceId) continue
+    const prev = map[rec.deviceId]
+    if (!prev || rec.ts > prev.ts) map[rec.deviceId] = rec
+  }
+  return map
+}
+
+// 解析单条蓝牙缓存记录 → { deviceId, ts, rawTime, type }；无法解析出有效时间时返回 null
+// 缓存条目为 handleBleData 存入的字符串：
+//   1) JSON：{"info":"1|v4-10|...","time":"2026/8/10 23:13:33","upDateDevice":"v4-27","rssi":..,"snr":..}
+//      - 设备ID 取 info 管道格式第2段（与服务器 deviceId 列、LOT 表的 deviceId 一致）
+//      - info 缺失时兜底用 upDateDevice（上报/中继设备）
+//   2) 非 JSON（原始管道文本）：通常不含可靠时间，忽略
+function _parseCacheRecordTime(raw) {
+  if (raw === undefined || raw === null) return null
+  let obj
+  try {
+    obj = JSON.parse(String(raw))
+  } catch (e) {
+    return null
+  }
+  if (!obj || typeof obj !== 'object') return null
+
+  const infoText = obj.info ? String(obj.info) : ''
+  let deviceId = obj.deviceId || obj.deviceid || ''
+  let type = ''
+  if (infoText) {
+    const seg = infoText.split('|')
+    if (seg.length >= 2 && seg[1]) deviceId = seg[1]
+    type = seg[0] || ''
+  }
+  if (!deviceId && obj.upDateDevice) deviceId = obj.upDateDevice
+  if (!deviceId || deviceId === '-') return null
+
+  const rawTime = obj.time || ''
+  if (!rawTime || rawTime === '-') return null
+  const ts = new Date(rawTime).getTime()
+  if (isNaN(ts)) return null
+
+  return { deviceId, ts, rawTime, type }
+}
+
 // ========== 初始化（只执行一次） ==========
 function init() {
   if (_inited) return
@@ -697,6 +752,7 @@ module.exports = {
   toggleAutoUpload,
   processGPSQueue,
   clearCache,
+  getLatestRecordByDevice,
   resolveDeviceDisplayNames,
   textToAb
 }
