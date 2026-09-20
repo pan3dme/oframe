@@ -209,55 +209,20 @@ Page({
       this.addLog('info', '已用缓存配置预填弹框: ' + cached.lorastr)
     }
 
-    // 异步查询设备已有配置，用于更新预填弹框（网络返回后覆盖缓存值）
+    // 异步刷新设备配置表缓存（forceRefresh=true）：更新全局缓存并按当前设备重新预填弹框
+    // 走 dataCache 而非直接 wx.request，请求自动去重并写入 app.globalData.deviceConfigCache，其他页面（设备列表等）也会复用
     const that = this
-    wx.request({
-      url: API_URL,
-      method: 'POST',
-      data: {
-        action: 'getDeviceConfigAll',
-        info: { deviceId: device.deviceId, wechatid: getApp().getWechatId() }
-      },
-      timeout: 8000,
-      success: (res) => {
-        console.log('[DTU指令] getDeviceConfigAll 返回:', JSON.stringify(res.data))
-        if (!that.data.showConfigModal) return // 弹框已被关闭则忽略
-
-        let rawList = []
-        if (res.data && res.data.data && Array.isArray(res.data.data)) {
-          rawList = res.data.data
-        } else if (Array.isArray(res.data)) {
-          rawList = res.data
+    dataCache.refreshDeviceConfigAll((configData) => {
+      if (!that.data.showConfigModal) return // 弹框已被关闭则忽略
+      const configMap = (configData && configData.configMap) || {}
+      const cfg = configMap[device.deviceId]
+      const configLorastr = (cfg && cfg.lorastr) || ''
+      if (configLorastr) {
+        const defaults = that._parseLoraConfigToModal(configLorastr)
+        if (defaults) {
+          that._openConfigModal(defaults)
+          that.addLog('info', '已加载设备配置预填弹框: ' + configLorastr)
         }
-
-        if (rawList.length > 0) {
-          // 按 deviceId 匹配当前设备
-          const record = rawList.find(r => {
-            const devId = r.deviceId || (r.primaryKey && r.primaryKey.find(p => p.name === 'deviceId') ? r.primaryKey.find(p => p.name === 'deviceId').value : null)
-            return devId === device.deviceId
-          })
-
-          if (record) {
-            const attr = {}
-            if (record.attributes) {
-              record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
-            }
-            if (record.primaryKey) {
-              record.primaryKey.forEach(item => { attr[item.name] = item.value })
-            }
-            if (record.lorastr) attr.lorastr = record.lorastr
-
-            const configLorastr = attr.lorastr || ''
-            const defaults = that._parseLoraConfigToModal(configLorastr)
-            if (defaults) {
-              that._openConfigModal(defaults)
-              that.addLog('info', '已加载设备配置预填弹框: ' + configLorastr)
-            }
-          }
-        }
-      },
-      fail: (err) => {
-        console.error('[DTU指令] getDeviceConfigAll 失败:', err)
       }
     })
   },

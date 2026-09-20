@@ -1,28 +1,83 @@
-// config/data-cache.js — 全局数据缓存模块
+﻿// config/data-cache.js — 全局数据缓存模块
 // 设备列表和牛羊列表缓存，避免每次页面切换都请求服务器
 const timeWindowCodec = require('../utils/time-window-codec.js')
 
-const app = getApp()
-const API_DEVICE_URL = app.globalData.api_device_Url
-const API_COWSHEEP_URL = app.globalData.api_cowsheep_Url
-const API_ROUTE_PLACE_URL = app.globalData.api_route_place_Url
+// 修复：不在模块顶层调用 getApp()。
+// 该模块由 app.js 在 onLaunch 中 require 加载，但 lib 3.16.1 下即使在 onLaunch 内
+// 首次求值模块时 getApp() 仍可能返回 undefined，直接读 app.globalData 会抛
+// "Cannot read properties of undefined"。改成惰性取值：首次访问时再调 getApp()。
+let _app = null
+function _getApp() {
+  if (!_app) {
+    const a = getApp()
+    // 防御：即便运行时尚未注册 App，也构造一个空对象保证调用方不报错
+    _app = (a && a.globalData) ? a : { globalData: {} }
+    if (!_app.globalData) _app.globalData = {}
+  }
+  return _app
+}
+// 惰性 globalData 访问
+function gd() {
+  return _getApp().globalData
+}
+// 惰性 API URL 访问
+function API_DEVICE_URL()        { return gd().api_device_Url || '' }
+function API_COWSHEEP_URL()     { return gd().api_cowsheep_Url || '' }
+function API_ROUTE_PLACE_URL()  { return gd().api_route_place_Url || '' }
 
 // ==================== 请求去重：避免同时发出多个相同请求 ====================
 
 // 正在进行的请求回调队列，key 为请求标识
 const _pendingCallbacks = {}
 
+// ==================== 持久化存储：断网兜底 ====================
+// 4 张表（设备/LOT/同步/配置）需要本地持久化：冷启动 + 网络失败时都能使用本地数据
+// 存储 key 命名空间加 cache_ 前缀，避免与其他 storage 项冲突
+const _STORAGE_KEYS = {
+  deviceCache: 'cache_device_list',
+  deviceLotCache: 'cache_device_lot',
+  deviceSyncCache: 'cache_device_sync',
+  deviceConfigCache: 'cache_device_config'
+}
+
+// 从本地存储读缓存（任何异常都返回 null，绝不抛错）
+function _loadFromStorage(storageKey) {
+  try {
+    const v = wx.getStorageSync(storageKey)
+    return v || null
+  } catch (e) {
+    console.error('[data-cache] 读取本地缓存失败:', storageKey, e)
+    return null
+  }
+}
+
+// 写入本地存储（任何异常都吞掉，不影响主流程）
+function _saveToStorage(storageKey, data) {
+  try {
+    wx.setStorageSync(storageKey, data)
+  } catch (e) {
+    console.error('[data-cache] 写入本地缓存失败:', storageKey, e)
+  }
+}
+
+// 从本地存储清除指定缓存
+function _removeFromStorage(storageKey) {
+  try {
+    wx.removeStorageSync(storageKey)
+  } catch (e) { /* ignore */ }
+}
+
 /**
  * 通用加载器：有缓存直接回，有进行中的请求则排队，否则发起新请求
  * @param {string} key - 请求唯一标识
- * @param {object} cacheObj - app.globalData 上的缓存字段名
+ * @param {object} cacheObj - globalData 上的缓存字段名
  * @param {function} fetchFn - 发起请求的函数 (successCallback)
  * @param {function} callback - 外部回调
  * @param {boolean} forceRefresh - 是否强制刷新
  */
 function _loadWithDedup(key, cacheObj, fetchFn, callback, forceRefresh) {
-  if (!forceRefresh && app.globalData[cacheObj]) {
-    callback(app.globalData[cacheObj])
+  if (!forceRefresh && gd()[cacheObj]) {
+    callback(gd()[cacheObj])
     return
   }
   if (_pendingCallbacks[key]) {
@@ -49,7 +104,7 @@ function _loadWithDedup(key, cacheObj, fetchFn, callback, forceRefresh) {
 function getDeviceList(callback, forceRefresh) {
   _loadWithDedup('deviceList', 'deviceCache', (done) => {
     wx.request({
-      url: API_DEVICE_URL,
+      url: API_DEVICE_URL(),
       method: 'POST',
       data: { action: 'getDeviceTaleAll', info: { limit: 30, wechatid: getApp().getWechatId() } },
       timeout: 8000,
@@ -68,12 +123,18 @@ function getDeviceList(callback, forceRefresh) {
         const deviceIdOptions = Array.from(idSet).sort()
         deviceIdOptions.unshift('未连接')
         const cachedData = { recordList, deviceIdOptions, deviceBindMap: bindMap }
-        app.globalData.deviceCache = cachedData
+        gd().deviceCache = cachedData
+        // 持久化到本地（断网时使用）
+        _saveToStorage(_STORAGE_KEYS.deviceCache, cachedData)
         done(cachedData)
       },
       fail: (err) => {
         console.error('获取设备列表失败:', err)
-        done(app.globalData.deviceCache || null)
+        // 断网兜底：内存为空时尝试从本地存储恢复
+        if (!gd().deviceCache) {
+          gd().deviceCache = _loadFromStorage(_STORAGE_KEYS.deviceCache)
+        }
+        done(gd().deviceCache || null)
       }
     })
   }, callback, forceRefresh)
@@ -141,7 +202,7 @@ function _parseDeviceRecords(data) {
 function getLivestockList(callback, forceRefresh) {
   _loadWithDedup('livestockList', 'livestockCache', (done) => {
     wx.request({
-      url: API_COWSHEEP_URL,
+      url: API_COWSHEEP_URL(),
       method: 'POST',
       data: { action: 'getLivestockList', info: { wechatid: getApp().getWechatId() } },
       timeout: 8000,
@@ -175,12 +236,12 @@ function getLivestockList(callback, forceRefresh) {
         }
         const names = list.map(item => item.name)
         const cachedData = { livestockList: list, livestockNames: names }
-        app.globalData.livestockCache = cachedData
+        gd().livestockCache = cachedData
         done(cachedData)
       },
       fail: (err) => {
         console.error('获取牛羊列表失败:', err)
-        done(app.globalData.livestockCache || null)
+        done(gd().livestockCache || null)
       }
     })
   }, callback, forceRefresh)
@@ -203,9 +264,9 @@ function refreshLivestockList(callback) {
 function getDeviceLotRefresh(callback, forceRefresh) {
   _loadWithDedup('deviceLot', 'deviceLotCache', (done) => {
     wx.request({
-      url: API_DEVICE_URL,
+      url: API_DEVICE_URL(),
       method: 'POST',
-      data: { action: 'getDeviceLotRefreshAll' , info: {
+      data: { action: 'getDeviceGpsAll' , info: {
         limit: 30,
         wechatid: getApp().getWechatId()
       }},
@@ -213,12 +274,18 @@ function getDeviceLotRefresh(callback, forceRefresh) {
       success: (res) => {
         const lotList = _parseDeviceLotRecords(res.data)
         const cachedData = { lotList }
-        app.globalData.deviceLotCache = cachedData
+        gd().deviceLotCache = cachedData
+        // 持久化到本地（断网时使用）
+        _saveToStorage(_STORAGE_KEYS.deviceLotCache, cachedData)
         done(cachedData)
       },
       fail: (err) => {
         console.error('获取设备LOT最新数据失败:', err)
-        done(app.globalData.deviceLotCache || null)
+        // 断网兜底：内存为空时尝试从本地存储恢复
+        if (!gd().deviceLotCache) {
+          gd().deviceLotCache = _loadFromStorage(_STORAGE_KEYS.deviceLotCache)
+        }
+        done(gd().deviceLotCache || null)
       }
     })
   }, callback, forceRefresh)
@@ -278,19 +345,25 @@ function refreshDeviceLotRefresh(callback) {
 function getDeviceSyncAll(callback, forceRefresh) {
   _loadWithDedup('deviceSync', 'deviceSyncCache', (done) => {
     wx.request({
-      url: API_DEVICE_URL,
+      url: API_DEVICE_URL(),
       method: 'POST',
       data: { action: 'getDevicesyncAll', info: { limit: 30, wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const syncMap = _parseDeviceSyncRecords(res.data)
         const cachedData = { syncMap }
-        app.globalData.deviceSyncCache = cachedData
+        gd().deviceSyncCache = cachedData
+        // 持久化到本地（断网时使用）
+        _saveToStorage(_STORAGE_KEYS.deviceSyncCache, cachedData)
         done(cachedData)
       },
       fail: (err) => {
         console.error('获取设备同步时间失败:', err)
-        done(app.globalData.deviceSyncCache || { syncMap: {} })
+        // 断网兜底：内存为空时尝试从本地存储恢复
+        if (!gd().deviceSyncCache) {
+          gd().deviceSyncCache = _loadFromStorage(_STORAGE_KEYS.deviceSyncCache)
+        }
+        done(gd().deviceSyncCache || { syncMap: {} })
       }
     })
   }, callback, forceRefresh)
@@ -351,27 +424,86 @@ function refreshDeviceSyncAll(callback) {
 function getDeviceConfigAll(callback, forceRefresh) {
   _loadWithDedup('deviceConfig', 'deviceConfigCache', (done) => {
     wx.request({
-      url: API_DEVICE_URL,
+      url: API_DEVICE_URL(),
       method: 'POST',
       data: { action: 'getDeviceConfigAll', info: { wechatid: getApp().getWechatId() } },
       timeout: 8000,
       success: (res) => {
         const configMap = _parseDeviceConfigRecords(res.data)
         const cachedData = { configMap }
-        app.globalData.deviceConfigCache = cachedData
+        gd().deviceConfigCache = cachedData
+        // 持久化到本地（断网时使用）
+        _saveToStorage(_STORAGE_KEYS.deviceConfigCache, cachedData)
         done(cachedData)
       },
       fail: (err) => {
         console.error('获取设备配置失败:', err)
-        done(app.globalData.deviceConfigCache || { configMap: {} })
+        // 断网兜底：内存为空时尝试从本地存储恢复
+        if (!gd().deviceConfigCache) {
+          gd().deviceConfigCache = _loadFromStorage(_STORAGE_KEYS.deviceConfigCache)
+        }
+        done(gd().deviceConfigCache || { configMap: {} })
       }
     })
   }, callback, forceRefresh)
 }
 
-// 解析设备配置记录，提取上报周期（分钟）
-// lorastr格式: 6|v4-16|30,0M,38|1.0|4.2|18
-// 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间
+// 解析设备配置 lorastr 第3段(按|分)再按,分：上报周期,开机时间,GPS工作时间[,主周期]
+// 返回 { reportInterval, mainPeriodMin, isDormant, powerOnTime, powerWin, gpsWin }
+//   reportInterval - 上报周期(分钟)，未配置或解析失败默认 30
+//   mainPeriodMin  - 主周期(分钟，参数 1-10 → 10-100分钟)，未配置=0
+//   isDormant      - 当前时间是否在开机时间窗口之外（用于设备列表的颜色判断）
+//   powerOnTime    - 开机时间窗口的格式化字符串（如 "08:00 ~ 18:00"），未配置='-'
+//   powerWin       - 开机时间窗口 { start, end }（小时 0-23），未配置=null
+//   gpsWin         - GPS工作时间窗口 { start, end }（小时 0-23），未配置=null
+function _parseDeviceConfigFull(configLorastr) {
+  // reportInterval 默认 30 分钟，兼容未配置或解析失败时的旧 fallback 行为（设备列表页用此推算下次预计时间）
+  const result = { reportInterval: 30, mainPeriodMin: 0, isDormant: false, powerOnTime: '-', powerWin: null, gpsWin: null }
+  if (!configLorastr) return result
+
+  const parts = configLorastr.split('|')
+  if (parts.length < 3 || !parts[2]) return result
+
+  const configParts = parts[2].split(',')
+  if (configParts.length < 1) return result
+
+  // 上报周期（分钟），第3段第1项（工作时段内GPS按此周期上报）
+  const intervalNum = parseInt(configParts[0].trim(), 10)
+  if (intervalNum > 0) result.reportInterval = intervalNum
+
+  // 主周期（分钟），第3段第4项：参数 1-10 = 10-100分钟（不在工作时段时使用）
+  if (configParts.length >= 4) {
+    const mainNum = parseInt(configParts[3].trim(), 10)
+    if (!isNaN(mainNum) && mainNum >= 1 && mainNum <= 10) result.mainPeriodMin = mainNum * 10
+  }
+
+  if (configParts.length < 2 || !configParts[1]) return result
+
+  const powerRaw = configParts[1].trim()
+  result.powerOnTime = timeWindowCodec.formatTimeRange(powerRaw)
+
+  // 开机时间窗口：区间内=活跃，区间外=休眠
+  const win = timeWindowCodec.parseTimeWindow(powerRaw)
+  if (!win) return result
+  result.powerWin = { start: win.start, end: win.end }
+
+  // GPS工作时间窗口：仅作信息展示，不参与倒计时/工作期判断
+  if (configParts.length >= 3 && configParts[2]) {
+    const gpsWin = timeWindowCodec.parseTimeWindow(configParts[2].trim())
+    if (gpsWin) result.gpsWin = { start: gpsWin.start, end: gpsWin.end }
+  }
+
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const startMinutes = win.start * 60
+  // end=23 代表 23:59
+  const endMinutes = win.end === 23 ? 23 * 60 + 59 : win.end * 60
+  result.isDormant = currentMinutes < startMinutes || currentMinutes >= endMinutes
+  return result
+}
+
+// 解析设备配置记录，返回 deviceId → { lorastr, reportInterval, mainPeriodMin, isDormant, powerOnTime, powerWin, gpsWin }
+// 该结构既供 device.js 设备列表使用，也供 dtu-cmd / relay-dtu-cmd 弹框预填使用
 function _parseDeviceConfigRecords(data) {
   let rawList = []
   if (data && data.data && Array.isArray(data.data)) {
@@ -392,18 +524,10 @@ function _parseDeviceConfigRecords(data) {
     const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || ''
     if (!deviceId) return
     const configLorastr = attr.lorastr || record.lorastr || ''
-    let reportInterval = null
-    if (configLorastr) {
-      const parts = configLorastr.split('|')
-      if (parts.length >= 3 && parts[2]) {
-        const configParts = parts[2].split(',')
-        if (configParts.length >= 1) {
-          const num = parseInt(configParts[0].trim(), 10)
-          if (!isNaN(num) && num > 0) reportInterval = num
-        }
-      }
-    }
-    map[deviceId] = { lorastr: configLorastr, reportInterval }
+    const parsed = _parseDeviceConfigFull(configLorastr)
+    map[deviceId] = Object.assign({
+      lorastr: configLorastr
+    }, parsed)
   })
   return map
 }
@@ -415,10 +539,10 @@ function refreshDeviceConfigAll(callback) {
 /**
  * 从缓存中取指定设备的配置（网络数据未返回前用于预显示）
  * @param {string} deviceId - 设备ID
- * @returns {object|null} configMap 中的 { lorastr, reportInterval }，无缓存时返回 null
+ * @returns {object|null} configMap 中的 { lorastr, reportInterval, mainPeriodMin, isDormant, powerOnTime, powerWin, gpsWin }，无缓存时返回 null
  */
 function getCachedDeviceConfig(deviceId) {
-  const cache = app.globalData.deviceConfigCache
+  const cache = gd().deviceConfigCache
   if (cache && cache.configMap && deviceId && cache.configMap[deviceId]) {
     return cache.configMap[deviceId]
   }
@@ -552,27 +676,27 @@ function _isToday(timestamp) {
  */
 function getRoadListFromCache(callback, forceRefresh) {
   // 缓存有效（有数据 + 是今天）且非强制刷新
-  if (!forceRefresh && app.globalData.roadCache && _isToday(app.globalData.roadCacheTime)) {
-    callback(app.globalData.roadCache)
+  if (!forceRefresh && gd().roadCache && _isToday(gd().roadCacheTime)) {
+    callback(gd().roadCache)
     return
   }
 
   wx.request({
-    url: API_ROUTE_PLACE_URL,
+    url: API_ROUTE_PLACE_URL(),
     method: 'POST',
     data: { action: 'getroutetableall', info: { wechatid: getApp().getWechatId() } },
     success: (res) => {
       console.log('[道路缓存] 网络请求返回:', JSON.stringify(res.data))
       const roadList = _parseRoadRecords(res.data)
       const cachedData = { roadList }
-      app.globalData.roadCache = cachedData
-      app.globalData.roadCacheTime = Date.now()
+      gd().roadCache = cachedData
+      gd().roadCacheTime = Date.now()
       callback(cachedData)
     },
     fail: (err) => {
       console.error('[道路缓存] 获取失败:', err)
-      if (app.globalData.roadCache) {
-        callback(app.globalData.roadCache)
+      if (gd().roadCache) {
+        callback(gd().roadCache)
       } else {
         callback({ roadList: [] })
       }
@@ -619,8 +743,8 @@ function refreshRoadList(callback) {
  * 清除道路缓存
  */
 function clearRoadCache() {
-  app.globalData.roadCache = null
-  app.globalData.roadCacheTime = null
+  gd().roadCache = null
+  gd().roadCacheTime = null
 }
 
 // ==================== 地名列表缓存（按天：一天只请求一次网络） ====================
@@ -632,27 +756,27 @@ function clearRoadCache() {
  * @param {boolean} forceRefresh - 是否强制刷新
  */
 function getPlaceListFromCache(callback, forceRefresh) {
-  if (!forceRefresh && app.globalData.placeCache && _isToday(app.globalData.placeCacheTime)) {
-    callback(app.globalData.placeCache)
+  if (!forceRefresh && gd().placeCache && _isToday(gd().placeCacheTime)) {
+    callback(gd().placeCache)
     return
   }
 
   wx.request({
-    url: API_ROUTE_PLACE_URL,
+    url: API_ROUTE_PLACE_URL(),
     method: 'POST',
     data: { action: 'getplacetableall', info: { wechatid: getApp().getWechatId() } },
     success: (res) => {
       console.log('[地名缓存] 网络请求返回:', JSON.stringify(res.data))
       const placeList = _parsePlaceRecords(res.data)
       const cachedData = { placeList }
-      app.globalData.placeCache = cachedData
-      app.globalData.placeCacheTime = Date.now()
+      gd().placeCache = cachedData
+      gd().placeCacheTime = Date.now()
       callback(cachedData)
     },
     fail: (err) => {
       console.error('[地名缓存] 获取失败:', err)
-      if (app.globalData.placeCache) {
-        callback(app.globalData.placeCache)
+      if (gd().placeCache) {
+        callback(gd().placeCache)
       } else {
         callback({ placeList: [] })
       }
@@ -699,8 +823,8 @@ function refreshPlaceList(callback) {
  * 清除地名缓存
  */
 function clearPlaceCache() {
-  app.globalData.placeCache = null
-  app.globalData.placeCacheTime = null
+  gd().placeCache = null
+  gd().placeCacheTime = null
 }
 
 // ==================== 首页选中设备缓存（持久化，每天打开首页恢复上次选择的设备） ====================
@@ -738,14 +862,32 @@ function setHomeSelectedDevice(deviceId) {
  * 清除所有缓存（一般不需要手动调用）
  */
 function clearCache() {
-  app.globalData.deviceCache = null
-  app.globalData.livestockCache = null
-  app.globalData.deviceLotCache = null
-  app.globalData.deviceSyncCache = null
-  app.globalData.roadCache = null
-  app.globalData.roadCacheTime = null
-  app.globalData.placeCache = null
-  app.globalData.placeCacheTime = null
+  gd().deviceCache = null
+  gd().livestockCache = null
+  gd().deviceLotCache = null
+  gd().deviceSyncCache = null
+  gd().deviceConfigCache = null
+  gd().roadCache = null
+  gd().roadCacheTime = null
+  gd().placeCache = null
+  gd().placeCacheTime = null
+  // 同时清理持久化存储
+  Object.values(_STORAGE_KEYS).forEach(_removeFromStorage)
+}
+
+/**
+ * App 启动时从本地存储恢复 4 张表的缓存到内存
+ * 仅在内存为空时填充（避免覆盖仍在使用的运行时数据）
+ */
+function restoreFromStorage() {
+  Object.keys(_STORAGE_KEYS).forEach((cacheField) => {
+    if (gd()[cacheField]) return
+    const data = _loadFromStorage(_STORAGE_KEYS[cacheField])
+    if (data) {
+      gd()[cacheField] = data
+      console.log('[data-cache] 从本地恢复缓存:', cacheField)
+    }
+  })
 }
 
 module.exports = {
@@ -772,5 +914,6 @@ module.exports = {
   clearPlaceCache,
   getHomeSelectedDevice,
   setHomeSelectedDevice,
+  restoreFromStorage,
   clearCache
 }

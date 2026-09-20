@@ -1,7 +1,5 @@
 // device.js - 设备管理
-const API_DEVICE_URL = getApp().globalData.api_device_Url
 const dataCache = require('../../config/data-cache.js')
-const timeWindowCodec = require('../../utils/time-window-codec.js')
 
 Page({
   data: {
@@ -81,109 +79,229 @@ Page({
   },
 
   // 点击底部"设备"TAB（已在设备页）：无感刷新设备列表
+  // 只更新 LOT(getDeviceGpsAll) + SYNC(getDevicesyncAll) 两份实时上报数据，
+  // 复用已缓存的设备列表(deviceList)与设备配置(deviceConfigMap)重新合并——不请求 deviceList / config
   // 不弹提示、不显示全局加载，仅在"设备"TAB 上显示转圈，刷新完成后恢复
   onDeviceTabRefresh() {
     this._setDeviceTabSpinning(true)
-    this.fetchDeviceList(true, () => {
+    this._refreshLotAndSyncOnly(() => {
       this._setDeviceTabSpinning(false)
-    }, true)
-  },
-
-  // ========== 获取设备配置（工作时间判断休眠） ==========
-  fetchDeviceConfigAll(forceRefresh, callback) {
-    const that = this
-    wx.request({
-      url: API_DEVICE_URL,
-      method: 'POST',
-      data: {
-        action: 'getDeviceConfigAll',
-        info: { wechatid: getApp().getWechatId() }
-      },
-      success: (res) => {
-        console.log('设备配置All查询返回:', JSON.stringify(res.data))
-        let rawList = []
-        if (res.data && res.data.data && Array.isArray(res.data.data)) {
-          rawList = res.data.data
-        } else if (Array.isArray(res.data)) {
-          rawList = res.data
-        }
-        // 构建 deviceId → { isDormant, powerOnTime } 映射
-        const configMap = {}
-        rawList.forEach(record => {
-          const attr = {}
-          if (record.attributes) {
-            record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
-          }
-          if (record.primaryKey) {
-            record.primaryKey.forEach(item => { attr[item.name] = item.value })
-          }
-          if (record.lorastr) attr.lorastr = record.lorastr
-          const deviceId = attr.deviceId || (record.primaryKey && record.primaryKey.find(p => p.name === 'deviceId') ? record.primaryKey.find(p => p.name === 'deviceId').value : null)
-          if (!deviceId) return
-
-          const configLorastr = attr.lorastr || ''
-          const result = that._checkWorkingHours(configLorastr)
-          configMap[deviceId] = result
-        })
-        that.setData({ deviceConfigMap: configMap })
-        if (callback) callback(configMap)
-      },
-      fail: (err) => {
-        console.error('设备配置All查询失败:', err)
-        if (callback) callback({})
-      }
     })
   },
 
-  // 根据配置lorastr判断当前是否在工作时间内，同时提取上报周期（分钟）与主周期（分钟）
-  // lorastr格式: 6|v4-16|5,0M,38,2|1.0|4.2|18
-  // 第3段(按|分)再按,分: 上报周期,开机时间,GPS工作时间[,主周期]
-  // 上报周期=开机(工作)时间内GPS上报间隔(分钟，如5分钟)；GPS工作时间仅展示，不影响工作期判断
-  // 开机时间/GPS工作时间为两位base62代号（兼容旧格式 "8-6" = 8:00开始持续6小时）
-  // 主周期为第4个参数 1-10（=10-100分钟，参数×10，如2=20分钟）：不在开机时间(非工作时间)时设备按主周期上报
-  _checkWorkingHours(configLorastr) {
-    const result = { isDormant: false, powerOnTime: '-', reportInterval: 30, mainPeriodMin: 0, powerWin: null, gpsWin: null }
-    if (!configLorastr) return result
-
-    const parts = configLorastr.split('|')
-    if (parts.length < 3 || !parts[2]) return result
-
-    const configParts = parts[2].split(',')
-    if (configParts.length < 1) return result
-
-    // 上报周期（分钟），第3段第1项（工作时段内GPS按此周期上报）
-    const intervalNum = parseInt(configParts[0].trim(), 10)
-    if (intervalNum > 0) result.reportInterval = intervalNum
-
-    // 主周期（分钟），第3段第4项：参数 1-10 = 10-100分钟（不在工作时段时使用）
-    if (configParts.length >= 4) {
-      const mainNum = parseInt(configParts[3].trim(), 10)
-      if (!isNaN(mainNum) && mainNum >= 1 && mainNum <= 10) result.mainPeriodMin = mainNum * 10
+  // ========== 获取设备列表（下拉刷新/首屏/新增设备后）：刷新全部 4 个数据源 ==========
+  // silent=true 时强制刷新但不弹"已刷新"提示（用于点击底部"设备"TAB 的无感刷新）
+  fetchDeviceList(forceRefresh, onComplete, silent) {
+    let deviceData, lotData, syncData, configMapData
+    let done = 0
+    const merge = () => {
+      done++
+      if (done < 4) return
+      // 缓存最近一次的全量数据，供底部 TAB 无感刷新复用
+      this._lastDeviceData = deviceData
+      this._lastConfigMap = configMapData
+      this._applyMergedData(lotData, syncData, !!(forceRefresh && !silent), onComplete)
     }
 
-    if (configParts.length < 2 || !configParts[1]) return result
+    dataCache.getDeviceList((data) => { deviceData = data; merge() }, forceRefresh)
+    dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
+    dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, forceRefresh)
+    this.fetchDeviceConfigAll(forceRefresh, (configMap) => { configMapData = configMap; merge() })
+  },
 
-    const powerRaw = configParts[1].trim()
-    result.powerOnTime = timeWindowCodec.formatTimeRange(powerRaw)
+  // ========== 仅刷新 LOT + SYNC（底部"设备"TAB 单击无感刷新） ==========
+  // 复用 _lastDeviceData + _lastConfigMap 重新合并；不弹"已刷新"toast
+  // 若缓存尚未建立（如首屏首次加载时点 TAB），兜底走全量刷新
+  _refreshLotAndSyncOnly(onComplete) {
+    let lotData, syncData
+    let done = 0
+    const merge = () => {
+      done++
+      if (done < 2) return
+      if (!this._lastDeviceData || !this._lastConfigMap) {
+        // 兜底：缓存还没建立 → 回退到全量刷新
+        this.fetchDeviceList(true, onComplete, true)
+        return
+      }
+      this._applyMergedData(lotData, syncData, false, onComplete)
+    }
+    dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, true)
+    dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, true)
+  },
 
-    // 开机时间窗口（仅当天）：区间内=活跃，区间外=休眠（设备休眠颜色判断沿用）
-    const win = timeWindowCodec.parseTimeWindow(powerRaw)
-    if (!win) return result
-    result.powerWin = { start: win.start, end: win.end }
+  // 把 4 类原始数据(deviceList + lot + sync + config)合并成最终 UI 列表的统一入口
+  // 供 fetchDeviceList（下拉刷新/首屏）与 _refreshLotAndSyncOnly（底部 TAB 无感刷新）复用
+  _applyMergedData(lotData, syncData, showToast, onComplete) {
+    const filteredList = this._buildMergedList(
+      this._lastDeviceData,
+      lotData,
+      syncData,
+      this._lastConfigMap
+    )
+    this._allDeviceList = filteredList
+    this._applyCategoryFilter()
+    // 列表就绪后启动倒计时刷新
+    this._startCountdownTimer()
+    if (showToast) {
+      wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
+    }
+    if (onComplete) onComplete()
+  },
 
-    // GPS工作时间窗口（仅当天）：仅作信息展示（详情页"GPS时间"），不参与倒计时/工作期判断
-    if (configParts.length >= 3 && configParts[2]) {
-      const gpsWin = timeWindowCodec.parseTimeWindow(configParts[2].trim())
-      if (gpsWin) result.gpsWin = { start: gpsWin.start, end: gpsWin.end }
+  // 纯函数式：把 4 类原始数据合并为排序+过滤后的设备列表（不含 UI 副作用，可复用）
+  _buildMergedList(deviceData, lotData, syncData, configMapData) {
+    const lotMap = {}
+    if (lotData && lotData.lotList) {
+      lotData.lotList.forEach(rec => {
+        if (rec.deviceId && rec.deviceId !== '-') {
+          if (!lotMap[rec.deviceId]) lotMap[rec.deviceId] = rec
+        }
+      })
     }
 
-    const now = new Date()
-    const currentMinutes = now.getHours() * 60 + now.getMinutes()
-    const startMinutes = win.start * 60
-    // end=23 代表 23:59
-    const endMinutes = win.end === 23 ? 23 * 60 + 59 : win.end * 60
-    result.isDormant = currentMinutes < startMinutes || currentMinutes >= endMinutes
-    return result
+    const syncMap = (syncData && syncData.syncMap) || {}
+
+    const deviceList = (deviceData.recordList || []).map(item => {
+      const lotRec = lotMap[item.deviceId]
+      const syncInfo = syncMap[item.deviceId]
+
+      // —— 最后上报时间：只从「对时/定位」两类来源取（LOT最新表 + 对时同步表），取两者中更晚的一次 ——
+      // LOT表 lorastr 首段为类型编号：1=GPS定位, 2=对时, 5=跟踪（视为定位）
+      let lastTs = NaN            // 最后上报时间戳(ms)
+      let lastRaw = ''            // 最后上报原始时间串
+      let lastType = ''           // 'gps' | 'time' | ''
+
+      if (lotRec && lotRec.rawTime && lotRec.rawTime !== '-') {
+        const ts = new Date(lotRec.rawTime).getTime()
+        if (!isNaN(ts)) {
+          lastTs = ts
+          lastRaw = lotRec.rawTime
+          const typePart = (lotRec.lorastr || '').split('|')[0]
+          if (typePart === '1' || typePart === '5') lastType = 'gps'
+          else if (typePart === '2') lastType = 'time'
+        }
+      }
+      if (syncInfo && syncInfo.rawTime && syncInfo.rawTime !== '-') {
+        const ts = new Date(syncInfo.rawTime).getTime()
+        if (!isNaN(ts) && (isNaN(lastTs) || ts > lastTs)) {
+          lastTs = ts
+          lastRaw = syncInfo.rawTime
+          lastType = 'time'   // 对时同步表记录 = 对时
+        }
+      }
+
+      const hasReport = !isNaN(lastTs)
+      let lastDate = '-'
+      let lastTimePart = ''
+      if (hasReport) {
+        if (lastRaw.includes(' ')) {
+          const seg = lastRaw.split(' ')
+          lastDate = seg[0]
+          lastTimePart = seg[1]
+        } else {
+          lastDate = lastRaw
+        }
+      }
+
+      // 电量仅从同步时间表（device_sync）取，统一归一化为 0~100 显示
+      let battery = ''
+      if (syncInfo && syncInfo.battery) battery = this._formatBatteryPercent(syncInfo.battery)
+
+      // 配置：上报间隔（分钟）来自配置表 lorastr 第3段第1项；配置表无此设备 → 不猜测，按未配置处理
+      const cfg = (configMapData && configMapData[item.deviceId]) || null
+      const isDormant = !!(cfg && cfg.isDormant)
+      const reportIntervalMin = (cfg && cfg.reportInterval && cfg.reportInterval > 0) ? cfg.reportInterval : 0
+      // 主周期（分钟）：配置第3段第4个参数 1-10 = 10-100分钟；不在工作时段时设备按主周期上报
+      const mainPeriodMin = (cfg && cfg.mainPeriodMin && cfg.mainPeriodMin > 0) ? cfg.mainPeriodMin : 0
+      // "工作期"边界：只按设备"开机时间窗口"判断（不使用GPS时间窗口）——
+      // 开机时间内按上报周期(第3段第1项，如5分钟)推算；不在开机时间(非工作时间)按主周期(第4项×10，如20分钟)
+      // 跨时段由每秒定时器动态切换推算周期
+      const cadenceWin = (cfg && cfg.powerWin) || null
+
+      // 倒计时初始状态（进入页面后由定时器每秒刷新文本）
+      // 工作时段内按"上报周期"推算；不在工作时段按"主周期"推算（未配置主周期则回退上报周期）
+      const nowMs = Date.now()
+      const effIntervalMin = this._effectiveIntervalFor({ reportIntervalMin, mainPeriodMin, cadenceWin }, nowMs)
+      const cd = this._buildCountdownState(lastTs, effIntervalMin, nowMs)
+
+      // 信号图标颜色：
+      // 中继设备（有 ProductKey）：不在工作区间 → 灰色
+      // 其它设备（GPS设备）：超过2个上报周期未上报数据 → 灰色
+      const isRelay = !!(item.ProductKey && item.ProductKey !== '-')
+      const signalColor = isRelay
+        ? (isDormant ? '#999999' : '#4caf50')
+        : (cd.overdue ? '#999999' : '#4caf50')
+
+      // 设备名颜色：与信号图标灰色条件一致
+      // 中继设备不在工作区间 → 灰色；其它设备超过2个上报周期未上报 → 灰色；其余黑色
+      const nameColor = signalColor === '#999999' ? '#999999' : ''
+
+      // 离线判定：从未上报 或 超过1个完整上报周期仍未上报（久未上报）
+      // 注：中继设备处于休眠时段属正常现象，不计入离线
+      const isOffline = !hasReport || cd.overdue
+
+      // 注意：不使用对象展开 {...item}，展开会被增强编译转成 require('@babel/runtime/helpers/objectSpread2')
+      // → 其内部 require('./defineProperty') 在小程序运行时会找不到该模块导致页面崩溃，改用 Object.assign 等价实现
+      return Object.assign({}, item, {
+        date: lastDate,
+        time_part: lastTimePart,
+        rawTime: lastRaw,
+        hasReport,
+        lastReportTs: lastTs,
+        reportIntervalMin,
+        mainPeriodMin,
+        cadenceWin,
+        countdownText: cd.text,
+        timeColor: cd.color,
+        timeBgColor: cd.bgColor,
+        nextTimeText: cd.nextText,
+        overdue: cd.overdue,
+        dotColor: cd.color,
+        lastRecordType: lastType,
+        battery,
+        batteryColor: isDormant ? '#999999' : (battery && parseFloat(battery) < 50) ? '#f44336' : '#333',
+        isDormant: isDormant,
+        powerOnTime: (cfg && cfg.powerOnTime) || '-',
+        signalColor: signalColor,
+        nameColor: nameColor,
+        isOffline: isOffline
+      })
+    })
+
+    // 排序：无ProductKey的在前，有ProductKey的排到最后，各自内部按设备ID中"-"后面的序号数字排序
+    deviceList.sort((a, b) => {
+      const hasPK = (item) => !!(item.ProductKey && item.ProductKey !== '-')
+      // 有ProductKey的排后面
+      if (hasPK(a) !== hasPK(b)) return hasPK(a) ? 1 : -1
+      // 同组内按设备ID序号升序
+      const getSeq = (id) => {
+        if (!id) return 0
+        const match = id.match(/-(\d+)$/)
+        return match ? parseInt(match[1], 10) : 0
+      }
+      return getSeq(a.deviceId) - getSeq(b.deviceId)
+    })
+
+    // 根据设置过滤：如果未开启"显示所有设备"，仅显示 visible=true 的设备
+    return this.data.showAllDevices
+      ? deviceList
+      : deviceList.filter(item => item.visible === true)
+  },
+
+  // ========== 获取设备配置（工作时间判断休眠） ==========
+  // 走 dataCache 缓存：forceRefresh=true 强制从网络刷新缓存；否则命中已缓存的 configMap（请求去重，多个页面同时请求只发一次）
+  fetchDeviceConfigAll(forceRefresh, callback) {
+    const that = this
+    const handler = (configData) => {
+      const configMap = (configData && configData.configMap) || {}
+      that.setData({ deviceConfigMap: configMap })
+      if (callback) callback(configMap)
+    }
+    if (forceRefresh) {
+      dataCache.refreshDeviceConfigAll(handler)
+    } else {
+      dataCache.getDeviceConfigAll(handler, false)
+    }
   },
 
   // 当前时间应采用的推算周期（分钟）：
@@ -201,178 +319,6 @@ Page({
     if (inWork) return work
     const main = (item && item.mainPeriodMin > 0) ? item.mainPeriodMin : 0
     return main || work
-  },
-
-  // ========== 获取设备列表 ==========
-  // silent=true 时强制刷新但不弹"已刷新"提示（用于点击底部"设备"TAB 的无感刷新）
-  fetchDeviceList(forceRefresh, onComplete, silent) {
-    let deviceData, livestockData, lotData, syncData, configMapData
-    let done = 0
-    const merge = () => {
-      done++
-      if (done < 5) return
-
-      const nameMap = {}
-      if (livestockData && livestockData.livestockList) {
-        livestockData.livestockList.forEach(item => {
-          if (item.cowsheepId) nameMap[item.cowsheepId] = item.name
-        })
-      }
-
-      const lotMap = {}
-      if (lotData && lotData.lotList) {
-        lotData.lotList.forEach(rec => {
-          if (rec.deviceId && rec.deviceId !== '-') {
-            if (!lotMap[rec.deviceId]) lotMap[rec.deviceId] = rec
-          }
-        })
-      }
-
-      const syncMap = (syncData && syncData.syncMap) || {}
-
-      const deviceList = (deviceData.recordList || []).map(item => {
-        const lotRec = lotMap[item.deviceId]
-        const syncInfo = syncMap[item.deviceId]
-
-        // —— 最后上报时间：只从「对时/定位」两类来源取（LOT最新表 + 对时同步表），取两者中更晚的一次 ——
-        // LOT表 lorastr 首段为类型编号：1=GPS定位, 2=对时, 5=跟踪（视为定位）
-        let lastTs = NaN            // 最后上报时间戳(ms)
-        let lastRaw = ''            // 最后上报原始时间串
-        let lastType = ''           // 'gps' | 'time' | ''
-
-        if (lotRec && lotRec.rawTime && lotRec.rawTime !== '-') {
-          const ts = new Date(lotRec.rawTime).getTime()
-          if (!isNaN(ts)) {
-            lastTs = ts
-            lastRaw = lotRec.rawTime
-            const typePart = (lotRec.lorastr || '').split('|')[0]
-            if (typePart === '1' || typePart === '5') lastType = 'gps'
-            else if (typePart === '2') lastType = 'time'
-          }
-        }
-        if (syncInfo && syncInfo.rawTime && syncInfo.rawTime !== '-') {
-          const ts = new Date(syncInfo.rawTime).getTime()
-          if (!isNaN(ts) && (isNaN(lastTs) || ts > lastTs)) {
-            lastTs = ts
-            lastRaw = syncInfo.rawTime
-            lastType = 'time'   // 对时同步表记录 = 对时
-          }
-        }
-
-        const hasReport = !isNaN(lastTs)
-        let lastDate = '-'
-        let lastTimePart = ''
-        if (hasReport) {
-          if (lastRaw.includes(' ')) {
-            const seg = lastRaw.split(' ')
-            lastDate = seg[0]
-            lastTimePart = seg[1]
-          } else {
-            lastDate = lastRaw
-          }
-        }
-
-        // 电量仅从同步时间表（device_sync）取，统一归一化为 0~100 显示
-        let battery = ''
-        if (syncInfo && syncInfo.battery) battery = this._formatBatteryPercent(syncInfo.battery)
-
-        // 配置：上报间隔（分钟）来自配置表 lorastr 第3段第1项；配置表无此设备 → 不猜测，按未配置处理
-        const cfg = (configMapData && configMapData[item.deviceId]) || null
-        const isDormant = !!(cfg && cfg.isDormant)
-        const reportIntervalMin = (cfg && cfg.reportInterval && cfg.reportInterval > 0) ? cfg.reportInterval : 0
-        // 主周期（分钟）：配置第3段第4个参数 1-10 = 10-100分钟；不在工作时段时设备按主周期上报
-        const mainPeriodMin = (cfg && cfg.mainPeriodMin && cfg.mainPeriodMin > 0) ? cfg.mainPeriodMin : 0
-        // "工作期"边界：只按设备"开机时间窗口"判断（不使用GPS时间窗口）——
-        // 开机时间内按上报周期(第3段第1项，如5分钟)推算；不在开机时间(非工作时间)按主周期(第4项×10，如20分钟)
-        // 跨时段由每秒定时器动态切换推算周期
-        const cadenceWin = (cfg && cfg.powerWin) || null
-
-        // 倒计时初始状态（进入页面后由定时器每秒刷新文本）
-        // 工作时段内按"上报周期"推算；不在工作时段按"主周期"推算（未配置主周期则回退上报周期）
-        const nowMs = Date.now()
-        const effIntervalMin = this._effectiveIntervalFor({ reportIntervalMin, mainPeriodMin, cadenceWin }, nowMs)
-        const cd = this._buildCountdownState(lastTs, effIntervalMin, nowMs)
-
-        // 信号图标颜色：
-        // 中继设备（有 ProductKey）：不在工作区间 → 灰色
-        // 其它设备（GPS设备）：超过2个上报周期未上报数据 → 灰色
-        const isRelay = !!(item.ProductKey && item.ProductKey !== '-')
-        const signalColor = isRelay
-          ? (isDormant ? '#999999' : '#4caf50')
-          : (cd.overdue ? '#999999' : '#4caf50')
-
-        // 设备名颜色：与信号图标灰色条件一致
-        // 中继设备不在工作区间 → 灰色；其它设备超过2个上报周期未上报 → 灰色；其余黑色
-        const nameColor = signalColor === '#999999' ? '#999999' : ''
-
-        // 离线判定：从未上报 或 超过1个完整上报周期仍未上报（久未上报）
-        // 注：中继设备处于休眠时段属正常现象，不计入离线
-        const isOffline = !hasReport || cd.overdue
-
-        // 注意：不使用对象展开 {...item}，展开会被增强编译转成 require('@babel/runtime/helpers/objectSpread2')
-        // → 其内部 require('./defineProperty') 在小程序运行时会找不到该模块导致页面崩溃，改用 Object.assign 等价实现
-        return Object.assign({}, item, {
-          date: lastDate,
-          time_part: lastTimePart,
-          rawTime: lastRaw,
-          bindName: item.link_cowsheep_id ? (nameMap[item.link_cowsheep_id] || item.link_cowsheep_id) : '',
-          hasReport,
-          lastReportTs: lastTs,
-          reportIntervalMin,
-          mainPeriodMin,
-          cadenceWin,
-          countdownText: cd.text,
-          timeColor: cd.color,
-          timeBgColor: cd.bgColor,
-          nextTimeText: cd.nextText,
-          overdue: cd.overdue,
-          dotColor: cd.color,
-          lastRecordType: lastType,
-          battery,
-          batteryColor: isDormant ? '#999999' : (battery && parseFloat(battery) < 50) ? '#f44336' : '#333',
-          isDormant: isDormant,
-          powerOnTime: (cfg && cfg.powerOnTime) || '-',
-          signalColor: signalColor,
-          nameColor: nameColor,
-          isOffline: isOffline
-        })
-      })
-
-      // 排序：无ProductKey的在前，有ProductKey的排到最后，各自内部按设备ID中"-"后面的序号数字排序
-      deviceList.sort((a, b) => {
-        const hasPK = (item) => !!(item.ProductKey && item.ProductKey !== '-')
-        // 有ProductKey的排后面
-        if (hasPK(a) !== hasPK(b)) return hasPK(a) ? 1 : -1
-        // 同组内按设备ID序号升序
-        const getSeq = (id) => {
-          if (!id) return 0
-          const match = id.match(/-(\d+)$/)
-          return match ? parseInt(match[1], 10) : 0
-        }
-        return getSeq(a.deviceId) - getSeq(b.deviceId)
-      })
-
-      // 根据设置过滤：如果未开启"显示所有设备"，仅显示 visible=true 的设备
-      const filteredList = this.data.showAllDevices
-        ? deviceList
-        : deviceList.filter(item => item.visible === true)
-
-      // 保存全量列表（已按设置过滤），再按当前分类筛选后展示
-      this._allDeviceList = filteredList
-      this._applyCategoryFilter()
-      // 列表就绪后启动倒计时刷新
-      this._startCountdownTimer()
-      if (forceRefresh && !silent) {
-        wx.showToast({ title: '已刷新', icon: 'success', duration: 1000 })
-      }
-      if (onComplete) onComplete()
-    }
-
-    dataCache.getDeviceList((data) => { deviceData = data; merge() }, forceRefresh)
-    dataCache.getLivestockList((data) => { livestockData = data; merge() }, forceRefresh)
-    dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
-    dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, forceRefresh)
-    this.fetchDeviceConfigAll(forceRefresh, (configMap) => { configMapData = configMap; merge() })
   },
 
   // 按当前分类筛选并写入展示列表，同时刷新各分类数量
@@ -592,7 +538,7 @@ Page({
     wx.showLoading({ title: '提交中...' })
 
     wx.request({
-      url: API_DEVICE_URL,
+      url: getApp().globalData.api_device_Url,
       method: 'POST',
       data: {
         action: 'addDevice',

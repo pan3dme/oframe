@@ -6,6 +6,14 @@ App({
     console.log("🐂 牛羊GPS小程序运行中1234")
     // 初始化登录状态：读取本地登录记录 + 获取 wx.login code
     this.initLogin()
+    // 恢复 4 张表的本地持久化缓存（设备/LOT/同步/配置），保证冷启动有数据 + 断网时使用本地数据
+    // 使用 require 而非顶部 import：data-cache.js 顶层会调用 getApp()，必须在 App() 注册后才能执行
+    try {
+      const dataCache = require('./config/data-cache.js')
+      dataCache.restoreFromStorage()
+    } catch (e) {
+      console.error('[app] 恢复持久化缓存失败:', e)
+    }
   },
 
   // 初始化登录：读取本地登录记录/自动登录开关到全局，并获取 wx.login 临时凭证 code
