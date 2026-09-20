@@ -1,5 +1,4 @@
 // map.js
-const app = getApp()
 const dataCache = require('../../config/data-cache.js')
 const timeWindowCodec = require('../../utils/time-window-codec.js')
 const { wgs84ToGcj02, parseRoadPoints } = require('../../utils/coord-transform.js')
@@ -25,7 +24,6 @@ Page({
     groundOverlays: []
   },
 
-  _cowMarkers: [],
   _deviceMarkers: [],
   _roadPolylines: [],
   _roadFetched: false,
@@ -33,13 +31,10 @@ Page({
   _placeMarkers: [],
   _fullRoadList: [],
   _fullPlaceList: [],
-  _cowIconPath: '',
   _deviceIconPath: '',
   _deviceGrayIconPath: '',   // 最后定位超过1小时且最近无对时时使用的灰色图标
   _deviceLightGreenIconPath: '', // 最后定位超过1小时但最近1小时内有对时时使用的浅绿色图标
-  _cowIconReady: false,
   _devIconReady: false,
-  _pendingCrowData: null,
   _pendingDeviceArgs: null,
   _deviceLotList: null,      // 最近一次设备LOT原始数据（用于图标老化重算）
   _deviceInfoMap: null,      // 最近一次设备信息映射
@@ -50,7 +45,6 @@ Page({
   onLoad() {
     // 数据请求先发起；图标在 onReady 中绘制，避免 canvas 节点未就绪导致失败
     this.loadMap()
-    this.fetchCrowData()
     this.fetchDeviceLotData()
   },
 
@@ -77,7 +71,6 @@ Page({
   // 不弹全局加载、不清空现有标记点，仅在"地图"TAB 上显示转圈，牛群/设备数据刷新完成后恢复
   onMapTabRefresh() {
     this._setMapTabSpinning(true)
-    let done = 0
     let finished = false
     const finish = () => {
       if (finished) return
@@ -88,20 +81,14 @@ Page({
       }
       this._setMapTabSpinning(false)
     }
-    const onOne = () => {
-      done++
-      if (done >= 2) finish()
-    }
     // 兜底：请求异常/超时也不能让转圈一直停不下来
     if (this._mapRefreshTimer) clearTimeout(this._mapRefreshTimer)
     this._mapRefreshTimer = setTimeout(finish, 15000)
-    this.fetchCrowData(onOne)
-    this.fetchDeviceLotData(onOne)
+    this.fetchDeviceLotData(finish)
   },
 
   onReady() {
     // 页面渲染完成后再绘制 canvas 图标，并刷新已拿到数据的 marker
-    this._generateCowPin()
     this._generateDevPin()
   },
 
@@ -276,87 +263,6 @@ Page({
       this._tileCache = {}
     }
     console.log('[overlay] 清除所有瓦片')
-  },
-
-  // ========== marker 渲染 ==========
-  renderMarkersFromData(recordList) {
-    if (!recordList || recordList.length === 0) {
-      this._cowMarkers = []
-      this._applyAllMarkers()
-      return
-    }
-    // 图标未准备好时先暂存数据，避免用空 iconPath 渲染成默认红点
-    if (!this._cowIconReady) {
-      this._pendingCrowData = recordList
-      return
-    }
-    this._pendingCrowData = null
-    const normalized = recordList.map(item => ({
-      crow_id: item.crow_id || item.crow_idx || '-',
-      crow_idx: item.crow_idx || item.crow_id || '-',
-      gps: item.gps || '-',
-      time: item.time || item.rawTime || '-'
-    }))
-
-    // 构建牛羊名称映射：cowsheepId → name
-    const nameMap = {}
-    const livestockCache = getApp().globalData.livestockCache
-    if (livestockCache && livestockCache.livestockList) {
-      livestockCache.livestockList.forEach(l => {
-        if (l.cowsheepId) nameMap[String(l.cowsheepId)] = l.name
-      })
-    }
-
-    const markers = normalized
-      .filter(item => item.gps !== '-')
-      .map((item, index) => {
-        const parts = item.gps.split(/[｜|]/)
-        if (parts.length < 2) return null
-        const wgsLat = parseFloat(parts[0])
-        const wgsLng = parseFloat(parts[1])
-        if (isNaN(wgsLat) || isNaN(wgsLng)) return null
-        const gcj = wgs84ToGcj02(wgsLng, wgsLat)
-
-        let labelText = nameMap[item.crow_id] || (item.crow_id || item.crow_idx)
-        // if (labelText && labelText.length > 9) {
-        //   labelText = labelText.substring(0, 9) + '...'
-        // }
-
-        return {
-          id: index,
-          latitude: gcj.lat,
-          longitude: gcj.lng,
-          width: 50,
-          height: 28,
-          iconPath: this._cowIconPath || '',
-          title: labelText,
-          callout: {
-            content: labelText + '\nID:' + item.crow_id + '\n更新:' + (item.time || '-'),
-            display: 'BYCLICK',
-            textAlign: 'center',
-            fontSize: 13,
-            padding: 8,
-            borderRadius: 6
-          },
-          label: {
-            content: labelText,
-            color: '#333333',
-            fontSize: 14,
-            bgColor: '#ffffff',
-            borderColor: '#999999',
-            borderWidth: 1,
-            borderRadius: 4,
-            padding: 2,
-            anchorX: 0,
-            anchorY: 0,
-            textAlign: 'left'
-          }
-        }
-      })
-      .filter(item => item !== null)
- 
-    this._cowMarkers = markers
-    this._applyAllMarkers()
   },
 
   // ==================== 设备 LOT 标记点 ====================
@@ -574,11 +480,11 @@ Page({
   // ==================== 合并标记点 ====================
 
   _applyAllMarkers() {
-    const base = [...(this._cowMarkers || []), ...(this._deviceMarkers || [])]
+    const base = [...(this._deviceMarkers || [])]
     const places = this.data.showRoadLayer ? (this._placeMarkers || []) : []
     const activeId = this.data.activeCalloutId
     // 深拷贝并保留稳定 id（牛/设备/地名在各自生成时已分配不冲突 id），
-    // 仅根据 activeCalloutId 控制唯一气泡显隐，避免 id 重排导致“点 A 显 B”
+    // 仅根据 activeCalloutId 控制唯一气泡显隐，避免 id 重排导致"点 A 显 B"
     const all = [...base, ...places].map(m => {
       const clone = { ...m }
       if (m.callout) {
@@ -592,59 +498,6 @@ Page({
 
     console.log('[地图] 合并标记点总数:', all.length)
     this.setData({ markers: all, currentMarker: -1 })
-  },
-
-  fetchCrowData(onComplete) {
-    const crowAllData = {
-      time: new Date().toLocaleString(),
-      action: "getCowTableAll",
-      info: { wechatid: getApp().getWechatId() }
-    }
-    console.log('地图页 POST发送数据:', crowAllData)
-    wx.request({
-      url: app.globalData.api_cowsheep_Url,
-      method: 'POST',
-      data: crowAllData,
-      timeout: 10000,
-      success: (res) => {
-        const data = res.data
-        console.log('地图页返回原始数据:', JSON.stringify(data))
-        let rawList = []
-        if (data && data.data && Array.isArray(data.data)) {
-          rawList = data.data
-        } else if (Array.isArray(data)) {
-          rawList = data
-        }
-        const recordList = rawList.map(record => {
-          const attr = {}
-          if (record.attributes) {
-            record.attributes.forEach(item => {
-              attr[item.columnName] = item.columnValue
-            })
-          }
-          if (record.primaryKey) {
-            record.primaryKey.forEach(item => {
-              attr[item.name] = item.value
-            })
-          }
-          const crow_id = attr.crowid || record.crowid || record.crow_id || record.crowId || record.crow_idx || '-'
-          const crow_idx = attr.crow_idx || record.crow_idx || crow_id
-          const gps = attr.gps || record.gps || '-'
-          const time = attr.time || record.time || '-'
-          return { crow_id, crow_idx, gps, time }
-        })
-        console.log('地图页最终 recordList:', JSON.stringify(recordList))
-        this.renderMarkersFromData(recordList)
-        wx.hideLoading()
-        if (onComplete) onComplete()
-      },
-      fail: (err) => {
-        console.error('地图页请求牛群数据失败:', JSON.stringify(err))
-        wx.hideLoading()
-        wx.showToast({ title: '牛群数据加载失败', icon: 'none' })
-        if (onComplete) onComplete()
-      }
-    })
   },
 
   loadMap() {
@@ -688,13 +541,10 @@ Page({
   },
 
   onToolBtn2() {
-    this._cowMarkers = []
     this._deviceMarkers = []
-    this._pendingCrowData = null
     this._pendingDeviceArgs = null
     this.setData({ markers: [] })
     wx.showLoading({ title: '刷新中...' })
-    this.fetchCrowData()
     this.fetchDeviceLotData()
   },
 
@@ -933,30 +783,6 @@ Page({
     const lng = parseFloat(parts[1])
     if (isNaN(lat) || isNaN(lng)) return null
     return { lat, lng }
-  },
-
-  /**
-   * 用 Canvas 绘制牛群定位图钉图标（蓝色），固定路径，每次覆盖不累积
-   */
-  _generateCowPin() {
-    const that = this
-    const targetPath = (wx.env.USER_DATA_PATH || '') + '/cow_pin.png'
-    this._drawPin('#cowPinCanvas', '#2979FF', '#0D47A1', targetPath, (filePath) => {
-      that._cowIconPath = filePath
-      that._cowIconReady = true
-      // 如果牛群数据先返回、图标后生成，在这里补渲染
-      if (that._pendingCrowData) {
-        const list = that._pendingCrowData
-        that._pendingCrowData = null
-        that.renderMarkersFromData(list)
-        return
-      }
-      // 兜底：已生成的标记点 iconPath 为空时补上
-      if ((that._cowMarkers || []).length > 0) {
-        that._cowMarkers.forEach(m => { m.iconPath = that._cowIconPath })
-        that._applyAllMarkers()
-      }
-    })
   },
 
   /**

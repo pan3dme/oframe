@@ -14,25 +14,25 @@ Component({
     list: [
       {
         pagePath: '/pages/index/index',
-        text: '首页',
+        text: '设备详情',
         icon: '/images/tab_home.png',
         activeIcon: '/images/tab_home_active.png'
       },
       {
         pagePath: '/pages/device/device',
-        text: '设备',
+        text: '设备列表',
         icon: '/images/tab_device.png',
         activeIcon: '/images/tab_device_active.png'
       },
       {
         pagePath: '/pages/features/features',
-        text: '功能',
+        text: '功能列表',
         icon: '/images/tab_features.png',
         activeIcon: '/images/tab_features_active.png'
       },
       {
         pagePath: '/pages/map/map',
-        text: '地图',
+        text: '地图中心',
         icon: '/images/tab_map.png',
         activeIcon: '/images/tab_map_active.png'
       }
