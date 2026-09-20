@@ -611,11 +611,36 @@ Page({
   },
 
   // ========== 点击设备：缓存选中并切回首页展示（与首页一致，不再进 device-detail 子页） ==========
+  // 副作用：清空"地图中心选中设备"的高亮/气泡——
+  //   · 设备列表本身不应再有"选择设备"高亮
+  //   · 地图页之前展开的设备气泡也要收起（即使地图页不在前台也要清掉内部状态，
+  //     避免下次切回地图时残留气泡；地名气泡不受影响）
   onTapDevice(e) {
     const deviceId = e.currentTarget.dataset.deviceid
     if (!deviceId) return
 
-    // 缓存选中的设备，首页每次展示都恢复该设备的首页样式详情
+    // —— 1) 取消"地图中心选中设备"高亮/气泡 ——
+    // 同步两步：
+    //   ① 清 dataCache（地图页下次 onShow 会读到空值，不再高亮/不再展开 callout）
+    //   ② 清本设备的 selectedDeviceId 并重算一次分类过滤（deviceList 中 selected 字段立刻刷新，
+    //      避免定时器下个 tick 之前还能看到残留高亮）
+    //   ③ 直接调地图页实例的 _hideDeviceCallout() 立即收起当前展开的设备气泡
+    dataCache.setMapSelectedDevice('')
+    if (this.data.selectedDeviceId) {
+      this.setData({ selectedDeviceId: '' })
+      this._applyCategoryFilter()
+    }
+    // tabBar 页面始终在 pages 栈里，直接拿到 map 实例调用收起气泡的方法
+    const pages = getCurrentPages() || []
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i]
+      if (p && p.route === 'pages/map/map' && typeof p._hideDeviceCallout === 'function') {
+        p._hideDeviceCallout()
+        break
+      }
+    }
+
+    // —— 2) 缓存选中的设备，首页每次展示都恢复该设备的首页样式详情 ——
     dataCache.setHomeSelectedDevice(deviceId)
     wx.switchTab({
       url: '/pages/index/index',

@@ -679,6 +679,21 @@ Page({
     })
   },
 
+  // 设备列表页 onTapDevice 触发：取消"地图中心选中设备"高亮 + 收起地图页设备气泡
+  // 与 onCalloutTap 的区别：本方法不传 deviceId，只按 marker id 识别是否是设备气泡
+  // 即使地图页此刻不在前台，也会同步清掉内部 activeCalloutId，避免下次切回时残留气泡
+  _hideDeviceCallout() {
+    const cur = this.data.activeCalloutId
+    if (cur === -1) return
+    // 只清"设备气泡"——若当前展开的是地名气泡则不动，避免误清地名提示
+    const isDevice = (this._deviceMarkers || []).some(m => m.id === cur)
+    if (!isDevice) return
+    this._lastCalloutHideTs = Date.now()
+    this.setData({ activeCalloutId: -1 }, () => {
+      this._applyAllMarkers()
+    })
+  },
+
   toggleMapType() {
     // 切换腾讯卫星图/标准地图
     const next = !this.data.isSatellite
