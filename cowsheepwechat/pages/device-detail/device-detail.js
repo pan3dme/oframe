@@ -2,6 +2,7 @@
 const API_URL = getApp().globalData.api_device_Url
 const API_COWSHEEP_URL = getApp().globalData.api_cowsheep_Url
 const dataCache = require('../../config/data-cache.js')
+const bleManager = require('../../utils/ble-manager.js')
 const batterySwap = require('../../config/battery-swap.js')
 const reportIntervalCheck = require('../../config/report-interval.js')
 const { compressImage } = require('../../utils/image-compress.js')
@@ -639,10 +640,152 @@ Page({
       },
       fail: (err) => {
         console.error('设备轨迹查询失败:', err)
-        this.setData({ isLoadingMore: false, isRefreshing: false })
+        if (offset > 0) {
+          // 加载更多失败：仅关闭加载状态，保留已展示内容
+          this.setData({ isLoadingMore: false, isRefreshing: false })
+          if (callback) callback()
+          return
+        }
+        // 断网兜底：网络不可用时用本地缓存拼出记录列表
+        //   LOT表(getDeviceGpsAll)缓存 + 对时表缓存 + 蓝牙缓存(已收到未上传)
+        const offlineRecords = this._buildOfflineRecords()
+        this.setData({
+          recordList: offlineRecords,
+          recordOffset: offlineRecords.length,
+          hasMore: false,
+          isLoadingMore: false,
+          isRefreshing: false,
+          showRecordTable: offlineRecords.length > 0
+        })
+        if (offlineRecords.length > 0) {
+          wx.showToast({ title: '网络不可用，已显示缓存数据', icon: 'none', duration: 2000 })
+        }
         if (callback) callback()
       }
     })
+  },
+
+  // 断网兜底：用本地缓存构造记录列表（时间倒序，应用当前类型筛选）
+  //   1) LOT 表(getDeviceGpsAll)缓存中该设备的最新一条定位记录
+  //   2) 对时表(device_sync)缓存中该设备的对时记录
+  //   3) 蓝牙缓存中该设备"已收到但尚未上传"的记录
+  _buildOfflineRecords() {
+    const deviceId = this.data.deviceId
+    if (!deviceId) return []
+    const srcList = []
+
+    // 1) LOT 表缓存：最近一条定位记录
+    const lotRec = dataCache.getCachedDeviceLotRecord(deviceId)
+    if (lotRec && lotRec.lorastr) {
+      srcList.push({
+        deviceId,
+        lorastr: lotRec.lorastr,
+        rawTime: lotRec.rawTime || '',
+        upDateDevice: '',
+        rssi: '',
+        snr: ''
+      })
+    }
+
+    // 2) 对时表缓存：该设备的对时记录
+    const syncRec = dataCache.getCachedDeviceSyncRecord(deviceId)
+    if (syncRec && syncRec.lorastr) {
+      srcList.push({
+        deviceId,
+        lorastr: syncRec.lorastr,
+        rawTime: syncRec.rawTime || '',
+        upDateDevice: syncRec.upDateDevice || '',
+        rssi: syncRec.rssi,
+        snr: syncRec.snr
+      })
+    }
+
+    // 3) 蓝牙缓存：已接收但尚未上传的记录（可能有多条）
+    const btRecords = bleManager.getCachedRecords(deviceId) || []
+    btRecords.forEach(rec => {
+      srcList.push({
+        deviceId: rec.deviceId || deviceId,
+        lorastr: rec.lorastr,
+        rawTime: rec.rawTime || '',
+        upDateDevice: rec.upDateDevice || '',
+        rssi: rec.rssi,
+        snr: rec.snr
+      })
+    })
+
+    // 去重：同时间 + 同 LORA 视为同一条（避免对时表与蓝牙缓存重复展示）
+    const seen = {}
+    const items = []
+    let idx = 0
+    srcList.forEach(src => {
+      const dedupKey = (src.rawTime || '') + '|' + (src.lorastr || '')
+      if (seen[dedupKey]) return
+      seen[dedupKey] = true
+      items.push(this._buildCacheRecordItem(src, idx++))
+    })
+
+    // 类型筛选（0=全部 1=定位 2=对时），与在线记录筛选保持一致
+    const type = this.data.recordType
+    const filtered = type === 0 ? items : items.filter(it => String(it.msgType) === String(type))
+
+    // 时间倒序（最新在前）
+    filtered.sort((a, b) => {
+      const ta = new Date(a.rawTime).getTime()
+      const tb = new Date(b.rawTime).getTime()
+      if (isNaN(ta) && isNaN(tb)) return 0
+      if (isNaN(ta)) return 1
+      if (isNaN(tb)) return -1
+      return tb - ta
+    })
+    return filtered
+  },
+
+  // 由缓存来源构造记录项（结构、显示文本、颜色与 _parseRecords 输出保持一致）
+  _buildCacheRecordItem(src, idx) {
+    const lorastr = (src.lorastr && src.lorastr !== '') ? src.lorastr : '-'
+    const rawTime = src.rawTime || '-'
+    const upDateDevice = src.upDateDevice || '-'
+    const upDateDeviceAlias = (this._deviceRenameMap && this._deviceRenameMap[upDateDevice]) || ''
+
+    let msgType = '-'
+    if (lorastr && lorastr !== '-') {
+      msgType = String(lorastr).split('|')[0] || '-'
+    }
+
+    // rssi/snr 为空时尝试从 lorastr 末尾段提取（与 _parseRecords 一致）
+    let rssi = (src.rssi !== undefined && src.rssi !== null) ? String(src.rssi) : ''
+    let snr = (src.snr !== undefined && src.snr !== null) ? String(src.snr) : ''
+    if (lorastr && lorastr !== '-') {
+      const parts = String(lorastr).split('|')
+      if (parts.length >= 2) {
+        const lastPart = parts[parts.length - 1]
+        const secLastPart = parts[parts.length - 2]
+        if (rssi === '' && /^-?\d+$/.test(lastPart)) rssi = lastPart
+        if (snr === '' && /^-?\d+(\.\d+)?$/.test(secLastPart)) snr = secLastPart
+      }
+    }
+
+    const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
+    const displayLorastr = (this.data.showConverted && (msgType === '2' || msgType === '6'))
+      ? this._buildDisplayLorastr(lorastr, msgType)
+      : lorastr
+
+    return {
+      _key: 'offline_' + idx + '_' + rawTime,
+      deviceId: src.deviceId || this.data.deviceId,
+      upDateDevice,
+      upDateDeviceAlias,
+      lorastr,
+      displayLorastr,
+      msgType,
+      rssi,
+      snr,
+      date: date || '-',
+      time_part: time_part || '',
+      rawTime,
+      bgColor: this._devicePastel(upDateDevice),
+      deviceColor: this._deviceColor(upDateDevice)
+    }
   },
 
   // 下拉刷新

@@ -411,6 +411,9 @@ function _parseDeviceSyncRecords(data) {
     }
     const deviceId = attr.deviceId || attr.deviceid || ''
     const rawTime = attr.time || record.time || '-'
+    const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
+    const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : '')
+    const snr = attr.snr != null ? attr.snr : (record.snr != null ? record.snr : '')
     // 电量从 lorastr 中提取（第4段，索引3），如 "2|v3-18|2026/8/10 23:13:33|1.0|4.2|0" 中 1.0
     let battery = ''
     const lorastr = attr.lorastr || record.lorastr || ''
@@ -423,7 +426,8 @@ function _parseDeviceSyncRecords(data) {
       const newTime = new Date(rawTime).getTime()
       if (!existing || (newTime > new Date(existing.rawTime || '').getTime())) {
         const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-        map[deviceId] = { rawTime, date: date || '-', time_part: time_part || '', battery }
+        // lorastr 一并保留：设备记录页断网兜底时需要用原始 LORA 数据渲染这条对时记录
+        map[deviceId] = { rawTime, date: date || '-', time_part: time_part || '', battery, lorastr, upDateDevice, rssi, snr }
       }
     }
   })
@@ -432,6 +436,37 @@ function _parseDeviceSyncRecords(data) {
 
 function refreshDeviceSyncAll(callback) {
   getDeviceSyncAll(callback, true)
+}
+
+// ==================== 断网兜底：读取单设备缓存记录（LOT表 / 对时表） ====================
+// 设备记录页断网时，用这两条缓存 + 蓝牙缓存拼出记录列表。
+// 内存缓存优先，内存为空时回退本地存储（App 启动已 restoreFromStorage，此处再兜一层）
+
+/**
+ * 取指定设备的 LOT 表（getDeviceGpsAll）缓存记录——即最近一条定位记录
+ * @param {string} deviceId
+ * @returns {object|null} { deviceId, lorastr, gps, rawTime, date, time_part } 或 null
+ */
+function getCachedDeviceLotRecord(deviceId) {
+  if (!deviceId) return null
+  let cache = gd().deviceLotCache
+  if (!cache || !cache.lotList) cache = _loadFromStorage(_STORAGE_KEYS.deviceLotCache)
+  const list = (cache && cache.lotList) || []
+  // lotList 已按时间倒序，find 到的第一条即最新记录
+  return list.find(v => v.deviceId === deviceId) || null
+}
+
+/**
+ * 取指定设备的对时表（device_sync）缓存记录
+ * @param {string} deviceId
+ * @returns {object|null} { rawTime, date, time_part, battery, lorastr, upDateDevice, rssi, snr } 或 null
+ */
+function getCachedDeviceSyncRecord(deviceId) {
+  if (!deviceId) return null
+  let cache = gd().deviceSyncCache
+  if (!cache || !cache.syncMap) cache = _loadFromStorage(_STORAGE_KEYS.deviceSyncCache)
+  const map = (cache && cache.syncMap) || {}
+  return map[deviceId] || null
 }
 
 // ==================== 设备配置缓存 ====================
@@ -950,8 +985,10 @@ module.exports = {
   refreshLivestockList,
   getDeviceLotRefresh,
   refreshDeviceLotRefresh,
+  getCachedDeviceLotRecord,
   getDeviceSyncAll,
   refreshDeviceSyncAll,
+  getCachedDeviceSyncRecord,
   getDeviceConfigAll,
   refreshDeviceConfigAll,
   getCachedDeviceConfig,

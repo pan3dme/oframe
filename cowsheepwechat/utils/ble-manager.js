@@ -720,6 +720,60 @@ function _parseCacheRecordTime(raw) {
   return { deviceId, ts, rawTime, type }
 }
 
+// ========== 供外部读取：本地蓝牙缓存记录（按设备过滤） ==========
+// 用途：设备记录页断网时，把"已通过蓝牙收到、但尚未上传服务器"的记录与
+// 设备GPS表/对时记录合并展示（按时间排序）。
+// 只读取本地缓存，不触发连接/上传等任何副作用；未 init 时先从本地存储补读一次。
+// @param {string} [deviceId] - 设备ID；不传则返回全部设备的缓存记录
+// @returns {Array<{deviceId:string,lorastr:string,msgType:string,rawTime:string,upDateDevice:string,rssi:string,snr:string}>}
+function getCachedRecords(deviceId) {
+  if (!_inited) loadCache()
+  const out = []
+  const queue = state.cacheQueue || []
+  for (let i = 0; i < queue.length; i++) {
+    const rec = _parseCacheEntry(queue[i])
+    if (!rec) continue
+    if (deviceId && rec.deviceId !== deviceId) continue
+    out.push(rec)
+  }
+  return out
+}
+
+// 解析单条蓝牙缓存记录为完整对象（含 info/时间/信号等）；无法解析出设备或数据时返回 null
+// 缓存条目为 handleBleData 存入的字符串：
+//   1) JSON：{"info":"1|v4-10|lat,lng|...","time":"2026/8/10 23:13:33","upDateDevice":"v4-27","rssi":..,"snr":..}
+//      - 设备ID 取 info 管道格式第2段（与服务器 deviceId 列一致）
+//      - info 缺失时兜底用 upDateDevice（上报/中继设备）
+//   2) 非 JSON（原始管道文本）：无结构化字段，忽略
+function _parseCacheEntry(raw) {
+  if (raw === undefined || raw === null) return null
+  let obj
+  try {
+    obj = JSON.parse(String(raw))
+  } catch (e) {
+    return null
+  }
+  if (!obj || typeof obj !== 'object') return null
+
+  const infoText = obj.info ? String(obj.info) : ''
+  if (!infoText || infoText === '-') return null
+  const seg = infoText.split('|')
+  let deviceId = obj.deviceId || obj.deviceid || ''
+  if (seg.length >= 2 && seg[1]) deviceId = seg[1]
+  if (!deviceId) deviceId = obj.upDateDevice || ''
+  if (!deviceId || deviceId === '-') return null
+
+  return {
+    deviceId,
+    lorastr: infoText,
+    msgType: seg[0] || '-',
+    rawTime: obj.time || '',
+    upDateDevice: obj.upDateDevice || '',
+    rssi: (obj.rssi !== undefined && obj.rssi !== null) ? String(obj.rssi) : '',
+    snr: (obj.snr !== undefined && obj.snr !== null) ? String(obj.snr) : ''
+  }
+}
+
 // ========== 初始化（只执行一次） ==========
 function init() {
   if (_inited) return
@@ -753,6 +807,7 @@ module.exports = {
   processGPSQueue,
   clearCache,
   getLatestRecordByDevice,
+  getCachedRecords,
   resolveDeviceDisplayNames,
   textToAb
 }
