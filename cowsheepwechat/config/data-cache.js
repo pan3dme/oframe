@@ -52,12 +52,15 @@ const _pendingCallbacks = {}
 
 // ==================== 持久化存储：断网兜底 ====================
 // 4 张表（设备/LOT/同步/配置）需要本地持久化：冷启动 + 网络失败时都能使用本地数据
+// 此外道路/地名列表也加入持久化（永久缓存）：有缓存就不必网上去找了
 // 存储 key 命名空间加 cache_ 前缀，避免与其他 storage 项冲突
 const _STORAGE_KEYS = {
   deviceCache: 'cache_device_list',
   deviceLotCache: 'cache_device_lot',
   deviceSyncCache: 'cache_device_sync',
-  deviceConfigCache: 'cache_device_config'
+  deviceConfigCache: 'cache_device_config',
+  roadCache: 'cache_road_list',
+  placeCache: 'cache_place_list'
 }
 
 // 从本地存储读缓存（任何异常都返回 null，绝不抛错）
@@ -741,29 +744,32 @@ function resolveUpgpsCmdText(deviceId, localLorastr, callback) {
   })
 }
 
-// ==================== 道路列表缓存（按天：一天只请求一次网络） ====================
-
-/**
- * 判断缓存是否是今天的数据
- */
-function _isToday(timestamp) {
-  if (!timestamp) return false
-  const cacheDate = new Date(timestamp).toDateString()
-  const today = new Date().toDateString()
-  return cacheDate === today
-}
+// ==================== 道路列表永久缓存（有缓存就不必网上去找） ====================
+// 行为变更：去掉「一天只请求一次」的 _isToday 判断，改为永久缓存。
+// 内存 + 本地双层：网络成功时同时写两份；冷启动由 restoreFromStorage 恢复内存；
+// 网络失败时优先回退到本地（断网场景）。CRUD 后由调用方传 forceRefresh=true 强刷。
 
 /**
  * 获取道路列表数据
- * 优先内存缓存，且缓存是今天的数据则不请求网络
+ * 永久缓存：内存优先，内存为空时读本地，本地为空才请求网络
  * @param {function} callback - 回调 (cachedData)，cachedData 为 { roadList }
- * @param {boolean} forceRefresh - 是否强制刷新（忽略按天缓存）
+ * @param {boolean} forceRefresh - 是否强制刷新（绕过永久缓存，直接请求网络）
  */
 function getRoadListFromCache(callback, forceRefresh) {
-  // 缓存有效（有数据 + 是今天）且非强制刷新
-  if (!forceRefresh && gd().roadCache && _isToday(gd().roadCacheTime)) {
+  // 非强制刷新：内存命中 → 直接回调（永久有效，不再按"今天"判断）
+  if (!forceRefresh && gd().roadCache) {
     callback(gd().roadCache)
     return
+  }
+  // 内存为空时先尝试本地（断网/冷启动场景），命中则回调且把内存补齐，下次走内存命中
+  if (!forceRefresh) {
+    const localData = _loadFromStorage(_STORAGE_KEYS.roadCache)
+    if (localData) {
+      gd().roadCache = localData
+      gd().roadCacheTime = localData.cacheTime || gd().roadCacheTime || null
+      callback(localData)
+      return
+    }
   }
 
   wx.request({
@@ -773,14 +779,21 @@ function getRoadListFromCache(callback, forceRefresh) {
     success: (res) => {
       console.log('[道路缓存] 网络请求返回:', JSON.stringify(res.data))
       const roadList = _parseRoadRecords(res.data)
-      const cachedData = { roadList }
+      const cachedData = { roadList, cacheTime: Date.now() }
       gd().roadCache = cachedData
-      gd().roadCacheTime = Date.now()
+      gd().roadCacheTime = cachedData.cacheTime
+      // 持久化到本地（永久缓存，下次启动直接用，不必再上网络）
+      _saveToStorage(_STORAGE_KEYS.roadCache, cachedData)
       callback(cachedData)
     },
     fail: (err) => {
       console.error('[道路缓存] 获取失败:', err)
-      if (gd().roadCache) {
+      // 网络失败兜底：本地优先
+      const localData = _loadFromStorage(_STORAGE_KEYS.roadCache)
+      if (localData) {
+        gd().roadCache = localData
+        callback(localData)
+      } else if (gd().roadCache) {
         callback(gd().roadCache)
       } else {
         callback({ roadList: [] })
@@ -830,20 +843,33 @@ function refreshRoadList(callback) {
 function clearRoadCache() {
   gd().roadCache = null
   gd().roadCacheTime = null
+  // 同步清理本地持久化，避免下次又被读出来
+  _removeFromStorage(_STORAGE_KEYS.roadCache)
 }
 
-// ==================== 地名列表缓存（按天：一天只请求一次网络） ====================
+// ==================== 地名列表永久缓存（有缓存就不必网上去找） ====================
+// 与道路列表一致：内存 + 本地双层永久缓存。
 
 /**
  * 获取地名列表数据
- * 优先内存缓存，且缓存是今天的数据则不请求网络
+ * 永久缓存：内存优先，内存为空时读本地，本地为空才请求网络
  * @param {function} callback - 回调 (cachedData)，cachedData 为 { placeList }
- * @param {boolean} forceRefresh - 是否强制刷新
+ * @param {boolean} forceRefresh - 是否强制刷新（绕过永久缓存，直接请求网络）
  */
 function getPlaceListFromCache(callback, forceRefresh) {
-  if (!forceRefresh && gd().placeCache && _isToday(gd().placeCacheTime)) {
+  if (!forceRefresh && gd().placeCache) {
     callback(gd().placeCache)
     return
+  }
+  // 内存为空时先尝试本地（断网/冷启动场景）
+  if (!forceRefresh) {
+    const localData = _loadFromStorage(_STORAGE_KEYS.placeCache)
+    if (localData) {
+      gd().placeCache = localData
+      gd().placeCacheTime = localData.cacheTime || gd().placeCacheTime || null
+      callback(localData)
+      return
+    }
   }
 
   wx.request({
@@ -853,14 +879,21 @@ function getPlaceListFromCache(callback, forceRefresh) {
     success: (res) => {
       console.log('[地名缓存] 网络请求返回:', JSON.stringify(res.data))
       const placeList = _parsePlaceRecords(res.data)
-      const cachedData = { placeList }
+      const cachedData = { placeList, cacheTime: Date.now() }
       gd().placeCache = cachedData
-      gd().placeCacheTime = Date.now()
+      gd().placeCacheTime = cachedData.cacheTime
+      // 持久化到本地（永久缓存，下次启动直接用，不必再上网络）
+      _saveToStorage(_STORAGE_KEYS.placeCache, cachedData)
       callback(cachedData)
     },
     fail: (err) => {
       console.error('[地名缓存] 获取失败:', err)
-      if (gd().placeCache) {
+      // 网络失败兜底：本地优先
+      const localData = _loadFromStorage(_STORAGE_KEYS.placeCache)
+      if (localData) {
+        gd().placeCache = localData
+        callback(localData)
+      } else if (gd().placeCache) {
         callback(gd().placeCache)
       } else {
         callback({ placeList: [] })
@@ -910,6 +943,8 @@ function refreshPlaceList(callback) {
 function clearPlaceCache() {
   gd().placeCache = null
   gd().placeCacheTime = null
+  // 同步清理本地持久化，避免下次又被读出来
+  _removeFromStorage(_STORAGE_KEYS.placeCache)
 }
 
 // ==================== 首页选中设备缓存（持久化，每天打开首页恢复上次选择的设备） ====================
@@ -943,6 +978,82 @@ function setHomeSelectedDevice(deviceId) {
   } catch (e) { /* ignore */ }
 }
 
+// ==================== 地图选中设备缓存（持久化，跨页传递地图中心选中的设备） ====================
+// 用法：在地图页面点选 marker → setMapSelectedDevice(deviceId)；切到设备列表 → getMapSelectedDevice() 高亮对应行
+// 与 HOME_SELECTED_KEY 区分，互不影响（地图选中和首页选中是两个独立的选中态）
+
+const MAP_SELECTED_KEY = 'map_selected_device_id'
+
+/**
+ * 读取地图选中的设备ID
+ * @returns {string} 设备ID，未选择时返回 ''
+ */
+function getMapSelectedDevice() {
+  try {
+    const v = wx.getStorageSync(MAP_SELECTED_KEY)
+    return v ? String(v) : ''
+  } catch (e) {
+    return ''
+  }
+}
+
+/**
+ * 保存地图选中的设备ID（地图页面点击 marker 时写入；点击 callout 收起时清空）
+ * @param {string} deviceId - 设备ID，传空串表示清除
+ */
+function setMapSelectedDevice(deviceId) {
+  try {
+    if (deviceId) {
+      wx.setStorageSync(MAP_SELECTED_KEY, String(deviceId))
+    } else {
+      wx.removeStorageSync(MAP_SELECTED_KEY)
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// ==================== 地图图层状态缓存（持久化，跨次进入地图页恢复显示状态） ====================
+// 用途：用户在地图页点击左下角"图层"按钮开启/切换等级后，状态写入本地；
+// 下次进入地图页 onLoad 时恢复相同的"是否显示道路+地名"以及"显示等级"。
+// 与 map_selected_device_id 是独立的存储键，互不影响。
+
+const MAP_LAYER_KEY = 'map_layer_state'
+
+/**
+ * 读取地图图层状态
+ * @returns {object|null} { showRoadLayer:boolean, currentLevel:number }，未设置时返回 null
+ */
+function getMapLayerState() {
+  try {
+    const v = wx.getStorageSync(MAP_LAYER_KEY)
+    if (!v || typeof v !== 'object') return null
+    // 防御性读取：旧数据 / 异常结构都按"未设置"处理
+    const show = v.showRoadLayer === true || v.showRoadLayer === 'true' || v.showRoadLayer === 1
+    const lv = parseInt(v.currentLevel, 10)
+    if (!show || isNaN(lv) || lv < 1) return null
+    return { showRoadLayer: true, currentLevel: lv }
+  } catch (e) {
+    return null
+  }
+}
+
+/**
+ * 保存地图图层状态
+ * 关闭图层（showRoadLayer=false 或 currentLevel<=0）时清除缓存，
+ * 下次进入地图页时回到"默认关闭"状态。
+ * @param {object} state - { showRoadLayer:boolean, currentLevel:number }
+ */
+function setMapLayerState(state) {
+  try {
+    const show = state && (state.showRoadLayer === true || state.showRoadLayer === 'true' || state.showRoadLayer === 1)
+    const lv = parseInt(state && state.currentLevel, 10)
+    if (show && !isNaN(lv) && lv > 0) {
+      wx.setStorageSync(MAP_LAYER_KEY, { showRoadLayer: true, currentLevel: lv })
+    } else {
+      wx.removeStorageSync(MAP_LAYER_KEY)
+    }
+  } catch (e) { /* ignore */ }
+}
+
 /**
  * 清除所有缓存（一般不需要手动调用）
  */
@@ -956,7 +1067,7 @@ function clearCache() {
   gd().roadCacheTime = null
   gd().placeCache = null
   gd().placeCacheTime = null
-  // 同时清理持久化存储
+  // 同时清理持久化存储（包括道路/地名的永久缓存键）
   Object.values(_STORAGE_KEYS).forEach(_removeFromStorage)
 }
 
@@ -1005,6 +1116,10 @@ module.exports = {
   clearPlaceCache,
   getHomeSelectedDevice,
   setHomeSelectedDevice,
+  getMapSelectedDevice,
+  setMapSelectedDevice,
+  getMapLayerState,
+  setMapLayerState,
   restoreFromStorage,
   clearCache
 }

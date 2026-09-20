@@ -19,7 +19,12 @@ Page({
     showAllDevices: false,
     refresherTriggered: false,
     // 设备配置休眠状态映射 deviceId -> { isDormant, powerOnTime }
-    deviceConfigMap: {}
+    deviceConfigMap: {},
+    // 地图中心当前选中的设备 deviceId（来自 dataCache.getMapSelectedDevice()）
+    // 用于在列表中高亮对应行，便于用户回到设备列表后知道"刚才在地图上选的是哪台"
+    selectedDeviceId: '',
+    // 滚动定位：scroll-into-view 的目标元素 id，加载/筛选完成后跳到选中行
+    scrollIntoViewId: ''
   },
 
   // 是否为中继设备：有有效 ProductKey
@@ -49,6 +54,11 @@ Page({
   onShow() {
     this._syncTabBar()
     this._readSettings()
+    // 同步"地图中心选中"→ 列表高亮：从地图页切回时自动读取并刷新当前行
+    const mapSelected = dataCache.getMapSelectedDevice()
+    if (mapSelected !== this.data.selectedDeviceId) {
+      this.setData({ selectedDeviceId: mapSelected })
+    }
     // 页面重新可见：若有列表则用缓存重新合并一次（把离开期间蓝牙缓存新增的记录时间
     // 也计入"最后上报时间"），并按当前时间刷新倒计时、恢复每秒跳动
     if (this.data.deviceList && this.data.deviceList.length) {
@@ -369,9 +379,20 @@ Page({
         ? nonRelayList.filter(item => !item.isOffline)
         : nonRelayList
     }
+    // 给每条记录附加 `selected` 标记：来自地图中心选中的设备 → 在列表中显眼高亮
+    // 仅在 deviceId 完全匹配时标记为选中，避免 rename 字段影响
+    const selId = this.data.selectedDeviceId
+    const decorated = list.map(it => Object.assign({}, it, {
+      selected: !!(selId && it.deviceId === selId)
+    }))
+    // 若当前筛选后的列表中存在选中行，则把 scroll-into-view 目标指向它；
+    // 否则清空，避免后续切换分类时继续滚动到上一个选中行
+    const hasSelectedInList = !!(selId && decorated.some(it => it.selected))
+    const nextScrollId = hasSelectedInList ? ('device-item-' + selId) : ''
     this.setData({
-      deviceList: list,
-      categoryCount: { all: all.length, device: deviceCount, relay: relayCount, offline: offlineCount }
+      deviceList: decorated,
+      categoryCount: { all: all.length, device: deviceCount, relay: relayCount, offline: offlineCount },
+      scrollIntoViewId: nextScrollId
     })
   },
 

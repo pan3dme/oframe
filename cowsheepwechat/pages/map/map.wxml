@@ -27,7 +27,7 @@
 
   <view class="tool-btn" bindtap="nextMarker">
     <text class="tool-icon">▸</text>
-    <text class="tool-label">巡点</text>
+    <text class="tool-label">下一台</text>
   </view>
 </view>
 

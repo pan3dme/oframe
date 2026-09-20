@@ -43,6 +43,16 @@ Page({
   _lastCalloutHideTs: 0,     // 上次点击气泡收起的时间戳，用于避免 markertap 误触发
 
   onLoad() {
+    // 恢复用户上次在地图页面设置的图层显示状态（道路/地名开关 + 等级）
+    // 持久化的缓存用于让"关闭小程序再打开"或"切到其他页面再回来"时也是同样的状态
+    const saved = dataCache.getMapLayerState && dataCache.getMapLayerState()
+    if (saved) {
+      this.setData({
+        showRoadLayer: true,
+        currentLevel: saved.currentLevel,
+        layerLabel: 'Lv.' + saved.currentLevel
+      })
+    }
     // 数据请求先发起；图标在 onReady 中绘制，避免 canvas 节点未就绪导致失败
     this.loadMap()
     this.fetchDeviceLotData()
@@ -443,14 +453,16 @@ Page({
 
       markers.push({
         id: index + 50000,
+        category: 'device',       // 区分 device / place，便于 onMarkerTap 中识别是否要回写设备选中态
+        deviceId: item.deviceId,  // 给 marker 携带 deviceId，跨页同步选中态时需要回查
         latitude: gcj.lat,
         longitude: gcj.lng,
         width: 28,
         height: 28,
         iconPath: iconPath,
-        title: '设备 ' + (item.deviceId || '-'),
+        title: '设备 ' + (item.deviceId || '-') + (rename ? '（' + rename + '）' : ''),
         callout: {
-          content: '设备:' + (item.deviceId || '-') + '\nGPS:' + coord.lat + ',' + coord.lng + '\n更新:' + (item.rawTime || '-') + '\n对时:' + syncRaw,
+          content: '设备:' + (item.deviceId || '-') + (rename ? '（' + rename + '）' : '') + '\n位置:' + (item.rawTime || '-') + '\n对时:' + syncRaw,
           display: 'BYCLICK',
           textAlign: 'center',
           fontSize: 13,
@@ -497,7 +509,8 @@ Page({
     })
 
     console.log('[地图] 合并标记点总数:', all.length)
-    this.setData({ markers: all, currentMarker: -1 })
+    // 不在此处重置 currentMarker：nextMarker 的循环计数依赖它，避免被合并重绘打断
+    this.setData({ markers: all })
   },
 
   loadMap() {
@@ -588,15 +601,26 @@ Page({
     })
   },
 
-  // 逐个巡览标记点：点击后地图中心移到下一个红点
+  // 找到下一台设备：仅在"设备 markers"中循环
+  // - 地图中心移到该设备位置
+  // - 展开该设备的 callout（气泡），相当于在地图中心"选中下一台设备"
+  // - 同步把 deviceId 写入 dataCache.setMapSelectedDevice，
+  //   让设备列表页切回时也能高亮对应行（与 onMarkerTap 行为一致）
   nextMarker() {
-    const { markers, currentMarker } = this.data
-    if (!markers || markers.length === 0) {
-      wx.showToast({ title: '暂无标记点', icon: 'none' })
+    const deviceMarkers = this._deviceMarkers || []
+    if (deviceMarkers.length === 0) {
+      wx.showToast({ title: '暂无设备标记点', icon: 'none' })
       return
     }
-    const next = (currentMarker + 1) % markers.length
-    const marker = markers[next]
+    // 只在设备 markers 中循环（地名不参与"下一台"）
+    // currentMarker 可能被 onReady / 切图层等流程重置为 -1，对 -1 做兜底
+    const cur = (typeof this.data.currentMarker === 'number'
+      && this.data.currentMarker >= 0
+      && this.data.currentMarker < deviceMarkers.length)
+      ? this.data.currentMarker
+      : -1
+    const next = (cur + 1) % deviceMarkers.length
+    const marker = deviceMarkers[next]
 
     const mapCtx = wx.createMapContext('cowMap')
     mapCtx.moveToLocation({
@@ -606,23 +630,21 @@ Page({
     this.setData({
       nativeLat: marker.latitude,
       nativeLng: marker.longitude,
-      currentMarker: next
+      currentMarker: next,
+      // 关键：把要展开气泡的 marker id 写入 activeCalloutId，
+      // _applyAllMarkers() 会把该 marker 的 callout.display 切到 'ALWAYS'，
+      // 其它 marker 保持 'BYCLICK'，相当于在地图上"选中下一台设备"
+      activeCalloutId: marker.id
+    }, () => {
+      // 触发 callout 显隐重绘，让该设备气泡立即显示
+      this._applyAllMarkers()
+      // 跨页同步：在地图中心选中的设备
+      if (marker.deviceId) {
+        dataCache.setMapSelectedDevice(marker.deviceId)
+      }
     })
     this._refreshOverlays(marker.latitude, marker.longitude, this.data.nativeScale)
-    // 弹起该点的 callout 信息气泡
-    setTimeout(() => {
-      const mapCtx = wx.createMapContext('cowMap')
-      mapCtx.includePoints({
-        points: [{ latitude: marker.latitude, longitude: marker.longitude }],
-        padding: [0, 0, 0, 0]
-      })
-    }, 300)
-
-    wx.showToast({
-      title: (marker.title || '点位') + ' (' + (next + 1) + '/' + markers.length + ')',
-      icon: 'none',
-      duration: 1000
-    })
+    // 已有气泡展示选中设备，无需再弹 TIP
   },
 
   // 点击 marker：展开该点气泡，同时收起其它气泡（地图中心最多只显示一个气泡）
@@ -631,8 +653,16 @@ Page({
     if (markerId === -1) return
     // 部分平台点击气泡会连带触发 markertap，隐藏后短暂忽略，避免"刚隐藏又显示"
     if (Date.now() - (this._lastCalloutHideTs || 0) < 350) return
+    // 仅当 marker 是"设备 marker"时才把 deviceId 写入全局选中态（用于设备列表高亮）
+    // 地名 marker（category=place）不写入选中态
+    const dev = (this._deviceMarkers || []).find(m => m.id === markerId)
+    const deviceId = dev && dev.deviceId
     this.setData({ activeCalloutId: markerId }, () => {
       this._applyAllMarkers()
+      if (deviceId) {
+        // 跨页同步：在地图中心选中的设备
+        dataCache.setMapSelectedDevice(deviceId)
+      }
     })
   },
 
@@ -641,8 +671,11 @@ Page({
     const markerId = e && e.detail ? e.detail.markerId : -1
     if (markerId === -1 || markerId !== this.data.activeCalloutId) return
     this._lastCalloutHideTs = Date.now()
+    // 仅当收起的是设备气泡时才清空选中态；地名气泡关闭不影响地图选中设备
+    const isDeviceCallout = (this._deviceMarkers || []).some(m => m.id === markerId)
     this.setData({ activeCalloutId: -1 }, () => {
       this._applyAllMarkers()
+      if (isDeviceCallout) dataCache.setMapSelectedDevice('')
     })
   },
 
@@ -743,10 +776,22 @@ Page({
       polylines: show ? this._roadPolylines : []
     })
     this._applyAllMarkers()
+    // 把"是否显示道路/地名 + 显示等级"持久化到本地，下次进入地图页时恢复
+    this._saveMapLayerState()
     wx.showToast({
       title: show ? ('已显示等级 ≤' + level) : '图层已隐藏',
       icon: 'none',
       duration: 1000
+    })
+  },
+
+  // 持久化当前图层显示状态（data.showRoadLayer + data.currentLevel）
+  // showRoadLayer=false 或 level<=0 时会自动清除缓存，下次进入地图页保持"默认关闭"
+  _saveMapLayerState() {
+    if (typeof dataCache.setMapLayerState !== 'function') return
+    dataCache.setMapLayerState({
+      showRoadLayer: this.data.showRoadLayer,
+      currentLevel: this.data.currentLevel
     })
   },
 
@@ -954,6 +999,7 @@ Page({
         if (iconPath) {
           markers.push({
             id: item.id,
+            category: 'place',
             latitude: item.gcj.lat,
             longitude: item.gcj.lng,
             width: W,
@@ -977,11 +1023,16 @@ Page({
   },
 
   /**
-   * 道路和地名都请求完成后，计算 maxLevel 并初始显示 level=1
+   * 道路和地名都请求完成后，计算 maxLevel 并按当前状态决定初始显示的 level
+   * 目标 level 取值规则：
+   *   1) 缓存的 currentLevel 在新数据 maxLevel 范围内 → 恢复显示状态（保持上次关闭/开启 + 等级）
+   *   2) 缓存的 currentLevel 超出范围（道路/地名数据变更）→ 降级到 maxLevel
+   *   3) 从未设置过图层(currentLevel=0) 且 showRoadLayer=false → 保持关闭（用户上次明确关闭过）
+   *   4) 从未设置过图层(currentLevel=0) 但 showRoadLayer=true → 默认显示 level=1
+   *      （兼容首次点 toggleLayer 后 fetchRoadData/fetchPlaceData 完成时的中间态）
    */
   _tryInitLevel() {
     if (!this._roadFetched || !this._placeFetched) return
-    if (this.data.currentLevel > 0) return
 
     // 计算道路和地名中 level 的最大值
     let maxLevel = 0
@@ -992,9 +1043,24 @@ Page({
     })
     if (maxLevel < 1) maxLevel = 1
 
+    // 根据 data 中已有的状态决定目标 level
+    const cur = this.data.currentLevel
+    let targetLevel = 0
+    if (cur > 0 && cur <= maxLevel) {
+      // 1) 缓存恢复：保持上次等级
+      targetLevel = cur
+    } else if (cur > maxLevel) {
+      // 2) 数据变化导致缓存等级失效，降级
+      targetLevel = maxLevel
+    } else if (this.data.showRoadLayer) {
+      // 4) 首次点 toggleLayer 时 data.showRoadLayer 已被设 true 但 currentLevel 还没更新
+      targetLevel = 1
+    }
+    // 3) 其它情况（currentLevel=0 且 showRoadLayer=false）保持 0，不显示
+
     this.setData({ maxLevel })
-    console.log('[图层] maxLevel =', maxLevel)
-    this._applyLevel(1)
+    console.log('[图层] maxLevel =', maxLevel, ' targetLevel =', targetLevel)
+    this._applyLevel(targetLevel)
   },
 
   /**
