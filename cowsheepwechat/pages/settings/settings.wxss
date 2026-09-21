@@ -55,6 +55,47 @@ page {
   color: #333;
 }
 
+/* 设置行右侧的只读值（如农场坐标） */
+.setting-value {
+  font-size: 26rpx;
+  color: #666;
+  text-align: right;
+  max-width: 420rpx;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* 可点击的值（点击打开地图查看） */
+.setting-value.link {
+  color: #576B95; /* 微信链接蓝 */
+  text-decoration: underline;
+}
+
+/* 右侧值 + 小按钮组合容器 */
+.setting-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* 小按钮（如：下发中继） */
+.mini-btn {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  padding: 0 20rpx;
+  height: 52rpx;
+  line-height: 52rpx;
+  font-size: 22rpx;
+  color: #fff;
+  background: #07c160;
+  border-radius: 26rpx;
+  box-shadow: 0 2rpx 6rpx rgba(7, 193, 96, 0.3);
+}
+
+.mini-btn:active {
+  opacity: 0.8;
+}
+
 /* 操作行（清理缓存等） */
 .action-row {
   display: flex;

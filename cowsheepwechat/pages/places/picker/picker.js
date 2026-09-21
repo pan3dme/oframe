@@ -15,10 +15,18 @@ Page({
     maxLevel: 0,
     layerLabel: '图层',
     markers: [],
-    polylines: []
+    polylines: [],
+    // 查看模式（view=1）：仅展示坐标位置，隐藏"确定"按钮，标题可自定义
+    viewMode: false,
+    pageTitle: '选取坐标'
   },
 
   onLoad(options) {
+    // 查看模式：从设置页点"农场坐标"进入，仅在地图上查看该点，不用于选点
+    if (options && options.view === '1') {
+      const t = options.title ? decodeURIComponent(options.title) : ''
+      this.setData({ viewMode: true, pageTitle: t || '查看位置' })
+    }
     // 设置中继坐标：调用方传入 LOT 表中该设备已有坐标（WGS-84）作为初始中心
     if (options && options.lat && options.lng) {
       const lat = parseFloat(options.lat)

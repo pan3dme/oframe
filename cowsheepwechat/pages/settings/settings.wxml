@@ -29,6 +29,18 @@
       </view>
       <switch checked="{{showConverted}}" bindchange="onShowConvertedChange" color="#07c160" />
     </view>
+
+    <!-- 农场坐标（登录返回的 mapcenter，点击整行打开地图查看）+ 下发所有中继小按钮 -->
+    <view class="setting-row" bindtap="onMapCenterTap">
+      <view class="setting-left">
+        <text class="setting-icon">📍</text>
+        <text class="setting-label">农场坐标</text>
+      </view>
+      <view class="setting-right">
+        <text class="setting-value link">{{mapCenterText}}</text>
+        <view class="mini-btn" catchtap="onSendMapCenterTap">下发中继</view>
+      </view>
+    </view>
   </view>
 
   <!-- 权限设置 -->

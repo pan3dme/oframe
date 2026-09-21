@@ -275,6 +275,30 @@ void meshCmdInfomsg(String rxValue) {
         if (power > 10 && power <= 28) {
           initRadio(power);
         }
+      } else if (cmd == "mapcenter") {
+
+        // 2. 提取纬度和经度的子字符串
+        int commaIndex = tmp.indexOf(',');
+        DEBUG_PRINTLN("更新农场中心坐标");
+        if (commaIndex == -1) {
+          DEBUG_PRINTLN("错误：字符串格式不正确，未找到逗号分隔符");
+          return;
+        }
+        String latStr = tmp.substring(0, commaIndex);
+        String lonStr = tmp.substring(commaIndex + 1);
+        // 3. 将字符串转换为 double 类型
+        cfg_gps_lat = latStr.toDouble();
+        cfg_gps_lon = lonStr.toDouble();
+
+        Serial.print(cfg_gps_lat,5);
+        Serial.print(",");
+        Serial.println(cfg_gps_lon,5);
+
+        prefs.begin("devcfg", false);
+        prefs.putDouble("lat", cfg_gps_lat);
+        prefs.putDouble("lon", cfg_gps_lon);
+        prefs.end();
+
       } else if (cmd == "gpstm") {
         int num = tmp.toInt();
         if (num > 10 && num <= 60) {
@@ -672,7 +696,7 @@ void changeReceivedRolaStr(char *value) {
       char segBuf[32];
       char outBuf[32];
       splitPipeSegment(value, segBuf, 2);
- 
+
       restoreGpsFromDiff(segBuf, outBuf, cfg_gps_lat, cfg_gps_lon);
       replacePipeSegment(value, loraOut, 2, outBuf, sizeof(loraOut));
 

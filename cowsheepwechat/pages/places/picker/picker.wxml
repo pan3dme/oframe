@@ -1,5 +1,5 @@
 <!--places/picker/picker.wxml - 地图选坐标-->
-<navigation-bar title="选取坐标" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<navigation-bar title="{{pageTitle}}" back="{{true}}" color="black" background="#FFF"></navigation-bar>
 <!-- 地名图钉绘制用隐藏 canvas -->
 <canvas type="2d" id="placeTextCanvas" style="width:120px;height:60px;position:fixed;left:-9999px"></canvas>
 
@@ -37,6 +37,6 @@
       <view class="bar-coord-label">当前坐标 (WGS-84)</view>
       <view class="bar-coord-val">{{gpsText}}</view>
     </view>
-    <view class="bar-confirm" bindtap="onConfirm">✓ 确定</view>
+    <view class="bar-confirm" wx:if="{{!viewMode}}" bindtap="onConfirm">✓ 确定</view>
   </view>
 </view>
