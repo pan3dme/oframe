@@ -375,6 +375,12 @@ Page({
   // 页面重新展示时刷新相对时间（如返回前台），并重新读取设置
   onShow() {
     this._readSettings()
+    // 从地图选点页返回：读取选中的坐标（中继设置坐标），确认后 insertlog 提交服务器
+    const pickedGps = getApp().globalData._placePickedGps
+    if (pickedGps) {
+      getApp().globalData._placePickedGps = null
+      this._confirmRelayGps(pickedGps)
+    }
     // 回到页面时刷新"是否在开机时间"并启动窗口边界自动刷新
     this._refreshInPowerOn()
     this._startWindowTimer()
@@ -1064,6 +1070,74 @@ Page({
   // 查看定位轨迹 → 跳转轨迹地图（轨迹页自行加载数据）
   onViewTrackTap() {
     wx.navigateTo({ url: '/pages/trackmap/trackmap?deviceId=' + encodeURIComponent(this.data.deviceId || '') })
+  },
+
+  // ========== 中继设置坐标 ==========
+  // 仅中继设备（有 ProductKey）可用：打开地图选坐标页（复用地名选取页），
+  // 选点确定返回后在 onShow 中读取 globalData._placePickedGps，确认后提交 insertlog
+  onSetCoordTap() {
+    const info = this.data.deviceInfo
+    if (!info || !info.ProductKey) {
+      wx.showToast({ title: '仅中继设备可设置坐标', icon: 'none' })
+      return
+    }
+    // 注册回调：选点页确定后直接回调提交，避免依赖 onShow 时机
+    getApp().globalData._onPlacePicked = (gps) => { this._confirmRelayGps(gps) }
+    wx.navigateTo({ url: '/pages/places/picker/picker' })
+  },
+
+  // 选点返回：弹确认框，确认后提交服务器
+  _confirmRelayGps(gps) {
+    const info = this.data.deviceInfo
+    // 防御：非中继设备不处理选点结果
+    if (!info || !info.ProductKey) return
+    wx.showModal({
+      title: '设置中继坐标',
+      content: '已选取坐标 ' + gps + '，提交到服务器？',
+      success: (res) => {
+        if (res.confirm) {
+          this._doSubmitRelayGps(this.data.deviceId, gps)
+        }
+      }
+    })
+  },
+
+  // 提交中继坐标：insertlog 插入一条定位记录，lorastr = "1|设备名|gps坐标|88!"
+  // （末尾 88! 为手动设置中继坐标的标记）；upDateDevice=wechat，与功能页手动插入格式一致
+  _doSubmitRelayGps(deviceId, gps) {
+    const lorastr = '1|' + deviceId + '|' + gps + '|88!'
+    wx.showLoading({ title: '提交中...' })
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      timeout: 15000,
+      data: {
+        time: getApp().formatTime(),
+        action: 'insertlog',
+        info: {
+          deviceId: deviceId,
+          lorastr: lorastr,
+          upDateDevice: 'wechat',
+          time: getApp().formatTime(),
+          rssi: '0',
+          snr: '0',
+          wechatid: getApp().getWechatId()
+        }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('中继坐标插入返回:', JSON.stringify(res.data))
+        wx.showToast({ title: '坐标已设置', icon: 'success', duration: 1500 })
+        // 刷新记录列表，让新插入的定位记录显示出来
+        this.setData({ recordList: [], recordOffset: 0, hasMore: true, showRecordTable: false })
+        this.loadTodayRecords(0)
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('中继坐标插入失败:', err)
+        wx.showToast({ title: '提交失败', icon: 'error', duration: 2000 })
+      }
+    })
   },
 
   // ========== 获取定位（快捷DTU指令） ==========

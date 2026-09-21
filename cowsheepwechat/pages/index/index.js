@@ -54,9 +54,10 @@ Page({
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
       { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' }
     ],
-    // 中继设备功能按钮（有ProductKey，太阳能供电、无GPS定位）：数据列表/设备设置/修改密码/电子栅栏，与普通设备不同
+    // 中继设备功能按钮（有ProductKey，太阳能供电、无GPS定位）：数据列表/设置坐标/设备设置/修改密码/电子栅栏，与普通设备不同
     relayFeatureBtns: [
       { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
+      { id: 'setcoord', label: '中继坐标', color: '#8E24AA', icon: '📌' },
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
       { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' }
@@ -77,6 +78,12 @@ Page({
     }
     if (!this._checkLogin()) return
     this._readSettings()
+    // 从地图选点页返回：读取中继设置坐标结果，确认后 insertlog 提交
+    const pickedGps = getApp().globalData._placePickedGps
+    if (pickedGps) {
+      getApp().globalData._placePickedGps = null
+      this._confirmRelayGps(pickedGps)
+    }
     // 从"设备详情"子页（device-detail）通过底部 TAB 切回首页：消费"待刷新"标记并执行无感刷新
     if (getApp().globalData && getApp().globalData._pendingHomeRefresh) {
       getApp().globalData._pendingHomeRefresh = false
@@ -903,8 +910,81 @@ Page({
       this.onDataListTap()
       return
     }
+    if (id === 'setcoord') {
+      // 中继设置坐标：打开地图选点页，选点确定返回后在 onShow 确认并 insertlog 提交
+      this.onSetCoordTap()
+      return
+    }
     // TODO: 根据 id 跳转到对应子页
     wx.showToast({ title: '功能开发中', icon: 'none' })
+  },
+
+  // ========== 中继设置坐标 ==========
+  // 仅中继设备（有 ProductKey）可用：打开地图选点页（复用地名选取页），
+  // 选点确定返回后在 onShow 中读取 globalData._placePickedGps，确认后 insertlog 提交
+  onSetCoordTap() {
+    const info = this.data.deviceInfo
+    if (!info || !info.ProductKey) {
+      wx.showToast({ title: '仅中继设备可设置坐标', icon: 'none' })
+      return
+    }
+    // 注册回调：选点页确定后直接回调提交，避免依赖 onShow 时机
+    getApp().globalData._onPlacePicked = (gps) => { this._confirmRelayGps(gps) }
+    wx.navigateTo({ url: '/pages/places/picker/picker' })
+  },
+
+  // 选点返回：弹确认框，确认后提交服务器
+  _confirmRelayGps(gps) {
+    const info = this.data.deviceInfo
+    // 防御：非中继设备不处理选点结果
+    if (!info || !info.ProductKey) return
+    wx.showModal({
+      title: '设置中继坐标',
+      content: '已选取坐标 ' + gps + '，提交到服务器？',
+      success: (res) => {
+        if (res.confirm) {
+          this._doSubmitRelayGps(this.data.selectedDeviceId, gps)
+        }
+      }
+    })
+  },
+
+  // 提交中继坐标：insertlog 插入一条定位记录，lorastr = "1|设备名|gps坐标|88!"
+  // （末尾 88! 为手动设置中继坐标的标记，与设备详情页保持一致的格式）
+  _doSubmitRelayGps(deviceId, gps) {
+    if (!deviceId) return
+    const lorastr = '1|' + deviceId + '|' + gps + '|88|'
+    wx.showLoading({ title: '提交中...' })
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      timeout: 15000,
+      data: {
+        time: getApp().formatTime(),
+        action: 'insertlog',
+        info: {
+          deviceId: deviceId,
+          lorastr: lorastr,
+          upDateDevice: 'wechat',
+          time: getApp().formatTime(),
+          rssi: '0',
+          snr: '0',
+          wechatid: getApp().getWechatId()
+        }
+      },
+      success: (res) => {
+        wx.hideLoading()
+        console.log('中继坐标插入返回:', JSON.stringify(res.data))
+        wx.showToast({ title: '坐标已设置', icon: 'success', duration: 1500 })
+        // 强制刷新设备信息与当天记录，让新插入的定位记录显示出来
+        this._loadAll(deviceId, true, () => {})
+      },
+      fail: (err) => {
+        wx.hideLoading()
+        console.error('中继坐标插入失败:', err)
+        wx.showToast({ title: '提交失败', icon: 'error', duration: 2000 })
+      }
+    })
   },
 
   // ========== 数据列表：打开设备记录子页（不显示设备信息） ==========

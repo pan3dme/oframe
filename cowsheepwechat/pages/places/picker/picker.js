@@ -197,11 +197,30 @@ Page({
   },
 
   onConfirm() {
+    let gps = ''
     if (this._wgsCoords) {
       const wgs = this._wgsCoords
-      getApp().globalData._placePickedGps = wgs.lat.toFixed(6) + ',' + wgs.lng.toFixed(6)
+      gps = wgs.lat.toFixed(6) + ',' + wgs.lng.toFixed(6)
+    }
+    // 调用方（如首页/设备详情设置中继坐标）可注册回调 _onPlacePicked，
+    // 确定后直接回调发起提交，避免依赖 onShow 时机导致不触发
+    const cb = getApp().globalData._onPlacePicked
+    getApp().globalData._onPlacePicked = null
+    if (cb) {
+      wx.navigateBack()
+      if (gps) setTimeout(() => { cb(gps) }, 300)
+      return
+    }
+    // 无回调：沿用 _placePickedGps 供调用方 onShow 读取（地名选取等）
+    if (gps) {
+      getApp().globalData._placePickedGps = gps
     }
     wx.navigateBack()
+  },
+
+  onUnload() {
+    // 未点确定直接返回时清理回调，避免下次误触发
+    if (getApp().globalData) getApp().globalData._onPlacePicked = null
   },
 
 })

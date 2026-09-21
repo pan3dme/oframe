@@ -47,6 +47,10 @@
             <view class="send-cmd-link" bindtap="onSendCmdTap">
               <text class="send-cmd-icon">📤</text>
             </view>
+            <!-- 中继：打开地图选坐标，insertlog 提交 lorastr=1|设备名|坐标|88! -->
+            <view class="set-coord-link" wx:if="{{deviceInfo.ProductKey}}" bindtap="onSetCoordTap">
+              <text class="set-coord-icon">📌</text>
+            </view>
             <view class="get-location-link" wx:if="{{!deviceInfo.ProductKey}}" bindtap="onGetLocationTap">
               <text class="get-location-icon">📍</text>
             </view>
