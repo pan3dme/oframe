@@ -1083,7 +1083,23 @@ Page({
     }
     // 注册回调：选点页确定后直接回调提交，避免依赖 onShow 时机
     getApp().globalData._onPlacePicked = (gps) => { this._confirmRelayGps(gps) }
-    wx.navigateTo({ url: '/pages/places/picker/picker' })
+    // LOT 表中已有该中继的坐标（最新记录 lorastr 第3段 lat,lng）时作为初始中心
+    let url = '/pages/places/picker/picker'
+    let lat = null, lng = null
+    if (info.lorastr && info.lorastr !== '-') {
+      const segs = String(info.lorastr).split(/[｜|]/)
+      if (segs.length >= 3 && segs[2]) {
+        const parts = segs[2].split(/[,，]\s*/)
+        if (parts.length >= 2) {
+          lat = parseFloat(parts[0])
+          lng = parseFloat(parts[1])
+        }
+      }
+    }
+    if (!isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0)) {
+      url += '?lat=' + lat + '&lng=' + lng
+    }
+    wx.navigateTo({ url: url })
   },
 
   // 选点返回：弹确认框，确认后提交服务器

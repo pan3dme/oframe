@@ -930,7 +930,11 @@ Page({
     }
     // 注册回调：选点页确定后直接回调提交，避免依赖 onShow 时机
     getApp().globalData._onPlacePicked = (gps) => { this._confirmRelayGps(gps) }
-    wx.navigateTo({ url: '/pages/places/picker/picker' })
+    // LOT 表中已有该中继的坐标（最新记录 lorastr 第3段 lat,lng）时作为初始中心
+    let url = '/pages/places/picker/picker'
+    const coord = this._parseCoordFromLora(info.lorastr)
+    if (coord) url += '?lat=' + coord.lat + '&lng=' + coord.lng
+    wx.navigateTo({ url: url })
   },
 
   // 选点返回：弹确认框，确认后提交服务器

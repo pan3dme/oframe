@@ -1,5 +1,7 @@
 <!--places/picker/picker.wxml - 地图选坐标-->
 <navigation-bar title="选取坐标" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+<!-- 地名图钉绘制用隐藏 canvas -->
+<canvas type="2d" id="placeTextCanvas" style="width:120px;height:60px;position:fixed;left:-9999px"></canvas>
 
 <view class="picker-wrap">
   <!-- 卫星地图 -->
@@ -11,9 +13,17 @@
     scale="{{scale}}"
     show-location="{{true}}"
     enable-satellite="{{true}}"
+    markers="{{markers}}"
+    polyline="{{polylines}}"
     bindregionchange="onRegionChange"
   >
   </map>
+
+  <!-- 左下角图层切换按钮（道路+地名，与地图中心一致） -->
+  <view class="layer-toggle {{showRoadLayer ? 'layer-on' : ''}}" bindtap="toggleLayer">
+    <text class="layer-icon">🗺️</text>
+    <text class="layer-label">{{layerLabel}}</text>
+  </view>
 
   <!-- 固定在中心的图钉覆盖层 -->
   <view class="pin-overlay">

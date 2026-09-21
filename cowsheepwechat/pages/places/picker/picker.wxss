@@ -43,6 +43,48 @@ page {
   margin: 4rpx auto 0;
 }
 
+/* 左下角图层切换按钮（道路+地名，与地图中心一致，位于底部信息栏上方） */
+.layer-toggle {
+  position: absolute;
+  left: 24rpx;
+  bottom: 160rpx;
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.layer-toggle:active {
+  background: rgba(230, 230, 230, 0.95);
+}
+
+.layer-toggle.layer-on {
+  background: rgba(0, 200, 83, 0.15);
+  border: 2rpx solid #00C853;
+}
+
+.layer-toggle.layer-on .layer-label {
+  color: #00C853;
+  font-weight: 600;
+}
+
+.layer-icon {
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.layer-label {
+  font-size: 16rpx;
+  color: #666;
+  margin-top: 2rpx;
+}
+
 /* 底部信息栏 */
 .picker-bar {
   display: flex;
