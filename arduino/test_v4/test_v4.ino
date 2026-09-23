@@ -18,93 +18,82 @@ char sendData[BUFFER_SIZE];  // 发送数据缓存
 int deviceIndex = -1;            // 当前设备索引（从pan3dme获取）
 int totalDevices = 0;            // 设备总数（从pan3dme获取）
 unsigned long nextSendTime = 0;  // 下次发送时间点（millis）
-
-HardwareSerial *dtuSerial;
-
-bool timeSynFlage = false;
-
-String batterystr = "";
+bool timeSyncFlag = false;
+bool isSleepRestFristSendRolaFlag = true;  //标记启动后的第一条LORA消息
+int batteryNum = 100;
+const uint64_t MAX_SLEEP_US = 4200000000ULL;
 
 unsigned long gpsWorkTime = 0;
 unsigned long gpsWorkInterval = 0;
 unsigned long gpsWorkStat = 0;
+unsigned long lastSendLoraMs = 0;
 int typeindex = FLAG_TYPE_0;
 
-RTC_DATA_ATTR long long lastSendTimeTemp = 0;   //
-RTC_DATA_ATTR long long lastDriftCompMs = 0;    //
-RTC_DATA_ATTR long long hourlyDriftMsTemp = 0;  // 每个小时的时间偏差
-RTC_DATA_ATTR float minBatteryVolage = 0.4;     //设置电量小于0.4就间隔一天
-RTC_DATA_ATTR int loraTxPower = 22;
-RTC_DATA_ATTR int16_t lastRssi = 0;
-RTC_DATA_ATTR int8_t lastSnr = 0;
 
-RTC_DATA_ATTR bool configConfirmed = false;
-RTC_DATA_ATTR int rtcSendCount = -1;
-RTC_DATA_ATTR int rtcResiveIdx = 0;
-RTC_DATA_ATTR int roundTime = 0;                       // 默认上报周末使用系统配置
-RTC_DATA_ATTR char needSendGpsStr[32] = "";            //
-RTC_DATA_ATTR char lastrelayName[10] = "";             //
-RTC_DATA_ATTR char work_time_str[16] = "00:00-23:59";  // 默认工作时间
-RTC_DATA_ATTR char gps_time_str[16] = "12:00-18:00";   // gps上报时间
-RTC_DATA_ATTR char config_str[16] = "5,0-24,12-6";     // 命令集合
+RTC_DATA_ATTR uint32_t rtcMagic;
 
+RTC_DATA_ATTR long long lastSyncTime;
+
+
+RTC_DATA_ATTR bool lastCanthGpsOk;
+RTC_DATA_ATTR int loraTxPower;
+RTC_DATA_ATTR int sendModeidx;
+
+RTC_DATA_ATTR int16_t lastRssi;
+RTC_DATA_ATTR int8_t lastSnr;
+
+
+
+RTC_DATA_ATTR double rtc_gps_lat;
+RTC_DATA_ATTR double rtc_gps_lon;
+
+RTC_DATA_ATTR bool configConfirmed;
+
+RTC_DATA_ATTR int rtcSendCount;
+RTC_DATA_ATTR int rtcResiveIdx;
+RTC_DATA_ATTR int roundTime;
+
+RTC_DATA_ATTR char needSendGpsStr[32];
+RTC_DATA_ATTR char lastrelayName[10];
+RTC_DATA_ATTR char work_time_str[16];
+RTC_DATA_ATTR char gps_time_str[16];
+RTC_DATA_ATTR int big_interval_tm;
+RTC_DATA_ATTR char config_str[16];
+RTC_DATA_ATTR int lastSeacthStatTm;
+
+
+#define MY_RTC_MAGIC 0xA5B6C7D8U
 
 
 RadioEvents_t radioEvents;                             // LoRa事件回调
 void printTimeToString(String str, unsigned long ms);  // 前向声明
 
-// 根据work_time_str判断是否在工作时间，返回调整后的休眠微秒数
-// work_time_str格式: "05:02-10:59" 表示工作时段 05:02 ~ 10:59
-uint64_t getAdjustedSleepTimeUs(unsigned long sleepMs) {
-  // 1. 用isTimeInRange判断是否在工作时间（支持跨午夜）
-  bool inWorkTime = isTimeInRange(getCurrentTimestampMs(), work_time_str);
-  if (inWorkTime || !haveRightTime()) {
-    DEBUG_PRINTLN("✅ 当前在工作时间内，按原计划休眠");
-    return (uint64_t)sleepMs * 1000ULL;
-  }
-
-  // 2. 不在工作时间内，解析开始时间计算等待
-  int startH = 0, startM = 0, endH = 0, endM = 0;
-  sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
-  int startMinutes = startH * 60 + startM;
-
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);
-  time_t now = tv.tv_sec;
-  struct tm t;
-  localtime_r(&now, &t);
-  int nowMinutes = t.tm_hour * 60 + t.tm_min;
-
-  DEBUG_PRINTF("    工作时间窗口: %02d:%02d - %02d:%02d, 当前: %02d:%02d\n",
-               startH, startM, endH, endM, t.tm_hour, t.tm_min);
-
-  // 3. 计算到下次工作开始的分钟数
-  int waitMinutes = 0;
-  if (nowMinutes < startMinutes) {
-    waitMinutes = startMinutes - nowMinutes;
-  } else {
-    waitMinutes = (24 * 60 - nowMinutes) + startMinutes;
-  }
-
-  uint64_t adjustedUs = (uint64_t)waitMinutes * 60 * 1000000ULL;
-  DEBUG_PRINTF("❌ 当前不在工作时间，%d分钟后开始工作，休眠%llu秒\n",
-               waitMinutes, adjustedUs / 1000000ULL);
-  return adjustedUs;
-}
-
+//返回毫秒
 unsigned long get_send_interval_ms() {
-  if (roundTime == 0) {
-    return SEND_INTERVAL_MS;
-  } else {
+  if (rtcSendCount <= 4) {
+    DEBUG_PRINTLN("前4次就5分钟启动。");
+    return 1000 * 60 * 5;  //前2次默认间隔5份钟 这有利于开机快速配置，
+  }
+  bool inWorkTime = isTimeInRange(getCurrentTimestampSec(), work_time_str);
+  if (inWorkTime || !isBoardDateTimeOK()) {
+    printTimestampSec(roundTime / 1000, "工作期间:");
     return roundTime;
+  } else {
+
+    printTimestampSec(60 * 10 * big_interval_tm, "不在工作期使用大周期时间:");
+    return 1000 * 60 * 10 * big_interval_tm;  //不在工作区间就用大周期
   }
 }
-float getSlotDuration() {
+unsigned long getSlotDuration() {             //返回是秒
   return get_send_interval_ms() / 30 / 1000;  // 30台设备现在是30分钟
 }
 
 // ==================== 计算下次发送时间 (修正版) ====================
-unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
+unsigned long calculateNextTime(unsigned long intervalSeconds) {
+  if (intervalSeconds == 0) {
+    DEBUG_PRINTLN("⚠️ intervalSeconds为0，使用默认值600秒");
+    intervalSeconds = 600;
+  }
   if (deviceIndex < 0 || totalDevices == 0) {
     deviceIndex = getDevicesIdx();
     totalDevices = getTotalDevices();
@@ -116,70 +105,67 @@ unsigned long calculateNextSendTime(unsigned long intervalSeconds) {
   }
 
   // 1. 获取当前时间
-  String timeStr = getCurrentTime(true);
-  int hour = 0, minute = 0, second = 0;
-  sscanf(timeStr.c_str(), "%*d/%*d/%*d %d:%d:%d", &hour, &minute, &second);
-  unsigned long currentSeconds = hour * 3600 + minute * 60 + second;
+  unsigned long currentSeconds = getCurrentTimestampSec();
 
-  // 2. 计算基础参数
-  unsigned long mySlotOffset =
-    (unsigned long)((deviceIndex + 0.5) * getSlotDuration());  // 我在周期内的偏移量
-
-  // 3. 核心修复逻辑：计算到下一个时隙的等待时间
   unsigned long cyclesPassed = currentSeconds / intervalSeconds;
-  unsigned long lastTargetSeconds =
-    cyclesPassed * intervalSeconds + mySlotOffset;
 
-  long secondsDiff = 0;
+  unsigned long intervalMs = get_send_interval_ms();
+  unsigned long mySlotOffset = (((unsigned long)deviceIndex * 2UL + 1UL) * intervalMs) / 60UL;
+  unsigned long lastTargetSeconds = cyclesPassed * intervalSeconds + (mySlotOffset / 1000UL);
+
+
+  unsigned long secondsDiff = 0;
   if (lastTargetSeconds < currentSeconds) {
     secondsDiff = intervalSeconds - (currentSeconds - lastTargetSeconds);
   } else {
     secondsDiff = lastTargetSeconds - currentSeconds;
   }
-  if (secondsDiff < 0) {
-    secondsDiff += intervalSeconds;
-  }
+
 
   unsigned long delayMillis = secondsDiff * 1000;
+
+  if (delayMillis == 0 && isSleepRestFristSendRolaFlag == true) {
+    //这里是特殊处理如果属于休眠重启后如果是第一次获取发射时间并正好为0那么需要后置1秒这样才不会进入无效的重启。不然又会进入休眠
+    delayMillis = 5;  //第一次获取就多出5秒做为容错
+  }
   unsigned long minutes = delayMillis / 60000;
   unsigned long seconds = (delayMillis % 60000) / 1000;
 
-  DEBUG_PRINTF("当前时间: %s, 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
-               timeStr.c_str(), deviceIndex, getSlotDuration(), minutes,
+  DEBUG_PRINT("当前时间：");
+  DEBUG_PRINT(getCurrentTime(true));
+  DEBUG_PRINTF(" 设备%d, 时隙%.2f秒, 延迟%lu分%lu秒\n",
+               deviceIndex, getSlotDuration(), minutes,
                seconds);
+
+
 
   return millis() + delayMillis;
 }
 
 // ==================== LoRa模块初始化 ====================
+bool loraInitOk = false;
 void initLora() {
+  if (loraInitOk) {
+    return;
+  }
+  loraInitOk = true;
   radioEvents.TxDone = onSendDone;
   radioEvents.TxTimeout = onSendTimeout;
   radioEvents.RxDone = OnRxDone;
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
-
-
-  if (rtcSendCount == rtcResiveIdx) {
-    if (abs(lastRssi) > 90 || lastRssi == 0) {
-      initPanRadio(&radioEvents, loraTxPower);
-    } else {
-      initPanRadio(&radioEvents, 15);
-    }
-  } else {
-    //没有收到下行包，就最大功率发射
-    initPanRadio(&radioEvents, 28);
-  }
+  initPanRadio(&radioEvents, 22, 915000000, 11);
 }
 void OnRxTimeout(void) {
   DEBUG_PRINTLN("⚠️ Radio接收超时!");
-  Radio.Rx(0);
+  Radio.Sleep();
 }
 
 void OnRxError(void) {
   // 接收到错误，相当于有多个中继打架，暂做标记
   rtcResiveIdx = rtcSendCount;
   DEBUG_PRINTLN("❌ Radio接收错误!");
+  Radio.Sleep();
 }
 String extractDeviceIdFromInfo(String infoStr) {
   int first = infoStr.indexOf('|');
@@ -202,114 +188,154 @@ void meshSynTime(String infoStr, int firstPipeIndex) {
     DEBUG_PRINTLN("❌ SYN_TIME格式错误：缺少第二个分隔符");
     return;
   }
-  String timeStr = infoStr.substring(secondPipeIndex + 1);
-  int timePipeIdx = timeStr.indexOf('|');
-  if (timePipeIdx < 0) {
-    DEBUG_PRINTLN("❌ SYN_TIME格式错误：时间字段后缺少分隔符");
+
+  // 第一个| ~第二个|：时间戳
+  String timeStr = infoStr.substring(firstPipeIndex + 1, secondPipeIndex);
+  long long epochSec = atoll(timeStr.c_str());
+
+  if (!is_valid_epoch_sec(epochSec)) {
+    if (sendModeidx == 2) {
+      sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|err|" + timeStr, true);
+    }
     return;
   }
-  timeStr = timeStr.substring(0, timePipeIdx);
+  // 第二个|后面全部：relayName，trim过滤\r\n空格
+  String relayName = infoStr.substring(secondPipeIndex + 1);
+  relayName.trim();
+
   DEBUG_PRINT("本机时间");
   DEBUG_PRINTLN(getCurrentTime(true));
 
-  int lastPipeIdx = infoStr.lastIndexOf('|');
-  String relayName = infoStr.substring(lastPipeIdx + 1);
+  // 第三个|后面全部就是 relayName
+
   if (relayName.length() > 0) {
     DEBUG_PRINT("中继名: ");
     DEBUG_PRINTLN(relayName);
-    if (lastSendTimeTemp > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
+    if (lastSyncTime > 0 && strcmp(lastrelayName, relayName.c_str()) == 0) {
       DEBUG_PRINTLN("---中继和上次相对，那开始计算晶震偏移:----- ");
       long long ds =
-        getCurrentTimestampMs() + lastDriftCompMs - lastSendTimeTemp;
+        getCurrentTimestampSec() - lastSyncTime;
 
-      printDurationMs(ds, "本机周期: ");
-      long long diff_ms = mathTimeDiffmstimeFromLora(timeStr) + lastDriftCompMs;
-      printDurationMs(diff_ms, "当前偏差: ");
+      printDurationSec(ds, "两次对时间隔: ");
+      long long diff_Sec = mathTimeDiffmsFromSec(epochSec);
+      printDurationSec(diff_Sec, "当前偏差: ");
       // 计算每小时偏差 = 偏差 * 1小时 / 本机经过时间
       if (ds > 0) {
-        long long hourlyDriftMs = diff_ms * 3600000LL / ds;
+        long long hourlyDriftSec = diff_Sec * 3600LL / ds;
         DEBUG_PRINT("每小时偏差: ");
-        DEBUG_PRINT(hourlyDriftMs);
-        DEBUG_PRINTLN(" 毫秒");
-        printDurationMs(hourlyDriftMs, "每小时偏差: ");
-        // 每小时小于60秒的偏差才通过，防止出乱子
-        if (abs(hourlyDriftMs) < 60000) {
-          hourlyDriftMsTemp = hourlyDriftMs;
+        DEBUG_PRINT(hourlyDriftSec);
+        DEBUG_PRINTLN(" 秒");
+        printDurationSec(hourlyDriftSec, "每小时偏差: ");
+        // 每小时小于3分钟的偏差才通过，防止出乱子
+        if (sendModeidx == 2) {
+          sendLoraToMid(String(MSG_TYPE_WARN) + "|" + deviceName + "|hourTm|" + hourlyDriftSec, true);
         }
       }
     }
-    strcpy(lastrelayName, relayName.c_str());
+
+    strncpy(lastrelayName, relayName.c_str(), sizeof(lastrelayName) - 1);
+    lastrelayName[sizeof(lastrelayName) - 1] = '\0';
   }
 
-  setTimeFromLora(timeStr);
-  lastSendTimeTemp = getCurrentTimestampMs();
-  timeSynFlage = true;
+  setTimeFromTimestampSec(epochSec);
+  lastSyncTime = getCurrentTimestampSec();
+  timeSyncFlag = true;
 }
 void meshCmdType(String infoStr, String tmp) {
-  if (infoStr.indexOf("config") != -1) {
-    // tmp格式: "30,8-6,12-3"
-    // 第1段: roundTime(分钟)  第2段: work起始小时-持续时长  第3段: gps起始小时-持续时长
-    int rt = 0, wStart = 0, wDur = 0, gStart = 0, gDur = 0;
-    if (sscanf(tmp.c_str(), "%d,%d-%d,%d-%d", &rt, &wStart, &wDur, &gStart, &gDur) == 5) {
+  int pos0 = infoStr.indexOf('|');
+  int pos1 = infoStr.indexOf('|', pos0 + 1);
+  int pos2 = infoStr.indexOf('|', pos1 + 1);
+  int pos3 = infoStr.indexOf('|', pos2 + 1);
+
+  String thirdField;
+  // 下标2字段：pos1+1 到 pos2
+  if (pos2 != -1) {
+    thirdField = infoStr.substring(pos1 + 1, pos2);
+  } else {
+    thirdField = "";
+  }
+  DEBUG_PRINT(" thirdField=");
+  DEBUG_PRINTLN(thirdField);
+  if (thirdField == "A") {
+    //10,1m,38
+    int rt;
+    char workstr[16];
+    char gpsstr[16];
+    int bigrt;
+    if (sscanf(tmp.c_str(), "%d,%15[^,],%15[^,],%d", &rt, workstr, gpsstr, &bigrt) == 4) {
       if (rt < 5 || rt > 120) {
         DEBUG_PRINT("❌上报周期最小5分钟最大不超过2小时 ");
         return;
       }
       roundTime = rt * 60 * 1000;
-      int wEnd = (wStart + wDur) % 24;
-      int gEnd = (gStart + gDur) % 24;
-      // 工作时间校验：超过24点截断为23:59，至少持续2小时
-      int wEndRaw = wStart + wDur;
-      int wEndH, wEndM;
-      if (wEndRaw >= 24) {
-        wEndH = 23;
-        wEndM = 59;
-      } else {
-        wEndH = wEndRaw;
-        wEndM = 0;
-      }
-      int wDurationMin = (wEndH * 60 + wEndM) - wStart * 60;
-      if (wDurationMin >= 2 * 60) {
-        sprintf(work_time_str, "%02d:00-%02d:%02d", wStart, wEndH, wEndM);
-      } else {
-        DEBUG_PRINT("⚠️工作时间不足2小时: ");
-        DEBUG_PRINTF("%02d:00-%02d:%02d\n", wStart, wEndH, wEndM);
-      }
-      sprintf(gps_time_str, "%02d:00-%02d:00", gStart, gEnd);
-      tmp.toCharArray(config_str, sizeof(config_str));
+      tmp.toCharArray(config_str, sizeof(config_str) - 1);
+      config_str[sizeof(config_str) - 1] = '\0';
       configConfirmed = true;
-      DEBUG_PRINT("✅✅全局配置 roundTime=");
-      DEBUG_PRINT(roundTime);
-      DEBUG_PRINT(" work=");
+      DEBUG_PRINT("全局配置");
+      uint8_t outS, outE;
+      if (indexToTimeWindow(twoCharToIndex(workstr), outS, outE)) {
+        uint8_t endHour = outE;
+        uint8_t endMin = 0;
+        if (outE == 23) {
+          endMin = 59;
+        }
+
+
+        snprintf(work_time_str, sizeof(work_time_str), "%02d:00-%02d:%02d", outS, endHour, endMin);
+
+        DEBUG_PRINT(" work=");
+        DEBUG_PRINT(work_time_str);
+      }
+      if (indexToTimeWindow(twoCharToIndex(gpsstr), outS, outE)) {
+        uint8_t endHour = outE;
+        uint8_t endMin = 0;
+        if (outE == 23) {
+          endMin = 59;
+        }
+        snprintf(gps_time_str, sizeof(gps_time_str), "%02d:00-%02d:%02d", outS, endHour, endMin);
+        DEBUG_PRINT(" gps=");
+        DEBUG_PRINT(gps_time_str);
+      }
+
+      big_interval_tm = bigrt;
+
+      DEBUG_PRINT("✅✅配置正常 ");
+      DEBUG_PRINT(rt);
       DEBUG_PRINT(work_time_str);
-      DEBUG_PRINT(" gps=");
-      DEBUG_PRINTLN(gps_time_str);
+      DEBUG_PRINT("  ");
+      DEBUG_PRINT(gps_time_str);
+      DEBUG_PRINT("  ");
+      DEBUG_PRINT(bigrt);
     } else {
-      DEBUG_PRINT("❌全局配置格式错误：");
-      DEBUG_PRINTLN(tmp);
+      DEBUG_PRINT("❌配置格式错误 ");
     }
-  } else if (infoStr.indexOf("minbattery") != -1) {
+
+
+  } else if (thirdField == "minbattery") {
     int modeVal = tmp.toInt();
-    if (modeVal >= 10 && modeVal <= 80) {
-      DEBUG_PRINT("✅✅设置最底工作电量：");
-      minBatteryVolage = modeVal * 0.01;
-      DEBUG_PRINTLN(minBatteryVolage);
-    }
-  } else if (infoStr.indexOf("sendmode") != -1) {
+
+    DEBUG_PRINT("✅✅设置最底工作电量：");
+
+  } else if (thirdField == "sendmode") {
     // 11|v4-10|sendmode|1|0
     int modeVal = tmp.toInt();
-    if (modeVal >= 0 && modeVal <= 2) {
-      DEBUG_PRINT("✅✅设置工作模式：");
-    } else {
-      DEBUG_PRINT("❌工作模式值错误(需0/1/2)：");
-      DEBUG_PRINTLN(modeVal);
-    }
-  } else if (infoStr.indexOf("txpower") != -1) {
+
+    sendModeidx = modeVal;
+    DEBUG_PRINT("✅✅修改上报模式：");
+
+  } else if (thirdField == "txpower") {
     DEBUG_PRINT("✅✅修改发射功率：");
     if (tmp.toInt() >= 10 && tmp.toInt() <= 28) {
       loraTxPower = tmp.toInt();
     }
-  } else if (infoStr.indexOf("upgps") != -1) {
+  } else if (thirdField == "test_gps") {
+
+    DEBUG_PRINT("✅✅开启测试模块");
+    typeindex = FLAG_TYPE_3;
+    gpsWorkStat = millis() + 5000;    // 延时5秒
+    gpsWorkTime = 30 * 60 * 1000;     // 跟踪时间
+    gpsWorkInterval = 1 * 60 * 1000;  // 跟踪上报间隔
+  } else if (thirdField == "upgps") {
 
     DEBUG_PRINT("✅✅时时定位改成只跟踪1分钟，正好利用现有机制");
     typeindex = FLAG_TYPE_3;
@@ -317,7 +343,7 @@ void meshCmdType(String infoStr, String tmp) {
     gpsWorkTime = 1 * 60 * 1000;      // 跟踪时间
     gpsWorkInterval = 1 * 60 * 1000;  // 跟踪上报间隔
 
-  } else if (infoStr.indexOf("follow") != -1) {
+  } else if (thirdField == "B") {
     // 11|v4-10|follow|30,5
     int commaIndex = tmp.indexOf(',');
     if (commaIndex != -1) {
@@ -339,6 +365,9 @@ void meshCmdType(String infoStr, String tmp) {
       // 没有逗号的处理逻辑
       DEBUG_PRINTLN("没有找到逗号");
     }
+  } else if (thirdField == "C") {
+
+    // rtc_gps_lat
 
   } else {
     DEBUG_PRINTLN("❌❌❌❌ 需要补充功能列表");
@@ -350,6 +379,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   if (size >= BUFFER_SIZE) {
     return;
   }
+  Radio.Sleep();
   lastRssi = rssi;
   lastSnr = snr;
   char buf[BUFFER_SIZE];
@@ -376,20 +406,32 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   int messageType = infoStr.substring(0, firstPipeIndex).toInt();
   int lastPipe = infoStr.lastIndexOf('|');
   String tmp = infoStr.substring(lastPipe + 1);  // 从最后一个'|'后取到末尾
+
   if (messageType == MSG_TYPE_COM && isMyDeviceInList(infoStr, deviceName)) {
     meshCmdType(infoStr, tmp);
   }
 
-  if (messageType == MSG_TYPE_SYN_TIME && isMyDeviceInList(infoStr, deviceName)) {
+  if (messageType == MSG_TYPE_SYN_TIME) {
     meshSynTime(infoStr, firstPipeIndex);
   }
 }
 //发送LORA到中继
 void sendLoraToMid(String dataStr, bool addBatter) {
-  if (addBatter == true) {
-    dataStr += "|" + batterystr;
+  if (loraInitOk == false) {
+    initLora();
+    delay(100);
   }
-  dataStr += "|" + String(rtcSendCount++);
+  if (addBatter == true) {
+    dataStr += "|" + String(batteryNum);
+  }
+  dataStr += "|";
+  rtcSendCount++;
+  if (sendModeidx == 1 || rtcSendCount < 4) {
+    dataStr += String(rtcSendCount);
+  }
+
+
+  sendData[0] = 0;
   int len = snprintf(sendData, BUFFER_SIZE, "%s", dataStr.c_str());
   if (len < 0 || len >= BUFFER_SIZE) {
     DEBUG_PRINTLN("⚠️ 数据过长，已截断");
@@ -400,7 +442,9 @@ void sendLoraToMid(String dataStr, bool addBatter) {
   DEBUG_PRINT("  len:");
   DEBUG_PRINTLN(strlen(sendData));
   Radio.Send((uint8_t *)sendData, strlen(sendData));
-  delay(100);
+
+  isSleepRestFristSendRolaFlag = false;
+  lastSendLoraMs = millis();
 }
 // ==================== 构建并发送数据包 ====================
 
@@ -408,23 +452,22 @@ void sendLoraToMid(String dataStr, bool addBatter) {
 unsigned long inRxEndTime = 0;
 // ==================== LoRa发送完成回调 ====================
 void onSendDone(void) {
-  // Radio.Sleep();
   DEBUG_PRINT("✅ 发送完成");
   if (typeindex == FLAG_TYPE_1) {
-    DEBUG_PRINTLN("定时上报信息");
-    inRxEndTime = millis() + 4000;  // 4秒后结束接收窗口
+    DEBUG_PRINTLN("1 定时 上报信息");
+    inRxEndTime = millis() + 3000;  // 4秒后结束接收窗口
     typeindex = FLAG_TYPE_2;
     Radio.Rx(0);
   } else if (typeindex == FLAG_TYPE_2) {
-    DEBUG_PRINTLN("重复上报时间信息");
+    DEBUG_PRINTLN("2 应该不会到这里");
   } else if (typeindex == FLAG_TYPE_3) {
-    DEBUG_PRINTLN("Gps上报完成");
+    DEBUG_PRINTLN("3 Gps上报完成");
   }
 }
 
 // ==================== LoRa发送超时回调 ====================
 void onSendTimeout(void) {
-  // Radio.Sleep();  // 中断中不应操作Radio硬件，移到loop处理
+
   DEBUG_PRINTLN("❌ 发送超时");
   typeindex = FLAG_TYPE_0;
 }
@@ -442,7 +485,8 @@ void printTimeToString(String str, unsigned long ms) {
   DEBUG_PRINT(remMs);
   DEBUG_PRINTLN("毫秒");
 }
-int seacthTm = 240000;  //5分钟提前搜星
+
+const uint32_t seacthTm = 240000U;
 void meshGpsInfoFun(bool closeGps = true) {
   if (!getGpsStatus()) {
     initPanGPS();
@@ -457,10 +501,11 @@ void meshGpsInfoFun(bool closeGps = true) {
     bool ellitesNum = gps.satellites.value() >= 6;
 
     bool timeoutOk = (millis() - startAttemptTime) < seacthTm;
+
+    lastSeacthStatTm = (millis() - startAttemptTime) / 1000;
     // Serial.print(".");
     // Serial.println(getCurrentTime());
-    showDisplayBy4Area(deviceName, getGpsInfoStr(), getCurrentTime(false),
-                       String(skipnum++));
+
     DEBUG_PRINT(hasLocValid ? "✅" : "❌");
     DEBUG_PRINT("定位数据:");
     if (hasLocValid) {
@@ -486,19 +531,25 @@ void meshGpsInfoFun(bool closeGps = true) {
 
 
 
-    bool allPass = (hasLocValid && yearOk && gpsReliable) && timeoutOk;
+    bool allPass = (hasLocValid && gpsReliable) && timeoutOk;
     if (allPass) {
       DEBUG_PRINTLN("==== GPS全部条件满足，退出搜星循环 ====");
       upDataGpsTimeToCs();
-      strcpy(lastrelayName, "");
-      timeSynFlage = true;
 
+      lastSyncTime = getCurrentTimestampSec();  // ← 加上
+      strncpy(lastrelayName, "", sizeof(lastrelayName) - 1);
+      lastrelayName[sizeof(lastrelayName) - 1] = '\0';
+      timeSyncFlag = true;
+      lastCanthGpsOk = true;
       break;
     }
     if (!timeoutOk) {
+
       DEBUG_PRINT("==== 搜星 ");
       DEBUG_PRINT(seacthTm / 1000);
       DEBUG_PRINTLN(" 秒超时，强制退出 ====");
+
+      lastCanthGpsOk = false;
       break;
     }
     delay(1000);
@@ -518,24 +569,16 @@ void printCurrentTime() {
     DEBUG_PRINTLN(nowStr);  // 或者只打印秒级字符串
     lastPrintTimeStr = nowSecStr;
   }
-  if (!haveRightTime()) {
-    // Serial.println("❌当前时间还没对时成功");
-  }
 }
-//电量不足进入24小时休眠
-void batteryLowSheep(float minValue) {
-  int separatorIndex = batterystr.indexOf('|');
-  String firstPart = batterystr.substring(0, separatorIndex);
-  float value = firstPart.toFloat();
-  if (value <= minValue) {
+
+void batteryLowSleep(int minValue) {
+  if (batteryNum < 0 || batteryNum > 100) return;
+  if (batteryNum <= minValue) {
     DEBUG_PRINTLN("❌❌❌电压过底电压过底电压过底❌❌❌");
-    DEBUG_PRINTLN("电压过底，休眠24个小时");
-    unsigned long endTm = millis() + 30000;
-    while (endTm > millis()) {
-      delay(1000);
-      DEBUG_PRINT("❌");
-    }
-    esp_sleep_enable_timer_wakeup(24 * 60 * 60 * 1000 * 1000ULL);
+    delay(1000);
+    DEBUG_PRINT("❌");
+    Radio.Sleep();
+    esp_sleep_enable_timer_wakeup(MAX_SLEEP_US);
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     Serial.flush();
     esp_deep_sleep_start();
@@ -543,125 +586,168 @@ void batteryLowSheep(float minValue) {
 }
 
 unsigned long num6000 = 5000;  // 暂时提前20秒开机
-void testSheepFun() {
-  unsigned long waittm = nextSendTime - millis();
-  printTimeToString("到上报时间还有 ", nextSendTime - millis());
+
+bool isNeedOpenGpsMask() {
+
+  return isTimeInRange(getCurrentTimestampSec(), gps_time_str) || lastCanthGpsOk == false;
+}
+void testSheepFun(bool driftComp) {
+
+  unsigned long waittm = (nextSendTime >= millis()) ? (nextSendTime - millis()) : 0;
+  printTimeToString("到上报时间还有 ", waittm);
   // 测试阶段多给一点时间用于烧入程序  num6000 = 10000;
   if ((waittm) > num6000) {
-    if (configConfirmed || rtcSendCount <= 1) {
+    if (configConfirmed) {
       //确认配置给两秒特殊插入数据， 开机上报当前的配置信息
       configConfirmed = false;
       sendLoraToMid(String(MSG_TYPE_CONFIG) + "|" + deviceName + "|" + String(config_str), false);
-      delay(2000);
-      waittm = nextSendTime - millis();
+      return;
     }
-
-
-    batteryLowSheep(minBatteryVolage);
     DEBUG_PRINT("距离上报时间超过 ");
     DEBUG_PRINT(num6000 / 1000);
     DEBUG_PRINTLN("秒进入睡眠");
-    hideOLED();
-    delay(1000);
     // 05:02|10:59
-    uint64_t sleepTime = getAdjustedSleepTimeUs(waittm - num6000);
+    uint64_t sleepTime = (waittm - num6000);  //毫秒
     //判断下个时间段是否需要开启GPS是的话就提前搜星
-    if (isTimeInRange(getCurrentTimestampMs(), gps_time_str) && strlen(needSendGpsStr) == 0) {
+    //判断是否需要GPS工作
+
+    if (isNeedOpenGpsMask() && strlen(needSendGpsStr) == 0) {
       DEBUG_PRINTLN("工作模式上报GPS，需要提前开启GPS");
-      if (sleepTime > (seacthTm * 1000ULL)) {
-        sleepTime = sleepTime - (seacthTm * 1000ULL);
-      } else {
-        //小于时间周期，10秒就马上重启
-        sleepTime = 10 * 1000 * 1000ULL;
+      if (sleepTime > seacthTm) {
+        sleepTime = sleepTime - (seacthTm);
       }
     }
-    // 根据每小时偏差补偿休眠期间的时钟漂移
-    if (hourlyDriftMsTemp != 0) {
-      long long sleepMs = (long long)(sleepTime / 1000ULL);
-      long long driftCompMs = hourlyDriftMsTemp * sleepMs / 3600000LL;
-      long long currentMs = getCurrentTimestampMs();
-      long long adjustedMs = currentMs + driftCompMs;
-
-      lastDriftCompMs = driftCompMs;
-
-      DEBUG_PRINTF("每小时偏差: %lld 毫秒\n", hourlyDriftMsTemp);
-      DEBUG_PRINTF("休眠时长: %llu 微秒\n", sleepTime);
-      DEBUG_PRINTF("休眠期间预估偏差: %lld 毫秒\n", driftCompMs);
-      printTimestampMs(currentMs, "补偿前时间: ");
-      setTimeFromTimestamp(adjustedMs);
-      printTimestampMs(adjustedMs, "补偿后时间: ");
+    //现在还不是在工作时间，但下个周期为工作时间
+    if (isBoardDateTimeOK() && !isTimeInRange(getCurrentTimestampSec(), work_time_str) && isTimeInRange(getCurrentTimestampSec() + sleepTime / 1000ULL, work_time_str)) {
+      DEBUG_PRINTLN("即将跨入工作时间   周期不能沿用大周期 要设定工作时间");
+      int startH = 0, startM = 0, endH = 0, endM = 0;
+      int ret = sscanf(work_time_str, "%d:%d-%d:%d", &startH, &startM, &endH, &endM);
+      if (ret == 4) {
+        long long now = getCurrentTimestampSec();
+        long long todayZero = (now / 86400) * 86400;
+        long long targetTime = todayZero + startH * 3600 + startM * 60;
+        long long secondsLeft = targetTime - now;
+        if (secondsLeft > 0) {
+          sleepTime = secondsLeft * 1000ULL;
+        }
+        DEBUG_PRINTF("距离工作时间开始还有 %lld 秒\n", secondsLeft);
+      }
+    }
+    if (sleepTime < 1000ULL * 10) {
+      sleepTime = 1000ULL * 10;
+    }
+    uint64_t sleepWake = sleepTime * 1000ULL;
+    if (sleepWake > MAX_SLEEP_US) {
+      sleepWake = MAX_SLEEP_US;
     }
 
-
-    if (sleepTime > 24 * 60 * 60 * 1000 * 1000ULL) {
-      ESP.restart();
-      //重启
-    }
-
-
-    // esp_deep_sleep(sleepTime);
-    esp_sleep_enable_timer_wakeup(sleepTime);
+    Radio.Sleep();
+    esp_sleep_enable_timer_wakeup(sleepWake);  //需要微秒单位
     DEBUG_PRINTLN("--->即将进入深度睡眠...");
     // 计算并打印预计开机时间
     {
-      uint64_t wakeUpSec = sleepTime / 1000000ULL;
+      uint64_t wakeUpSec = sleepWake / 1000000ULL;
       time_t now = time(nullptr);
       time_t wakeTime = now + (time_t)wakeUpSec;
       struct tm wt;
       localtime_r(&wakeTime, &wt);
-      DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
-                   wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
+      // DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu秒)\n",
+      //              wt.tm_hour, wt.tm_min, wt.tm_sec, wakeUpSec);
+      DEBUG_PRINTF("预计开机时间: %02d:%02d:%02d (休眠%llu分%llu秒)\n",
+                   wt.tm_hour, wt.tm_min, wt.tm_sec,
+                   wakeUpSec / 60, wakeUpSec % 60);
     }
     Serial.flush();
     esp_deep_sleep_start();
-    DEBUG_PRINTLN("我已经睡着了...");
   }
 }
-void receiveDtuData() {
-  String raw = "";
-
-  if (dtuSerial->available() <= 0) {
-    return;
-  }
-  // 1. 读取本次全部数据（限制最大长度防止内存耗尽）
-  int rawLen = 0;
-  while (dtuSerial->available() > 0 && rawLen < 1024) {
-    raw += (char)dtuSerial->read();
-    rawLen++;
-    delay(2);  // 等待下一个字节
-  }
-  // 丢弃超出部分
-  while (dtuSerial->available() > 0) {
-    dtuSerial->read();
-  }
-
-  dtuSerial->flush();
-  Serial.print("dtu 返回 -");
-  Serial.println(raw);
+String mathGpsRectByBaseStr(char *value) {
+  char gpsOutBuf[32];
+  filterGpsByRect(value, gpsOutBuf, rtc_gps_lat, rtc_gps_lon, 0.180, 0.202);
+  return String(gpsOutBuf);
 }
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
+
+  if (rtcMagic != MY_RTC_MAGIC) {
+    // ========== 全部出厂默认值写在这里 ==========
+    lastSyncTime = 0;
+    sendModeidx = 0;
+
+    loraTxPower = 22;
+    lastRssi = 0;
+    lastSnr = 0;
+
+    lastCanthGpsOk = true;
+
+    // static double static_gps_lat = 26.52958;  // 纬度，改成你的值
+    // static double static_gps_lon = 109.39087; // 经度
+    rtc_gps_lat = 26.52958;
+    rtc_gps_lon = 109.39087;
+
+    configConfirmed = true;
+
+    rtcSendCount = -1;
+    rtcResiveIdx = 0;
+
+    big_interval_tm = 6;  //1为10分钟
+    lastSeacthStatTm = 0;
+
+
+
+    roundTime = 1000 * 60 * 30;
+
+
+    strncpy(needSendGpsStr, "", sizeof(needSendGpsStr) - 1);
+    needSendGpsStr[sizeof(needSendGpsStr) - 1] = '\0';
+
+    strncpy(lastrelayName, "", sizeof(lastrelayName) - 1);
+    lastrelayName[sizeof(lastrelayName) - 1] = '\0';
+
+    strncpy(work_time_str, "00:00-23:59", sizeof(work_time_str) - 1);
+    work_time_str[sizeof(work_time_str) - 1] = '\0';
+
+    // strncpy(gps_time_str, "09:00-13:00", sizeof(gps_time_str) - 1);
+    strncpy(gps_time_str, "15:00-17:00", sizeof(gps_time_str) - 1);
+    gps_time_str[sizeof(gps_time_str) - 1] = '\0';
+
+    strncpy(config_str, "30,0M,3t,6", sizeof(config_str) - 1);
+    config_str[sizeof(config_str) - 1] = '\0';
+
+    rtcMagic = MY_RTC_MAGIC;
+    DEBUG_PRINTLN("INFO: RTC magic invalid -> reset all rtc params");
+  }
+
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
-  randomSeed(analogRead(0));
   deviceName = makeDivceName();
-  batterystr = readBatteryEndStr(deviceName);
 
-#if defined(WIFI_LORA_32_V4)
-  // Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
-  Serial2.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-  dtuSerial = &Serial2;
-  Serial.println("✅ v4 板子 DTU");
-  delay(1000);
-#endif
+  Serial.print(deviceName);
+  Serial.print(" 开机时间：");
+  Serial.println(getCurrentTime(true));
+  batteryNum = readBatteryEndStr();
 
 
-  initLora();
+
+  if (rtcSendCount == -1) {
+    uint32_t waitMs = 3000;
+    uint32_t startMs = millis();
+    while ((millis() - startMs) < waitMs) {
+      delay(1000);
+      Serial.print("x");
+    }
+    rtcSendCount = 0;
+  }
+
+ 
+
+
+  meshGpsInfoFun(true);
 }
 // ==================== 主循环 ====================
 void loop() {
-  Radio.IrqProcess();
-  receiveDtuData();
+
   printCurrentTime();
+    meshGpsInfoFun(false);
   delay(1000);
 }
