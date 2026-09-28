@@ -1,0 +1,1025 @@
+Dependencies for Project 'PAN3031_Easy_Demo', Target 'PAN3031_Easy_Demo_V4.2': (DO NOT MODIFY !)
+F (..\Libraries\CMSIS\Device\ST\STM32F0xx\Source\Templates\arm\startup_stm32f030.s)(0x54808D0E)(--cpu Cortex-M0 -g --apcs=interwork -I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include--pd "__UVISION_VERSION SETA 514" --pd "STM32F030x8 SETA 1"--list .\listings\startup_stm32f030.lst --xref -o .\objects\startup_stm32f030.o --depend .\objects\startup_stm32f030.d)
+F (..\Libraries\CMSIS\Device\ST\STM32F0xx\Source\Templates\system_stm32f0xx.c)(0x5482190B)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\system_stm32f0xx.o --omf_browse .\objects\system_stm32f0xx.crf --depend .\objects\system_stm32f0xx.d)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\stm32f0xx_it.c)(0x62BD59AC)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_it.o --omf_browse .\objects\stm32f0xx_it.crf --depend .\objects\stm32f0xx_it.d)
+I (..\stm32f0xx_it.h)(0x54809128)
+I (..\main.h)(0x54809130)
+I (..\stm32f0xx.h)(0x5B55706C)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\system_stm32f0xx.h)(0x54808D0F)
+I (..\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+I (..\user.h)(0x62BC0377)
+I (C:\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\string.h)(0x5475F300)
+I (..\gpio.h)(0x6549B447)
+I (..\delay.h)(0x5C9B1A6A)
+I (..\spi.h)(0x62BC026C)
+I (..\Radio\inc\crc.h)(0x5C92FCC6)
+I (..\Radio\inc\pan3031_port.h)(0x635A2890)
+I (C:\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\math.h)(0x5475F2FE)
+I (..\Radio\inc\pan3031.h)(0x632A8121)
+I (..\Radio\inc\radio.h)(0x6510E401)
+F (..\Radio\src\crc.c)(0x5A5D736A)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\crc.o --omf_browse .\objects\crc.crf --depend .\objects\crc.d)
+I (..\Radio\inc\crc.h)(0x5C92FCC6)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+F (..\Radio\src\pan3031.c)(0x645C5DB9)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\pan3031.o --omf_browse .\objects\pan3031.crf --depend .\objects\pan3031.d)
+I (..\Radio\inc\pan3031_port.h)(0x635A2890)
+I (C:\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\math.h)(0x5475F2FE)
+I (..\Radio\inc\pan3031.h)(0x632A8121)
+I (..\Radio\inc\radio.h)(0x6510E401)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Radio\src\pan3031_port.c)(0x635A2921)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\pan3031_port.o --omf_browse .\objects\pan3031_port.crf --depend .\objects\pan3031_port.d)
+I (..\Radio\inc\pan3031_port.h)(0x635A2890)
+I (C:\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\math.h)(0x5475F2FE)
+I (..\Radio\inc\pan3031.h)(0x632A8121)
+I (..\Radio\inc\radio.h)(0x6510E401)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+I (..\..\PAN3031_Easy_Demo_v4.2\gpio.h)(0x6549B447)
+I (..\..\PAN3031_Easy_Demo_v4.2\delay.h)(0x5C9B1A6A)
+F (..\Radio\src\radio.c)(0x632A8121)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\radio.o --omf_browse .\objects\radio.crf --depend .\objects\radio.d)
+I (..\Radio\inc\pan3031_port.h)(0x635A2890)
+I (C:\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\math.h)(0x5475F2FE)
+I (..\Radio\inc\pan3031.h)(0x632A8121)
+I (..\Radio\inc\radio.h)(0x6510E401)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_adc.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_adc.o --omf_browse .\objects\stm32f0xx_adc.crf --depend .\objects\stm32f0xx_adc.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_can.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_can.o --omf_browse .\objects\stm32f0xx_can.crf --depend .\objects\stm32f0xx_can.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_cec.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_cec.o --omf_browse .\objects\stm32f0xx_cec.crf --depend .\objects\stm32f0xx_cec.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_comp.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_comp.o --omf_browse .\objects\stm32f0xx_comp.crf --depend .\objects\stm32f0xx_comp.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_crc.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_crc.o --omf_browse .\objects\stm32f0xx_crc.crf --depend .\objects\stm32f0xx_crc.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_crs.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_crs.o --omf_browse .\objects\stm32f0xx_crs.crf --depend .\objects\stm32f0xx_crs.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_dac.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_dac.o --omf_browse .\objects\stm32f0xx_dac.crf --depend .\objects\stm32f0xx_dac.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_dbgmcu.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_dbgmcu.o --omf_browse .\objects\stm32f0xx_dbgmcu.crf --depend .\objects\stm32f0xx_dbgmcu.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_dma.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_dma.o --omf_browse .\objects\stm32f0xx_dma.crf --depend .\objects\stm32f0xx_dma.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_exti.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_exti.o --omf_browse .\objects\stm32f0xx_exti.crf --depend .\objects\stm32f0xx_exti.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_flash.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_flash.o --omf_browse .\objects\stm32f0xx_flash.crf --depend .\objects\stm32f0xx_flash.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_gpio.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_gpio.o --omf_browse .\objects\stm32f0xx_gpio.crf --depend .\objects\stm32f0xx_gpio.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_i2c.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_i2c.o --omf_browse .\objects\stm32f0xx_i2c.crf --depend .\objects\stm32f0xx_i2c.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_iwdg.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_iwdg.o --omf_browse .\objects\stm32f0xx_iwdg.crf --depend .\objects\stm32f0xx_iwdg.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_misc.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_misc.o --omf_browse .\objects\stm32f0xx_misc.crf --depend .\objects\stm32f0xx_misc.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_pwr.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_pwr.o --omf_browse .\objects\stm32f0xx_pwr.crf --depend .\objects\stm32f0xx_pwr.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_rcc.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_rcc.o --omf_browse .\objects\stm32f0xx_rcc.crf --depend .\objects\stm32f0xx_rcc.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_rtc.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_rtc.o --omf_browse .\objects\stm32f0xx_rtc.crf --depend .\objects\stm32f0xx_rtc.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_spi.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_spi.o --omf_browse .\objects\stm32f0xx_spi.crf --depend .\objects\stm32f0xx_spi.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_syscfg.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_syscfg.o --omf_browse .\objects\stm32f0xx_syscfg.crf --depend .\objects\stm32f0xx_syscfg.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_tim.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_tim.o --omf_browse .\objects\stm32f0xx_tim.crf --depend .\objects\stm32f0xx_tim.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_usart.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_usart.o --omf_browse .\objects\stm32f0xx_usart.crf --depend .\objects\stm32f0xx_usart.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_wwdg.c)(0x54808D13)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\stm32f0xx_wwdg.o --omf_browse .\objects\stm32f0xx_wwdg.crf --depend .\objects\stm32f0xx_wwdg.d)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h)(0x54808D0F)
+I (..\..\PAN3031_Easy_Demo_v4.2\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+F (..\delay.c)(0x62BD43BD)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\delay.o --omf_browse .\objects\delay.crf --depend .\objects\delay.d)
+I (..\delay.h)(0x5C9B1A6A)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+F (..\gpio.c)(0x6549B4D3)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\gpio.o --omf_browse .\objects\gpio.crf --depend .\objects\gpio.d)
+I (..\stm32f0xx.h)(0x5B55706C)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\system_stm32f0xx.h)(0x54808D0F)
+I (..\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+I (..\gpio.h)(0x6549B447)
+F (..\main.c)(0x6549B493)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\main.o --omf_browse .\objects\main.crf --depend .\objects\main.d)
+I (..\stm32f0xx.h)(0x5B55706C)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\system_stm32f0xx.h)(0x54808D0F)
+I (..\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)
+I (..\delay.h)(0x5C9B1A6A)
+I (..\user.h)(0x62BC0377)
+I (C:\Keil_v5\ARM\ARMCC\include\stdbool.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\string.h)(0x5475F300)
+I (..\gpio.h)(0x6549B447)
+I (..\spi.h)(0x62BC026C)
+I (..\Radio\inc\crc.h)(0x5C92FCC6)
+I (..\Radio\inc\pan3031_port.h)(0x635A2890)
+I (C:\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x5475F300)
+I (C:\Keil_v5\ARM\ARMCC\include\math.h)(0x5475F2FE)
+I (..\Radio\inc\pan3031.h)(0x632A8121)
+I (..\Radio\inc\radio.h)(0x6510E401)
+F (..\spi.c)(0x62E34C3E)(--c99 -c --cpu Cortex-M0 -g -O0 --apcs=interwork --split_sections -I..\Libraries\CMSIS\Device\ST\STM32F0xx\Include -I..\Libraries\STM32F0xx_StdPeriph_Driver\inc -I..\Radio\inc -I..\Libraries\CMSIS\Include -I..\..\PAN3031_Easy_Demo_v4.2-I G:\硅传资料夹\硅传资料夹V1.34\常规模块资料\硅传Sub-1G模块资料\磐启微\PAN3031ZTR4-GC资料包\Demo程序\PAN3031_Easy_Demo_v4.2\MDK-ARM\RTE-I C:\Keil_v5\ARM\PACK\Keil\STM32F0xx_DFP\1.5.0-I C:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="514" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o .\objects\spi.o --omf_browse .\objects\spi.crf --depend .\objects\spi.d)
+I (..\stm32f0xx.h)(0x5B55706C)
+I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9683)
+I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5475F300)
+I (..\Libraries\CMSIS\Include\core_cmInstr.h)(0x547D9683)
+I (..\Libraries\CMSIS\Include\core_cmFunc.h)(0x547D9683)
+I (..\system_stm32f0xx.h)(0x54808D0F)
+I (..\stm32f0xx_conf.h)(0x54809109)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D10)
+I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x54808D0F)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D10)
+I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D10)

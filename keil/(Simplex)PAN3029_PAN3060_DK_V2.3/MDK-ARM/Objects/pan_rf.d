@@ -1,0 +1,9 @@
+.\objects\pan_rf.o: ..\Radio\src\pan_rf.c
+.\objects\pan_rf.o: ..\Radio\inc\pan_port.h
+.\objects\pan_rf.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+.\objects\pan_rf.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+.\objects\pan_rf.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+.\objects\pan_rf.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+.\objects\pan_rf.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+.\objects\pan_rf.o: ..\Radio\inc\pan_rf.h
+.\objects\pan_rf.o: ..\Radio\inc\pan_port.h

@@ -1,0 +1,613 @@
+###############################################################################
+#
+# IAR ELF Linker V8.20.2.14835/W32 for ARM                01/Sep/2025  10:32:58
+# Copyright 2007-2017 IAR Systems AB.
+#
+#    Output file  =  
+#        E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Exe\PAN3029_PAN3060_DK.out
+#    Map file     =  
+#        E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\List\PAN3029_PAN3060_DK.map
+#    Command line =  
+#        -f C:\Users\72952\AppData\Local\Temp\EW12AF.tmp
+#        ("E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\crc.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\delay.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\gpio.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\main.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\pan3029_port.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\pan3029_rf.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\spi.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\startup_stm32f030.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_adc.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_can.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_cec.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_comp.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_crc.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_crs.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_dac.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_dbgmcu.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_dma.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_exti.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_flash.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_gpio.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_i2c.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_it.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_iwdg.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_misc.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_pwr.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_rcc.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_rtc.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_spi.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_syscfg.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_tim.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_usart.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\stm32f0xx_wwdg.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\system_stm32f0xx.o"
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj\uart.o"
+#        --redirect _Printf=_PrintfSmall --redirect _Scanf=_ScanfSmall -o
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Exe\PAN3029_PAN3060_DK.out"
+#        --map
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\List\PAN3029_PAN3060_DK.map"
+#        --config
+#        "E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\stm32f030_flash.icf"
+#        --semihosting --entry __iar_program_start --vfe --text_out locale)
+#
+###############################################################################
+
+*******************************************************************************
+*** RUNTIME MODEL ATTRIBUTES
+***
+
+CppFlavor       = *
+__SystemLibrary = DLib
+__dlib_version  = 6
+
+
+*******************************************************************************
+*** HEAP SELECTION
+***
+
+The basic heap was selected because no calls to memory allocation
+functions were found in the application outside of system library
+functions, and there are calls to deallocation functions in the
+application.
+
+
+*******************************************************************************
+*** PLACEMENT SUMMARY
+***
+
+"A0":  place at 0x08000000 { ro section .intvec };
+"P1":  place in [from 0x08000000 to 0x0800ffff] { ro };
+define block CSTACK with size = 1K, alignment = 8 { };
+define block HEAP with size = 512, alignment = 8 { };
+"P2":  place in [from 0x20000000 to 0x20001fff] {
+          rw, block CSTACK, block HEAP };
+initialize by copy { rw };
+
+  Section            Kind        Address    Size  Object
+  -------            ----        -------    ----  ------
+"A0":                                       0xb4
+  .intvec            ro code  0x08000000    0xb4  startup_stm32f030.o [1]
+                            - 0x080000b4    0xb4
+
+"P1":                                     0x40c2
+  .text              ro code  0x080000b4  0x131c  pan3029_rf.o [1]
+  .text              ro code  0x080013d0    0x34  ABImemset.o [5]
+  .text              ro code  0x08001404    0x34  IxxToDbl.o [4]
+  .text              ro code  0x08001438   0x184  DblMul.o [4]
+  .text              ro code  0x080015bc    0xc2  DblDiv.o [4]
+  .text              ro code  0x0800167e    0x62  DblToFlt.o [4]
+  .text              ro code  0x080016e0    0x3a  FltToS32.o [4]
+  .text              ro code  0x0800171a     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x0800171c    0x36  IxxToFlt.o [4]
+  .text              ro code  0x08001752   0x120  FltAddSub.o [4]
+  .text              ro code  0x08001872    0xb0  FltMul.o [4]
+  .text              ro code  0x08001922    0xaa  FltDiv.o [4]
+  .text              ro code  0x080019cc    0x34  ABImemcpy.o [5]
+  .text              ro code  0x08001a00    0x32  FltToDbl.o [4]
+  .text              ro code  0x08001a32     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x08001a34    0x58  ceil.o [4]
+  .text              ro code  0x08001a8c    0x26  FltToU32.o [4]
+  .text              ro code  0x08001ab2    0xae  I32DivModFast.o [5]
+  .text              ro code  0x08001b60   0x36a  logx64.o [4]
+  .text              ro code  0x08001eca     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x08001ecc   0x134  stm32f0xx_gpio.o [1]
+  .text              ro code  0x08002000    0x28  printf.o [3]
+  .text              ro code  0x08002028     0x2  IntDivZer.o [5]
+  .text              ro code  0x0800202a   0x1b4  DblAddSub.o [4]
+  .text              ro code  0x080021de     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x080021e0   0x58c  xprintfsmall.o [3]
+  .text              ro code  0x0800276c    0x6c  xlocale_c.o [3]
+  .text              ro code  0x080027d8    0x16  strchr.o [5]
+  .text              ro code  0x080027ee     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x080027f0    0x48  xfail_s.o [3]
+  .text              ro code  0x08002838    0x10  strlen.o [5]
+  .text              ro code  0x08002848    0x18  memchr.o [5]
+  .text              ro code  0x08002860     0xa  abort.o [3]
+  .text              ro code  0x0800286a     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x0800286c    0x14  exit.o [6]
+  .text              ro code  0x08002880   0x3e8  main.o [1]
+  .text              ro code  0x08002c68   0x398  stm32f0xx_rcc.o [1]
+  .text              ro code  0x08003000    0xb8  stm32f0xx_exti.o [1]
+  .text              ro code  0x080030b8    0x60  stm32f0xx_syscfg.o [1]
+  .text              ro code  0x08003118    0x74  stm32f0xx_misc.o [1]
+  .text              ro code  0x0800318c   0x168  gpio.o [1]
+  .text              ro code  0x080032f4    0x64  spi.o [1]
+  .text              ro code  0x08003358    0xd4  uart.o [1]
+  .text              ro code  0x0800342c    0x5c  delay.o [1]
+  .text              ro code  0x08003488    0x16  uread4.o [5]
+  .text              ro code  0x0800349e     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x080034a0    0xb4  stm32f0xx_spi.o [1]
+  .text              ro code  0x08003554   0x23a  stm32f0xx_usart.o [1]
+  .text              ro code  0x0800378e     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x08003790   0x164  system_stm32f0xx.o [1]
+  .rodata            const    0x080038f4   0x160  pan3029_rf.o [1]
+  .text              ro code  0x08003a54    0xe4  pan3029_port.o [1]
+  .rodata            const    0x08003b38    0x90  pan3029_rf.o [1]
+  .rodata            const    0x08003bc8    0x80  pan3029_rf.o [1]
+  .text              ro code  0x08003c48    0x80  lz77_init_single.o [5]
+  .text              ro code  0x08003cc8    0x64  stm32f0xx_it.o [1]
+  .text              ro code  0x08003d2c    0x2e  stm32f0xx_tim.o [1]
+  .text              ro code  0x08003d5a     0x2  startup_stm32f030.o [1]
+  .rodata            const    0x08003d5c    0x48  pan3029_rf.o [1]
+  .rodata            const    0x08003da4    0x40  main.o [1]
+  .text              ro code  0x08003de4    0x3c  startup_stm32f030.o [1]
+  .text              ro code  0x08003e20    0x3c  zero_init3.o [5]
+  .rodata            const    0x08003e5c    0x2c  main.o [1]
+  .rodata            const    0x08003e88    0x28  pan3029_rf.o [1]
+  .rodata            const    0x08003eb0    0x28  pan3029_rf.o [1]
+  .text              ro code  0x08003ed8    0x28  data_init.o [5]
+  .rodata            const    0x08003f00    0x24  pan3029_rf.o [1]
+  .iar.init_table    const    0x08003f24    0x20  - Linker created -
+  .text              ro code  0x08003f44    0x1e  cmain.o [5]
+  .text              ro code  0x08003f62     0x4  low_level_init.o [3]
+  .text              ro code  0x08003f66     0x8  exit.o [3]
+  .text              ro code  0x08003f6e     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x08003f70     0xa  cexit.o [5]
+  .text              ro code  0x08003f7a     0x2  startup_stm32f030.o [1]
+  .rodata            const    0x08003f7c    0x1c  main.o [1]
+  .rodata            const    0x08003f98    0x1c  main.o [1]
+  .rodata            const    0x08003fb4    0x1c  main.o [1]
+  .rodata            const    0x08003fd0    0x1c  main.o [1]
+  .text              ro code  0x08003fec    0x16  xprout.o [3]
+  .text              ro code  0x08004002     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x08004004    0x10  putchar.o [3]
+  .rodata            const    0x08004014    0x14  main.o [1]
+  .rodata            const    0x08004028    0x14  main.o [1]
+  .rodata            const    0x0800403c    0x10  main.o [1]
+  .rodata            const    0x0800404c    0x10  main.o [1]
+  .rodata            const    0x0800405c    0x10  main.o [1]
+  .rodata            const    0x0800406c    0x10  pan3029_rf.o [1]
+  .rodata            const    0x0800407c    0x10  pan3029_rf.o [1]
+  .rodata            const    0x0800408c     0xc  main.o [1]
+  .rodata            const    0x08004098     0xc  main.o [1]
+  .rodata            const    0x080040a4     0xc  main.o [1]
+  .rodata            const    0x080040b0     0xc  main.o [1]
+  .text              ro code  0x080040bc     0xc  cstartup_M.o [5]
+  .text              ro code  0x080040c8     0xc  xencoding_8859_1.o [3]
+  .rodata            const    0x080040d4     0x8  main.o [1]
+  .rodata            const    0x080040dc     0x8  main.o [1]
+  .rodata            const    0x080040e4     0x8  main.o [1]
+  .rodata            const    0x080040ec     0x8  main.o [1]
+  .rodata            const    0x080040f4     0x2  xlocale_c.o [3]
+  .text              ro code  0x080040f6     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x080040f8     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x080040fa     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x080040fc     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x080040fe     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x08004100     0x2  startup_stm32f030.o [1]
+  .text              ro code  0x08004102     0x2  startup_stm32f030.o [1]
+  .rodata            const    0x08004104     0x0  zero_init3.o [5]
+  .rodata            const    0x08004104     0x0  lz77_init_single.o [5]
+  Initializer bytes  const    0x08004104    0x72  <for P2-1>
+                            - 0x08004176  0x40c2
+
+"P2", part 1 of 3:                          0xe0
+  P2-1                        0x20000000    0xe0  <Init block>
+    .data            inited   0x20000000     0xc  main.o [1]
+    .data            inited   0x2000000c     0x4  main.o [1]
+    .data            inited   0x20000010    0x2c  pan3029_port.o [1]
+    .data            inited   0x2000003c    0x10  stm32f0xx_rcc.o [1]
+    .data            inited   0x2000004c     0x4  system_stm32f0xx.o [1]
+    .data            inited   0x20000050    0x48  xlocale_c.o [3]
+    .data            inited   0x20000098    0x48  xfiles.o [3]
+                            - 0x200000e0    0xe0
+
+"P2", part 2 of 3:                         0x58c
+  .bss               zero     0x200000e0   0x524  pan3029_rf.o [1]
+  .bss               zero     0x20000604    0x50  xfiles.o [3]
+  .bss               zero     0x20000654     0x4  pan3029_rf.o [1]
+  .bss               zero     0x20000658     0x4  pan3029_rf.o [1]
+  .bss               zero     0x2000065c     0x4  stm32f0xx_it.o [1]
+  .bss               zero     0x20000660     0x4  stm32f0xx_it.o [1]
+  .bss               zero     0x20000664     0x4  xfail_s.o [3]
+  .bss               zero     0x20000668     0x1  main.o [1]
+  .bss               zero     0x20000669     0x1  main.o [1]
+                            - 0x2000066a   0x58a
+
+"P2", part 3 of 3:                         0x400
+  CSTACK                      0x20000670   0x400  <Block>
+    CSTACK           uninit   0x20000670   0x400  <Block tail>
+                            - 0x20000a70   0x400
+
+
+*******************************************************************************
+*** INIT TABLE
+***
+
+          Address     Size
+          -------     ----
+Zero (__iar_zero_init3)
+    1 destination range, total size 0x58a:
+          0x200000e0  0x58a
+
+Copy/lz77 (__iar_lz77_init_single3)
+    1 source range, total size 0x72 (50% of destination):
+          0x08004104   0x72
+    1 destination range, total size 0xe0:
+          0x20000000   0xe0
+
+
+
+*******************************************************************************
+*** MODULE SUMMARY
+***
+
+    Module               ro code  ro data  rw data
+    ------               -------  -------  -------
+E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj: [1]
+    delay.o                   92
+    gpio.o                   360
+    main.o                 1 000      396       18
+    pan3029_port.o           228       22       44
+    pan3029_rf.o           4 892      844    1 324
+    spi.o                    100
+    startup_stm32f030.o      278
+    stm32f0xx_exti.o         184
+    stm32f0xx_gpio.o         308
+    stm32f0xx_it.o           100                 8
+    stm32f0xx_misc.o         116
+    stm32f0xx_rcc.o          920        8       16
+    stm32f0xx_spi.o          180
+    stm32f0xx_syscfg.o        96
+    stm32f0xx_tim.o           46
+    stm32f0xx_usart.o        570
+    system_stm32f0xx.o       356        2        4
+    uart.o                   212
+    ----------------------------------------------
+    Total:                10 038    1 272    1 414
+
+command line: [2]
+    ----------------------------------------------
+    Total:
+
+dl6M_tlf.a: [3]
+    abort.o                   10
+    exit.o                     8
+    low_level_init.o           4
+    printf.o                  40
+    putchar.o                 16
+    xencoding_8859_1.o        12
+    xfail_s.o                 72                 4
+    xfiles.o                           37      152
+    xlocale_c.o              108       39       72
+    xprintfsmall.o         1 420
+    xprout.o                  22
+    ----------------------------------------------
+    Total:                 1 712       76      228
+
+m6M_tl.a: [4]
+    DblAddSub.o              436
+    DblDiv.o                 194
+    DblMul.o                 388
+    DblToFlt.o                98
+    FltAddSub.o              288
+    FltDiv.o                 170
+    FltMul.o                 176
+    FltToDbl.o                50
+    FltToS32.o                58
+    FltToU32.o                38
+    IxxToDbl.o                52
+    IxxToFlt.o                54
+    ceil.o                    88
+    logx64.o                 874
+    ----------------------------------------------
+    Total:                 2 964
+
+rt6M_tl.a: [5]
+    ABImemcpy.o               52
+    ABImemset.o               52
+    I32DivModFast.o          174
+    IntDivZer.o                2
+    cexit.o                   10
+    cmain.o                   30
+    cstartup_M.o              12
+    data_init.o               40
+    lz77_init_single.o       128
+    memchr.o                  24
+    strchr.o                  22
+    strlen.o                  16
+    uread4.o                  22
+    zero_init3.o              60
+    ----------------------------------------------
+    Total:                   644
+
+shb_l.a: [6]
+    exit.o                    20
+    ----------------------------------------------
+    Total:                    20
+
+    Linker created                     32    1 024
+--------------------------------------------------
+    Grand Total:          15 378    1 380    2 666
+
+
+*******************************************************************************
+*** ENTRY LIST
+***
+
+Entry                      Address   Size  Type      Object
+-----                      -------   ----  ----      ------
+.iar.init_table$$Base   0x08003f24          --   Gb  - Linker created -
+.iar.init_table$$Limit  0x08003f44          --   Gb  - Linker created -
+?main                   0x08003f45         Code  Gb  cmain.o [5]
+ADC1_IRQHandler         0x08003ceb    0x2  Code  Gb  stm32f0xx_it.o [1]
+APBAHBPrescTable        0x2000003c   0x10  Data  Lc  stm32f0xx_rcc.o [1]
+CSTACK$$Base            0x20000670          --   Gb  - Linker created -
+CSTACK$$Limit           0x20000a70          --   Gb  - Linker created -
+CacheMore               0x0800276d   0x28  Code  Lc  xlocale_c.o [3]
+Delay_Ms                0x0800344d   0x1e  Code  Gb  delay.o [1]
+Delay_Us                0x0800342d   0x20  Code  Gb  delay.o [1]
+EXTI0_1_IRQHandler      0x08003d15   0x18  Code  Gb  stm32f0xx_it.o [1]
+EXTI_ClearITPendingBit  0x0800309f    0x6  Code  Gb  stm32f0xx_exti.o [1]
+EXTI_GetITStatus        0x08003087   0x18  Code  Gb  stm32f0xx_exti.o [1]
+EXTI_Init               0x08003001   0x86  Code  Gb  stm32f0xx_exti.o [1]
+GPIO_Init               0x08001ecd   0xa0  Code  Gb  stm32f0xx_gpio.o [1]
+GPIO_PinAFConfig        0x08001fa1   0x60  Code  Gb  stm32f0xx_gpio.o [1]
+GPIO_ReadInputDataBit   0x08001f6d   0x18  Code  Gb  stm32f0xx_gpio.o [1]
+GPIO_ResetBits          0x08001f8b    0x4  Code  Gb  stm32f0xx_gpio.o [1]
+GPIO_SetBits            0x08001f85    0x6  Code  Gb  stm32f0xx_gpio.o [1]
+GPIO_WriteBit           0x08001f8f   0x12  Code  Gb  stm32f0xx_gpio.o [1]
+GPIO_int                0x0800318d  0x168  Code  Gb  gpio.o [1]
+HAL_Delay_nMs           0x0800346b   0x14  Code  Gb  delay.o [1]
+HW_Int                  0x08002a19   0x20  Code  Gb  main.o [1]
+HardFault_Handler       0x08003ccb    0x4  Code  Gb  stm32f0xx_it.o [1]
+LedToggle               0x08002a39   0x2c  Code  Gb  main.o [1]
+LoadInt                 0x08002491   0x5a  Code  Lc  xprintfsmall.o [3]
+NMI_Handler             0x08003cc9    0x2  Code  Gb  stm32f0xx_it.o [1]
+NVIC_Config             0x080029d3   0x46  Code  Gb  main.o [1]
+NVIC_Init               0x08003119   0x66  Code  Gb  stm32f0xx_misc.o [1]
+NVIC_SetPriority        0x08002881   0x8c  Code  Lc  main.o [1]
+OnMaster                0x08002a65   0x48  Code  Gb  main.o [1]
+OnSlave                 0x08002ab1   0xb8  Code  Gb  main.o [1]
+PendSV_Handler          0x08003cd1    0x2  Code  Gb  stm32f0xx_it.o [1]
+RCC_AHBPeriphClockCmd   0x08002ed1   0x20  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_APB1PeriphClockCmd  0x08002f11   0x20  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_APB1PeriphResetCmd  0x08002f65   0x20  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_APB2PeriphClockCmd  0x08002ef1   0x20  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_APB2PeriphResetCmd  0x08002f3d   0x20  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_Configuration       0x080029b5   0x1e  Code  Gb  main.o [1]
+RCC_GetClocksFreq       0x08002ccd  0x200  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_GetFlagStatus       0x08002f95   0x48  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_PLLCmd              0x08002c83   0x26  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_PLLConfig           0x08002c69   0x1a  Code  Gb  stm32f0xx_rcc.o [1]
+RCC_SYSCLKConfig        0x08002ca9   0x12  Code  Gb  stm32f0xx_rcc.o [1]
+Region$$Table$$Base     0x08003f24          --   Gb  - Linker created -
+Region$$Table$$Limit    0x08003f44          --   Gb  - Linker created -
+Rssi_dBm                0x20000668    0x1  Data  Gb  main.o [1]
+RxDoneParams            0x200000e0  0x524  Data  Gb  pan3029_rf.o [1]
+SPI2_IRQHandler         0x08003ced    0x2  Code  Gb  stm32f0xx_it.o [1]
+SPI2_Int                0x080032f5   0x5e  Code  Gb  spi.o [1]
+SPI_Cmd                 0x080034ef   0x1c  Code  Gb  stm32f0xx_spi.o [1]
+SPI_I2S_GetFlagStatus   0x08003541   0x14  Code  Gb  stm32f0xx_spi.o [1]
+SPI_Init                0x080034a1   0x4e  Code  Gb  stm32f0xx_spi.o [1]
+SPI_ReceiveData8        0x08003523    0x8  Code  Gb  stm32f0xx_spi.o [1]
+SPI_RxFIFOThresholdConfig
+                        0x0800350b   0x10  Code  Gb  stm32f0xx_spi.o [1]
+SPI_SendData8           0x0800351b    0x8  Code  Gb  stm32f0xx_spi.o [1]
+SVC_Handler             0x08003ccf    0x2  Code  Gb  stm32f0xx_it.o [1]
+SYSCFG_EXTILineConfig   0x080030b9   0x5a  Code  Gb  stm32f0xx_syscfg.o [1]
+SetSysClock             0x080037ff   0xbe  Code  Lc  system_stm32f0xx.o [1]
+Snr_value               0x20000669    0x1  Data  Gb  main.o [1]
+SysClock_48             0x08002971   0x2a  Code  Gb  main.o [1]
+SysTick_Config          0x0800290d   0x30  Code  Lc  main.o [1]
+SysTick_Handler         0x08003cd3   0x16  Code  Gb  stm32f0xx_it.o [1]
+SystemCoreClock         0x2000004c    0x4  Data  Gb  system_stm32f0xx.o [1]
+SystemInit              0x08003791   0x6e  Code  Gb  system_stm32f0xx.o [1]
+TIM14_IRQHandler        0x08003cef   0x18  Code  Gb  stm32f0xx_it.o [1]
+TIM_ClearITPendingBit   0x08003d53    0x8  Code  Gb  stm32f0xx_tim.o [1]
+TIM_GetITStatus         0x08003d2d   0x26  Code  Gb  stm32f0xx_tim.o [1]
+TickCounter             0x2000065c    0x4  Data  Gb  stm32f0xx_it.o [1]
+Tick_Configration       0x0800299b   0x1a  Code  Gb  main.o [1]
+USART1_IRQHandler       0x08003ce9    0x2  Code  Gb  stm32f0xx_it.o [1]
+USART_Cmd               0x080036e9   0x1c  Code  Gb  stm32f0xx_usart.o [1]
+USART_DeInit            0x08003555   0xd6  Code  Gb  stm32f0xx_usart.o [1]
+USART_GetFlagStatus     0x08003779   0x16  Code  Gb  stm32f0xx_usart.o [1]
+USART_ITConfig          0x0800373d   0x3c  Code  Gb  stm32f0xx_usart.o [1]
+USART_Init              0x0800362b   0xbe  Code  Gb  stm32f0xx_usart.o [1]
+USART_SendData          0x08003725    0x8  Code  Gb  stm32f0xx_usart.o [1]
+Uart1_Int               0x08003379   0xaa  Code  Gb  uart.o [1]
+_Encoding_8859_1_Mbrlen
+                        0x080040c9    0x2  Code  Gb  xencoding_8859_1.o [3]
+_LitobSmall             0x0800262d   0xea  Code  Lc  xprintfsmall.o [3]
+_PrintfSmall            0x080021e1  0x29c  Code  Gb  xprintfsmall.o [3]
+_Prout                  0x08003fed   0x16  Code  Gb  xprout.o [3]
+_PutcharsSmall          0x0800271d   0x32  Code  Lc  xprintfsmall.o [3]
+_PutfldSmall            0x080024ed  0x140  Code  Lc  xprintfsmall.o [3]
+__ICFEDIT_region_RAM_end__ {Abs}
+                        0x20001fff         Data  Gb  command line/config [2]
+__ICFEDIT_region_RAM_start__ {Abs}
+                        0x20000000         Data  Gb  command line/config [2]
+__aeabi_d2f             0x0800167f         Code  Gb  DblToFlt.o [4]
+__aeabi_dadd            0x0800202b         Code  Gb  DblAddSub.o [4]
+__aeabi_ddiv            0x080015bd         Code  Gb  DblDiv.o [4]
+__aeabi_dmul            0x08001439         Code  Gb  DblMul.o [4]
+__aeabi_dsub            0x080020f1         Code  Gb  DblAddSub.o [4]
+__aeabi_f2d             0x08001a01         Code  Gb  FltToDbl.o [4]
+__aeabi_f2iz            0x080016e1         Code  Gb  FltToS32.o [4]
+__aeabi_f2uiz           0x08001a8d         Code  Gb  FltToU32.o [4]
+__aeabi_fadd            0x08001753         Code  Gb  FltAddSub.o [4]
+__aeabi_fdiv            0x08001923         Code  Gb  FltDiv.o [4]
+__aeabi_fmul            0x08001873         Code  Gb  FltMul.o [4]
+__aeabi_fsub            0x080017c3         Code  Gb  FltAddSub.o [4]
+__aeabi_i2d             0x08001425         Code  Gb  IxxToDbl.o [4]
+__aeabi_i2f             0x0800173d         Code  Gb  IxxToFlt.o [4]
+__aeabi_idiv0           0x08002029         Code  Gb  IntDivZer.o [5]
+__aeabi_memclr4         0x08001401         Code  Gb  ABImemset.o [5]
+__aeabi_memclr8         0x08001401         Code  Gb  ABImemset.o [5]
+__aeabi_memcpy4         0x080019cd         Code  Wk  ABImemcpy.o [5]
+__aeabi_ui2d            0x08001405         Code  Gb  IxxToDbl.o [4]
+__aeabi_ui2f            0x0800171d         Code  Gb  IxxToFlt.o [4]
+__aeabi_uidiv           0x08001ab3         Code  Gb  I32DivModFast.o [5]
+__aeabi_uidivmod        0x08001ab3         Code  Gb  I32DivModFast.o [5]
+__aeabi_uread4          0x08003489         Code  Gb  uread4.o [5]
+__cmain                 0x08003f45         Code  Gb  cmain.o [5]
+__ctz                   0x080000cd   0x20  Code  Lc  pan3029_rf.o [1]
+__exit                  0x0800286d   0x14  Code  Gb  exit.o [6]
+__iar_Fail_s            0x080027f1   0x22  Code  Gb  xfail_s.o [3]
+__iar_Log64             0x08001b61  0x2b2  Code  Lc  logx64.o [4]
+__iar_Memset4_word      0x080013d1         Code  Gb  ABImemset.o [5]
+__iar_Stdout            0x20000098   0x48  Data  Gb  xfiles.o [3]
+__iar_ceil64            0x08001a35         Code  Gb  ceil.o [4]
+__iar_data_init3        0x08003ed9   0x28  Code  Gb  data_init.o [5]
+__iar_globLocale        0x20000050   0x48  Data  Lc  xlocale_c.o [3]
+__iar_log10_64          0x08001ec1    0xa  Code  Gb  logx64.o [4]
+__iar_log10_medium      0x08001ec1    0xa  Code  Gb  logx64.o [4]
+__iar_log10_medium64    0x08001ec1    0xa  Code  Gb  logx64.o [4]
+__iar_log10_mediuml     0x08001ec1    0xa  Code  Gb  logx64.o [4]
+__iar_lz77_init_single3
+                        0x08003c49   0x80  Code  Gb  lz77_init_single.o [5]
+__iar_program_start     0x080040bd         Code  Gb  cstartup_M.o [5]
+__iar_systems$$module {Abs}
+                        0x00000001         Data  Gb  command line/config [2]
+__iar_zero_init3        0x08003e21   0x3c  Code  Gb  zero_init3.o [5]
+__low_level_init        0x08003f63    0x4  Code  Gb  low_level_init.o [3]
+__vector_table          0x08000000         Data  Gb  startup_stm32f030.o [1]
+_call_main              0x08003f51         Code  Gb  cmain.o [5]
+_exit                   0x08003f71         Code  Gb  cexit.o [5]
+_gLocale_mblen          0x080027c9    0xa  Code  Gb  xlocale_c.o [3]
+_gLocale_mblenInt       0x08002795   0x34  Code  Gb  xlocale_c.o [3]
+_main                   0x08003f5f         Code  Gb  cmain.o [5]
+abort                   0x08002861    0xa  Code  Gb  abort.o [3]
+ceil                    0x08001a35         Code  Gb  ceil.o [4]
+ceill                   0x08001a35         Code  Gb  ceil.o [4]
+exit                    0x08003f67    0x8  Code  Gb  exit.o [3]
+fputc                   0x08003359   0x20  Code  Gb  uart.o [1]
+freq_param_table        0x0800406c   0x10  Data  Gb  pan3029_rf.o [1]
+freq_table              0x08003bc8   0x80  Data  Gb  pan3029_rf.o [1]
+g_reg_cfg               0x08003b38   0x90  Data  Gb  pan3029_rf.o [1]
+log10                   0x08001ec1    0xa  Code  Gb  logx64.o [4]
+log10l                  0x08001ec1    0xa  Code  Gb  logx64.o [4]
+main                    0x08002b8d   0x68  Code  Gb  main.o [1]
+memchr                  0x08002849   0x18  Code  Gb  memchr.o [5]
+obuf                    0x20000604   0x50  Data  Lc  xfiles.o [3]
+packet_received         0x20000654    0x4  Data  Lc  pan3029_rf.o [1]
+packet_transmit         0x20000658    0x4  Data  Lc  pan3029_rf.o [1]
+power_ramp              0x080038f4  0x160  Data  Gb  pan3029_rf.o [1]
+power_ramp_cfg          0x08003d5c   0x48  Data  Gb  pan3029_rf.o [1]
+printf                  0x08002001   0x28  Code  Gb  printf.o [3]
+printf_logo             0x0800293d   0x34  Code  Gb  main.o [1]
+putchar                 0x08004005   0x10  Code  Gb  putchar.o [3]
+reg_agc_freq400         0x08003e88   0x28  Data  Gb  pan3029_rf.o [1]
+reg_agc_freq800         0x08003eb0   0x28  Data  Gb  pan3029_rf.o [1]
+rf_agc_enable           0x08000419   0x32  Code  Gb  pan3029_rf.o [1]
+rf_antenna_close        0x08003b25   0x14  Code  Gb  pan3029_port.o [1]
+rf_antenna_init         0x08003ab9   0x20  Code  Gb  pan3029_port.o [1]
+rf_antenna_rx           0x08003afd   0x14  Code  Gb  pan3029_port.o [1]
+rf_antenna_tx           0x08003b11   0x14  Code  Gb  pan3029_port.o [1]
+rf_clr_irq              0x080003c7   0x12  Code  Gb  pan3029_rf.o [1]
+rf_delay_ms             0x08003aa9    0x8  Code  Gb  pan3029_port.o [1]
+rf_delay_us             0x08003ab1    0x8  Code  Gb  pan3029_port.o [1]
+rf_efuse_off            0x080010bf   0x18  Code  Gb  pan3029_rf.o [1]
+rf_efuse_on             0x080010a7   0x18  Code  Gb  pan3029_rf.o [1]
+rf_efuse_read_encry_byte
+                        0x080010d7   0x62  Code  Gb  pan3029_rf.o [1]
+rf_enter_single_timeout_rx
+                        0x08001169   0x48  Code  Gb  pan3029_rf.o [1]
+rf_ft_calibr            0x08000471   0xca  Code  Gb  pan3029_rf.o [1]
+rf_get_bw               0x08000aff   0x10  Code  Gb  pan3029_rf.o [1]
+rf_get_code_rate        0x08000b99   0x16  Code  Gb  pan3029_rf.o [1]
+rf_get_irq              0x080003d9   0x10  Code  Gb  pan3029_rf.o [1]
+rf_get_ldr              0x0800108f   0x18  Code  Gb  pan3029_rf.o [1]
+rf_get_plhd_len         0x0800101f   0x10  Code  Gb  pan3029_rf.o [1]
+rf_get_preamble         0x08000f1d   0x1e  Code  Gb  pan3029_rf.o [1]
+rf_get_recv_flag        0x080000b5    0x6  Code  Gb  pan3029_rf.o [1]
+rf_get_rssi             0x08000ca9    0xe  Code  Gb  pan3029_rf.o [1]
+rf_get_sf               0x08000b51   0x10  Code  Gb  pan3029_rf.o [1]
+rf_get_snr              0x08000c27   0x7e  Code  Gb  pan3029_rf.o [1]
+rf_get_transmit_flag    0x080000c1    0x6  Code  Gb  pan3029_rf.o [1]
+rf_get_tx_time          0x080008cb  0x14a  Code  Gb  pan3029_rf.o [1]
+rf_init                 0x08000573  0x16a  Code  Gb  pan3029_rf.o [1]
+rf_irq_process          0x08001207  0x130  Code  Gb  pan3029_rf.o [1]
+rf_plhd_receive         0x0800102f   0x44  Code  Gb  pan3029_rf.o [1]
+rf_port                 0x20000010   0x2c  Data  Gb  pan3029_port.o [1]
+rf_read_fifo            0x0800018f   0x34  Code  Gb  pan3029_rf.o [1]
+rf_read_freq            0x0800089f   0x2c  Code  Gb  pan3029_rf.o [1]
+rf_read_reg             0x080000ed   0x2a  Code  Gb  pan3029_rf.o [1]
+rf_read_spec_page_reg   0x0800021f   0x1c  Code  Gb  pan3029_rf.o [1]
+rf_read_spec_page_regs  0x080002db   0x50  Code  Gb  pan3029_rf.o [1]
+rf_recv_packet          0x08000fff   0x20  Code  Gb  pan3029_rf.o [1]
+rf_refresh              0x080003e9   0x30  Code  Gb  pan3029_rf.o [1]
+rf_reg_cfg              0x0800053b   0x38  Code  Gb  pan3029_rf.o [1]
+rf_reset_spec_page_reg_bits
+                        0x08000363   0x2a  Code  Gb  pan3029_rf.o [1]
+rf_send_packet          0x08000fc5   0x3a  Code  Gb  pan3029_rf.o [1]
+rf_set_agc              0x0800044b   0x26  Code  Gb  pan3029_rf.o [1]
+rf_set_bw               0x08000a91   0x6e  Code  Gb  pan3029_rf.o [1]
+rf_set_code_rate        0x08000b7d   0x1c  Code  Gb  pan3029_rf.o [1]
+rf_set_crc              0x08000b61   0x1c  Code  Gb  pan3029_rf.o [1]
+rf_set_default_para     0x0800133d   0x6a  Code  Gb  pan3029_rf.o [1]
+rf_set_freq             0x0800071d  0x182  Code  Gb  pan3029_rf.o [1]
+rf_set_gpio_output      0x08000f3b   0x42  Code  Gb  pan3029_rf.o [1]
+rf_set_gpio_state       0x08000f7d   0x48  Code  Gb  pan3029_rf.o [1]
+rf_set_ldo_pa_off       0x08001151   0x18  Code  Gb  pan3029_rf.o [1]
+rf_set_ldo_pa_on        0x08001139   0x18  Code  Gb  pan3029_rf.o [1]
+rf_set_ldr              0x08001073   0x1c  Code  Gb  pan3029_rf.o [1]
+rf_set_lo_freq          0x080006e9   0x34  Code  Gb  pan3029_rf.o [1]
+rf_set_mode             0x08000baf   0x18  Code  Gb  pan3029_rf.o [1]
+rf_set_recv_flag        0x080000bb    0x6  Code  Gb  pan3029_rf.o [1]
+rf_set_rx_mode          0x08000be3   0x1c  Code  Gb  pan3029_rf.o [1]
+rf_set_rx_single_timeout
+                        0x08000bff   0x28  Code  Gb  pan3029_rf.o [1]
+rf_set_sf               0x08000b0f   0x42  Code  Gb  pan3029_rf.o [1]
+rf_set_spec_page_reg_bits
+                        0x08000339   0x2a  Code  Gb  pan3029_rf.o [1]
+rf_set_transmit_flag    0x080000c7    0x6  Code  Gb  pan3029_rf.o [1]
+rf_set_tx_mode          0x08000bc7   0x1c  Code  Gb  pan3029_rf.o [1]
+rf_set_tx_power         0x08000cb7  0x23c  Code  Gb  pan3029_rf.o [1]
+rf_should_turnon_ldr    0x08000a51   0x40  Code  Gb  pan3029_rf.o [1]
+rf_single_tx_data       0x080011b1   0x56  Code  Gb  pan3029_rf.o [1]
+rf_switch_page          0x080001c3   0x30  Code  Gb  pan3029_rf.o [1]
+rf_tcxo_close           0x08003aeb   0x12  Code  Gb  pan3029_port.o [1]
+rf_tcxo_init            0x08003ad9   0x12  Code  Gb  pan3029_port.o [1]
+rf_write_fifo           0x08000159   0x36  Code  Gb  pan3029_rf.o [1]
+rf_write_reg            0x08000117   0x42  Code  Gb  pan3029_rf.o [1]
+rf_write_spec_page_reg  0x080001f3   0x2c  Code  Gb  pan3029_rf.o [1]
+rf_write_spec_page_reg_bits
+                        0x0800038d   0x3a  Code  Gb  pan3029_rf.o [1]
+rf_write_spec_page_regs
+                        0x0800023b   0xa0  Code  Gb  pan3029_rf.o [1]
+sec_hand                0x20000664    0x4  Data  Lc  xfail_s.o [3]
+spi_cs_set_high         0x08003a83    0xe  Code  Gb  pan3029_port.o [1]
+spi_cs_set_low          0x08003a91    0xe  Code  Gb  pan3029_port.o [1]
+spi_readwritebyte       0x08003a55   0x2e  Code  Gb  pan3029_port.o [1]
+strchr                  0x080027d9    0x2  Code  Gb  strchr.o [5]
+strlen                  0x08002839   0x10  Code  Gb  strlen.o [5]
+ticktimer               0x20000660    0x4  Data  Gb  stm32f0xx_it.o [1]
+tx_test_buf             0x20000000    0xc  Data  Gb  main.o [1]
+tx_time                 0x2000000c    0x4  Data  Gb  main.o [1]
+
+
+[1] = E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\磐启微\PAN3029ZTR8-GC资料包\参考例程\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Obj
+[2] = command line
+[3] = dl6M_tlf.a
+[4] = m6M_tl.a
+[5] = rt6M_tl.a
+[6] = shb_l.a
+
+  15 378 bytes of readonly  code memory
+   1 380 bytes of readonly  data memory
+   2 666 bytes of readwrite data memory
+
+Errors: none
+Warnings: none
