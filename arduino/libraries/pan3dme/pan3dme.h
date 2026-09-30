@@ -135,6 +135,7 @@ void setTimeFromLora(String timeStr);
 int getDevicesIdx();
 int getTotalDevices(); // 获取设备总数
 String makeDivceName();
+String makeMidName();
 int readBatteryEndStr();
 bool isTimeInRange(long long timestampSec, const char *timeRangeStr);
 int timeWindowToIndex(uint8_t start, uint8_t end);

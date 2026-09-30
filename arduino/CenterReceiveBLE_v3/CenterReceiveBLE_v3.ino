@@ -800,7 +800,7 @@ void setup() {
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
   loadConfigNVS();
 
-  deviceName = makeDivceName();
+  deviceName = makeMidName();
   DEBUG_PRINTLN(deviceName);
   if (rtcMagic != MY_RTC_MAGIC) {
     roundTime = 1000 * 60 * 30;
@@ -810,21 +810,12 @@ void setup() {
     config_str[sizeof(config_str) - 1] = '\0';
     configConfirmed = true;
   }
-
-#if defined(WIFI_LORA_32_V3)
-  Serial2.begin(115200, SERIAL_8N1, 17, 18);
-  dtuSerial = &Serial2;
-  DEBUG_PRINTLN("✅ v3 板子 DTU");
-  // dtuSerial->println("V3 DTU TEST");
-
-#endif
-#if defined(WIFI_LORA_32_V4)
   // Serial2.begin(115200, SERIAL_8N1, 38, 39);  // RX=38, TX=39
   Serial2.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   dtuSerial = &Serial2;
   DEBUG_PRINTLN("✅ v4 板子 DTU");
 
-#endif
+ 
 
 
 

@@ -354,6 +354,39 @@ String makeDivceName()
     return "x-x";
   }
 }
+String makeMidName()
+{
+  uint64_t all[] = {
+      0x1C05A78FCBA4, //     100
+      0x20A261F3, //     101
+      0x1C05A3  //     102
+  };
+  int count = sizeof(all) / sizeof(all[0]);
+  uint64_t currentId = ESP.getEfuseMac();
+  DEBUG_PRINTF("当前设备编号: %012llX\n", currentId);
+  int index = -1;
+  for (size_t i = 0; i < count; ++i)
+  {
+    if (currentId == all[i])
+    {
+      index = static_cast<int>(i);
+      break;
+    }
+  }
+
+  if (index != -1)
+  {
+    String syname = wechatid + "-10" + String(index);
+    DEBUG_PRINTLN("设备认证成功，设备名为: " + syname);
+    return syname;
+  }
+  else
+  {
+    DEBUG_PRINTLN("错误：该设备编号不在白名单中！");
+    return wechatid + "-xx";
+  }
+}
+
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
                         BLECharacteristicCallbacks *charCallbacks)
 {
