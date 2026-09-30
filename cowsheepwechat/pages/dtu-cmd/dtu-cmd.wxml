@@ -43,6 +43,8 @@
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
       <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickTestGps">🧪 GPS测试</button>
       <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickConfig">⚙️ 配置下发</button>
+
+      <button class="quick-btn {{quickSelected === 20 ? 'quick-active' : ''}}" bindtap="onQuickFarmCenter">🏠 农场中心</button>
     </view>
   </view>
 

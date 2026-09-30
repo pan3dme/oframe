@@ -193,6 +193,51 @@ Page({
   onQuickTestGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'test_gps', value: 1 }), quickSelected: 19 })
   },
+
+  // 快捷指令：设置农场中心位置 — 从登录信息中读取 mapcenter
+  // 指令格式：{"cmd":"C","value":"lat,lng"}，lat/lng 保留 5 位小数（逗号分隔）
+  onQuickFarmCenter() {
+    // 读取登录时服务器返回的 mapcenter（与 settings.js _readMapCenter 一致）
+    let serverData = null
+    try {
+      serverData = getApp().globalData.serverData || wx.getStorageSync('login_server_data')
+    } catch (e) { /* ignore */ }
+    let center = ''
+    if (serverData && serverData.data) {
+      const attrs = serverData.data.attributes
+      if (Array.isArray(attrs)) {
+        const item = attrs.find(a => a && a.columnName === 'mapcenter')
+        if (item && item.columnValue) center = String(item.columnValue)
+      }
+      if (!center && serverData.data.mapcenter) {
+        center = String(serverData.data.mapcenter)
+      }
+    }
+    if (!center || center === '-') {
+      wx.showToast({ title: '未获取到农场坐标', icon: 'none' })
+      return
+    }
+    // 解析 lat/lng（兼容 "lat,lng" / "lat|lng" / "lat，lng" 等分隔符）
+    const parts = String(center).split(/[｜|,，]\s*/)
+    if (parts.length < 2) {
+      wx.showToast({ title: '坐标格式有误', icon: 'none' })
+      return
+    }
+    const lat = parseFloat(parts[0])
+    const lng = parseFloat(parts[1])
+    if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+      wx.showToast({ title: '坐标格式有误', icon: 'none' })
+      return
+    }
+    // 保留 5 位小数，英文逗号分隔（与示例格式 "26.52958,109.39087" 一致）
+    const value = lat.toFixed(5) + ',' + lng.toFixed(5)
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'C', value }),
+      quickSelected: 20
+    })
+    this.addLog('info', '已生成农场中心指令: ' + value)
+  },
+
   onQuickConfig() {
     const device = this.data.deviceList[this.data.deviceIndex]
     if (!device) {
