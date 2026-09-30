@@ -38,7 +38,7 @@ void setup() {
     loraRadio.setCodingRate(1);            // 匹配 DEFAULT_CR: CR4/5 (RadioLib中1=4/5)
     loraRadio.setPreambleLength(8);
     loraRadio.setSyncWord(0x12);           // 标准 LoRa 私有 sync word
-    loraRadio.setCRC(false);               // PAN3029 LoRa模式下 CRC_OFF
+    loraRadio.setCRC(true);               // PAN3029 LoRa模式下 CRC_OFF
 
     // 隐式头模式，payload 长度匹配 TX_LEN=10
     loraRadio.explicitHeader();

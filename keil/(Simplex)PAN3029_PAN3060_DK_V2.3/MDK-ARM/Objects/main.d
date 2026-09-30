@@ -1,4 +1,4 @@
-./objects/main.o: ..\main.c \
+./objects/main.o: ..\main.c ..\delay.h \
   ..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h \
   ..\Libraries\CMSIS\Include\core_cm0.h \
   ..\Libraries\CMSIS\Include\core_cmInstr.h \
@@ -27,7 +27,7 @@
   ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h \
   ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h \
   ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h \
-  ..\delay.h ..\user.h ..\gpio.h ..\spi.h ..\Radio\inc\crc.h ..\uart.h \
+  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h ..\user.h \
+  ..\gpio.h ..\spi.h ..\Radio\inc\crc.h ..\uart.h \
   ..\Radio\inc\pan3029_port.h ..\Radio\inc\pan3029_rf.h \
   ..\Radio\inc\radio.h
