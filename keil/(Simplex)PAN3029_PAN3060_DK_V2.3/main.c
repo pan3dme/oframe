@@ -34,8 +34,10 @@ void printf_logo(void) {
 #define TX_LEN 32
 #define RX_LEN 64
 // uint8_t tx_test_buf[TX_LEN] = {0, 1, 2, 3, 4, 5, 7, 7, 7, 9};
-uint8_t tx_test_buf[TX_LEN] = "i love u fuck dog  PAN302"; // 任意 10 字符
+uint8_t tx_test_buf[TX_LEN] = "i love u stm32 dog"; // 任意 10 字符
 uint8_t rx_test_buf[RX_LEN] = {0};
+uint8_t prev_rx_buf[RX_LEN] = {0};
+uint8_t prev_rx_size = 0;
 
 uint16_t crc_value;
 uint8_t Rssi_dBm; // �ź�ǿ��ָʾ
@@ -132,28 +134,55 @@ void OnMaster(void) {
  * Manages the slave operation
  */
 
-// ... existing code ...
 void OnSlave(void) {
   if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) {
+    uint8_t local_buf[RX_LEN];
+    uint8_t local_size;
+    uint8_t local_rssi;
+    uint8_t local_snr;
+    uint8_t is_same = 0;
+
+    __disable_irq();
     rf_set_recv_flag(RADIO_FLAG_IDLE);
+    local_rssi = RxDoneParams.Rssi;
+    local_snr = RxDoneParams.Snr;
+    local_size = RxDoneParams.Size;
+    if (local_size > RX_LEN) local_size = RX_LEN;
+    for (uint8_t i = 0; i < local_size; i++)
+      local_buf[i] = RxDoneParams.Payload[i];
+    __enable_irq();
 
-    Rssi_dBm = RxDoneParams.Rssi;
-
-    Snr_value = RxDoneParams.Snr;
-
-    printf("Rssi: %d  ", Rssi_dBm - 256);
-    printf("Snr: %d   ", Snr_value);
-    printf("Len: %d  ", RxDoneParams.Size);
-    printf("Str: ");
-    for (uint8_t i = 0; i < RxDoneParams.Size; i++) {
-      if (RxDoneParams.Payload[i] == 0)
-        break;
-      printf("%c", RxDoneParams.Payload[i]);
+    /* compare with previous */
+    if (local_size == prev_rx_size && prev_rx_size > 0) {
+      is_same = 1;
+      for (uint8_t i = 0; i < local_size; i++) {
+        if (local_buf[i] != prev_rx_buf[i]) {
+          is_same = 0;
+          break;
+        }
+      }
     }
+
+    printf("Rssi: %d  ", local_rssi - 256);
+    printf("Snr: %d   ", local_snr);
+    printf("Len: %d  ", local_size);
+    printf("Str: ");
+    for (uint8_t i = 0; i < local_size; i++) {
+      if (local_buf[i] == 0) break;
+      printf("%c", local_buf[i]);
+    }
+    if (is_same)
+      printf("  [SAME]");
+    else
+      printf("  [DIFF]");
     printf("\r\n");
 
-    LedToggle();
+    /* save current as previous */
+    prev_rx_size = local_size;
+    for (uint8_t i = 0; i < local_size; i++)
+      prev_rx_buf[i] = local_buf[i];
 
+    LedToggle();
     rf_enter_single_timeout_rx(15000);
   }
   if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
@@ -168,7 +197,6 @@ void OnSlave(void) {
     rf_enter_single_timeout_rx(5000);
   }
 }
-// ... existing code ...
 
 int main(void) {
   uint32_t ret = 0;

@@ -47,7 +47,7 @@ void setup() {
 }
 
 void loop() {
-    const char *msg = "FUCK 来看看  YOU CAN";
+    const char *msg = "cctv  arduino v4 like ";
     int len = strlen(msg);
 
     int ret = loraRadio.transmit((uint8_t *)msg, len);
