@@ -50,3 +50,16 @@ flutter/001/.idea/workspace.xml
 /python/pan3d/core/__pycache__
 /python/crowui/__pycache__
 *.pyc
+
+# Keil 编译中间文件和输出
+**/Listings/
+**/Objects/
+**/*.o
+**/*.hex
+**/*.htm
+**/*.dep
+
+# 其他不需要的工程配置备份
+**/*.bak
+**/*.uvgui.*
+**/*.uvprojx.*
