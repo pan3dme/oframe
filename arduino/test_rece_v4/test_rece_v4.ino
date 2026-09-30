@@ -32,30 +32,25 @@ void setup() {
     }
 
     loraRadio.setDio2AsRfSwitch(false);
-    loraRadio.setFrequency(852.0);
-    loraRadio.setSpreadingFactor(11);
-    loraRadio.setBandwidth(125.0);
-    loraRadio.setCodingRate(1);
+    loraRadio.setFrequency(868.0);        // 匹配 ETSI_868: 868MHz
+    loraRadio.setSpreadingFactor(9);       // 匹配 DEFAULT_SF: SF9
+    loraRadio.setBandwidth(125.0);         // 匹配 DEFAULT_BW: BW125
+    loraRadio.setCodingRate(1);            // 匹配 DEFAULT_CR: CR4/5 (RadioLib中1=4/5)
     loraRadio.setPreambleLength(8);
-    loraRadio.setSyncWord(0x2424);
-    loraRadio.setCRC(false);
+    loraRadio.setSyncWord(0x12);           // 标准 LoRa 私有 sync word
+    loraRadio.setCRC(false);               // PAN3029 LoRa模式下 CRC_OFF
 
-    // 先恢复隐式头模式，和发送端保持一致
-    loraRadio.implicitHeader(16);
+    // 隐式头模式，payload 长度匹配 TX_LEN=10
+    loraRadio.explicitHeader();
 
-    Serial.println("RX ready | 852MHz SF11 BW125 CR4/5 SW:0x2424 CRC OFF ImplicitHeader(16)");
+    Serial.println("RX ready | 868MHz SF9 BW125 CR4/5 SW:0x12 CRC OFF ImplicitHeader(10)");
 }
-
 void loop() {
-    uint8_t rxBuffer[256];
+    uint8_t rxBuffer[10];
     int ret = loraRadio.receive(rxBuffer, sizeof(rxBuffer), 2000);
 
     if (ret == RADIOLIB_ERR_NONE) {
         int len = loraRadio.getPacketLength();
-
-        if (len < 0) {
-            len = 0;
-        }
         if (len > (int)sizeof(rxBuffer)) {
             len = sizeof(rxBuffer);
         }
@@ -69,7 +64,12 @@ void loop() {
         Serial.print(" | Data: ");
 
         for (int i = 0; i < len; i++) {
-            Serial.printf("%02x ", rxBuffer[i]);
+            uint8_t v = (uint8_t)rxBuffer[i];
+            if (v < 0x10) {
+                Serial.print('0');
+            }
+            Serial.print(v, HEX);
+            Serial.print(' ');
         }
         Serial.println();
 

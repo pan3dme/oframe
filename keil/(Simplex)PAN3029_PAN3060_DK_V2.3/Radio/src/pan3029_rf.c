@@ -11,8 +11,8 @@
 #include "radio.h"
 
 
-#define USE_MODEM_CHIRPlOT
-//#define USE_MODEM_LORA
+//#define USE_MODEM_CHIRPlOT
+#define USE_MODEM_LORA
 
 /*
  * flag that indicate if a new packet is received.
