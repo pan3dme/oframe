@@ -10,6 +10,8 @@
 #include "Arduino.h"
 #include "LoRaWan_APP.h"
 #include <pan3dme.h>
+#include <Preferences.h>
+Preferences prefs;
 
 // ==================== 全局变量 ====================
 String deviceName;           // 设备名称
@@ -28,7 +30,8 @@ unsigned long gpsWorkInterval = 0;
 unsigned long gpsWorkStat = 0;
 unsigned long lastSendLoraMs = 0;
 int typeindex = FLAG_TYPE_0;
-
+double cfg_gps_lat = 0.00000;
+double cfg_gps_lon = 0.00000;
 
 RTC_DATA_ATTR uint32_t rtcMagic;
 
@@ -44,8 +47,6 @@ RTC_DATA_ATTR int8_t lastSnr;
 
 
 
-RTC_DATA_ATTR double rtc_gps_lat;
-RTC_DATA_ATTR double rtc_gps_lon;
 
 RTC_DATA_ATTR bool configConfirmed;
 
@@ -367,7 +368,26 @@ void meshCmdType(String infoStr, String tmp) {
     }
   } else if (thirdField == "C") {
 
-    // rtc_gps_lat
+    // 9|v5-0|C|26.52958,109.39087
+    // tmp=  26.52958,109.39087
+
+    int commaIdx = tmp.indexOf(',');
+    DEBUG_PRINTLN("在这里更改地图中心");
+    if (commaIdx != -1) {
+      cfg_gps_lat = tmp.substring(0, commaIdx).toDouble();
+      cfg_gps_lon = tmp.substring(commaIdx + 1).toDouble();
+
+      Serial.print(cfg_gps_lat, 5);
+      Serial.print(",");
+      Serial.println(cfg_gps_lon, 5);
+      prefs.begin("devcfg", false);
+      prefs.putDouble("lat", cfg_gps_lat);
+      prefs.putDouble("lon", cfg_gps_lon);
+      prefs.end();
+
+    } else {
+      DEBUG_PRINTLN("数据出错");
+    }
 
   } else {
     DEBUG_PRINTLN("❌❌❌❌ 需要补充功能列表");
@@ -663,12 +683,30 @@ void testSheepFun(bool driftComp) {
 }
 String mathGpsRectByBaseStr(char *value) {
   char gpsOutBuf[32];
-  filterGpsByRect(value, gpsOutBuf, rtc_gps_lat, rtc_gps_lon, 0.180, 0.202);
+  filterGpsByRect(value, gpsOutBuf, cfg_gps_lat, cfg_gps_lon, 0.180, 0.202);
   return String(gpsOutBuf);
+}
+void loadConfigNVS() {
+
+
+  // 开启命名空间 "devcfg"，最多15个字符
+  prefs.begin("devcfg");
+  // 参数不存在就返回默认值
+
+  cfg_gps_lat = prefs.getDouble("lat", cfg_gps_lat);
+  cfg_gps_lon = prefs.getDouble("lon", cfg_gps_lon);
+  prefs.end();
+
+  Serial.print("✅ 读取NVS：cfg_gps_lat=");
+  Serial.print(cfg_gps_lat, 5);  // 6位小数
+  Serial.print(" , cfg_gps_lon=");
+  Serial.println(cfg_gps_lon, 5);
 }
 // ==================== 系统初始化 ====================
 void setup() {
   Serial.begin(115200);
+  delay(1000);
+  loadConfigNVS();
 
   if (rtcMagic != MY_RTC_MAGIC) {
     // ========== 全部出厂默认值写在这里 ==========
@@ -683,8 +721,7 @@ void setup() {
 
     // static double static_gps_lat = 26.52958;  // 纬度，改成你的值
     // static double static_gps_lon = 109.39087; // 经度
-    rtc_gps_lat = 26.52958;
-    rtc_gps_lon = 109.39087;
+
 
     configConfirmed = true;
 

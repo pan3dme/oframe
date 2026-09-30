@@ -16,8 +16,11 @@
 Preferences prefs;
 // 全局参数
 
-double cfg_gps_lat = 26.52958;
-double cfg_gps_lon = 109.39087;
+// double cfg_gps_lat = 26.52958;
+// double cfg_gps_lon = 109.39087;
+double cfg_gps_lat = 0.00000;
+double cfg_gps_lon = 0.00000;
+
 HardwareSerial *dtuSerial;
 // ========================= BLE全局对象 =========================
 bool linkHub = true;
@@ -290,9 +293,9 @@ void meshCmdInfomsg(String rxValue) {
         cfg_gps_lat = latStr.toDouble();
         cfg_gps_lon = lonStr.toDouble();
 
-        Serial.print(cfg_gps_lat,5);
+        Serial.print(cfg_gps_lat, 5);
         Serial.print(",");
-        Serial.println(cfg_gps_lon,5);
+        Serial.println(cfg_gps_lon, 5);
 
         prefs.begin("devcfg", false);
         prefs.putDouble("lat", cfg_gps_lat);
@@ -653,12 +656,17 @@ void sendDownInfo(String loraStr, String deviceId) {
       String value = tmpDoc["value"].as<String>();
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
       sendLoraToDeviceid(dataStr, 800);
+
+      //    char gpsBuf[32];
+      // snprintf(gpsBuf, sizeof(gpsBuf), "%.5f,%.5f", cfg_gps_lat, cfg_gps_lon);
+      // dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + "C" + "|" + gpsBuf;
     }
   } else {
     if (gpstimeAll > millis()) {
       DEBUG_PRINTLN("现在是强制所有设备要上报GPS的时间");
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|upgps|0";
       sendLoraToDeviceid(dataStr, 800);
+
     } else {
       needSyncTimeDeviceid = deviceId;
       down_syn_time = millis() + 1500;
@@ -668,9 +676,11 @@ void sendDownInfo(String loraStr, String deviceId) {
 
 
 // ========================= 主循环处理LoRa数据 =========================
+//如果GPS中心没设置那么就将下发中心给设备中心
 void changeReceivedRolaStr(char *value) {
   char loraOut[BUFFER_SIZE];  //组装完成后的新完整字符串
   String tempstr(value);
+
   int firstPipeIndex = tempstr.indexOf('|');
   if (firstPipeIndex > 0) {
     int messageType = tempstr.substring(0, firstPipeIndex).toInt();
@@ -696,6 +706,9 @@ void changeReceivedRolaStr(char *value) {
       char segBuf[32];
       char outBuf[32];
       splitPipeSegment(value, segBuf, 2);
+
+
+
 
       restoreGpsFromDiff(segBuf, outBuf, cfg_gps_lat, cfg_gps_lon);
       replacePipeSegment(value, loraOut, 2, outBuf, sizeof(loraOut));
@@ -784,8 +797,9 @@ void loadConfigNVS() {
   // 开启命名空间 "devcfg"，最多15个字符
   prefs.begin("devcfg");
   // 参数不存在就返回默认值
-  cfg_gps_lat = prefs.getDouble("lat", 26.52958);
-  cfg_gps_lon = prefs.getDouble("lon", 109.39087);
+
+  cfg_gps_lat = prefs.getDouble("lat", cfg_gps_lat);
+  cfg_gps_lon = prefs.getDouble("lon", cfg_gps_lon);
   prefs.end();
 
   Serial.print("✅ 读取NVS：cfg_gps_lat=");
@@ -815,7 +829,7 @@ void setup() {
   dtuSerial = &Serial2;
   DEBUG_PRINTLN("✅ v4 板子 DTU");
 
- 
+
 
 
 
