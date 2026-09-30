@@ -2460,7 +2460,7 @@ RF_Err_t rf_set_default_para(void)
 #else	
 	RF_ASSERT(rf_set_crc(CRC_ON));
 #endif	
-	
+ 
     RF_ASSERT(rf_set_freq(DEFAULT_FREQ));
     RF_ASSERT(rf_set_code_rate(DEFAULT_CR));
     RF_ASSERT(rf_set_bw(DEFAULT_BW));
