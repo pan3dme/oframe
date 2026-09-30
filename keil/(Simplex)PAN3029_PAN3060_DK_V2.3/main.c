@@ -12,7 +12,7 @@
 
 #include "time.h"
 
-/* ¶¨ÒåÀı³ÌÃûºÍÀı³Ì·¢²¼ÈÕÆÚ */
+/* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 #define EXAMPLE_NAME	"(Simplex)PAN3029_PAN3060_DK"
 #define DEMO_VER	"V2.3"
 #define EXAMPLE_DATE	"2025/08/30"
@@ -21,21 +21,25 @@ void printf_logo(void)
 {
 	  printf("\n\r");
     printf("*************************************************************\r\n");
-    printf("* Àı³ÌÃû³Æ        : %s\r\n", EXAMPLE_NAME);	
-    printf("* Àı³Ì°æ±¾        : %s\r\n", DEMO_VER);		
-    printf("* ·¢²¼ÈÕÆÚ        : %s\r\n", EXAMPLE_DATE);
-    printf("* www.silicontra.com ÉîÛÚ¹è´«¿Æ¼¼ÓĞÏŞ¹«Ë¾\r\n");
+    printf("* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½        : %s\r\n", EXAMPLE_NAME);	
+    printf("* ï¿½ï¿½ï¿½Ì°æ±¾        : %s\r\n", DEMO_VER);		
+    printf("* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½        : %s\r\n", EXAMPLE_DATE);
+    printf("* www.silicontra.com ï¿½ï¿½ï¿½Ú¹è´«ï¿½Æ¼ï¿½ï¿½ï¿½ï¿½Ş¹ï¿½Ë¾\r\n");
     printf("*************************************************************\r\n");
 }
 
-#define  EnableMaster        GPIO_ReadInputDataBit(RF_MODE_PORT, RF_MODE_PIN)//Ö÷´ÓÑ¡Ôñ½Å
+#define  EnableMaster        GPIO_ReadInputDataBit(RF_MODE_PORT, RF_MODE_PIN)//ï¿½ï¿½ï¿½ï¿½Ñ¡ï¿½ï¿½ï¿½
 
-#define TX_LEN 10
+#define TX_LEN 32
 #define RX_LEN 64
-uint8_t tx_test_buf[TX_LEN] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+// uint8_t tx_test_buf[TX_LEN] = {0, 1, 2, 3, 4, 5, 7, 7, 7, 9};
+uint8_t tx_test_buf[TX_LEN] = "i love u fuck dog  PAN302";  // ä»»æ„ 10 å­—ç¬¦
 uint8_t rx_test_buf[RX_LEN] = {0};
+ 
+
+
 uint16_t crc_value;
-uint8_t Rssi_dBm; //ĞÅºÅÇ¿¶ÈÖ¸Ê¾
+uint8_t Rssi_dBm; //ï¿½Åºï¿½Ç¿ï¿½ï¿½Ö¸Ê¾
 uint8_t Snr_value;
 extern struct RxDoneMsg RxDoneParams;
 
@@ -91,7 +95,7 @@ void NVIC_Config()
   NVIC_Init(&NVIC_InitStructure);
 }
 
-void HW_Int() // MCUÍâÎ§×ÊÔ´³õÊ¼»¯
+void HW_Int() // MCUï¿½ï¿½Î§ï¿½ï¿½Ô´ï¿½ï¿½Ê¼ï¿½ï¿½
 {
 
   SysClock_48();
@@ -105,7 +109,7 @@ void HW_Int() // MCUÍâÎ§×ÊÔ´³õÊ¼»¯
 
 void LedToggle(void)
 {
-  GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_RESET); // LEDÉÁË¸
+  GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_RESET); // LEDï¿½ï¿½Ë¸
   HAL_Delay_nMs(50);
   GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_SET);
   HAL_Delay_nMs(50);
@@ -117,16 +121,16 @@ uint32_t tx_time = 1000;
  */
 void OnMaster(void)
 {
-	  tx_test_buf[0]++;
+	  // tx_test_buf[0]++;
   // tx first
   if (rf_single_tx_data(tx_test_buf, TX_LEN, &tx_time) != OK)
   {
-    GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_SET); // LEDÃğ
+    GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_SET); // LEDï¿½ï¿½
   }
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
     ;
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
-  LedToggle(); // LEDÉÁË¸
+  LedToggle(); // LEDï¿½ï¿½Ë¸
   printf("tx ok\r\n");
   rf_enter_single_timeout_rx(15000);
       
@@ -156,22 +160,22 @@ void OnSlave(void)
 			
 		  LedToggle(); 
 		
-    rf_enter_single_timeout_rx(15000); //ÖØĞÂ½øÈë½ÓÊÕÄ£Ê½
-                       // LEDÉÁ
+    rf_enter_single_timeout_rx(15000); //ï¿½ï¿½ï¿½Â½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+                       // LEDï¿½ï¿½
   }
 		// rxtimeout or rxerr flag
 		if(rf_get_recv_flag() == RADIO_FLAG_RXERR)
 		{
 			printf("crc error\r\n");
 			rf_set_recv_flag(RADIO_FLAG_IDLE);
-			rf_enter_single_timeout_rx(5000); //ÖØĞÂ½øÈë½ÓÊÕÄ£Ê½
+			rf_enter_single_timeout_rx(5000); //ï¿½ï¿½ï¿½Â½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
 		}
 	
 	  if(rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT)
 	  {
 	   printf("rx time out\r\n");
      rf_set_recv_flag(RADIO_FLAG_IDLE);
-     rf_enter_single_timeout_rx(5000); //ÖØĞÂ½øÈë½ÓÊÕÄ£Ê½
+     rf_enter_single_timeout_rx(5000); //ï¿½ï¿½ï¿½Â½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½
 	  }
 	
 }
@@ -179,7 +183,7 @@ void OnSlave(void)
 int main(void)
 {
   uint32_t ret = 0;
-  HW_Int(); // MCU³õÊ¼»¯
+  HW_Int(); // MCUï¿½ï¿½Ê¼ï¿½ï¿½
   Delay_Ms(1);
 	printf_logo();
 	
@@ -192,7 +196,7 @@ int main(void)
       ;
   }	
     printf("RF init ok\r\n");	
-  rf_set_default_para(); //ÅäÖÃÉäÆµ²ÎÊı
+  rf_set_default_para(); //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½
 	
   if (EnableMaster == true)
   {
@@ -201,19 +205,19 @@ int main(void)
   else
   {
 		 printf("RF rx test start.\r\n");
-     rf_enter_single_timeout_rx(5000);//½øÈëµ¥´Î½ÓÊÕ×´Ì¬
-		 //rf_enter_continous_rx();//½øÈëÁ¬Ğø½ÓÊÕ×´Ì¬
+     rf_enter_single_timeout_rx(5000);//ï¿½ï¿½ï¿½ëµ¥ï¿½Î½ï¿½ï¿½ï¿½×´Ì¬
+		 //rf_enter_continous_rx();//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬
   }
 
   while (1)
   {	 
    if (EnableMaster) 
     {
-      OnMaster();//Ö÷»ú
+      OnMaster();//ï¿½ï¿½ï¿½ï¿½
     }
     else
     {
-      OnSlave(); //´Ó»ú
+      OnSlave(); //ï¿½Ó»ï¿½
     }
 		
   }

@@ -45,15 +45,14 @@ void setup() {
 
     Serial.println("RX ready | 868MHz SF9 BW125 CR4/5 SW:0x12 CRC OFF ImplicitHeader(10)");
 }
+
 void loop() {
-    uint8_t rxBuffer[10];
+    uint8_t rxBuffer[32];
     int ret = loraRadio.receive(rxBuffer, sizeof(rxBuffer), 2000);
 
     if (ret == RADIOLIB_ERR_NONE) {
         int len = loraRadio.getPacketLength();
-        if (len > (int)sizeof(rxBuffer)) {
-            len = sizeof(rxBuffer);
-        }
+        if (len > (int)sizeof(rxBuffer)) len = sizeof(rxBuffer);
 
         Serial.print("OK | RSSI: ");
         Serial.print(loraRadio.getRSSI());
@@ -61,21 +60,19 @@ void loop() {
         Serial.print(loraRadio.getSNR());
         Serial.print(" | Len: ");
         Serial.print(len);
-        Serial.print(" | Data: ");
 
+        // 以字符串方式显示（遇到 \0 自动停止）
+        Serial.print(" | Str: ");
+        Serial.print((char*)rxBuffer);
+
+        // 同时显示 HEX
+        Serial.print(" | Hex: ");
         for (int i = 0; i < len; i++) {
-            uint8_t v = (uint8_t)rxBuffer[i];
-            if (v < 0x10) {
-                Serial.print('0');
-            }
-            Serial.print(v, HEX);
-            Serial.print(' ');
+            Serial.printf("%02x ", rxBuffer[i]);
         }
         Serial.println();
-
     } else if (ret == RADIOLIB_ERR_RX_TIMEOUT) {
-        Serial.println("RX timeout, listening...");
-
+        Serial.println("RX timeout...");
     } else {
         Serial.print("Error: ");
         Serial.println(ret);
