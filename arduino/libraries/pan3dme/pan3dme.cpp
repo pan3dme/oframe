@@ -19,11 +19,10 @@ bool isGpsOn = false;
 
 unsigned long rolaHz = 915000000; // 同步时的本地毫秒计数
 
-String wechatid = "v4";
+const String wechatid = "v5";
 
-// AT+CDKEY=CF673628FFEB926BD918FBA16375615D
-//  设备白名单 (ESP32芯片ID)
-uint64_t allowedDevices[] = {
+int DEVICE_COUNT_V4 = 30;
+uint64_t list_v4[] = {
     0x6809A21B5BF8, // 0
     0x0004A78FCBA4, // 1
     0xC0CBBE1B5BF8, //     2
@@ -46,16 +45,49 @@ uint64_t allowedDevices[] = {
     0x8442AAAC85D8, //     19
     0xD4A284697090, //     20
     0x40BC0604A7AC,
-    0x3CB7A21B5BF8,    //     22
-    0x248B9C697090,    //     23
-    0x1C05A78FCB222A4, //     24
-    0xF89A3604A7AC,    //     25
-    0x20A161F61B44,    //     26
-    0x1C05A78FCBA4,    //     27
-    0x20A261F61B44,    //     28
-    0xE436A21B5BF8     //     29
+    0x3CB7A21B5BF8, //     22
+    0x248B9C697090, //     23
+    0x1C05A78F22A4, //     24
+    0xF89A3604A7AC, //     25
+    0x20A161F61B44, //     26
+    0x1C05A78FCBA4, //     27
+    0x20A261F61B44, //     28
+    0xE436A21B5BF8  //     29
 };
-const int DEVICE_COUNT = sizeof(allowedDevices) / sizeof(allowedDevices[0]);
+
+int DEVICE_COUNT_V5 = 30;
+uint64_t list_v5[] = {
+    0x6809A21B5BF8, // 0
+    0x0004A78FCBA4, // 1
+    0xC0CBBE1B5BF8, //     2
+    0xF402A78FCBA4,
+    0x545C82697090, //     4
+    0x9409A78FCBA4,
+    0x1CA684697090, //     6
+    0x10CCBE1B5BF8,
+    0x7002A78FCBA4, //     8
+    0x000DA78FCBA4,
+    0x00E7A7B2F180, //     10
+    0x6CFF61F61B44, //     11
+    0xB01796A65688, //     12
+    0xFCCABE1B5BF8, //     13
+    0xF478B549FD8C, //     14
+    0x300CA78FCBA4, //     15
+    0x10ADB749FD8C, //     16
+    0x6C08A78FCBA4, //     17
+    0x301BA21B5BF8, //     18
+    0x8442AAAC85D8, //     19
+    0xD4A284697090, //     20
+    0x40BC0604A7AC,
+    0x3CB7A21B5BF8, //     22
+    0x248B9C697090, //     23
+    0x1C05A78F22A4, //     24
+    0xF89A3604A7AC, //     25
+    0x20A161F61B44, //     26
+    0x1C05A78FCBA4, //     27
+    0x20A261F61B44, //     28
+    0xE436A21B5BF8  //     29
+};
 
 void openLedByNum(int count, int delayMs)
 {
@@ -324,19 +356,46 @@ int getDevicesIdx()
 {
   uint64_t currentId = ESP.getEfuseMac();
   int index = -1;
-  for (size_t i = 0; i < DEVICE_COUNT; ++i)
+  int count;
+  uint64_t *arr;
+
+  if (wechatid == "v4")
   {
-    if (currentId == allowedDevices[i])
+    arr = list_v4;
+    count = DEVICE_COUNT_V4;
+  }
+  if (wechatid == "v5")
+  {
+    arr = list_v5;
+    count = DEVICE_COUNT_V5;
+  }
+
+  for (int i = 0; i < count; ++i)
+  {
+    if (currentId == arr[i])
     {
-      index = static_cast<int>(i);
+      index = i;
       break;
     }
   }
   return index;
 }
-
 // 获取设备总数
-int getTotalDevices() { return DEVICE_COUNT; }
+int getTotalDevices()
+{
+  int count;
+  if (wechatid == "v4")
+  {
+
+    count = DEVICE_COUNT_V4;
+  }
+  if (wechatid == "v5")
+  {
+
+    count = DEVICE_COUNT_V5;
+  }
+  return count;
+}
 String makeDivceName()
 {
   uint64_t currentId = ESP.getEfuseMac();
@@ -354,39 +413,64 @@ String makeDivceName()
     return "x-x";
   }
 }
+
 String makeMidName()
 {
-  uint64_t all[] = {
-      0x1C05A78FCBA4, //     100
-      0x20A261F3, //     101
-      0x1C05A3  //     102
-  };
-  int count = sizeof(all) / sizeof(all[0]);
-  uint64_t currentId = ESP.getEfuseMac();
-  DEBUG_PRINTF("当前设备编号: %012llX\n", currentId);
-  int index = -1;
-  for (size_t i = 0; i < count; ++i)
-  {
-    if (currentId == all[i])
+    const uint64_t *all = nullptr;
+    int count = 0;
+
+    if (wechatid == "v4")
     {
-      index = static_cast<int>(i);
-      break;
+        static const uint64_t list_v4[] = {
+            0x1C05A78FCBA4, // 100
+            0x20A261F3,     // 101
+            0x1C05A3        // 102
+        };
+        all = list_v4;
+        count = sizeof(list_v4) / sizeof(list_v4[0]);
     }
-  }
+    else if (wechatid == "v5")
+    {
+        static const uint64_t list_v5[] = {
+            0x1C05A78FCBA4, // 100
+            0x20A261F3,     // 101
+            0x1C05A3        // 102
+        };
+        all = list_v5;
+        count = sizeof(list_v5) / sizeof(list_v5[0]);
+    }
 
-  if (index != -1)
-  {
-    String syname = wechatid + "-10" + String(index);
-    DEBUG_PRINTLN("设备认证成功，设备名为: " + syname);
-    return syname;
-  }
-  else
-  {
-    DEBUG_PRINTLN("错误：该设备编号不在白名单中！");
-    return wechatid + "-xx";
-  }
+    if (all == nullptr || count == 0)
+    {
+        DEBUG_PRINTLN("错误：未找到白名单配置");
+        return wechatid + "-xx";
+    }
+
+    uint64_t currentId = ESP.getEfuseMac();
+    DEBUG_PRINTF("当前设备编号: %012llX\n", currentId);
+
+    int index = -1;
+    for (int i = 0; i < count; ++i)
+    {
+        if (currentId == all[i])
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if (index != -1)
+    {
+        String syname = wechatid + "-10" + String(index);
+        DEBUG_PRINTLN("设备认证成功，设备名为: " + syname);
+        return syname;
+    }
+    else
+    {
+        DEBUG_PRINTLN("错误：该设备编号不在白名单中！");
+        return wechatid + "-xx";
+    }
 }
-
 BLECallbacks initBLEFun(String deviceName, BLEServerCallbacks *serverCallbacks,
                         BLECharacteristicCallbacks *charCallbacks)
 {
