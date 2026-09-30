@@ -63,3 +63,7 @@ flutter/001/.idea/workspace.xml
 **/*.bak
 **/*.uvgui.*
 **/*.uvprojx.*
+*.map
+*.o
+*.hex
+*.htm
