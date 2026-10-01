@@ -1,0 +1,13 @@
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\bin\armproc.dll" 
+
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\bin\armjlink2.dll" 
+
+"E:\12-资料盘待更新文件\硅传资料盘V1.56待更新内容\3029demo\(Simplex)PAN3029_PAN3060_DK_V2.3\EWARM\STM32F030\Exe\PAN3031_Easy_Demo.out" 
+
+--plugin "C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\bin\armbat.dll" 
+
+--device_macro "C:\Program Files (x86)\IAR Systems\Embedded Workbench 8.0\arm\config\debugger\ST\STM32F0xx.dmac" 
+
+
+
+
