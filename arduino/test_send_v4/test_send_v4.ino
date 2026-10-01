@@ -32,8 +32,8 @@ void setup() {
     }
 
     loraRadio.setDio2AsRfSwitch(false);
-    loraRadio.setFrequency(868.0);
-    loraRadio.setSpreadingFactor(9);
+    loraRadio.setFrequency(915.0);
+    loraRadio.setSpreadingFactor(11);
     loraRadio.setBandwidth(125.0);
     loraRadio.setCodingRate(1);
     loraRadio.setPreambleLength(8);

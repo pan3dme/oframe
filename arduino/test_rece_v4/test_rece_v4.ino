@@ -32,13 +32,13 @@ void setup() {
     }
 
     loraRadio.setDio2AsRfSwitch(false);
-    loraRadio.setFrequency(868.0);        // 匹配 ETSI_868: 868MHz
-    loraRadio.setSpreadingFactor(9);       // 匹配 DEFAULT_SF: SF9
+    loraRadio.setFrequency(915.0);        // 匹配 ETSI_868: 868MHz
+    loraRadio.setSpreadingFactor(11);       // 匹配 DEFAULT_SF: SF9
     loraRadio.setBandwidth(125.0);         // 匹配 DEFAULT_BW: BW125
     loraRadio.setCodingRate(1);            // 匹配 DEFAULT_CR: CR4/5 (RadioLib中1=4/5)
     loraRadio.setPreambleLength(8);
     loraRadio.setSyncWord(0x12);           // 标准 LoRa 私有 sync word
-    loraRadio.setCRC(false);               // PAN3029 LoRa模式下 CRC_OFF
+    loraRadio.setCRC(true);               // PAN3029 LoRa模式下 CRC_OFF
 
     // 隐式头模式，payload 长度匹配 TX_LEN=10
     loraRadio.explicitHeader();

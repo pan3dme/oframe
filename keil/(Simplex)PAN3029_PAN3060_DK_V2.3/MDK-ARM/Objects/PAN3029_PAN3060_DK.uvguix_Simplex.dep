@@ -71,7 +71,7 @@ I (..\Radio\inc\crc.h)(0x5C92FCC8)
 I (..\uart.h)(0x68B26370)
 I (..\Radio\inc\pan3029_port.h)(0x6684BF00)
 I (..\Radio\inc\pan3029_rf.h)(0x6684B88C)
-I (..\Radio\inc\radio.h)(0x68B27605)
+I (..\Radio\inc\radio.h)(0x6ABE1617)
 F (..\Radio\src\crc.c)(0x5A5D736C)(-xc -std=c99 --target=arm-arm-none-eabi -mcpu=cortex-m0 -c-fno-rtti -funsigned-char -fshort-enums -fshort-wchar-D__EVAL -D__MICROLIB -gdwarf-4 -O1 -ffunction-sections -Wno-packed -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-missing-noreturn -Wno-sign-conversion -Wno-nonportable-include-path -Wno-reserved-id-macro -Wno-unused-macros -Wno-documentation-unknown-command -Wno-documentation -Wno-license-management -Wno-parentheses-equality -Wno-reserved-identifier -I ../Libraries/CMSIS/Device/ST/STM32F0xx/Include -I ../Libraries/STM32F0xx_StdPeriph_Driver/inc -I ../Radio/inc -I ../Libraries/CMSIS/Include -I ../../(Simplex)PAN3029_PAN3060_DK_V2.3-D__UVISION_VERSION="543" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o ./objects/crc.o -MMD)
 I (..\Radio\inc\crc.h)(0x5C92FCC8)
 F (..\Radio\src\pan3029_port.c)(0x67EDE800)(-xc -std=c99 --target=arm-arm-none-eabi -mcpu=cortex-m0 -c-fno-rtti -funsigned-char -fshort-enums -fshort-wchar-D__EVAL -D__MICROLIB -gdwarf-4 -O1 -ffunction-sections -Wno-packed -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-missing-noreturn -Wno-sign-conversion -Wno-nonportable-include-path -Wno-reserved-id-macro -Wno-unused-macros -Wno-documentation-unknown-command -Wno-documentation -Wno-license-management -Wno-parentheses-equality -Wno-reserved-identifier -I ../Libraries/CMSIS/Device/ST/STM32F0xx/Include -I ../Libraries/STM32F0xx_StdPeriph_Driver/inc -I ../Radio/inc -I ../Libraries/CMSIS/Include -I ../../(Simplex)PAN3029_PAN3060_DK_V2.3-D__UVISION_VERSION="543" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o ./objects/pan3029_port.o -MMD)
@@ -108,7 +108,7 @@ I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D12)
 I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D12)
 I (..\..\(Simplex)PAN3029_PAN3060_DK_V2.3\gpio.h)(0x67EDE928)
 I (..\..\(Simplex)PAN3029_PAN3060_DK_V2.3\delay.h)(0x5C9B1A6C)
-F (..\Radio\src\pan3029_rf.c)(0x6ABD31F8)(-xc -std=c99 --target=arm-arm-none-eabi -mcpu=cortex-m0 -c-fno-rtti -funsigned-char -fshort-enums -fshort-wchar-D__EVAL -D__MICROLIB -gdwarf-4 -O1 -ffunction-sections -Wno-packed -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-missing-noreturn -Wno-sign-conversion -Wno-nonportable-include-path -Wno-reserved-id-macro -Wno-unused-macros -Wno-documentation-unknown-command -Wno-documentation -Wno-license-management -Wno-parentheses-equality -Wno-reserved-identifier -I ../Libraries/CMSIS/Device/ST/STM32F0xx/Include -I ../Libraries/STM32F0xx_StdPeriph_Driver/inc -I ../Radio/inc -I ../Libraries/CMSIS/Include -I ../../(Simplex)PAN3029_PAN3060_DK_V2.3-D__UVISION_VERSION="543" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o ./objects/pan3029_rf.o -MMD)
+F (..\Radio\src\pan3029_rf.c)(0x6ABE1F85)(-xc -std=c99 --target=arm-arm-none-eabi -mcpu=cortex-m0 -c-fno-rtti -funsigned-char -fshort-enums -fshort-wchar-D__EVAL -D__MICROLIB -gdwarf-4 -O1 -ffunction-sections -Wno-packed -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-missing-noreturn -Wno-sign-conversion -Wno-nonportable-include-path -Wno-reserved-id-macro -Wno-unused-macros -Wno-documentation-unknown-command -Wno-documentation -Wno-license-management -Wno-parentheses-equality -Wno-reserved-identifier -I ../Libraries/CMSIS/Device/ST/STM32F0xx/Include -I ../Libraries/STM32F0xx_StdPeriph_Driver/inc -I ../Radio/inc -I ../Libraries/CMSIS/Include -I ../../(Simplex)PAN3029_PAN3060_DK_V2.3-D__UVISION_VERSION="543" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o ./objects/pan3029_rf.o -MMD)
 I (..\Radio\inc\pan3029_port.h)(0x6684BF00)
 I (..\Radio\inc\pan3029_rf.h)(0x6684B88C)
 I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x68B26339)
@@ -141,7 +141,7 @@ I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h)(0x54808D12)
 I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h)(0x54808D12)
 I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h)(0x54808D12)
 I (..\Radio\inc\pan3029_param.h)(0x666FE4B4)
-I (..\Radio\inc\radio.h)(0x68B27605)
+I (..\Radio\inc\radio.h)(0x6ABE1617)
 F (..\Libraries\STM32F0xx_StdPeriph_Driver\src\stm32f0xx_adc.c)(0x54808D14)(-xc -std=c99 --target=arm-arm-none-eabi -mcpu=cortex-m0 -c-fno-rtti -funsigned-char -fshort-enums -fshort-wchar-D__EVAL -D__MICROLIB -gdwarf-4 -O1 -ffunction-sections -Wno-packed -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-missing-noreturn -Wno-sign-conversion -Wno-nonportable-include-path -Wno-reserved-id-macro -Wno-unused-macros -Wno-documentation-unknown-command -Wno-documentation -Wno-license-management -Wno-parentheses-equality -Wno-reserved-identifier -I ../Libraries/CMSIS/Device/ST/STM32F0xx/Include -I ../Libraries/STM32F0xx_StdPeriph_Driver/inc -I ../Radio/inc -I ../Libraries/CMSIS/Include -I ../../(Simplex)PAN3029_PAN3060_DK_V2.3-D__UVISION_VERSION="543" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o ./objects/stm32f0xx_adc.o -MMD)
 I (..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h)(0x54808D12)
 I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x68B26339)
@@ -903,7 +903,7 @@ I (..\Radio\inc\crc.h)(0x5C92FCC8)
 I (..\uart.h)(0x68B26370)
 I (..\Radio\inc\pan3029_port.h)(0x6684BF00)
 I (..\Radio\inc\pan3029_rf.h)(0x6684B88C)
-I (..\Radio\inc\radio.h)(0x68B27605)
+I (..\Radio\inc\radio.h)(0x6ABE1617)
 F (..\spi.c)(0x667A40D6)(-xc -std=c99 --target=arm-arm-none-eabi -mcpu=cortex-m0 -c-fno-rtti -funsigned-char -fshort-enums -fshort-wchar-D__EVAL -D__MICROLIB -gdwarf-4 -O1 -ffunction-sections -Wno-packed -Wno-missing-variable-declarations -Wno-missing-prototypes -Wno-missing-noreturn -Wno-sign-conversion -Wno-nonportable-include-path -Wno-reserved-id-macro -Wno-unused-macros -Wno-documentation-unknown-command -Wno-documentation -Wno-license-management -Wno-parentheses-equality -Wno-reserved-identifier -I ../Libraries/CMSIS/Device/ST/STM32F0xx/Include -I ../Libraries/STM32F0xx_StdPeriph_Driver/inc -I ../Radio/inc -I ../Libraries/CMSIS/Include -I ../../(Simplex)PAN3029_PAN3060_DK_V2.3-D__UVISION_VERSION="543" -DSTM32F030x8 -DSTM32F030 -DUSE_STDPERIPH_DRIVER-o ./objects/spi.o -MMD)
 I (..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h)(0x68B26339)
 I (..\Libraries\CMSIS\Include\core_cm0.h)(0x547D9684)
