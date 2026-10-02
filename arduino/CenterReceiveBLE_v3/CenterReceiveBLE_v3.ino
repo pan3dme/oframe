@@ -435,8 +435,8 @@ void initRadio(int power) {
   RadioEvents.RxError = OnRxError;
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
-  // initPanRadio(&RadioEvents, power,433000000,10);
-  initPanRadio(&RadioEvents, power, 915000000, 11);
+
+  initPanRadio(&RadioEvents, power, 915000000, LORA_SF);
   Radio.Rx(0);
 }
 

@@ -155,7 +155,7 @@ void initLora() {
   radioEvents.RxDone = OnRxDone;
   radioEvents.RxTimeout = OnRxTimeout;
   radioEvents.RxError = OnRxError;
-  initPanRadio(&radioEvents, 22, 915000000, 11);
+  initPanRadio(&radioEvents, 22, 915000000, LORA_SF);
 }
 void OnRxTimeout(void) {
   DEBUG_PRINTLN("⚠️ Radio接收超时!");

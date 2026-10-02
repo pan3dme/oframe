@@ -728,11 +728,11 @@ void initPanRadio(RadioEvents_t *radioEvents, int txPower, unsigned long hzFreq,
   Radio.Init(radioEvents);
   Radio.SetChannel(rolaHz);
 
-  Radio.SetRxConfig(MODEM_LORA, LORA_BW, LORA_SF, LORA_CR, 0, PREAMBLE_LENGTH,
+  Radio.SetRxConfig(MODEM_LORA, LORA_BW, swNum, LORA_CR, 0, PREAMBLE_LENGTH,
                     LORA_SYMBOL_TIMEOUT, 0, 0, false, 0, 0, false, false);
 
   // 发送参数配置
-  Radio.SetTxConfig(MODEM_LORA, txPower, 0, LORA_BW, LORA_SF, LORA_CR,
+  Radio.SetTxConfig(MODEM_LORA, txPower, 0, LORA_BW, swNum, LORA_CR,
                     PREAMBLE_LENGTH, false, false, 0, 0, false, 1000);
 
   DEBUG_PRINT("✅ 当前lora频段");
