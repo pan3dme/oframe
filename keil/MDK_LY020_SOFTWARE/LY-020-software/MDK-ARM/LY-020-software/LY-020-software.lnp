@@ -1,0 +1,26 @@
+--cpu Cortex-M3
+"ly-020-software\startup_stm32f103xb.o"
+"ly-020-software\main.o"
+"ly-020-software\stm32f1xx_it.o"
+"ly-020-software\stm32f1xx_hal_msp.o"
+"ly-020-software\stm32f1xx_hal_gpio_ex.o"
+"ly-020-software\stm32f1xx_hal_can.o"
+"ly-020-software\stm32f1xx_hal.o"
+"ly-020-software\stm32f1xx_hal_rcc.o"
+"ly-020-software\stm32f1xx_hal_rcc_ex.o"
+"ly-020-software\stm32f1xx_hal_gpio.o"
+"ly-020-software\stm32f1xx_hal_dma.o"
+"ly-020-software\stm32f1xx_hal_cortex.o"
+"ly-020-software\stm32f1xx_hal_pwr.o"
+"ly-020-software\stm32f1xx_hal_flash.o"
+"ly-020-software\stm32f1xx_hal_flash_ex.o"
+"ly-020-software\stm32f1xx_hal_exti.o"
+"ly-020-software\stm32f1xx_hal_i2c.o"
+"ly-020-software\stm32f1xx_hal_uart.o"
+"ly-020-software\system_stm32f1xx.o"
+"ly-020-software\oled_function.o"
+"ly-020-software\oled_iic_config.o"
+--library_type=microlib --strict --scatter "LY-020-software\LY-020-software.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list "LY-020-software.map" -o LY-020-software\LY-020-software.axf
