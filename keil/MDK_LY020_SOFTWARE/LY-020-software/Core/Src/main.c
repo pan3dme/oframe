@@ -160,7 +160,7 @@ int main(void)
   HAL_CAN_Start(&hcan);
 
   //printf("LAN YUAN TECH\r\n");
-  HAL_UART_Transmit(&huart1,"LAN YUAN TECH\r\n",strlen("LAN YUAN TECH\r\n"),0xFFFF);
+  HAL_UART_Transmit(&huart1,"PANJIAZHI  TECH\r\n",strlen("LAN YUAN TECH\r\n"),0xFFFF);
   HAL_Delay(50);
   OLED_Init();  //OLED≥ı ºªØ
 
