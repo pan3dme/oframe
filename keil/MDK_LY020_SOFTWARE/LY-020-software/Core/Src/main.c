@@ -55,13 +55,15 @@ UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 
-//CANÈ«¾Ö±äÁ¿
+uint32_t lastPrintTick = 0;
+
+//CANÈ«ï¿½Ö±ï¿½ï¿½ï¿½
 CAN_TxHeaderTypeDef TxHeaderCAN;
 CAN_RxHeaderTypeDef RxHeaderCAN;
 uint8_t RxDataCAN[8];
 uint8_t TxDataCAN[8];
 //uint8_t TxDataCAN[8]= {99,25,33,48,99,78,63,99};
-uint8_t CAN_Rx_Flag=0;//CAN½ÓÊÕ±êÖ¾
+uint8_t CAN_Rx_Flag=0;//CANï¿½ï¿½ï¿½Õ±ï¿½Ö¾
 
 
 /* USER CODE END PV */
@@ -93,7 +95,7 @@ void CAN1_Send_Test(void);
 
 PUTCHAR_PROTOTYPE
 {
-  HAL_UART_Transmit(&huart1,(uint8_t *)&ch,1,0xFFFF); //×èÈû·½Ê½´òÓ¡,´®¿Ú1
+  HAL_UART_Transmit(&huart1,(uint8_t *)&ch,1,0xFFFF); //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½Ó¡,ï¿½ï¿½ï¿½ï¿½1
   return ch;
 }
 
@@ -156,28 +158,30 @@ int main(void)
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
 
-  filter_init();
-  HAL_CAN_Start(&hcan);
+  //filter_init();
+  //HAL_CAN_Start(&hcan);
 
   //printf("LAN YUAN TECH\r\n");
-  HAL_UART_Transmit(&huart1,"PANJIAZHI  TECH\r\n",strlen("LAN YUAN TECH\r\n"),0xFFFF);
+  HAL_UART_Transmit(&huart1,"just  do it \r\n",strlen("LAN YUAN TECH\r\n"),0xFFFF);
   HAL_Delay(50);
-  OLED_Init();  //OLED³õÊ¼»¯
+  //OLED_Init();  //OLEDï¿½ï¿½Ê¼ï¿½ï¿½
 
   //printf("LAN YUAN TECH\r\n");
-  OLED_CLS();
+  //OLED_CLS();
   HAL_Delay(10);
   printf("SYSTEM START\r\n");
-  OLED_ShowStr(10, 31, "LAN YUAN TECH",2);
+  //OLED_ShowStr(10, 31, "LAN YUAN TECH",2);
 
   HAL_Delay(1000);
-  OLED_CLS();
-  OLED_ClearRAM();
+  //OLED_CLS();
+  //OLED_ClearRAM();
 
 
 
 
   /* USER CODE END 2 */
+
+  printf(">>> Enter main loop <<<\r\n");
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -187,61 +191,25 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 		
-		//CDC_Transmit_FS(buff,sizeof(buff)); //USB ´®¿Ú·¢ËÍÊý¾Ý
+		// every 1s print uptime
+		if (HAL_GetTick() - lastPrintTick >= 1000)
+		{
+			lastPrintTick = HAL_GetTick();
+			uint32_t sec = lastPrintTick / 1000;
+			printf("Uptime: %lu:%02lu:%02lu\r\n", sec / 3600, (sec % 3600) / 60, sec % 60);
+		}
+
+		//CDC_Transmit_FS(buff,sizeof(buff)); //USB ï¿½ï¿½ï¿½Ú·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
 
 	 // printf("LAN YUAN TECH\r\n");
 
 	  //HAL_UART_Transmit(&huart1,"LAN YUAN TECH\r\n",strlen("LAN YUAN TECH\r\n"),0xFFFF);
 
-	  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-	  HAL_Delay(200);
-	  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
-	  HAL_Delay(200);
-	  HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
-	  HAL_Delay(200);
-	  HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-	  HAL_Delay(200);
-	  HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
-	  HAL_Delay(200);
-	  HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
-	  HAL_Delay(200);
+	  // LOOP indicator
+	  printf("LOOP\r\n");
+	  HAL_Delay(500);
 
-
-	  //printf("LAN YUAN TECH\r\n"); //USART1·¢ËÍ-USB
-	  HAL_UART_Transmit(&huart1,"LAN YUAN TECH\r\n",strlen("LAN YUAN TECH\r\n"),0xFFFF);
-
-	  HAL_GPIO_WritePin(TNOW_GPIO_Port, TNOW_Pin, SET);								//USART2-TNOW ¸ßµçÆ½ ·¢ËÍÊ¹ÄÜ
-	  HAL_UART_Transmit(&huart2,"LAN YUAN TECH",strlen("LAN YUAN TECH"),0xFFFF);	//USART2·¢ËÍ-RS485
-	  HAL_GPIO_WritePin(TNOW_GPIO_Port, TNOW_Pin, RESET);							//USART2-TNOW µÍµçÆ½ ½ÓÊÕÊ¹ÄÜ
-
-	  HAL_UART_Transmit(&huart3,"LAN YUAN TECH",strlen("LAN YUAN TECH"),0xFFFF);	//USART3·¢ËÍ-RS232
-
-
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_0);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_1);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_2);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_3);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_4);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_5);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_6);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_7);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_8);
-	 	      OLED_ShowBMP(0,0,52,48,(unsigned char *)astronaut_9);
-
-	 	      printf("PIC cycle DISP ++\r\n");
-
-	  CAN_Test();
-	 //´¦ÀíCAN½ÓÊÕÊý¾Ý
-	if(CAN_Rx_Flag)
-	{
-		 CAN_Rx_Flag = 0;//Çå¿ÕCAN½ÓÊÕ±êÖ¾
-		 printf("CAN½ÓÊÕÊý¾Ý£º\r\n");
-		 for(int i = 0;i<8;i++) printf(" 0x%02x",RxDataCAN[i]);
-		 printf("\r\n");
-	}
-
-	
   }
   /* USER CODE END 3 */
 }
@@ -518,7 +486,7 @@ void filter_init(void)
 {
     HAL_StatusTypeDef HAL_Status;
     CAN_FilterTypeDef Filter0;
-    Filter0.FilterBank = 1;//ÂË²¨Æ÷±àºÅ
+    Filter0.FilterBank = 1;//ï¿½Ë²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿?
     Filter0.FilterMode = CAN_FILTERMODE_IDMASK;
     Filter0.FilterScale = CAN_FILTERSCALE_32BIT;
     Filter0.FilterIdHigh = 0x00;
@@ -536,7 +504,7 @@ void filter_init(void)
     }
 }
 
-//ÖØ¶¨ÒåCAN½ÓÊÕÖÐ¶Ï»Øµ÷º¯Êý
+//ï¿½Ø¶ï¿½ï¿½ï¿½CANï¿½ï¿½ï¿½ï¿½ï¿½Ð¶Ï»Øµï¿½ï¿½ï¿½ï¿½ï¿½
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
     HAL_StatusTypeDef HAL_Status;
@@ -545,7 +513,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         HAL_Status = HAL_CAN_GetRxMessage(hcan,CAN_RX_FIFO0,&RxHeaderCAN,RxDataCAN);
         if(HAL_Status == HAL_OK)
         {
-            //´¦Àí½ÓÊÕÊý¾Ý
+            //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             CAN_Rx_Flag = 1;
         }
     }
@@ -553,7 +521,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
 void CAN_Test(void)
 {
-	 //·¢ËÍÊý¾ÝCAN
+	 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½CAN
 	      TxHeaderCAN.ExtId = 0x1800F001;
 	      TxHeaderCAN.DLC = 8;
 	      TxHeaderCAN.IDE = CAN_ID_STD;
@@ -564,10 +532,10 @@ void CAN_Test(void)
 	      uint32_t TxMailBox;
 	      HAL_StatusTypeDef HAL_Status;
 
-    printf("\r\n------------------CANÍ¨ÐÅ²âÊÔ------------------\r\n");
+    printf("\r\n------------------CANÍ¨ï¿½Å²ï¿½ï¿½ï¿½------------------\r\n");
 
    for (int i = 0; i < 8; ++i) TxDataCAN[i] = i;
-    printf("CAN·¢ËÍÊý¾Ý£º\r\n");
+    printf("CANï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½\r\n");
     for (int i = 0; i < 8; ++i) printf(" 0x%02x",TxDataCAN[i]);
     printf("\r\n");
 
@@ -578,7 +546,7 @@ void CAN_Test(void)
 /*
 void CAN1_Send_Test(void)
 {
-	 //·¢ËÍÊý¾ÝCAN
+	 //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½CAN
 	    TxHeaderCAN.ExtId = 0x1800F001;
 	    TxHeaderCAN.DLC = 8;
 	    TxHeaderCAN.IDE = CAN_ID_STD;
@@ -595,28 +563,28 @@ void CAN1_Send_Test(void)
 }
 */
 
-// ÔÚ main.c ÖÐÖØÐ´»Øµ÷º¯Êý
+// ï¿½ï¿½ main.c ï¿½ï¿½ï¿½ï¿½Ð´ï¿½Øµï¿½ï¿½ï¿½ï¿½ï¿½
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == K1_Pin)
-    {  // KEY_PIN ÐèÌæ»»ÎªÄãµÄÒý½Å£¨Èç GPIO_PIN_0£©
-        // ¼òµ¥Ïû¶¶£ºÑÓÊ±¼ì²âµçÆ½ÊÇ·ñÎÈ¶¨
-        //HAL_Delay(10);  // ×¢Òâ£ºÖÐ¶ÏÄÚÉ÷ÓÃÑÓÊ±£¬Êµ¼ÊÏîÄ¿½¨ÒéÓÃ±ê¼ÇÎ»+Ö÷Ñ­»·´¦Àí
+    {  // KEY_PIN ï¿½ï¿½ï¿½æ»»Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½ï¿½ï¿?GPIO_PIN_0ï¿½ï¿½
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Æ½ï¿½Ç·ï¿½ï¿½È¶ï¿½
+        //HAL_Delay(10);  // ×¢ï¿½â£ºï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½ï¿½Ã±ï¿½ï¿½ï¿½?ï¿½ï¿½Ñ­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
         if (HAL_GPIO_ReadPin(K1_GPIO_Port, K1_Pin) == GPIO_PIN_RESET)
         {
-            // Ö´ÐÐ°´¼ü²Ù×÷£¬Èç·­×ª LED
+            // Ö´ï¿½Ð°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ç·­×ª LED
         	HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
             //printf("KEY1 trigger \r\n");
         	HAL_UART_Transmit(&huart1,"KEY1 trigger \r\n",strlen("KEY1 trigger \r\n"),0xFFFF);
         }
     }
 
-    if (GPIO_Pin == K2_Pin) {  // KEY_PIN ÐèÌæ»»ÎªÄãµÄÒý½Å£¨Èç GPIO_PIN_0£©
-            // ¼òµ¥Ïû¶¶£ºÑÓÊ±¼ì²âµçÆ½ÊÇ·ñÎÈ¶¨
-          //  HAL_Delay(10);  // ×¢Òâ£ºÖÐ¶ÏÄÚÉ÷ÓÃÑÓÊ±£¬Êµ¼ÊÏîÄ¿½¨ÒéÓÃ±ê¼ÇÎ»+Ö÷Ñ­»·´¦Àí
+    if (GPIO_Pin == K2_Pin) {  // KEY_PIN ï¿½ï¿½ï¿½æ»»Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½ï¿½ï¿?GPIO_PIN_0ï¿½ï¿½
+            // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Æ½ï¿½Ç·ï¿½ï¿½È¶ï¿½
+          //  HAL_Delay(10);  // ×¢ï¿½â£ºï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½ï¿½Ã±ï¿½ï¿½ï¿½?ï¿½ï¿½Ñ­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
             if (HAL_GPIO_ReadPin(K2_GPIO_Port, K2_Pin) == GPIO_PIN_RESET)
             {
-                // Ö´ÐÐ°´¼ü²Ù×÷£¬Èç·­×ª LED
+                // Ö´ï¿½Ð°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ç·­×ª LED
             	HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
                 //printf("KEY2 trigger\r\n");
                 HAL_UART_Transmit(&huart1,"KEY2 trigger \r\n",strlen("KEY2 trigger \r\n"),0xFFFF);
