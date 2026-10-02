@@ -433,8 +433,9 @@ String makeMidName()
     {
         static const uint64_t list_v5[] = {
             0x1C05A78FCBA4, // 100
-            0x20A261F3,     // 101
-            0x1C05A3        // 102
+            0xAC09A78FCBA4,     // 101
+            0x140CA78FCBA4,     // 102
+            0x1C05A3        // 103
         };
         all = list_v5;
         count = sizeof(list_v5) / sizeof(list_v5[0]);
