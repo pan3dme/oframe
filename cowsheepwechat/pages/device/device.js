@@ -203,7 +203,8 @@ Page({
         if (!isNaN(ts)) {
           lastTs = ts
           lastRaw = syncInfo.rawTime
-          lastType = 'time'   // 对时同步表记录 = 对时
+          // 最后一条记录类型：解析 lorastr 首段（1/5=定位 → 'gps'，2=对时 → 'time'）
+          lastType = this._lorastrRecordType(syncInfo.lorastr)
         }
       }
 
@@ -411,6 +412,19 @@ Page({
     this.fetchDeviceList(true, () => {
       this.setData({ refresherTriggered: false })
     })
+  },
+
+  // 解析 lorastr 首段类型编号 → 列表 ICON 类型
+  //   '1'=GPS定位 / '5'=跟踪 → 'gps'（列表显示定位绿点）
+  //   '2'=对时               → 'time'（列表显示时钟图标）
+  //   其它类型 / 无 lorastr  → ''（不显示类型图标）
+  _lorastrRecordType(lorastr) {
+    if (!lorastr) return ''
+    const segs = String(lorastr).split(/[｜|]/)
+    const t = (segs[0] || '').trim()
+    if (t === '1' || t === '5') return 'gps'
+    if (t === '2') return 'time'
+    return ''
   },
 
   // 电量归一化为 0~100 显示：兼容 0~1 小数（如 1.0/0.87）与 0~100 整数（如 99）
