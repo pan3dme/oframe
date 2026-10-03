@@ -13,7 +13,7 @@
     <view class="category-tab {{activeCategory === 'offline' ? 'category-tab-active' : ''}}" bindtap="onSwitchCategory" data-cat="offline">
       <text>离线</text><text class="category-tab-num">{{categoryCount.offline}}</text>
     </view>
-    <view class="toolbar-btn" bindtap="onAdd" wx:if="{{isAdmin}}">＋ 新增设备</view>
+    <view class="toolbar-btn" bindtap="onAdd" wx:if="{{showAddBtn}}">＋ 新增设备</view>
   </view>
 </view>
 

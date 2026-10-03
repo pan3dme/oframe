@@ -30,8 +30,8 @@
       <switch checked="{{showConverted}}" bindchange="onShowConvertedChange" color="#07c160" />
     </view>
 
-    <!-- 农场坐标（登录返回的 mapcenter，点击整行打开地图查看）+ 下发所有中继小按钮 -->
-    <view class="setting-row" bindtap="onMapCenterTap">
+    <!-- 农场坐标（登录返回的 mapcenter，点击整行打开地图查看）+ 下发所有中继小按钮：仅 level<=1 显示 -->
+    <view class="setting-row" wx:if="{{showFarmCoord}}" bindtap="onMapCenterTap">
       <view class="setting-left">
         <text class="setting-icon">📍</text>
         <text class="setting-label">农场坐标</text>
@@ -53,18 +53,6 @@
         <text class="setting-label">是否为管理员</text>
       </view>
       <switch checked="{{isAdmin}}" bindchange="onAdminChange" color="#07c160" />
-    </view>
-  </view>
-
-  <!-- 账户管理 -->
-  <view class="section">
-    <view class="section-title">账户管理</view>
-    <view class="action-row" bindtap="onLogout">
-      <text class="action-icon">🚪</text>
-      <view class="action-info">
-        <text class="action-label logout-label">退出登录</text>
-        <text class="action-desc">清除本地登录记录，返回登录页重新登录</text>
-      </view>
     </view>
   </view>
 

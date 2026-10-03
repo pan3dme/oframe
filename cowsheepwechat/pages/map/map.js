@@ -21,7 +21,8 @@ Page({
     isSatellite: true,     // 全程开启卫星底图
     currentMarker: -1,
     activeCalloutId: -1,   // 当前唯一展开的气泡 marker id
-    groundOverlays: []
+    groundOverlays: [],
+    showGpstimBtn: false    // 右上角"全局中继GPS指令"按钮：用户 level<=2 才显示
   },
 
   _deviceMarkers: [],
@@ -63,6 +64,13 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 3 })
     }
+    // 右上角"全局中继GPS指令"按钮：仅用户 level<=2 显示
+    let showGpstimBtn = false
+    try {
+      const app = getApp()
+      showGpstimBtn = !!(app && typeof app.getUserLevel === 'function' && app.getUserLevel() <= 2)
+    } catch (e) { /* ignore */ }
+    this.setData({ showGpstimBtn })
   },
 
   onHide() {

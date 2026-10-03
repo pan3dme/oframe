@@ -5,7 +5,7 @@
   <view class="feature-panel">
     <view class="feature-title">功能列表</view>
     <view class="feature-grid">
-      <view class="feature-btn" wx:for="{{featureBtns}}" wx:key="id" bindtap="onFeatureTap" data-id="{{item.id}}">
+      <view class="feature-btn" wx:for="{{visibleFeatureBtns}}" wx:key="id" bindtap="onFeatureTap" data-id="{{item.id}}">
         <view class="feature-num">{{item.id}}</view>
         <view class="feature-label">{{item.label}}</view>
       </view>

@@ -7,6 +7,8 @@ const STORAGE_KEY_AUTO_LOGIN = 'setting_auto_login'
 // 服务器登录成功后返回的用户数据缓存（{status,msg,data}，data 含 primaryKey/attributes）
 // 主程序依赖这份数据取用户身份，缺失时必须重新输入用户名密码获取
 const SERVER_DATA_KEY = 'login_server_data'
+// 上次登录的用户名/密码（注销登入清除 login_info 后仍保留，用于登录页预填输入框）
+const LAST_LOGIN_KEY = 'last_login'
 
 const dataCache = require('../../config/data-cache.js')
 
@@ -33,9 +35,16 @@ Page({
         wx.reLaunch({ url: '/pages/index/index' })
         return
       }
-      // 未自动登录时，预填上次的用户名，方便确认
-      if (loginInfo && loginInfo.username) {
-        this.setData({ username: loginInfo.username })
+      // 未自动登录时，预填上次的用户名和密码，方便确认（注销登入后 login_info 已清除，
+      // 从 last_login 读取；login_info 存在时优先用它）
+      let last = null
+      try {
+        last = wx.getStorageSync(LAST_LOGIN_KEY)
+      } catch (e) { /* ignore */ }
+      const lastUser = (loginInfo && loginInfo.username) || (last && last.username) || ''
+      const lastPwd = (loginInfo && loginInfo.password) || (last && last.password) || ''
+      if (lastUser || lastPwd) {
+        this.setData({ username: lastUser, password: lastPwd })
       }
     } catch (e) { /* ignore */ }
     this._fetchLoginCode()
@@ -165,6 +174,10 @@ Page({
     } catch (e) {
       console.error('保存登录信息失败:', e)
     }
+    // 单独保存上次登录的用户名/密码（注销登入后仍保留，供登录页预填输入框）
+    try {
+      wx.setStorageSync(LAST_LOGIN_KEY, { username: loginInfo.username, password: loginInfo.password })
+    } catch (e) { /* ignore */ }
     // 单独缓存服务器返回数据，主程序用它取用户身份；缺失则自动登录也要重新输入
     if (serverData) {
       try {

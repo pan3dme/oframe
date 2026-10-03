@@ -10,43 +10,56 @@ Page({
     insertLorastr: '',
     deviceIdOptions: ['v4-1'],
     selectedDeviceIndex: 0,
+    // 功能按钮：minLevel = 显示所需的最大 level（用户 level <= minLevel 才显示）
+    // 道路管理/地名管理/连接蓝牙/设置 需 level<=2；其余需 level<=1
     featureBtns: [{
         id: 1,
-        label: '最近10条记录'
+        label: '最近10条记录',
+        minLevel: 1
       },
       {
         id: 2,
-        label: '上报设备LORA'
+        label: '上报设备LORA',
+        minLevel: 1
       },
       {
         id: 3,
-        label: '设置'
+        label: '设置',
+        minLevel: 2
       },
       {
         id: 4,
-        label: '管理牛羊'
+        label: '管理牛羊',
+        minLevel: 1
       },
       {
         id: 5,
-        label: '道路管理'
+        label: '道路管理',
+        minLevel: 2
       },
       {
         id: 6,
-        label: '地名管理'
+        label: '地名管理',
+        minLevel: 2
       },
       {
         id: 7,
-        label: '连接蓝牙'
+        label: '连接蓝牙',
+        minLevel: 2
       },
       {
         id: 8,
-        label: '道路优化'
+        label: '道路优化',
+        minLevel: 1
       },
       {
         id: 9,
-        label: 'DTU发送指令'
+        label: 'DTU发送指令',
+        minLevel: 1
       },
-    ]
+    ],
+    // 按用户 level 过滤后的可见按钮列表（wxml 渲染用）
+    visibleFeatureBtns: []
   },
 
   onLoad() {
@@ -57,6 +70,18 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 2 })
     }
+    this._applyLevelFilter()
+  },
+
+  // 按用户 level 过滤功能按钮：level <= minLevel 才显示
+  _applyLevelFilter() {
+    let userLevel = 99
+    try {
+      const app = getApp()
+      if (app && typeof app.getUserLevel === 'function') userLevel = app.getUserLevel()
+    } catch (e) { /* ignore */ }
+    const visible = this.data.featureBtns.filter(btn => userLevel <= btn.minLevel)
+    this.setData({ visibleFeatureBtns: visible })
   },
 
   // 功能按钮事件

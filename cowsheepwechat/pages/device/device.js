@@ -17,6 +17,8 @@ Page({
     categoryCount: { all: 0, device: 0, relay: 0, offline: 0 },
     // "中继"分类TAB 是否显示（用户 level<=2 才显示）
     showRelayTab: false,
+    // "新增设备"按钮是否显示（用户 level<=1 才显示）
+    showAddBtn: false,
     isAdmin: false,
     showAllDevices: false,
     refresherTriggered: false,
@@ -46,12 +48,15 @@ Page({
       showAllDevices = raw === true || raw === 'true' || raw === 1 || raw === '1'
     } catch (e) { /* ignore */ }
     // "中继"TAB：仅用户 level<=2（有权限）时显示
-    let showRelayTab = false
+    let userLevel = 99
     try {
       const app = getApp()
-      showRelayTab = !!(app && typeof app.getUserLevel === 'function' && app.getUserLevel() <= 2)
+      if (app && typeof app.getUserLevel === 'function') userLevel = app.getUserLevel()
     } catch (e) { /* ignore */ }
-    this.setData({ isAdmin, showAllDevices, showRelayTab })
+    const showRelayTab = userLevel <= 2
+    // "新增设备"按钮：仅用户 level<=1 显示
+    const showAddBtn = userLevel <= 1
+    this.setData({ isAdmin, showAllDevices, showRelayTab, showAddBtn })
   },
 
   onLoad() {

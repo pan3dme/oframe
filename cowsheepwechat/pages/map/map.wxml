@@ -31,8 +31,8 @@
   </view>
 </view>
 
-<!-- 右上角：向所有"工作期间"的中继发送 GPS 定时指令 {"cmd":"gpstim","value":30} -->
-<view class="tool-btn gpstim-btn" bindtap="onGpstimAllTap">
+<!-- 右上角：向所有"工作期间"的中继发送 GPS 定时指令 {"cmd":"gpstim","value":30}（仅 level<=2 显示） -->
+<view class="tool-btn gpstim-btn" wx:if="{{showGpstimBtn}}" bindtap="onGpstimAllTap">
   <text class="tool-icon">📡</text>
   <text class="tool-label">全体</text>
 </view>

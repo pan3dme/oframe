@@ -59,8 +59,8 @@
           </view>
         </view>
 
-        <!-- 右上角操作图标：管理员可编辑（弹出编辑设备弹窗） -->
-        <view class="header-actions" wx:if="{{isAdmin}}">
+        <!-- 右上角操作图标：设备编辑按钮（弹出编辑设备弹窗），管理员且 level<=2 才显示 -->
+        <view class="header-actions" wx:if="{{isAdmin && userLevel <= 2}}">
           <view class="header-icon-btn" bindtap="onDetailEdit">
             <text class="header-icon">✏️</text>
           </view>
@@ -70,7 +70,7 @@
       <!-- 设备功能按钮（每行3个）：中继设备(有ProductKey)与普通设备的按钮数据不同 -->
       <view class="home-features">
         <block wx:for="{{deviceInfo.ProductKey ? relayFeatureBtns : featureBtns}}" wx:key="id">
-          <view class="home-feature" wx:if="{{(item.id !== 'records' || userLevel <= 1) && (item.id !== 'setting' || userLevel <= 2) && (item.id !== 'track' || userLevel <= 2)}}" bindtap="onFeatureBtnTap" data-id="{{item.id}}">
+          <view class="home-feature" wx:if="{{(item.id !== 'records' || userLevel <= 1) && (item.id !== 'setting' || userLevel <= 1) && (item.id !== 'track' || userLevel <= 2)}}" bindtap="onFeatureBtnTap" data-id="{{item.id}}">
             <view class="home-feature-icon" style="background:{{item.color}}">
               <text class="home-feature-emoji">{{item.icon}}</text>
             </view>

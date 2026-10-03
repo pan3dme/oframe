@@ -16,7 +16,8 @@ Page({
     isAdmin: false,           // 默认不是管理员
     showAllDevices: false,     // 默认不显示所有设备（仅显示visible=true的）
     showConverted: true,       // 默认显示转换（对时/配置记录显示换算后的可读内容）
-    mapCenterText: '—'         // 农场中心坐标（登录返回的 mapcenter 属性）
+    mapCenterText: '—',        // 农场中心坐标（登录返回的 mapcenter 属性）
+    showFarmCoord: false       // "农场坐标"行是否显示（用户 level<=1 才显示）
   },
 
   _readSettings() {
@@ -48,6 +49,14 @@ Page({
         this.setData({ showConverted: showConv === true || showConv === 'true' })
       }
     } catch (e) { /* 首次使用，保持默认值 */ }
+
+    // "农场坐标"行：仅用户 level<=1 显示
+    let showFarmCoord = false
+    try {
+      const app = getApp()
+      showFarmCoord = !!(app && typeof app.getUserLevel === 'function' && app.getUserLevel() <= 1)
+    } catch (e) { /* ignore */ }
+    this.setData({ showFarmCoord })
 
     this._readMapCenter()
   },
@@ -311,34 +320,7 @@ Page({
     wx.showToast({ title: value ? '已设为管理员' : '已取消管理员', icon: 'none', duration: 1000 })
   },
 
-  // 退出登录：清除本地登录记录，回到登录页
-  onLogout() {
-    wx.showModal({
-      title: '退出登录',
-      content: '确定退出当前账号吗？将清除本地登录记录并返回登录页。',
-      confirmText: '退出',
-      confirmColor: '#fa5151',
-      success: (res) => {
-        if (!res.confirm) return
-        try {
-          wx.removeStorageSync('login_info')
-        } catch (e) { /* ignore */ }
-        try {
-          wx.removeStorageSync('login_server_data')
-        } catch (e) { /* ignore */ }
-        const app = getApp()
-        app.globalData.loginInfo = null
-        app.globalData.serverData = null
-        app.globalData.loginCode = null
-        app.globalData.isLoggedIn = false
-        app.globalData.sessionConfirmed = false
-        wx.showToast({ title: '已退出登录', icon: 'none', duration: 1200 })
-        setTimeout(() => {
-          wx.reLaunch({ url: '/pages/login/login' })
-        }, 800)
-      }
-    })
-  },
+  // 退出登录入口已移除（注销登入改在"设备详情"页功能按钮中）
 
   // 清理所有数据库缓存
   onClearCache() {

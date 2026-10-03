@@ -31,7 +31,7 @@ Page({
     isAdmin: false,
     // 是否显示转换（设置页开关控制，默认开启）：开启后对时/配置记录显示可读内容
     showConverted: true,
-    // 用户权限等级：数据列表按钮 level<=1 显示，设备设置按钮 level<=2 显示（99=无权限/未获取）
+    // 用户权限等级：数据列表/设备设置按钮 level<=1 显示，轨迹地图按钮 level<=2 显示（99=无权限/未获取）
     userLevel: 99,
     // 编辑设备弹窗
     showEditModal: false,
@@ -179,7 +179,7 @@ Page({
         showConverted = conv === true || conv === 'true' || conv === 1 || conv === '1'
       }
     } catch (e) { /* ignore */ }
-    // 读取用户 level：数据列表按钮需 level<=1，设备设置按钮需 level<=2
+    // 读取用户 level：数据列表/设备设置按钮需 level<=1，轨迹地图按钮需 level<=2
     let userLevel = 99
     try {
       const app = getApp()
