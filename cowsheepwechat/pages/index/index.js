@@ -229,7 +229,7 @@ Page({
     const finish = () => {
       if (done) done()
     }
-    // 设备信息（含LOT最新记录）就绪后再拉记录列表
+    // 设备信息就绪后再拉记录列表
     this.loadDeviceInfo(deviceId, force, () => {
       that.loadTodayRecords(0, () => finish())
     })
@@ -240,32 +240,12 @@ Page({
   // ========== 设备信息 ==========
   loadDeviceInfo(deviceId, force, done) {
     let deviceItem = null
-    let lotDataRes = null
-    let merged = 0
     const merge = () => {
-      merged++
-      if (merged < 2) return
-
       if (!deviceItem) {
         // 选中设备已不存在（可能被删除/隐藏），退回空状态引导重新选择
         this.setData({ hasSelected: false, selectedDeviceId: deviceId, deviceInfo: null, recordList: [], showRecordTable: false })
         if (done) done()
         return
-      }
-
-      // 从LOT表取最新记录
-      let lotRec = null
-      if (lotDataRes && lotDataRes.lotList) {
-        lotRec = lotDataRes.lotList.find(v => v.deviceId === deviceId)
-      }
-
-      // 从 lotRec 的 lorastr 提取电量: "1|v4-22|26.52968,109.39078|1.0|5.1" 第4段(index 3)
-      let batInfo = null
-      if (lotRec && lotRec.lorastr) {
-        const parts = lotRec.lorastr.split('|')
-        if (parts.length >= 4 && parts[3]) {
-          batInfo = { battery: parts[3], rawTime: lotRec.rawTime }
-        }
       }
 
       const enriched = Object.assign({}, deviceItem)
@@ -274,40 +254,6 @@ Page({
       const devDate = deviceItem.date && deviceItem.date !== '-' ? deviceItem.date : ''
       const devTime = deviceItem.time_part && deviceItem.time_part !== '-' ? deviceItem.time_part : ''
       enriched.chargeTime = devDate || devTime ? (devDate + ' ' + devTime).trim() : ''
-
-      // 对比设备表、LOT表（含电量）时间取最新
-      let bestRawTime = deviceItem.rawTime
-      let bestDate = deviceItem.date
-      let bestTimePart = deviceItem.time_part
-      let bestLorastr = deviceItem.lorastr
-      const deviceTime = new Date(deviceItem.rawTime || '').getTime()
-      const lotTime = (lotRec && lotRec.rawTime) ? new Date(lotRec.rawTime).getTime() : NaN
-      const batTime = (batInfo && batInfo.rawTime) ? new Date(batInfo.rawTime).getTime() : NaN
-      let newestTime = isNaN(deviceTime) ? 0 : deviceTime
-
-      if (lotRec) {
-        bestLorastr = lotRec.lorastr || deviceItem.lorastr
-      }
-      if (!isNaN(lotTime) && lotTime > newestTime) {
-        newestTime = lotTime
-        bestRawTime = lotRec.rawTime
-        bestDate = lotRec.date
-        bestTimePart = lotRec.time_part
-        bestLorastr = lotRec.lorastr || bestLorastr
-      }
-      if (!isNaN(batTime) && batTime > newestTime) {
-        bestRawTime = batInfo.rawTime
-        bestDate = batInfo.date
-        bestTimePart = batInfo.time_part
-      }
-
-      enriched.lorastr = bestLorastr
-      enriched.date = bestDate
-      enriched.time_part = bestTimePart
-      enriched.rawTime = bestRawTime
-      if (batInfo) {
-        enriched.battery = batInfo.battery
-      }
 
       // 解析显示字段默认值（等待配置接口刷新）
       enriched.reportInterval = '-'
@@ -358,7 +304,6 @@ Page({
       }
       merge()
     }, force)
-    dataCache.getDeviceLotRefresh((data) => { lotDataRes = data; merge() }, force)
   },
 
   // ========== 最近换电时间（来自对时电量跳升检测缓存） ==========
@@ -970,7 +915,7 @@ Page({
     }
     // 注册回调：选点页确定后直接回调提交，避免依赖 onShow 时机
     getApp().globalData._onPlacePicked = (gps) => { this._confirmRelayGps(gps) }
-    // LOT 表中已有该中继的坐标（最新记录 lorastr 第3段 lat,lng）时作为初始中心
+    // 已有该中继的坐标（最新记录 lorastr 第3段 lat,lng）时作为初始中心
     let url = '/pages/places/picker/picker'
     const coord = this._parseCoordFromLora(info.lorastr)
     if (coord) url += '?lat=' + coord.lat + '&lng=' + coord.lng
@@ -1040,7 +985,7 @@ Page({
     wx.navigateTo({ url: '/pages/device-detail/device-detail?deviceId=' + encodeURIComponent(deviceId) + '&mode=records' })
   },
 
-  // ========== 实时定位：从LOT最新表取该设备上报坐标 → 打开单设备定位地图（类似地图中心） ==========
+  // ========== 实时定位：取该设备上报坐标 → 打开单设备定位地图（类似地图中心） ==========
   onRealtimeLocateTap() {
     const deviceId = this.data.selectedDeviceId
     if (!deviceId) return
@@ -1058,40 +1003,26 @@ Page({
       })
     }
 
-    wx.showLoading({ title: '获取最新定位...' })
-    dataCache.refreshDeviceLotRefresh((lotData) => {
-      wx.hideLoading()
-      const lotList = (lotData && lotData.lotList) ? lotData.lotList : []
-      const lotRec = lotList.find(v => v.deviceId === deviceId)
-      const info = that.data.deviceInfo || {}
-      // 优先LOT表刚上报的坐标；无匹配时回退首页已加载的最新记录（同样源自LOT/设备表）
-      let lorastr = info.lorastr || ''
-      let rawTime = info.rawTime || ''
-      if (lotRec) {
-        if (lotRec.lorastr) {
-          lorastr = lotRec.lorastr
-          rawTime = lotRec.rawTime || ''
-        } else if (!lorastr) {
-          rawTime = lotRec.rawTime || ''
-        }
-      }
-      const coord = that._parseCoordFromLora(lorastr)
-      if (coord) {
-        open(coord, rawTime, lorastr, '')
+    const info = that.data.deviceInfo || {}
+    // 优先首页已加载的最新记录坐标
+    const lorastr = info.lorastr || ''
+    const rawTime = info.rawTime || ''
+    const coord = that._parseCoordFromLora(lorastr)
+    if (coord) {
+      open(coord, rawTime, lorastr, '')
+      return
+    }
+    // 兜底：从首页已加载的定位/跟踪记录中取最新一条
+    const list = that.data.recordList || []
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i]
+      const c = (r.msgType === '1' || r.msgType === '5') ? that._parseCoordFromLora(r.lorastr) : null
+      if (c) {
+        open(c, r.rawTime || '', r.lorastr || '', r.upDateDevice || '')
         return
       }
-      // 兜底：从首页已加载的定位/跟踪记录中取最新一条
-      const list = that.data.recordList || []
-      for (let i = 0; i < list.length; i++) {
-        const r = list[i]
-        const c = (r.msgType === '1' || r.msgType === '5') ? that._parseCoordFromLora(r.lorastr) : null
-        if (c) {
-          open(c, r.rawTime || '', r.lorastr || '', r.upDateDevice || '')
-          return
-        }
-      }
-      wx.showToast({ title: '该设备暂无有效定位点，请稍后再试', icon: 'none', duration: 2500 })
-    })
+    }
+    wx.showToast({ title: '该设备暂无有效定位点，请稍后再试', icon: 'none', duration: 2500 })
   },
 
   // 从 lorastr 第3段解析经纬度，如 "1|v4-22|26.52968,109.39078|1.0|5.1"

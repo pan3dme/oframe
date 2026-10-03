@@ -157,34 +157,11 @@ Page({
 
   loadDeviceInfo(deviceId) {
     let deviceItem = null
-    let lotDataRes = null
-    let done = 0
     const merge = () => {
-      done++
-      if (done < 2) return
-
       if (!deviceItem) {
         wx.showToast({ title: '未找到设备', icon: 'none' })
         setTimeout(() => wx.navigateBack(), 1500)
         return
-      }
-
-      // 从LOT表取最新记录
-      let lotRec = null
-      if (lotDataRes && lotDataRes.lotList) {
-        lotRec = lotDataRes.lotList.find(v => v.deviceId === deviceId)
-      }
-
-      // 从 lotRec 的 lorastr 中提取电量: 格式 "1|v4-22|26.52968,109.39078|1.0|5.1" 第4段(index 3)是电量
-      let batInfo = null
-      if (lotRec && lotRec.lorastr) {
-        const parts = lotRec.lorastr.split('|')
-        if (parts.length >= 4) {
-          const batVal = parts[3]
-          if (batVal) {
-            batInfo = { battery: batVal, rawTime: lotRec.rawTime }
-          }
-        }
       }
 
       // 注意：不使用对象展开 {...deviceItem}，展开会被增强编译转成 require('@babel/runtime/helpers/objectSpread2')
@@ -196,48 +173,9 @@ Page({
       const devTime = deviceItem.time_part && deviceItem.time_part !== '-' ? deviceItem.time_part : ''
       enriched.chargeTime = devDate || devTime ? (devDate + ' ' + devTime).trim() : ''
 
-      // 对比设备表、LOT表（含电量）时间，取最新的
-      let bestRawTime = deviceItem.rawTime
-      let bestDate = deviceItem.date
-      let bestTimePart = deviceItem.time_part
-      let bestLorastr = deviceItem.lorastr
-
-      const deviceTime = new Date(deviceItem.rawTime || '').getTime()
-      const lotTime = (lotRec && lotRec.rawTime) ? new Date(lotRec.rawTime).getTime() : NaN
-      const batTime = (batInfo && batInfo.rawTime) ? new Date(batInfo.rawTime).getTime() : NaN
-
-      let newestTime = isNaN(deviceTime) ? 0 : deviceTime
-
-      if (lotRec) {
-        bestLorastr = lotRec.lorastr || deviceItem.lorastr
-      }
-      if (!isNaN(lotTime) && lotTime > newestTime) {
-        newestTime = lotTime
-        bestRawTime = lotRec.rawTime
-        bestDate = lotRec.date
-        bestTimePart = lotRec.time_part
-        bestLorastr = lotRec.lorastr || bestLorastr
-      }
-      if (!isNaN(batTime) && batTime > newestTime) {
-        bestRawTime = batInfo.rawTime
-        bestDate = batInfo.date
-        bestTimePart = batInfo.time_part
-      }
-
-      enriched.lorastr = bestLorastr
-      enriched.date = bestDate
-      enriched.time_part = bestTimePart
-      enriched.rawTime = bestRawTime
-
-      // 电量显示
-      if (batInfo) {
-        enriched.battery = batInfo.battery
-      }
-
       this._loadBindName(enriched)
     }
 
-    // 并行拉取两表数据
     dataCache.getDeviceList((deviceData) => {
       if (deviceData && deviceData.recordList) {
         deviceItem = deviceData.recordList.find(v => v.deviceId === deviceId) || null
@@ -250,7 +188,6 @@ Page({
       }
       merge()
     })
-    dataCache.getDeviceLotRefresh((data) => { lotDataRes = data; merge() })
   },
 
   _loadBindName(item) {
@@ -654,7 +591,7 @@ Page({
           return
         }
         // 断网兜底：网络不可用时用本地缓存拼出记录列表
-        //   LOT表(getDeviceGpsAll)缓存 + 对时表缓存 + 蓝牙缓存(已收到未上传)
+        //   对时表缓存 + 蓝牙缓存(已收到未上传)
         const offlineRecords = this._buildOfflineRecords()
         this.setData({
           recordList: offlineRecords,
@@ -673,28 +610,14 @@ Page({
   },
 
   // 断网兜底：用本地缓存构造记录列表（时间倒序，应用当前类型筛选）
-  //   1) LOT 表(getDeviceGpsAll)缓存中该设备的最新一条定位记录
-  //   2) 对时表(device_sync)缓存中该设备的对时记录
-  //   3) 蓝牙缓存中该设备"已收到但尚未上传"的记录
+  //   1) 对时表(device_sync)缓存中该设备的对时记录
+  //   2) 蓝牙缓存中该设备"已收到但尚未上传"的记录
   _buildOfflineRecords() {
     const deviceId = this.data.deviceId
     if (!deviceId) return []
     const srcList = []
 
-    // 1) LOT 表缓存：最近一条定位记录
-    const lotRec = dataCache.getCachedDeviceLotRecord(deviceId)
-    if (lotRec && lotRec.lorastr) {
-      srcList.push({
-        deviceId,
-        lorastr: lotRec.lorastr,
-        rawTime: lotRec.rawTime || '',
-        upDateDevice: '',
-        rssi: '',
-        snr: ''
-      })
-    }
-
-    // 2) 对时表缓存：该设备的对时记录
+    // 1) 对时表缓存：该设备的对时记录
     const syncRec = dataCache.getCachedDeviceSyncRecord(deviceId)
     if (syncRec && syncRec.lorastr) {
       srcList.push({
@@ -707,7 +630,7 @@ Page({
       })
     }
 
-    // 3) 蓝牙缓存：已接收但尚未上传的记录（可能有多条）
+    // 2) 蓝牙缓存：已接收但尚未上传的记录（可能有多条）
     const btRecords = bleManager.getCachedRecords(deviceId) || []
     btRecords.forEach(rec => {
       srcList.push({
@@ -797,7 +720,7 @@ Page({
 
   // 下拉刷新
   // 仅重新拉取设备配置（getDeviceConfigById）；
-  // 其它数据（设备记录列表、设备表/LOT表基本信息、牛羊绑定名等）都用缓存，不再重新请求网络，
+  // 其它数据（设备记录列表、设备表基本信息、牛羊绑定名等）都用缓存，不再重新请求网络，
   // 避免每次刷新都触发 getDeviceLogbyId 等接口造成冗余流量与服务器压力。
   onRefreshRecords() {
     if (this.data.isRefreshing) return
@@ -1083,7 +1006,7 @@ Page({
     }
     // 注册回调：选点页确定后直接回调提交，避免依赖 onShow 时机
     getApp().globalData._onPlacePicked = (gps) => { this._confirmRelayGps(gps) }
-    // LOT 表中已有该中继的坐标（最新记录 lorastr 第3段 lat,lng）时作为初始中心
+    // 已有该中继的坐标（最新记录 lorastr 第3段 lat,lng）时作为初始中心
     let url = '/pages/places/picker/picker'
     let lat = null, lng = null
     if (info.lorastr && info.lorastr !== '-') {

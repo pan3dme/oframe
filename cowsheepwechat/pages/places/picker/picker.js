@@ -27,7 +27,7 @@ Page({
       const t = options.title ? decodeURIComponent(options.title) : ''
       this.setData({ viewMode: true, pageTitle: t || '查看位置' })
     }
-    // 设置中继坐标：调用方传入 LOT 表中该设备已有坐标（WGS-84）作为初始中心
+    // 设置中继坐标：调用方传入该设备已有坐标（WGS-84）作为初始中心
     if (options && options.lat && options.lng) {
       const lat = parseFloat(options.lat)
       const lng = parseFloat(options.lng)

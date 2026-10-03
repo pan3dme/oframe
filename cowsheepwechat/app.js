@@ -6,7 +6,7 @@ App({
     console.log("🐂 牛羊GPS小程序运行中1234")
     // 初始化登录状态：读取本地登录记录 + 获取 wx.login code
     this.initLogin()
-    // 恢复 4 张表的本地持久化缓存（设备/LOT/同步/配置），保证冷启动有数据 + 断网时使用本地数据
+    // 恢复 3 张表的本地持久化缓存（设备/同步/配置），保证冷启动有数据 + 断网时使用本地数据
     // 使用 require 而非顶部 import：data-cache.js 内部惰性调用 getApp()，需在 App() 注册后执行
     // 显式传入 this.globalData：onLaunch 阶段 getApp() 可能返回 undefined，
     // 若让 data-cache 自行取 App 会把缓存写进临时对象而丢失
@@ -118,7 +118,6 @@ App({
     gpsData: null,          // 定位数据
     deviceCache: null,      // 设备列表缓存
     livestockCache: null,   // 牛羊列表缓存
-    deviceLotCache: null,   // 设备LOT最新数据缓存
     roadCache: null,        // 道路列表缓存
     roadCacheTime: null,    // 道路缓存时间戳
     placeCache: null,       // 地名列表缓存

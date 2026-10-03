@@ -667,7 +667,7 @@ function clearCache() {
 
 // ========== 供外部读取：缓存中"每台设备最新一条记录的时间" ==========
 // 用途：设备列表倒计时。缓存里的数据是设备刚通过蓝牙上报、但尚未上传到服务器的，
-// 服务器 LOT / 对时表里查不到，若只看服务器表会误判为"久未上报"。
+// 服务器对时表里查不到，若只看服务器表会误判为"久未上报"。
 // 因此把缓存里对应设备最新一条记录的时间也算作一次"上报时间"。
 // 返回 { deviceId: { ts(毫秒), rawTime, type } }；无可用数据时返回 {}
 function getLatestRecordByDevice() {
@@ -688,7 +688,7 @@ function getLatestRecordByDevice() {
 // 解析单条蓝牙缓存记录 → { deviceId, ts, rawTime, type }；无法解析出有效时间时返回 null
 // 缓存条目为 handleBleData 存入的字符串：
 //   1) JSON：{"info":"1|v4-10|...","time":"2026/8/10 23:13:33","upDateDevice":"v4-27","rssi":..,"snr":..}
-//      - 设备ID 取 info 管道格式第2段（与服务器 deviceId 列、LOT 表的 deviceId 一致）
+//      - 设备ID 取 info 管道格式第2段（与服务器 deviceId 列一致）
 //      - info 缺失时兜底用 upDateDevice（上报/中继设备）
 //   2) 非 JSON（原始管道文本）：通常不含可靠时间，忽略
 function _parseCacheRecordTime(raw) {

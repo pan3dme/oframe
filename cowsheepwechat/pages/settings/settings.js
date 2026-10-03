@@ -326,7 +326,7 @@ Page({
   onClearCache() {
     wx.showModal({
       title: '确认清理',
-      content: '将清除所有本地数据库缓存（设备、牛羊、LOT、道路、地名），下次打开页面将重新拉取最新数据。',
+      content: '将清除所有本地数据库缓存（设备、牛羊、道路、地名），下次打开页面将重新拉取最新数据。',
       success: (res) => {
         if (res.confirm) {
           dataCache.clearCache()

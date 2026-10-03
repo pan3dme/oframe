@@ -51,14 +51,14 @@ function _getWechatId() {
 const _pendingCallbacks = {}
 
 // ==================== 持久化存储：断网兜底 ====================
-// 4 张表（设备/LOT/同步/配置）需要本地持久化：冷启动 + 网络失败时都能使用本地数据
+// 4 张表（设备/同步/配置/设备GPS）需要本地持久化：冷启动 + 网络失败时都能使用本地数据
 // 此外道路/地名列表也加入持久化（永久缓存）：有缓存就不必网上去找了
 // 存储 key 命名空间加 cache_ 前缀，避免与其他 storage 项冲突
 const _STORAGE_KEYS = {
   deviceCache: 'cache_device_list',
-  deviceLotCache: 'cache_device_lot',
   deviceSyncCache: 'cache_device_sync',
   deviceConfigCache: 'cache_device_config',
+  deviceGpsCache: 'cache_device_gps',
   roadCache: 'cache_road_list',
   placeCache: 'cache_place_list'
 }
@@ -292,87 +292,6 @@ function refreshLivestockList(callback) {
   getLivestockList(callback, true)
 }
 
-// ==================== 设备LOT最新数据缓存 ====================
-
-/**
- * 获取设备LOT最新数据表 device_lot_refrsh
- * @param {function} callback - 回调 (cachedData)，cachedData 为 { lotList }
- * @param {boolean} forceRefresh - 是否强制刷新
- */
-function getDeviceLotRefresh(callback, forceRefresh) {
-  _loadWithDedup('deviceLot', 'deviceLotCache', (done) => {
-    wx.request({
-      url: API_DEVICE_URL(),
-      method: 'POST',
-      data: { action: 'getDeviceGpsAll' , info: {
-        limit: 30,
-        wechatid: _getWechatId()
-      }},
-      timeout: 8000,
-      success: (res) => {
-        const lotList = _parseDeviceLotRecords(res.data)
-        const cachedData = { lotList }
-        gd().deviceLotCache = cachedData
-        // 持久化到本地（断网时使用）
-        _saveToStorage(_STORAGE_KEYS.deviceLotCache, cachedData)
-        done(cachedData)
-      },
-      fail: (err) => {
-        console.error('获取设备LOT最新数据失败:', err)
-        // 断网兜底：内存为空时尝试从本地存储恢复
-        if (!gd().deviceLotCache) {
-          gd().deviceLotCache = _loadFromStorage(_STORAGE_KEYS.deviceLotCache)
-        }
-        done(gd().deviceLotCache || null)
-      }
-    })
-  }, callback, forceRefresh)
-}
-
-function _parseDeviceLotRecords(data) {
-  let rawList = []
-  if (data && data.data && Array.isArray(data.data)) {
-    rawList = data.data
-  } else if (Array.isArray(data)) {
-    rawList = data
-  }
-  const records = rawList.map(record => {
-    const attr = {}
-    if (record.attributes) {
-      record.attributes.forEach(item => {
-        attr[item.columnName] = item.columnValue
-      })
-    }
-    if (record.primaryKey) {
-      record.primaryKey.forEach(item => {
-        attr[item.name] = item.value
-      })
-    }
-    const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || '-'
-    const lorastr = attr.lorastr || record.lorastr || ''
-    const gps = attr.gps || record.gps || ''
-    const rawTime = attr.time || record.time || '-'
-    const [date, time_part] = rawTime.includes(' ') ? rawTime.split(' ') : [rawTime, '']
-    return { deviceId, lorastr, gps, date: date || '-', time_part: time_part || '', rawTime }
-  })
-  records.sort((a, b) => {
-    const ta = new Date(a.rawTime).getTime()
-    const tb = new Date(b.rawTime).getTime()
-    if (isNaN(ta) && isNaN(tb)) return 0
-    if (isNaN(ta)) return 1
-    if (isNaN(tb)) return -1
-    return tb - ta
-  })
-  return records
-}
-
-/**
- * 强制刷新设备LOT最新数据
- */
-function refreshDeviceLotRefresh(callback) {
-  getDeviceLotRefresh(callback, true)
-}
-
 // ==================== 设备同步时间缓存 ====================
 
 /**
@@ -456,23 +375,9 @@ function refreshDeviceSyncAll(callback) {
   getDeviceSyncAll(callback, true)
 }
 
-// ==================== 断网兜底：读取单设备缓存记录（LOT表 / 对时表） ====================
-// 设备记录页断网时，用这两条缓存 + 蓝牙缓存拼出记录列表。
+// ==================== 断网兜底：读取单设备缓存记录（对时表） ====================
+// 设备记录页断网时，用这条缓存 + 蓝牙缓存拼出记录列表。
 // 内存缓存优先，内存为空时回退本地存储（App 启动已 restoreFromStorage，此处再兜一层）
-
-/**
- * 取指定设备的 LOT 表（getDeviceGpsAll）缓存记录——即最近一条定位记录
- * @param {string} deviceId
- * @returns {object|null} { deviceId, lorastr, gps, rawTime, date, time_part } 或 null
- */
-function getCachedDeviceLotRecord(deviceId) {
-  if (!deviceId) return null
-  let cache = gd().deviceLotCache
-  if (!cache || !cache.lotList) cache = _loadFromStorage(_STORAGE_KEYS.deviceLotCache)
-  const list = (cache && cache.lotList) || []
-  // lotList 已按时间倒序，find 到的第一条即最新记录
-  return list.find(v => v.deviceId === deviceId) || null
-}
 
 /**
  * 取指定设备的对时表（device_sync）缓存记录
@@ -650,6 +555,115 @@ function setDeviceConfigById(deviceId, record) {
   // 持久化（断网重启后仍可读到该设备的最新配置）
   _saveToStorage(_STORAGE_KEYS.deviceConfigCache, cache)
   return true
+}
+
+// ==================== 设备GPS表 device_gps 缓存（地图中心设备标记点） ====================
+// 表结构：主键 deviceId（STRING，每台设备一行，最大版本数 1），
+//         属性列 lorastr / time / upDateDevice（STRING）
+// 坐标信息在 lorastr 中：定位格式 type|deviceId|lat,lng|...（坐标在第 3 段，逗号分隔）
+
+/**
+ * 获取设备GPS表 device_gps（ACTION = getDeviceGpsAll）
+ * 有缓存就不请求网络：内存缓存 → 本地持久化缓存（cache_device_gps）→ 才发网络请求
+ * @param {function} callback - 回调 (cachedData)，cachedData 为 { gpsList }
+ *   gpsList 每项：{ deviceId, lorastr, rawTime, upDateDevice, lat, lng, ts }
+ * @param {boolean} forceRefresh - 是否强制刷新
+ */
+function getDeviceGpsAll(callback, forceRefresh) {
+  _loadWithDedup('deviceGps', 'deviceGpsCache', (done) => {
+    wx.request({
+      url: API_DEVICE_URL(),
+      method: 'POST',
+      data: { action: 'getDeviceGpsAll', info: { wechatid: _getWechatId() } },
+      timeout: 8000,
+      success: (res) => {
+        const gpsList = _parseDeviceGpsRecords(res.data)
+        const cachedData = { gpsList }
+        gd().deviceGpsCache = cachedData
+        // 持久化到本地（断网时使用）
+        _saveToStorage(_STORAGE_KEYS.deviceGpsCache, cachedData)
+        done(cachedData)
+      },
+      fail: (err) => {
+        console.error('获取设备GPS失败:', err)
+        // 断网兜底：内存为空时尝试从本地存储恢复
+        if (!gd().deviceGpsCache) {
+          gd().deviceGpsCache = _loadFromStorage(_STORAGE_KEYS.deviceGpsCache)
+        }
+        done(gd().deviceGpsCache || { gpsList: [] })
+      }
+    })
+  }, callback, forceRefresh, _STORAGE_KEYS.deviceGpsCache)
+}
+
+/**
+ * 强制刷新设备GPS数据（地图TAB无感刷新时调用）
+ */
+function refreshDeviceGpsAll(callback) {
+  getDeviceGpsAll(callback, true)
+}
+
+/**
+ * 解析 device_gps 表记录：
+ * 坐标从 lorastr 第 3 段提取（type|deviceId|lat,lng|...），
+ * 段数不足时兜底整串按 "lat,lng"/"lat|lng" 解析；无有效坐标的记录跳过。
+ * 同一 deviceId 多条时保留 time 最新的一条。
+ */
+function _parseDeviceGpsRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) {
+    rawList = data.data
+  } else if (Array.isArray(data)) {
+    rawList = data
+  }
+  const map = {}
+  rawList.forEach(record => {
+    const attr = {}
+    if (record.attributes) {
+      record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+    }
+    if (record.primaryKey) {
+      record.primaryKey.forEach(item => { attr[item.name] = item.value })
+    }
+    const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || ''
+    if (!deviceId) return
+    const lorastr = attr.lorastr || record.lorastr || ''
+    const rawTime = attr.time || record.time || ''
+    const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
+    // 坐标在 lorastr 中：优先第 3 段 "lat,lng"，兜底整串
+    let lat = null
+    let lng = null
+    if (lorastr) {
+      const segs = String(lorastr).split(/[｜|]/)
+      const coordSeg = segs.length >= 3 ? segs[2] : String(lorastr)
+      const parts = coordSeg.split(/[,，]\s*/)
+      if (parts.length >= 2) {
+        lat = parseFloat(parts[0])
+        lng = parseFloat(parts[1])
+      }
+    }
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)) return
+    const ts = _parseTimeToTs(rawTime)
+    const existing = map[deviceId]
+    if (!existing || (ts && ts > (existing.ts || 0))) {
+      map[deviceId] = { deviceId, lorastr, rawTime, upDateDevice, lat, lng, ts }
+    }
+  })
+  return Object.keys(map).map(k => map[k])
+}
+
+/**
+ * 时间字符串 → 毫秒时间戳（兼容 "2026/8/10 23:13:33" / "2026-8-10" / 10位秒级Unix）
+ * 解析失败返回 0
+ */
+function _parseTimeToTs(rawTime) {
+  if (!rawTime) return 0
+  let t = new Date(String(rawTime).replace(/-/g, '/')).getTime()
+  if (isNaN(t) || t <= 0) {
+    const n = parseInt(rawTime, 10)
+    if (!isNaN(n) && n > 0) t = n < 1e10 ? n * 1000 : n
+  }
+  return (isNaN(t) || t <= 0) ? 0 : t
 }
 
 // ==================== 上报GPS(upgps)取值：按目标设备工作周期/大周期 ====================
@@ -1075,7 +1089,6 @@ function setMapLayerState(state) {
 function clearCache() {
   gd().deviceCache = null
   gd().livestockCache = null
-  gd().deviceLotCache = null
   gd().deviceSyncCache = null
   gd().deviceConfigCache = null
   gd().roadCache = null
@@ -1087,7 +1100,7 @@ function clearCache() {
 }
 
 /**
- * App 启动时从本地存储恢复 4 张表的缓存到内存
+ * App 启动时从本地存储恢复各表缓存到内存
  * @param {object} [target] - 显式指定写入的 globalData（app.js 传 this.globalData）。
  *   若不传则回退到 gd()：但 onLaunch 阶段 getApp() 可能不可用，务必显式传入以确保写入真实 App。
  * 仅在内存为空时填充（避免覆盖仍在使用的运行时数据）
@@ -1109,12 +1122,11 @@ module.exports = {
   refreshDeviceList,
   getLivestockList,
   refreshLivestockList,
-  getDeviceLotRefresh,
-  refreshDeviceLotRefresh,
-  getCachedDeviceLotRecord,
   getDeviceSyncAll,
   refreshDeviceSyncAll,
   getCachedDeviceSyncRecord,
+  getDeviceGpsAll,
+  refreshDeviceGpsAll,
   getDeviceConfigAll,
   refreshDeviceConfigAll,
   getCachedDeviceConfig,

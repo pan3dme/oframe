@@ -122,41 +122,9 @@ function parseDeviceMessage(message) {
  */
 async function storeDeviceData(deviceData) {
   if (!deviceData) return false
-  if (!CONFIG.dbApiUrl) {
-    console.log('[AMQP] DB_API_URL 未配置，跳过存储:', JSON.stringify(deviceData))
-    return false
-  }
-
-  try {
-    // 使用项目现有的 API 格式: { action, info }
-    const response = await fetch(CONFIG.dbApiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'insertDeviceLotRefresh',
-        info: {
-          deviceId: deviceData.deviceName,
-          lorastr: deviceData.lorainfo || deviceData.rawMessage,
-          gps: '',                          // 从 lorainfo 解析 GPS 坐标
-          time: deviceData.time,
-          rssi: deviceData.rssi || '',
-          snr: deviceData.snr || '',
-          upDateDevice: deviceData.upDateDevice || ''
-        }
-      })
-    })
-
-    if (response.ok) {
-      console.log('[AMQP] 数据已存储:', deviceData.deviceName, deviceData.lorainfo)
-      return true
-    } else {
-      console.error('[AMQP] 存储失败, HTTP状态:', response.status)
-      return false
-    }
-  } catch (err) {
-    console.error('[AMQP] 存储异常:', err.message)
-    return false
-  }
+  // LOT 表（device_lot_refrsh / insertDeviceLotRefresh）已弃用，不再写入服务器
+  console.log('[AMQP] LOT 表已停用，跳过存储:', deviceData.deviceName || '')
+  return true
 }
 
 // ==================== AMQP 订阅主流程 ====================

@@ -37,7 +37,7 @@ Page({
   _deviceLightGreenIconPath: '', // 最后定位超过1小时但最近1小时内有对时时使用的浅绿色图标
   _devIconReady: false,
   _pendingDeviceArgs: null,
-  _deviceLotList: null,      // 最近一次设备LOT原始数据（用于图标老化重算）
+  _deviceGpsList: null,      // 最近一次设备GPS原始数据（device_gps 表，用于图标老化重算）
   _deviceInfoMap: null,      // 最近一次设备信息映射
   _deviceSyncMap: {},        // deviceId -> device_sync 对时同步表记录 { rawTime,... }（用于浅绿色图标判断）
   _staleTimer: null,         // 设备图标老化检测定时器
@@ -56,7 +56,7 @@ Page({
     }
     // 数据请求先发起；图标在 onReady 中绘制，避免 canvas 节点未就绪导致失败
     this.loadMap()
-    this.fetchDeviceLotData()
+    this.fetchDeviceGpsData()
   },
 
   onShow() {
@@ -102,7 +102,7 @@ Page({
     // 兜底：请求异常/超时也不能让转圈一直停不下来
     if (this._mapRefreshTimer) clearTimeout(this._mapRefreshTimer)
     this._mapRefreshTimer = setTimeout(finish, 15000)
-    this.fetchDeviceLotData(finish)
+    this.fetchDeviceGpsData(finish)
   },
 
   onReady() {
@@ -283,9 +283,9 @@ Page({
     console.log('[overlay] 清除所有瓦片')
   },
 
-  // ==================== 设备 LOT 标记点 ====================
+  // ==================== 设备 GPS 标记点（device_gps 表 / ACTION=getDeviceGpsAll） ====================
 
-  fetchDeviceLotData(onComplete) {
+  fetchDeviceGpsData(onComplete) {
     // 先获取设备列表（含rename别名、visible、ProductKey），构建映射
     dataCache.getDeviceList((devData) => {
       const deviceInfoMap = {} // deviceId -> { rename, visible, hasProductKey }
@@ -306,21 +306,22 @@ Page({
       dataCache.getDeviceSyncAll((syncData) => {
         this._deviceSyncMap = (syncData && syncData.syncMap) || {}
         console.log('[地图] 设备对时同步数据:', Object.keys(this._deviceSyncMap).length, '条')
-        // LOT 数据已就绪时，按最新对时信息重算设备图标颜色
-        if (this._deviceLotList && this._deviceLotList.length > 0) {
-          this._renderDeviceMarkers(this._deviceLotList, deviceInfoMap)
+        // GPS 数据已就绪时，按最新对时信息重算设备图标颜色
+        if (this._deviceGpsList && this._deviceGpsList.length > 0) {
+          this._renderDeviceMarkers(this._deviceGpsList, deviceInfoMap)
           this._applyAllMarkers()
         }
       }, true)
 
-      dataCache.getDeviceLotRefresh((lotData) => {
-        const lotList = lotData.lotList || []
-        console.log('[地图] 设备LOT数据:', lotList.length, '条')
-        this._deviceLotList = lotList
+      // 设备GPS表（device_gps，ACTION=getDeviceGpsAll）：坐标在 lorastr 第3段（type|deviceId|lat,lng|...）
+      dataCache.getDeviceGpsAll((gpsData) => {
+        const gpsList = gpsData.gpsList || []
+        console.log('[地图] 设备GPS数据:', gpsList.length, '条')
+        this._deviceGpsList = gpsList
         this._deviceInfoMap = deviceInfoMap
-        this._renderDeviceMarkers(lotList, deviceInfoMap)
+        this._renderDeviceMarkers(gpsList, deviceInfoMap)
         this._applyAllMarkers()
-        if (lotList.length > 0) this._startStaleTimer()
+        if (gpsList.length > 0) this._startStaleTimer()
         wx.hideLoading()
         if (onComplete) onComplete()
       }, true)
@@ -379,22 +380,22 @@ Page({
   },
 
   _refreshDeviceIconByStale() {
-    if (!this._devIconReady || !this._deviceLotList || this._deviceLotList.length === 0) return
+    if (!this._devIconReady || !this._deviceGpsList || this._deviceGpsList.length === 0) return
     const prevIcons = (this._deviceMarkers || []).map(m => m.iconPath).join(',')
-    this._renderDeviceMarkers(this._deviceLotList, this._deviceInfoMap || {})
+    this._renderDeviceMarkers(this._deviceGpsList, this._deviceInfoMap || {})
     const nextIcons = (this._deviceMarkers || []).map(m => m.iconPath).join(',')
     // 仅当有图标颜色变化时才刷新地图，避免每60秒无意义地整组重绘
     if (prevIcons !== nextIcons) this._applyAllMarkers()
   },
 
-  _renderDeviceMarkers(lotList, deviceInfoMap) {
-    if (!lotList || lotList.length === 0) {
+  _renderDeviceMarkers(gpsList, deviceInfoMap) {
+    if (!gpsList || gpsList.length === 0) {
       this._deviceMarkers = []
       return
     }
     // 图标未准备好时先暂存数据，避免用空 iconPath 渲染成默认红点
     if (!this._devIconReady) {
-      this._pendingDeviceArgs = { lotList, deviceInfoMap }
+      this._pendingDeviceArgs = { gpsList, deviceInfoMap }
       return
     }
     this._pendingDeviceArgs = null
@@ -427,7 +428,7 @@ Page({
     }
 
     const markers = []
-    lotList.forEach((item, index) => {
+    gpsList.forEach((item, index) => {
       const info = deviceInfoMap[item.deviceId]
       // 过滤：只显示 visible=true 且 没有ProductKey 的设备
       if (!info || !info.visible || info.hasProductKey) return
@@ -566,7 +567,7 @@ Page({
     this._pendingDeviceArgs = null
     this.setData({ markers: [] })
     wx.showLoading({ title: '刷新中...' })
-    this.fetchDeviceLotData()
+    this.fetchDeviceGpsData()
   },
 
   // 手势缩放/拖动 → 刷新瓦片
@@ -872,17 +873,17 @@ Page({
       that._devIconReady = true
       // 如果设备数据先返回、图标后生成，在这里补渲染
       if (that._pendingDeviceArgs) {
-        const { lotList, deviceInfoMap } = that._pendingDeviceArgs
+        const { gpsList, deviceInfoMap } = that._pendingDeviceArgs
         that._pendingDeviceArgs = null
-        that._deviceLotList = lotList
+        that._deviceGpsList = gpsList
         that._deviceInfoMap = deviceInfoMap
-        that._renderDeviceMarkers(lotList, deviceInfoMap)
+        that._renderDeviceMarkers(gpsList, deviceInfoMap)
         that._applyAllMarkers()
         return
       }
       // 兜底：已生成的标记点 iconPath 为空时按最新数据重算并刷新地图
       if ((that._deviceMarkers || []).length > 0) {
-        that._renderDeviceMarkers(that._deviceLotList || [], that._deviceInfoMap || {})
+        that._renderDeviceMarkers(that._deviceGpsList || [], that._deviceInfoMap || {})
         that._applyAllMarkers()
       }
     }

@@ -76,7 +76,7 @@ Page({
     // 也计入"最后上报时间"），并按当前时间刷新倒计时、恢复每秒跳动
     if (this.data.deviceList && this.data.deviceList.length) {
       if (this._lastDeviceData) {
-        this._applyMergedData(this._lastLotData, this._lastSyncData, false)
+        this._applyMergedData(this._lastSyncData, false)
       } else {
         this._startCountdownTimer()
       }
@@ -108,66 +108,59 @@ Page({
   },
 
   // 点击底部"设备"TAB（已在设备页）：无感刷新设备列表
-  // 只更新 LOT(getDeviceGpsAll) + SYNC(getDevicesyncAll) 两份实时上报数据，
+  // 只更新 SYNC(getDevicesyncAll) 实时上报数据，
   // 复用已缓存的设备列表(deviceList)与设备配置(deviceConfigMap)重新合并——不请求 deviceList / config
   // 不弹提示、不显示全局加载，仅在"设备"TAB 上显示转圈，刷新完成后恢复
   onDeviceTabRefresh() {
     this._setDeviceTabSpinning(true)
-    this._refreshLotAndSyncOnly(() => {
+    this._refreshSyncOnly(() => {
       this._setDeviceTabSpinning(false)
     })
   },
 
-  // ========== 获取设备列表（下拉刷新/首屏/新增设备后）：刷新全部 4 个数据源 ==========
+  // ========== 获取设备列表（下拉刷新/首屏/新增设备后）：刷新全部 3 个数据源 ==========
   // silent=true 时强制刷新但不弹"已刷新"提示（用于点击底部"设备"TAB 的无感刷新）
   fetchDeviceList(forceRefresh, onComplete, silent) {
-    let deviceData, lotData, syncData, configMapData
+    let deviceData, syncData, configMapData
     let done = 0
     const merge = () => {
       done++
-      if (done < 4) return
+      if (done < 3) return
       // 缓存最近一次的全量数据，供底部 TAB 无感刷新复用
       this._lastDeviceData = deviceData
       this._lastConfigMap = configMapData
-      this._applyMergedData(lotData, syncData, !!(forceRefresh && !silent), onComplete)
+      this._applyMergedData(syncData, !!(forceRefresh && !silent), onComplete)
     }
 
     dataCache.getDeviceList((data) => { deviceData = data; merge() }, forceRefresh)
-    dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, forceRefresh)
     dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, forceRefresh)
     this.fetchDeviceConfigAll(forceRefresh, (configMap) => { configMapData = configMap; merge() })
   },
 
-  // ========== 仅刷新 LOT + SYNC（底部"设备"TAB 单击无感刷新） ==========
+  // ========== 仅刷新 SYNC（底部"设备"TAB 单击无感刷新） ==========
   // 复用 _lastDeviceData + _lastConfigMap 重新合并；不弹"已刷新"toast
   // 若缓存尚未建立（如首屏首次加载时点 TAB），兜底走全量刷新
-  _refreshLotAndSyncOnly(onComplete) {
-    let lotData, syncData
-    let done = 0
-    const merge = () => {
-      done++
-      if (done < 2) return
+  _refreshSyncOnly(onComplete) {
+    let syncData
+    dataCache.getDeviceSyncAll((data) => {
+      syncData = data
       if (!this._lastDeviceData || !this._lastConfigMap) {
         // 兜底：缓存还没建立 → 回退到全量刷新
         this.fetchDeviceList(true, onComplete, true)
         return
       }
-      this._applyMergedData(lotData, syncData, false, onComplete)
-    }
-    dataCache.getDeviceLotRefresh((data) => { lotData = data; merge() }, true)
-    dataCache.getDeviceSyncAll((data) => { syncData = data; merge() }, true)
+      this._applyMergedData(syncData, false, onComplete)
+    }, true)
   },
 
-  // 把 4 类原始数据(deviceList + lot + sync + config)合并成最终 UI 列表的统一入口
-  // 供 fetchDeviceList（下拉刷新/首屏）与 _refreshLotAndSyncOnly（底部 TAB 无感刷新）复用
-  _applyMergedData(lotData, syncData, showToast, onComplete) {
-    // 记录本次使用的 LOT / SYNC 原始数据，供 onShow 返回页面时用缓存重新合并
+  // 把 3 类原始数据(deviceList + sync + config)合并成最终 UI 列表的统一入口
+  // 供 fetchDeviceList（下拉刷新/首屏）与 _refreshSyncOnly（底部 TAB 无感刷新）复用
+  _applyMergedData(syncData, showToast, onComplete) {
+    // 记录本次使用的 SYNC 原始数据，供 onShow 返回页面时用缓存重新合并
     // （无需重新请求网络，即可把期间蓝牙缓存新增的记录时间计入"最后上报时间"）
-    this._lastLotData = lotData
     this._lastSyncData = syncData
     const filteredList = this._buildMergedList(
       this._lastDeviceData,
-      lotData,
       syncData,
       this._lastConfigMap
     )
@@ -181,21 +174,12 @@ Page({
     if (onComplete) onComplete()
   },
 
-  // 纯函数式：把 4 类原始数据合并为排序+过滤后的设备列表（不含 UI 副作用，可复用）
-  _buildMergedList(deviceData, lotData, syncData, configMapData) {
-    const lotMap = {}
-    if (lotData && lotData.lotList) {
-      lotData.lotList.forEach(rec => {
-        if (rec.deviceId && rec.deviceId !== '-') {
-          if (!lotMap[rec.deviceId]) lotMap[rec.deviceId] = rec
-        }
-      })
-    }
-
+  // 纯函数式：把 3 类原始数据合并为排序+过滤后的设备列表（不含 UI 副作用，可复用）
+  _buildMergedList(deviceData, syncData, configMapData) {
     const syncMap = (syncData && syncData.syncMap) || {}
 
     // 蓝牙缓存中"每台设备最新一条记录"的时间：这些数据刚通过蓝牙收到、尚未上传到服务器，
-    // LOT / 对时表里没有，需要一并作为"最后上报时间"的候选来源（读取失败不影响主流程）
+    // 对时表里没有，需要一并作为"最后上报时间"的候选来源（读取失败不影响主流程）
     let bleLatestMap = {}
     try {
       bleLatestMap = bleManager.getLatestRecordByDevice() || {}
@@ -206,36 +190,25 @@ Page({
 
     // deviceData 可能为 null（网络失败且无本地缓存兜底时 getDeviceList 回传 null），此处做空值保护
     const deviceList = ((deviceData && deviceData.recordList) || []).map(item => {
-      const lotRec = lotMap[item.deviceId]
       const syncInfo = syncMap[item.deviceId]
 
-      // —— 最后上报时间：从三类来源取（LOT最新表 + 对时同步表 + 蓝牙缓存），取其中更晚的一次 ——
-      // LOT表 lorastr 首段为类型编号：1=GPS定位, 2=对时, 5=跟踪（视为定位）
+      // —— 最后上报时间：从两类来源取（对时同步表 + 蓝牙缓存），取其中更晚的一次 ——
+      // 蓝牙缓存 lorastr 首段为类型编号：1=GPS定位, 2=对时, 5=跟踪（视为定位）
       let lastTs = NaN            // 最后上报时间戳(ms)
       let lastRaw = ''            // 最后上报原始时间串
       let lastType = ''           // 'gps' | 'time' | ''
 
-      if (lotRec && lotRec.rawTime && lotRec.rawTime !== '-') {
-        const ts = new Date(lotRec.rawTime).getTime()
-        if (!isNaN(ts)) {
-          lastTs = ts
-          lastRaw = lotRec.rawTime
-          const typePart = (lotRec.lorastr || '').split('|')[0]
-          if (typePart === '1' || typePart === '5') lastType = 'gps'
-          else if (typePart === '2') lastType = 'time'
-        }
-      }
       if (syncInfo && syncInfo.rawTime && syncInfo.rawTime !== '-') {
         const ts = new Date(syncInfo.rawTime).getTime()
-        if (!isNaN(ts) && (isNaN(lastTs) || ts > lastTs)) {
+        if (!isNaN(ts)) {
           lastTs = ts
           lastRaw = syncInfo.rawTime
           lastType = 'time'   // 对时同步表记录 = 对时
         }
       }
 
-      // —— 第三个来源：蓝牙缓存 ——
-      // 缓存里该设备最新一条记录的时间（尚未上传服务器），若比上述两表更晚也计为一次上报
+      // —— 第二个来源：蓝牙缓存 ——
+      // 缓存里该设备最新一条记录的时间（尚未上传服务器），若比对时表更晚也计为一次上报
       const bleRec = bleLatestMap[item.deviceId]
       if (bleRec && bleRec.ts && (isNaN(lastTs) || bleRec.ts > lastTs)) {
         lastTs = bleRec.ts
@@ -642,15 +615,6 @@ Page({
     if (this.data.selectedDeviceId) {
       this.setData({ selectedDeviceId: '' })
       this._applyCategoryFilter()
-    }
-    // tabBar 页面始终在 pages 栈里，直接拿到 map 实例调用收起气泡的方法
-    const pages = getCurrentPages() || []
-    for (let i = 0; i < pages.length; i++) {
-      const p = pages[i]
-      if (p && p.route === 'pages/map/map' && typeof p._hideDeviceCallout === 'function') {
-        p._hideDeviceCallout()
-        break
-      }
     }
 
     // —— 2) 缓存选中的设备，首页每次展示都恢复该设备的首页样式详情 ——
