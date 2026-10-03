@@ -70,6 +70,26 @@ App({
     return y + '/' + M + '/' + d + ' ' + pad2(h) + ':' + pad2(m) + ':' + pad2(s)
   },
 
+  // 从服务器登录返回的用户数据中解析用户 level（权限等级，<=2 才显示底部"功能列表"TAB）
+  getUserLevel() {
+    let serverData = this.globalData.serverData
+    if (!serverData) {
+      try {
+        serverData = wx.getStorageSync('login_server_data')
+        this.globalData.serverData = serverData || null
+      } catch (e) { /* ignore */ }
+    }
+    if (serverData && serverData.data && Array.isArray(serverData.data.attributes)) {
+      const item = serverData.data.attributes.find(a => a.columnName === 'level')
+      if (item && item.columnValue !== undefined && item.columnValue !== null && item.columnValue !== '') {
+        const n = Number(item.columnValue)
+        if (!isNaN(n)) return n
+      }
+    }
+    // 未返回 level 时默认无权限（不显示功能列表）；如需默认放行可改为 return 0
+    return 99
+  },
+
   // 从服务器登录返回的用户数据中解析 wechatid（除登录外，所有 action 请求的 info 都需携带）
   getWechatId() {
     let serverData = this.globalData.serverData

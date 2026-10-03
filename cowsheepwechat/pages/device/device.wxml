@@ -7,7 +7,7 @@
     <view class="category-tab {{activeCategory === 'device' ? 'category-tab-active' : ''}}" bindtap="onSwitchCategory" data-cat="device">
       <text>设备</text><text class="category-tab-num">{{categoryCount.device}}</text>
     </view>
-    <view class="category-tab {{activeCategory === 'relay' ? 'category-tab-active' : ''}}" bindtap="onSwitchCategory" data-cat="relay">
+    <view class="category-tab {{activeCategory === 'relay' ? 'category-tab-active' : ''}}" wx:if="{{showRelayTab}}" bindtap="onSwitchCategory" data-cat="relay">
       <text>中继</text><text class="category-tab-num">{{categoryCount.relay}}</text>
     </view>
     <view class="category-tab {{activeCategory === 'offline' ? 'category-tab-active' : ''}}" bindtap="onSwitchCategory" data-cat="offline">

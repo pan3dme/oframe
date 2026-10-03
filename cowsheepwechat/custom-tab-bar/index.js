@@ -13,6 +13,8 @@ Component({
     deviceRefreshing: false,
     // 地图 tab 是否处于"无感刷新"中（true 时用转圈替代地图图标）
     mapRefreshing: false,
+    // "功能列表"TAB 是否显示（用户 level<=2 才显示，attached 时读取）
+    showFeaturesTab: false,
     list: [
       {
         pagePath: '/pages/index/index',
@@ -41,7 +43,32 @@ Component({
     ]
   },
 
+  lifetimes: {
+    // 组件挂载时按用户 level 决定"功能列表"TAB 是否显示（level<=2 才显示）
+    // 登录成功后 reLaunch 会重建组件，attached 会重新读取最新 level
+    attached() {
+      this.refreshFeaturesVisible()
+    }
+  },
+
   methods: {
+    // 读取当前用户 level，更新"功能列表"TAB 可见性（<=2 可见）
+    refreshFeaturesVisible() {
+      let level = 99
+      try {
+        const app = getApp()
+        if (app && typeof app.getUserLevel === 'function') {
+          level = app.getUserLevel()
+        }
+      } catch (e) {
+        console.warn('[tab-bar] 读取用户 level 失败:', e)
+      }
+      const showFeaturesTab = level <= 2
+      if (this.data.showFeaturesTab !== showFeaturesTab) {
+        this.setData({ showFeaturesTab })
+      }
+    },
+
     onTabTap(e) {
       const index = Number(e.currentTarget.dataset.index)
       const pagePath = e.currentTarget.dataset.path

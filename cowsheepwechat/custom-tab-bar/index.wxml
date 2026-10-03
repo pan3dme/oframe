@@ -3,6 +3,7 @@
   <view
     wx:for="{{list}}"
     wx:key="pagePath"
+    wx:if="{{index !== 2 || showFeaturesTab}}"
     class="tab-bar-item"
     data-index="{{index}}"
     data-path="{{item.pagePath}}"

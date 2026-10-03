@@ -70,7 +70,7 @@
       <!-- 设备功能按钮（每行3个）：中继设备(有ProductKey)与普通设备的按钮数据不同 -->
       <view class="home-features">
         <block wx:for="{{deviceInfo.ProductKey ? relayFeatureBtns : featureBtns}}" wx:key="id">
-          <view class="home-feature" bindtap="onFeatureBtnTap" data-id="{{item.id}}">
+          <view class="home-feature" wx:if="{{(item.id !== 'records' || userLevel <= 1) && (item.id !== 'setting' || userLevel <= 2) && (item.id !== 'track' || userLevel <= 2)}}" bindtap="onFeatureBtnTap" data-id="{{item.id}}">
             <view class="home-feature-icon" style="background:{{item.color}}">
               <text class="home-feature-emoji">{{item.icon}}</text>
             </view>

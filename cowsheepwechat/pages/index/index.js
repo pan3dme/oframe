@@ -31,6 +31,8 @@ Page({
     isAdmin: false,
     // 是否显示转换（设置页开关控制，默认开启）：开启后对时/配置记录显示可读内容
     showConverted: true,
+    // 用户权限等级：数据列表按钮 level<=1 显示，设备设置按钮 level<=2 显示（99=无权限/未获取）
+    userLevel: 99,
     // 编辑设备弹窗
     showEditModal: false,
     editOldDeviceKey: '',
@@ -52,15 +54,15 @@ Page({
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
       { id: 'alarm',    label: '报警信息', color: '#1E88E5', icon: '🔔' },
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
-      { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' }
+      { id: 'logout',   label: '注销登入', color: '#EF5350', icon: '🚪' }
     ],
-    // 中继设备功能按钮（有ProductKey，太阳能供电、无GPS定位）：数据列表/设置坐标/设备设置/修改密码/电子栅栏，与普通设备不同
+    // 中继设备功能按钮（有ProductKey，太阳能供电、无GPS定位）：数据列表/设置坐标/设备设置/修改密码/注销登入，与普通设备不同
     relayFeatureBtns: [
       { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
       { id: 'setcoord', label: '中继坐标', color: '#8E24AA', icon: '📌' },
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
-      { id: 'fence',    label: '电子栅栏', color: '#42A5F5', icon: '📡' }
+      { id: 'logout',   label: '注销登入', color: '#EF5350', icon: '🚪' }
     ]
   },
 
@@ -177,7 +179,13 @@ Page({
         showConverted = conv === true || conv === 'true' || conv === 1 || conv === '1'
       }
     } catch (e) { /* ignore */ }
-    this.setData({ isAdmin, showConverted })
+    // 读取用户 level：数据列表按钮需 level<=1，设备设置按钮需 level<=2
+    let userLevel = 99
+    try {
+      const app = getApp()
+      if (app && typeof app.getUserLevel === 'function') userLevel = app.getUserLevel()
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin, showConverted, userLevel })
     this._refreshDisplayLorastr()
   },
 
@@ -915,8 +923,40 @@ Page({
       this.onSetCoordTap()
       return
     }
+    if (id === 'logout') {
+      // 注销登入：确认弹框后清除本地登录状态并跳转登录页
+      this.onLogoutTap()
+      return
+    }
     // TODO: 根据 id 跳转到对应子页
     wx.showToast({ title: '功能开发中', icon: 'none' })
+  },
+
+  // ========== 注销登入 ==========
+  onLogoutTap() {
+    wx.showModal({
+      title: '注销登入',
+      content: '确定要退出当前账号吗？',
+      confirmText: '退出',
+      cancelText: '取消',
+      success: (res) => {
+        if (!res.confirm) return
+        // 清除本地登录记录与服务器用户数据
+        try {
+          wx.removeStorageSync('login_info')
+          wx.removeStorageSync('login_server_data')
+        } catch (e) {
+          console.error('[注销登入] 清除本地登录数据失败:', e)
+        }
+        // 重置全局登录状态
+        const app = getApp()
+        app.globalData.loginInfo = null
+        app.globalData.serverData = null
+        app.globalData.isLoggedIn = false
+        app.globalData.sessionConfirmed = false
+        wx.reLaunch({ url: '/pages/login/login' })
+      }
+    })
   },
 
   // ========== 中继设置坐标 ==========

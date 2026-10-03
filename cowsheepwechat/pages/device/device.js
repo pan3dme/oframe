@@ -15,6 +15,8 @@ Page({
     // "设备"分类下的显示模式：false=全部设备，true=仅在线设备（再次点击"设备"切换）
     deviceOnlineOnly: false,
     categoryCount: { all: 0, device: 0, relay: 0, offline: 0 },
+    // "中继"分类TAB 是否显示（用户 level<=2 才显示）
+    showRelayTab: false,
     isAdmin: false,
     showAllDevices: false,
     refresherTriggered: false,
@@ -43,7 +45,13 @@ Page({
       const raw = wx.getStorageSync('setting_show_all_devices')
       showAllDevices = raw === true || raw === 'true' || raw === 1 || raw === '1'
     } catch (e) { /* ignore */ }
-    this.setData({ isAdmin, showAllDevices })
+    // "中继"TAB：仅用户 level<=2（有权限）时显示
+    let showRelayTab = false
+    try {
+      const app = getApp()
+      showRelayTab = !!(app && typeof app.getUserLevel === 'function' && app.getUserLevel() <= 2)
+    } catch (e) { /* ignore */ }
+    this.setData({ isAdmin, showAllDevices, showRelayTab })
   },
 
   onLoad() {
