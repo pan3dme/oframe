@@ -40,6 +40,11 @@
 #define EXAMPLE_DATE "2026/10/04"
 
 #define RX_LEN       64
+
+/* Work mode */
+#define MODE_IDLE    0
+#define MODE_RX      1
+#define MODE_TX      2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,10 +59,14 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 static uint32_t lastLedTick = 0;
-static uint8_t  loraReady = 0;
+static uint32_t lastLed1Tick = 0;
+static uint8_t  workMode = MODE_IDLE;
+static uint8_t  txMsg[] = "I LOVE YOU";
+static uint32_t lastTxTick = 0;
+static uint32_t txLedOnTick = 0;
+static uint32_t lastKeyTick = 0;
 
 /* LoRa receive buffers */
-static uint8_t  rx_test_buf[RX_LEN] = {0};
 static uint8_t  prev_rx_buf[RX_LEN] = {0};
 static uint8_t  prev_rx_size = 0;
 
@@ -73,6 +82,8 @@ static void MX_NVIC_Init(void);
 static void printf_logo(void);
 static void OnSlave(void);
 static void LedToggle(void);
+static void enter_rx_mode(void);
+static void do_tx_send(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -186,6 +197,51 @@ static void OnSlave(void)
   }
 }
 
+/**
+  * @brief  Enter RX mode
+  */
+static void enter_rx_mode(void)
+{
+    workMode = MODE_RX;
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+    printf("\r\n>> Switch to RX mode\r\n");
+    rf_enter_single_timeout_rx(5000);
+}
+
+/**
+  * @brief  Handle TX mode: send "I LOVE YOU" every 3s, LED 0.5s on
+  */
+static void do_tx_send(void)
+{
+    uint32_t now = HAL_GetTick();
+
+    /* Send every 3 seconds */
+    if (now - lastTxTick >= 3000)
+    {
+        lastTxTick = now;
+        uint32_t tx_time;
+        rf_single_tx_data(txMsg, sizeof(txMsg) - 1, &tx_time);
+        HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+        txLedOnTick = now;
+        printf("TX: I LOVE YOU\r\n");
+    }
+
+    /* LED off after 500ms */
+    if (HAL_GPIO_ReadPin(LED1_GPIO_Port, LED1_Pin) == GPIO_PIN_SET)
+    {
+        if (now - txLedOnTick >= 500)
+        {
+            HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+        }
+    }
+
+    /* Clear TX done flag */
+    if (rf_get_transmit_flag() == RADIO_FLAG_TXDONE)
+    {
+        rf_set_transmit_flag(RADIO_FLAG_IDLE);
+    }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -257,21 +313,20 @@ int main(void)
    * This also prints: FREQ= xxx  SF=x   BW=x  CR=x */
   rf_set_default_para();
 
-  printf("===== Enter RX Listen =====\r\n");
-  printf("----------------------------\r\n");
+  printf("===== LoRa Ready =====\r\n");
   printf("  Freq    : 915.000 MHz\r\n");
   printf("  SF      : 10\r\n");
   printf("  BW      : 125 kHz\r\n");
   printf("  CR      : 4/5\r\n");
-  printf("  Preamble: 8\r\n");
   printf("  Power   : 22 dBm\r\n");
   printf("  CRC     : OFF\r\n");
   printf("  SyncWord: 0x12\r\n");
-  printf("  Mode    : RX (Single Timeout)\r\n");
+  printf("----------------------------\r\n");
+  printf("  K1 -> RX mode (LED 500ms blink)\r\n");
+  printf("  K2 -> TX mode (send 'I LOVE YOU' / 3s)\r\n");
   printf("----------------------------\r\n");
 
-  rf_enter_single_timeout_rx(5000);  /* Enter single RX with 5s timeout */
-  loraReady = 1;
+  enter_rx_mode();  /* Default: enter RX mode */
 
   /* USER CODE END 2 */
 
@@ -283,17 +338,32 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    /* LED4 (PA0) 1s blink - heartbeat */
+    /* LED4 (PA0) 1s blink - heartbeat (always) */
     if (HAL_GetTick() - lastLedTick >= 1000)
     {
       lastLedTick = HAL_GetTick();
       HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
     }
 
-    /* LoRa receive handler */
-    if (loraReady)
+    /* Mode handling */
+    switch (workMode)
     {
-      OnSlave();
+      case MODE_RX:
+        /* LED1: 500ms blink */
+        if (HAL_GetTick() - lastLed1Tick >= 500)
+        {
+          lastLed1Tick = HAL_GetTick();
+          HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+        }
+        OnSlave();
+        break;
+
+      case MODE_TX:
+        do_tx_send();
+        break;
+
+      default:
+        break;
     }
 
     HAL_Delay(10);
@@ -474,21 +544,32 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         rf_irq_process();
     }
 
+    /* K1 (PB4) -> Enter RX mode (with debounce) */
     if (GPIO_Pin == K1_Pin)
     {
         if (HAL_GPIO_ReadPin(K1_GPIO_Port, K1_Pin) == GPIO_PIN_RESET)
         {
-          HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
-          HAL_UART_Transmit(&huart1,"KEY1 trigger \r\n",strlen("KEY1 trigger \r\n"),0xFFFF);
+            if (HAL_GetTick() - lastKeyTick > 300)
+            {
+                lastKeyTick = HAL_GetTick();
+                enter_rx_mode();
+            }
         }
     }
 
+    /* K2 (PB5) -> Enter TX mode (with debounce) */
     if (GPIO_Pin == K2_Pin)
     {
         if (HAL_GPIO_ReadPin(K2_GPIO_Port, K2_Pin) == GPIO_PIN_RESET)
         {
-          HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
-          HAL_UART_Transmit(&huart1,"KEY2 trigger \r\n",strlen("KEY2 trigger \r\n"),0xFFFF);
+            if (HAL_GetTick() - lastKeyTick > 300)
+            {
+                lastKeyTick = HAL_GetTick();
+                workMode = MODE_TX;
+                lastTxTick = 0;  /* Force immediate first send */
+                HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+                printf("\r\n>> Switch to TX mode\r\n");
+            }
         }
     }
 }
