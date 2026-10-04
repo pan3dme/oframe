@@ -127,8 +127,10 @@ int main(void)
   {
       rf_set_freq(915000000);     /* 915 MHz */
       rf_set_tx_power(20);        /* 20 dBm */
-      rf_set_sf(SF_10);           /* SF11 */
+      rf_set_sf(SF_10);           /* SF10 */
       rf_set_bw(BW_125K);         /* 125 kHz */
+      rf_set_code_rate(CODE_RATE_45);  /* CR 4/5，匹配 SX1262 */
+      rf_set_preamble(8);         /* 前导码长度 8，匹配 SX1262 */
       rf_set_crc(CRC_OFF);        /* 关闭 CRC */
       rf_set_syncword(0x12);      /* 标准 LoRa 同步字，匹配 SX1262 */
       rf_set_mode(RF_MODE_RX);    /* 连续接收模式 */
@@ -138,6 +140,8 @@ int main(void)
       printf("  Freq    : 915.000 MHz\r\n");
       printf("  SF      : 10\r\n");
       printf("  BW      : 125 kHz\r\n");
+      printf("  CR      : 4/5\r\n");
+      printf("  Preamble: 8\r\n");
       printf("  Power   : 20 dBm\r\n");
       printf("  CRC     : OFF\r\n");
       printf("  SyncWord: 0x12\r\n");
@@ -171,9 +175,21 @@ int main(void)
 		{
 			lastLoraSendTick = HAL_GetTick();
 			uint8_t txBuf[] = "I LOVE YOU";
+			rf_clr_irq(REG_IRQ_TX_DONE);  /* 清除 TX 完成标志 */
 			rf_set_mode(RF_MODE_TX);
 			if (rf_send_packet(txBuf, sizeof(txBuf) - 1) == RF_OK)
 			{
+				/* 等待发送完成（轮询 TX_DONE 标志）*/
+				uint32_t timeout = HAL_GetTick() + 1000;  /* 1秒超时 */
+				while (!(rf_get_irq() & REG_IRQ_TX_DONE))
+				{
+					if (HAL_GetTick() > timeout)
+					{
+						printf("LoRa TX TIMEOUT\r\n");
+						break;
+					}
+				}
+				rf_clr_irq(REG_IRQ_TX_DONE);  /* 清除标志 */
 				printf("LoRa TX OK: I LOVE YOU\r\n");
 			}
 			else
