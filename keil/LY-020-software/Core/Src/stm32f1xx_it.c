@@ -285,16 +285,16 @@ void EXTI9_5_IRQHandler(void)
 /* USER CODE BEGIN 1 */
 
 /**
-  * @brief  USART2 global interrupt handler (GPS data receive)
+  * @brief  USART3 global interrupt handler (GPS data receive)
   */
-void USART2_IRQHandler(void)
+void USART3_IRQHandler(void)
 {
-  /* USER CODE BEGIN USART2_IRQn 0 */
+  /* USER CODE BEGIN USART3_IRQn 0 */
   gps_uart_receive_byte();
-  /* USER CODE END USART2_IRQn 0 */
-  /* USER CODE BEGIN USART2_IRQn 1 */
+  /* USER CODE END USART3_IRQn 0 */
+  /* USER CODE BEGIN USART3_IRQn 1 */
 
-  /* USER CODE END USART2_IRQn 1 */
+  /* USER CODE END USART3_IRQn 1 */
 }
 
 /* USER CODE END 1 */

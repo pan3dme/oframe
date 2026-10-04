@@ -88,9 +88,9 @@ void Error_Handler(void);
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
 
-/* --- GPS UART2 引脚 --- */
-#define GPS_RX_Pin        GPIO_PIN_3
-#define GPS_RX_GPIO_Port  GPIOA
+/* --- GPS UART3 引脚 --- */
+#define GPS_RX_Pin        GPIO_PIN_11
+#define GPS_RX_GPIO_Port  GPIOB
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

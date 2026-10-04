@@ -29,8 +29,8 @@ ly-020-software\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 ly-020-software\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 ly-020-software\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
 ly-020-software\main.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdio.h
+ly-020-software\main.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdlib.h
 ly-020-software\main.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\string.h
 ly-020-software\main.o: ../Radio/inc/pan3029_rf.h
 ly-020-software\main.o: ../Radio/inc/pan3029_port.h
 ly-020-software\main.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdbool.h
-ly-020-software\main.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdlib.h

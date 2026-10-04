@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
+#include "stdlib.h"
 #include "string.h"
 #include "pan3029_rf.h"
 #include "pan3029_port.h"
@@ -73,15 +74,27 @@ static uint8_t  prev_rx_size = 0;
 
 extern struct RxDoneMsg RxDoneParams;
 
-/* GPS UART2 receive buffer */
+/* GPS UART receive buffer */
 #define GPS_BUF_SIZE  256
 static uint8_t  gpsRxBuf[GPS_BUF_SIZE];
 static uint16_t gpsRxIdx = 0;
 static volatile uint8_t gpsDataReady = 0;
-static uint8_t  gpsPrintBuf[GPS_BUF_SIZE];
+
+/* Parsed GPS data */
+typedef struct {
+  char   time[16];      /* UTC time hhmmss.ss */
+  char   lat[16];       /* latitude ddmm.mmmm */
+  char   latDir;        /* N/S */
+  char   lon[16];       /* longitude dddmm.mmmm */
+  char   lonDir;        /* E/W */
+  uint8_t fixQuality;   /* 0=invalid, 1=GPS, 2=DGPS */
+  uint8_t satellites;   /* number of satellites */
+  uint8_t valid;        /* 1=fix valid */
+} GpsData_t;
+static GpsData_t gpsData = {0};
 static uint32_t lastGpsPrintTick = 0;
-static volatile uint32_t gpsByteCount = 0;  /* total bytes received */
-static volatile uint32_t gpsLastByteCount = 0; /* byte count at last print */
+static uint8_t  gpsLastRaw[GPS_BUF_SIZE];  /* last raw sentence */
+static uint16_t gpsLastRawLen = 0;         /* last raw sentence length */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -104,7 +117,64 @@ void gps_print_data(void);
 /* USER CODE BEGIN 0 */
 
 /**
-  * @brief  GPS UART2: receive one byte in ISR, store into buffer
+  * @brief  Parse $GPGGA sentence and extract time, coordinates, satellites
+  */
+static void gps_parse_gga(const char *sentence)
+{
+  /* $GPGGA,time,lat,N,lon,E,fix,sats,hdop,... */
+  const char *p = sentence;
+  int field = 0;
+  char buf[32];
+  int bi = 0;
+
+  memset(buf, 0, sizeof(buf));
+
+  while (*p && field <= 7)
+  {
+    if (*p == ',')
+    {
+      buf[bi] = '\0';
+      switch (field)
+      {
+        case 1: /* UTC time */
+          strncpy(gpsData.time, buf, sizeof(gpsData.time) - 1);
+          break;
+        case 2: /* latitude */
+          strncpy(gpsData.lat, buf, sizeof(gpsData.lat) - 1);
+          break;
+        case 3: /* N/S */
+          gpsData.latDir = buf[0];
+          break;
+        case 4: /* longitude */
+          strncpy(gpsData.lon, buf, sizeof(gpsData.lon) - 1);
+          break;
+        case 5: /* E/W */
+          gpsData.lonDir = buf[0];
+          break;
+        case 6: /* fix quality */
+          gpsData.fixQuality = (uint8_t)atoi(buf);
+          gpsData.valid = (gpsData.fixQuality > 0) ? 1 : 0;
+          break;
+        case 7: /* number of satellites */
+          gpsData.satellites = (uint8_t)atoi(buf);
+          break;
+        default:
+          break;
+      }
+      bi = 0;
+      field++;
+    }
+    else
+    {
+      if (bi < (int)sizeof(buf) - 1)
+        buf[bi++] = *p;
+    }
+    p++;
+  }
+}
+
+/**
+  * @brief  GPS UART: receive one byte in ISR, parse NMEA sentences
   */
 void gps_uart_receive_byte(void)
 {
@@ -112,7 +182,6 @@ void gps_uart_receive_byte(void)
   if (huart2.Instance->SR & USART_SR_RXNE)
   {
     ch = (uint8_t)(huart2.Instance->DR & 0xFF);
-    gpsByteCount++;
     if (ch == '$')
     {
       gpsRxIdx = 0;
@@ -124,7 +193,15 @@ void gps_uart_receive_byte(void)
     if (ch == '\n')
     {
       gpsRxBuf[gpsRxIdx] = '\0';
-      memcpy(gpsPrintBuf, gpsRxBuf, gpsRxIdx + 1);
+      /* Save raw sentence for debug display */
+      memcpy(gpsLastRaw, gpsRxBuf, gpsRxIdx + 1);
+      gpsLastRawLen = gpsRxIdx;
+      /* Parse $GPGGA/$GNGGA for coordinates, time, satellites */
+      if (strncmp((char *)gpsRxBuf, "$GPGGA", 6) == 0 ||
+          strncmp((char *)gpsRxBuf, "$GNGGA", 6) == 0)
+      {
+        gps_parse_gga((char *)gpsRxBuf);
+      }
       gpsDataReady = 1;
       gpsRxIdx = 0;
     }
@@ -132,8 +209,7 @@ void gps_uart_receive_byte(void)
 }
 
 /**
-  * @brief  GPS: print raw data every 1 second (even if incomplete)
-  *         Also polls USART2 SR directly to diagnose hardware vs interrupt issue
+  * @brief  GPS: print parsed data every 1 second
   */
 void gps_print_data(void)
 {
@@ -141,28 +217,24 @@ void gps_print_data(void)
   if (now - lastGpsPrintTick >= 1000)
   {
     lastGpsPrintTick = now;
-    uint32_t bytesPerSec = gpsByteCount - gpsLastByteCount;
-    gpsLastByteCount = gpsByteCount;
-
-    /* Direct register poll: check if USART2 has pending data */
-    uint32_t sr = huart2.Instance->SR;
-    uint8_t hasRXNE = (sr & USART_SR_RXNE) ? 1 : 0;
-    uint8_t hasFE = (sr & USART_SR_FE) ? 1 : 0;
-    uint8_t hasNE = (sr & USART_SR_NE) ? 1 : 0;
-
-    printf("[GPS] SR=0x%04X RXNE=%d FE=%d NE=%d bytes/s=%lu\r\n",
-           (unsigned)sr, hasRXNE, hasFE, hasNE, (unsigned long)bytesPerSec);
-
     if (gpsDataReady)
     {
-      printf("[GPS] %s", (char *)gpsPrintBuf);
+      if (gpsData.valid)
+      {
+        printf("[GPS] Time:%s Lat:%s%c Lon:%s%c Sats:%d FIX | RAW(%d): %s",
+               gpsData.time,
+               gpsData.lat, gpsData.latDir,
+               gpsData.lon, gpsData.lonDir,
+               gpsData.satellites,
+               gpsLastRawLen, (char *)gpsLastRaw);
+      }
+      else
+      {
+        printf("[GPS] Time:%s Sats:%d NO FIX | RAW(%d): %s",
+               gpsData.time, gpsData.satellites,
+               gpsLastRawLen, (char *)gpsLastRaw);
+      }
       gpsDataReady = 0;
-    }
-    else if (gpsRxIdx > 0)
-    {
-      gpsRxBuf[gpsRxIdx] = '\0';
-      printf("[GPS] (partial) %s\r\n", (char *)gpsRxBuf);
-      gpsRxIdx = 0;
     }
   }
 }
@@ -532,7 +604,7 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 1 */
 
   /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
+  huart2.Instance = USART3;
   huart2.Init.BaudRate = 9600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
@@ -547,8 +619,8 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
   /* Enable RXNE interrupt */
   __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
-  HAL_NVIC_SetPriority(USART2_IRQn, 1, 0);
-  HAL_NVIC_EnableIRQ(USART2_IRQn);
+  HAL_NVIC_SetPriority(USART3_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
   /* USER CODE END USART2_Init 2 */
 }
 
