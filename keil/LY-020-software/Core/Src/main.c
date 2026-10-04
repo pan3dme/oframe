@@ -1,4 +1,4 @@
-﻿/* USER CODE BEGIN Header */
+/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -50,7 +50,6 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
-uint32_t lastPrintTick = 0;
 uint32_t lastLoraSendTick = 0;
 uint32_t lastLedTick = 0;
 uint8_t  loraReady = 0;
@@ -118,21 +117,36 @@ int main(void)
 
   /* LoRa PAN3029 初始化 */
   printf("LoRa init...\r\n");
-  rf_port.spi_cs_high();          /* CSN idle high */
-  rf_port.delayms(50);
+
+  /* 确保 CSN 高，RST 高 */
+  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
+  HAL_Delay(100);  /* 等待模块上电稳定 */
+
   if (rf_init() == RF_OK)
   {
-      rf_set_freq(433000000);     /* 433 MHz */
-      rf_set_tx_power(0x0d);      /* ~13 dBm */
-      rf_set_sf(7);               /* SF7 */
-      rf_set_bw(0x09);            /* 125 kHz */
-      rf_set_mode(RF_MODE_SLEEP);
+      rf_set_freq(915000000);     /* 915 MHz */
+      rf_set_tx_power(20);        /* 20 dBm */
+      rf_set_sf(SF_11);           /* SF11 */
+      rf_set_bw(BW_125K);         /* 125 kHz */
+      rf_set_crc(CRC_OFF);        /* 关闭 CRC */
+      rf_set_syncword(0x12);      /* 标准 LoRa 同步字，匹配 SX1262 */
+      rf_set_mode(RF_MODE_RX);    /* 连续接收模式 */
       loraReady = 1;
       printf("LoRa OK\r\n");
+      printf("============================\r\n");
+      printf("  Freq    : 915.000 MHz\r\n");
+      printf("  SF      : 11\r\n");
+      printf("  BW      : 125 kHz\r\n");
+      printf("  Power   : 20 dBm\r\n");
+      printf("  CRC     : OFF\r\n");
+      printf("  SyncWord: 0x12\r\n");
+      printf("  Mode    : RX (Continuous)\r\n");
+      printf("============================\r\n");
   }
   else
   {
-      printf("LoRa FAIL\r\n");
+      printf("LoRa FAIL - check wiring!\r\n");
   }
 
   /* USER CODE END 2 */
@@ -145,19 +159,11 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-		// LED4 (PA0) 1秒闪烁一次
+		/* LED4 (PA0) 1秒闪烁一次 */
 		if (HAL_GetTick() - lastLedTick >= 1000)
 		{
 			lastLedTick = HAL_GetTick();
 			HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-		}
-
-		// every 1s print uptime
-		if (HAL_GetTick() - lastPrintTick >= 1000)
-		{
-			lastPrintTick = HAL_GetTick();
-			uint32_t sec = lastPrintTick / 1000;
-			printf("Uptime: %lu:%02lu:%02lu\r\n", sec / 3600, (sec % 3600) / 60, sec % 60);
 		}
 
 		/* 每 3 秒发送一次 LoRa 数据 */
@@ -165,15 +171,20 @@ int main(void)
 		{
 			lastLoraSendTick = HAL_GetTick();
 			uint8_t txBuf[] = "I LOVE YOU";
+			rf_set_mode(RF_MODE_TX);
+			if (rf_send_packet(txBuf, sizeof(txBuf) - 1) == RF_OK)
+			{
+				printf("LoRa TX OK: I LOVE YOU\r\n");
+			}
+			else
+			{
+				printf("LoRa TX FAIL\r\n");
+			}
 			rf_set_mode(RF_MODE_SLEEP);
-			rf_send_packet(txBuf, sizeof(txBuf) - 1);
-			rf_set_mode(RF_MODE_SLEEP);
-			printf("LoRa TX: I LOVE YOU\r\n");
 			HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 		}
 
-		printf("LOOP\r\n");
-		HAL_Delay(500);
+		HAL_Delay(100);
 
   }
   /* USER CODE END 3 */
@@ -314,6 +325,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
+
+  /* LoRa RST: PA1 output, default HIGH */
+  GPIO_InitStruct.Pin  = LORA_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
 
   /* USER CODE END MX_GPIO_Init_2 */
 }

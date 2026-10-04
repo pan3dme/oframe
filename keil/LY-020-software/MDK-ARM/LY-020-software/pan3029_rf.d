@@ -1,12 +1,6 @@
 ly-020-software\pan3029_rf.o: ../Radio/src/pan3029_rf.c
 ly-020-software\pan3029_rf.o: ../Radio/inc/pan3029_port.h
-ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdio.h
-ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdint.h
-ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdlib.h
-ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdbool.h
-ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\math.h
-ly-020-software\pan3029_rf.o: ../Radio/inc/pan3029_rf.h
-ly-020-software\pan3029_rf.o: ../Radio/inc/pan3029_port.h
+ly-020-software\pan3029_rf.o: ../Core/Inc/main.h
 ly-020-software\pan3029_rf.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h
 ly-020-software\pan3029_rf.o: ../Core/Inc/stm32f1xx_hal_conf.h
 ly-020-software\pan3029_rf.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h
@@ -14,6 +8,7 @@ ly-020-software\pan3029_rf.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_
 ly-020-software\pan3029_rf.o: ../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f1xx.h
 ly-020-software\pan3029_rf.o: ../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xb.h
 ly-020-software\pan3029_rf.o: ../Drivers/CMSIS/Include/core_cm3.h
+ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdint.h
 ly-020-software\pan3029_rf.o: ../Drivers/CMSIS/Include/cmsis_version.h
 ly-020-software\pan3029_rf.o: ../Drivers/CMSIS/Include/cmsis_compiler.h
 ly-020-software\pan3029_rf.o: ../Drivers/CMSIS/Include/cmsis_armcc.h
@@ -34,5 +29,11 @@ ly-020-software\pan3029_rf.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_
 ly-020-software\pan3029_rf.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 ly-020-software\pan3029_rf.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 ly-020-software\pan3029_rf.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
+ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdbool.h
+ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdio.h
+ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdlib.h
+ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\string.h
 ly-020-software\pan3029_rf.o: ../Radio/inc/pan3029_param.h
+ly-020-software\pan3029_rf.o: ../Radio/inc/pan3029_rf.h
 ly-020-software\pan3029_rf.o: ../Radio/inc/radio.h
+ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\math.h
