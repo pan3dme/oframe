@@ -514,38 +514,49 @@ RF_Err_t rf_reg_cfg(void)
 RF_Err_t rf_init(void)
 {
     uint8_t rstreg, porreg, test_val, i;
+    uint8_t readback1;
 
-    /* Hardware detection: multiple read-modify-write cycles */
-    /* A floating MISO line won't consistently match written values */
-    
-    /* Test 1: Read initial value */
+    /* ---- Hardware detection (using reg 0x04 only) ----
+     * REG_SYS_CTL (0x00) is write-only, cannot be used for detection.
+     * We use reg 0x04 which has a known POR value.
+     */
+
+    /* Test 1: Read reg 0x04 - check for dead bus (0x00 or 0xFF) */
     porreg = rf_read_reg(0x04);
-    
-    /* If initial read is 0x00 or 0xFF, module is likely dead */
+
     if (porreg == 0x00 || porreg == 0xFF)
     {
+        printf("[PAN3029] Reg0x04=0x%02X, module not detected\r\n", porreg);
         return RF_FAIL;
     }
-    
-    /* Test 2: Multiple write-readback cycles with different patterns */
-    for (i = 0; i < 3; i++)
+
+    /* Test 2: Read again - must be consistent (floating MISO would drift) */
+    readback1 = rf_read_reg(0x04);
+    if (readback1 != porreg)
     {
-        test_val = porreg ^ (0x0F << i);  /* Different pattern each cycle */
+        printf("[PAN3029] Unstable read: 1st=0x%02X 2nd=0x%02X\r\n", porreg, readback1);
+        return RF_FAIL;
+    }
+
+    /* Test 3: Write-readback with delay (floating MISO would drift) */
+    for (i = 0; i < 4; i++)
+    {
+        test_val = porreg ^ (0x0F << i);
         rf_write_reg(0x04, test_val);
-        rf_port.delayus(10);
+        rf_port.delayus(500);
         rstreg = rf_read_reg(0x04);
-        
-        /* Readback must match what we wrote */
+
         if (rstreg != test_val)
         {
-            /* Restore before failing */
+            printf("[PAN3029] Readback fail: wrote=0x%02X read=0x%02X\r\n", test_val, rstreg);
             rf_write_reg(0x04, porreg);
             return RF_FAIL;
         }
     }
-    
+
     /* Restore original value */
     rf_write_reg(0x04, porreg);
+    printf("[PAN3029] Hardware OK (0x04=0x%02X)\r\n", porreg);
 
     porreg = rf_read_reg(0x04);
 	

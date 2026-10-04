@@ -240,6 +240,12 @@ int main(void)
     printf("RF init fail! Check wiring.\r\n");
     while (1)
     {
+      /* LED4 heartbeat - always blink */
+      if (HAL_GetTick() - lastLedTick >= 1000)
+      {
+        lastLedTick = HAL_GetTick();
+        HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+      }
       HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
       HAL_Delay(100);
     }
