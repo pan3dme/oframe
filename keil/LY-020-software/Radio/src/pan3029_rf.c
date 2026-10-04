@@ -513,25 +513,39 @@ RF_Err_t rf_reg_cfg(void)
  */
 RF_Err_t rf_init(void)
 {
-    uint8_t rstreg, porreg, test_val;
+    uint8_t rstreg, porreg, test_val, i;
 
-    /* Hardware detection: verify module is powered and responding */
-    /* Read register 0x04, modify it, read back to verify SPI communication */
+    /* Hardware detection: multiple read-modify-write cycles */
+    /* A floating MISO line won't consistently match written values */
+    
+    /* Test 1: Read initial value */
     porreg = rf_read_reg(0x04);
-    test_val = porreg ^ 0x0F;  /* Toggle some bits */
-    rf_write_reg(0x04, test_val);
-    rf_port.delayus(10);
-    rstreg = rf_read_reg(0x04);
+    
+    /* If initial read is 0x00 or 0xFF, module is likely dead */
+    if (porreg == 0x00 || porreg == 0xFF)
+    {
+        return RF_FAIL;
+    }
+    
+    /* Test 2: Multiple write-readback cycles with different patterns */
+    for (i = 0; i < 3; i++)
+    {
+        test_val = porreg ^ (0x0F << i);  /* Different pattern each cycle */
+        rf_write_reg(0x04, test_val);
+        rf_port.delayus(10);
+        rstreg = rf_read_reg(0x04);
+        
+        /* Readback must match what we wrote */
+        if (rstreg != test_val)
+        {
+            /* Restore before failing */
+            rf_write_reg(0x04, porreg);
+            return RF_FAIL;
+        }
+    }
     
     /* Restore original value */
     rf_write_reg(0x04, porreg);
-    
-    /* Check if module responded: readback should match written value */
-    /* If module not powered, MISO reads 0x00; if floating, reads 0xFF */
-    if (rstreg == 0x00 || rstreg == 0xFF || rstreg != test_val)
-    {
-        return RF_FAIL;  /* Module not responding */
-    }
 
     porreg = rf_read_reg(0x04);
 	

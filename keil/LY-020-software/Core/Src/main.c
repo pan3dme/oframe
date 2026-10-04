@@ -127,7 +127,7 @@ int main(void)
   {
       rf_set_freq(915000000);     /* 915 MHz */
       rf_set_tx_power(20);        /* 20 dBm */
-      rf_set_sf(SF_11);           /* SF11 */
+      rf_set_sf(SF_10);           /* SF11 */
       rf_set_bw(BW_125K);         /* 125 kHz */
       rf_set_crc(CRC_OFF);        /* 关闭 CRC */
       rf_set_syncword(0x12);      /* 标准 LoRa 同步字，匹配 SX1262 */
@@ -136,7 +136,7 @@ int main(void)
       printf("LoRa OK\r\n");
       printf("============================\r\n");
       printf("  Freq    : 915.000 MHz\r\n");
-      printf("  SF      : 11\r\n");
+      printf("  SF      : 10\r\n");
       printf("  BW      : 125 kHz\r\n");
       printf("  Power   : 20 dBm\r\n");
       printf("  CRC     : OFF\r\n");

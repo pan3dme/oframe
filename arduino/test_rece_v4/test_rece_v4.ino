@@ -33,7 +33,7 @@ void setup() {
 
     loraRadio.setDio2AsRfSwitch(false);
     loraRadio.setFrequency(915.0);        // 匹配 ETSI_868: 868MHz
-    loraRadio.setSpreadingFactor(11);       // 匹配 DEFAULT_SF: SF9
+    loraRadio.setSpreadingFactor(10);       // 匹配 DEFAULT_SF: SF9
     loraRadio.setBandwidth(125.0);         // 匹配 DEFAULT_BW: BW125
     loraRadio.setCodingRate(1);            // 匹配 DEFAULT_CR: CR4/5 (RadioLib中1=4/5)
     loraRadio.setPreambleLength(8);
