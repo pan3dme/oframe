@@ -2,7 +2,8 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
+  * @brief          : PAN3029 LoRa Receiver - STM32F103C8T6
+  *                   Matches CenterReceiveBLE_v4 LoRa configuration
   ******************************************************************************
   * @attention
   *
@@ -21,11 +22,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
 #include "stdio.h"
+#include "string.h"
 #include "pan3029_rf.h"
 #include "pan3029_port.h"
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -35,7 +35,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define EXAMPLE_NAME "LY-020 LoRa Receiver"
+#define DEMO_VER     "V1.0"
+#define EXAMPLE_DATE "2026/10/04"
 
+#define RX_LEN       64
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,19 +53,26 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+static uint32_t lastLedTick = 0;
+static uint8_t  loraReady = 0;
 
-uint32_t lastLoraSendTick = 0;
-uint32_t lastLedTick = 0;
-uint8_t  loraReady = 0;
+/* LoRa receive buffers */
+static uint8_t  rx_test_buf[RX_LEN] = {0};
+static uint8_t  prev_rx_buf[RX_LEN] = {0};
+static uint8_t  prev_rx_size = 0;
 
+extern struct RxDoneMsg RxDoneParams;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void printf_logo(void);
+static void OnSlave(void);
+static void LedToggle(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -77,6 +88,102 @@ PUTCHAR_PROTOTYPE
 {
   HAL_UART_Transmit(&huart1,(uint8_t *)&ch,1,0xFFFF);
   return ch;
+}
+
+static void printf_logo(void)
+{
+  printf("\n\r");
+  printf("*************************************************************\r\n");
+  printf("* Project Name  : %s\r\n", EXAMPLE_NAME);
+  printf("* Demo Version  : %s\r\n", DEMO_VER);
+  printf("* Date          : %s\r\n", EXAMPLE_DATE);
+  printf("* MCU           : STM32F103C8T6\r\n");
+  printf("* Radio         : PAN3029 (LoRa)\r\n");
+  printf("*************************************************************\r\n");
+}
+
+static void LedToggle(void)
+{
+  HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+  HAL_Delay(50);
+  HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+  HAL_Delay(50);
+}
+
+/**
+  * @brief  LoRa slave receive handler (same logic as CenterReceiveBLE_v4)
+  */
+static void OnSlave(void)
+{
+  if (rf_get_recv_flag() == RADIO_FLAG_RXDONE)
+  {
+    uint8_t local_buf[RX_LEN];
+    uint8_t local_size;
+    int8_t  local_rssi;
+    float   local_snr;
+    uint8_t is_same = 0;
+
+    __disable_irq();
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    local_rssi = RxDoneParams.Rssi;
+    local_snr  = RxDoneParams.Snr;
+    local_size = RxDoneParams.Size;
+    if (local_size > RX_LEN) local_size = RX_LEN;
+    for (uint8_t i = 0; i < local_size; i++)
+      local_buf[i] = RxDoneParams.Payload[i];
+    __enable_irq();
+
+    /* compare with previous */
+    if (local_size == prev_rx_size && prev_rx_size > 0)
+    {
+      is_same = 1;
+      for (uint8_t i = 0; i < local_size; i++)
+      {
+        if (local_buf[i] != prev_rx_buf[i])
+        {
+          is_same = 0;
+          break;
+        }
+      }
+    }
+
+    printf("Rssi: %d  ", local_rssi - 256);
+    printf("Snr: %d   ", (int)local_snr);
+    printf("Len: %d  ", local_size);
+    printf("Str: ");
+    for (uint8_t i = 0; i < local_size; i++)
+    {
+      if (local_buf[i] == 0) break;
+      printf("%c", local_buf[i]);
+    }
+    if (is_same)
+      printf("  [SAME]");
+    else
+      printf("  [DIFF]");
+    printf("\r\n");
+
+    /* save current as previous */
+    prev_rx_size = local_size;
+    for (uint8_t i = 0; i < local_size; i++)
+      prev_rx_buf[i] = local_buf[i];
+
+    LedToggle();
+    rf_enter_single_timeout_rx(15000);
+  }
+
+  if (rf_get_recv_flag() == RADIO_FLAG_RXERR)
+  {
+    printf("crc error\r\n");
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    rf_enter_single_timeout_rx(5000);
+  }
+
+  if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT)
+  {
+    printf("rx time out\r\n");
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    rf_enter_single_timeout_rx(5000);
+  }
 }
 
 /* USER CODE END 0 */
@@ -110,48 +217,55 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
+
+  /* Initialize NVIC for LoRa IRQ (PA2 EXTI) */
+  MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("SYSTEM START\r\n");
-  HAL_Delay(1000);
+  printf("\r\n===== LoRa Receiver Start =====\r\n");
+  printf_logo();
 
-  /* LoRa PAN3029 初始化 */
+  HAL_Delay(1);
+
+  /* LoRa PAN3029 init */
   printf("LoRa init...\r\n");
 
-  /* 确保 CSN 高，RST 高 */
+  /* Ensure CSN high, RST high */
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
-  HAL_Delay(100);  /* 等待模块上电稳定 */
+  HAL_Delay(100);  /* Wait for module power stable */
 
-  if (rf_init() == RF_OK)
+  if (rf_init() != RF_OK)
   {
-      rf_set_freq(915000000);     /* 915 MHz */
-      rf_set_tx_power(20);        /* 20 dBm */
-      rf_set_sf(SF_10);           /* SF10 */
-      rf_set_bw(BW_125K);         /* 125 kHz */
-      rf_set_code_rate(CODE_RATE_45);  /* CR 4/5，匹配 SX1262 */
-      rf_set_preamble(8);         /* 前导码长度 8，匹配 SX1262 */
-      rf_set_crc(CRC_OFF);        /* 关闭 CRC */
-      rf_set_syncword(0x12);      /* 标准 LoRa 同步字，匹配 SX1262 */
-      rf_set_mode(RF_MODE_RX);    /* 连续接收模式 */
-      loraReady = 1;
-      printf("LoRa OK\r\n");
-      printf("============================\r\n");
-      printf("  Freq    : 915.000 MHz\r\n");
-      printf("  SF      : 10\r\n");
-      printf("  BW      : 125 kHz\r\n");
-      printf("  CR      : 4/5\r\n");
-      printf("  Preamble: 8\r\n");
-      printf("  Power   : 20 dBm\r\n");
-      printf("  CRC     : OFF\r\n");
-      printf("  SyncWord: 0x12\r\n");
-      printf("  Mode    : RX (Continuous)\r\n");
-      printf("============================\r\n");
+    printf("RF init fail! Check wiring.\r\n");
+    while (1)
+    {
+      HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+      HAL_Delay(100);
+    }
   }
-  else
-  {
-      printf("LoRa FAIL - check wiring!\r\n");
-  }
+  printf("RF init ok\r\n");
+
+  /* Set default LoRa parameters (same as CenterReceiveBLE_v4 ETSI_868):
+   *   Freq = 915 MHz, SF = 10, BW = 125 kHz, CR = 4/5, Power = 22
+   * This also prints: FREQ= xxx  SF=x   BW=x  CR=x */
+  rf_set_default_para();
+
+  printf("===== Enter RX Listen =====\r\n");
+  printf("----------------------------\r\n");
+  printf("  Freq    : 915.000 MHz\r\n");
+  printf("  SF      : 10\r\n");
+  printf("  BW      : 125 kHz\r\n");
+  printf("  CR      : 4/5\r\n");
+  printf("  Preamble: 8\r\n");
+  printf("  Power   : 22 dBm\r\n");
+  printf("  CRC     : OFF\r\n");
+  printf("  SyncWord: 0x12\r\n");
+  printf("  Mode    : RX (Single Timeout)\r\n");
+  printf("----------------------------\r\n");
+
+  rf_enter_single_timeout_rx(5000);  /* Enter single RX with 5s timeout */
+  loraReady = 1;
 
   /* USER CODE END 2 */
 
@@ -163,45 +277,20 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-		/* LED4 (PA0) 1秒闪烁一次 */
-		if (HAL_GetTick() - lastLedTick >= 1000)
-		{
-			lastLedTick = HAL_GetTick();
-			HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-		}
+    /* LED4 (PA0) 1s blink - heartbeat */
+    if (HAL_GetTick() - lastLedTick >= 1000)
+    {
+      lastLedTick = HAL_GetTick();
+      HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+    }
 
-		/* 每 3 秒发送一次 LoRa 数据 */
-		if (loraReady && (HAL_GetTick() - lastLoraSendTick >= 3000))
-		{
-			lastLoraSendTick = HAL_GetTick();
-			uint8_t txBuf[] = "I LOVE YOU";
-			rf_clr_irq(REG_IRQ_TX_DONE);  /* 清除 TX 完成标志 */
-			rf_set_mode(RF_MODE_TX);
-			if (rf_send_packet(txBuf, sizeof(txBuf) - 1) == RF_OK)
-			{
-				/* 等待发送完成（轮询 TX_DONE 标志）*/
-				uint32_t timeout = HAL_GetTick() + 1000;  /* 1秒超时 */
-				while (!(rf_get_irq() & REG_IRQ_TX_DONE))
-				{
-					if (HAL_GetTick() > timeout)
-					{
-						printf("LoRa TX TIMEOUT\r\n");
-						break;
-					}
-				}
-				rf_clr_irq(REG_IRQ_TX_DONE);  /* 清除标志 */
-				printf("LoRa TX OK: I LOVE YOU\r\n");
-			}
-			else
-			{
-				printf("LoRa TX FAIL\r\n");
-			}
-			rf_set_mode(RF_MODE_SLEEP);
-			HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-		}
+    /* LoRa receive handler */
+    if (loraReady)
+    {
+      OnSlave();
+    }
 
-		HAL_Delay(100);
-
+    HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }
@@ -350,19 +439,41 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
 
+  /* LoRa IRQ: PA2 input, rising edge interrupt */
+  GPIO_InitStruct.Pin  = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /* USER CODE END MX_GPIO_Init_2 */
+}
+
+/**
+  * @brief NVIC Configuration for LoRa IRQ (PA2 -> EXTI2)
+  */
+static void MX_NVIC_Init(void)
+{
+  /* EXTI2 interrupt for LoRa IRQ (PA2) */
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+    /* LoRa IRQ: PA2 -> call rf_irq_process */
+    if (GPIO_Pin == GPIO_PIN_2)
+    {
+        rf_irq_process();
+    }
+
     if (GPIO_Pin == K1_Pin)
     {
         if (HAL_GPIO_ReadPin(K1_GPIO_Port, K1_Pin) == GPIO_PIN_RESET)
         {
-        	HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
-        	HAL_UART_Transmit(&huart1,"KEY1 trigger \r\n",strlen("KEY1 trigger \r\n"),0xFFFF);
+          HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
+          HAL_UART_Transmit(&huart1,"KEY1 trigger \r\n",strlen("KEY1 trigger \r\n"),0xFFFF);
         }
     }
 
@@ -370,8 +481,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     {
         if (HAL_GPIO_ReadPin(K2_GPIO_Port, K2_Pin) == GPIO_PIN_RESET)
         {
-        	HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
-        	HAL_UART_Transmit(&huart1,"KEY2 trigger \r\n",strlen("KEY2 trigger \r\n"),0xFFFF);
+          HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+          HAL_UART_Transmit(&huart1,"KEY2 trigger \r\n",strlen("KEY2 trigger \r\n"),0xFFFF);
         }
     }
 }
