@@ -26,7 +26,18 @@
 #define LED1_PORT          GPIOA
 #define LED1_PIN           GPIO_Pin_15
 
-//µ×°åÇÐ»»Ö÷´ÓÄ£Ê½Ñ¡ÔñÒý½Å 
+//ï¿½×°ï¿½ï¿½Ð»ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½Ñ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+// Key pin definitions
+#define KEY1_PIN        GPIO_Pin_0
+#define KEY1_PORT       GPIOA
+
+#define KEY2_PIN        GPIO_Pin_6
+#define KEY2_PORT       GPIOB
+
+#define KEY3_PIN        GPIO_Pin_7
+#define KEY3_PORT       GPIOB
+
+// RF mode select pin (reserved)
 #define RF_MODE_PIN        GPIO_Pin_2
 #define RF_MODE_PORT       GPIOA
 

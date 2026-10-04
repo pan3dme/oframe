@@ -58,7 +58,7 @@ void GPIO_int()
   GPIO_Init(RF_IRQ_PORT, &GPIO_InitStruct);
  
 	/****************************************
-	 RF_CAD
+	 RF_CAD / KEY1 (PA0)
 	****************************************/
   GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
   GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
@@ -78,6 +78,22 @@ void GPIO_int()
   GPIO_Init(LED1_PORT, &GPIO_InitStruct);
 	
 	GPIO_SetBits(LED1_PORT,LED1_PIN);
+
+	/****************************************
+	 KEY2 (PB6) - TX mode button
+	****************************************/
+	GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_Level_2;
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IN;
+	GPIO_InitStruct.GPIO_Pin = KEY2_PIN;
+	GPIO_Init(KEY2_PORT, &GPIO_InitStruct);
+	
+	/****************************************
+	 KEY3 (PB7) - RX mode button
+	****************************************/
+	GPIO_InitStruct.GPIO_Pin = KEY3_PIN;
+	GPIO_Init(KEY3_PORT, &GPIO_InitStruct);
 	
 						 /*  RF_MODE_PIN  */
 	GPIO_InitStruct.GPIO_Pin =RF_MODE_PIN; 
