@@ -56,6 +56,7 @@
 CAN_HandleTypeDef hcan;
 I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 static uint32_t lastLedTick = 0;
@@ -71,12 +72,23 @@ static uint8_t  prev_rx_buf[RX_LEN] = {0};
 static uint8_t  prev_rx_size = 0;
 
 extern struct RxDoneMsg RxDoneParams;
+
+/* GPS UART2 receive buffer */
+#define GPS_BUF_SIZE  256
+static uint8_t  gpsRxBuf[GPS_BUF_SIZE];
+static uint16_t gpsRxIdx = 0;
+static volatile uint8_t gpsDataReady = 0;
+static uint8_t  gpsPrintBuf[GPS_BUF_SIZE];
+static uint32_t lastGpsPrintTick = 0;
+static volatile uint32_t gpsByteCount = 0;  /* total bytes received */
+static volatile uint32_t gpsLastByteCount = 0; /* byte count at last print */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_USART2_UART_Init(void);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 static void printf_logo(void);
@@ -84,10 +96,76 @@ static void OnSlave(void);
 static void LedToggle(void);
 static void enter_rx_mode(void);
 static void do_tx_send(void);
+void gps_uart_receive_byte(void);
+void gps_print_data(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/**
+  * @brief  GPS UART2: receive one byte in ISR, store into buffer
+  */
+void gps_uart_receive_byte(void)
+{
+  uint8_t ch;
+  if (huart2.Instance->SR & USART_SR_RXNE)
+  {
+    ch = (uint8_t)(huart2.Instance->DR & 0xFF);
+    gpsByteCount++;
+    if (ch == '$')
+    {
+      gpsRxIdx = 0;
+    }
+    if (gpsRxIdx < GPS_BUF_SIZE - 1)
+    {
+      gpsRxBuf[gpsRxIdx++] = ch;
+    }
+    if (ch == '\n')
+    {
+      gpsRxBuf[gpsRxIdx] = '\0';
+      memcpy(gpsPrintBuf, gpsRxBuf, gpsRxIdx + 1);
+      gpsDataReady = 1;
+      gpsRxIdx = 0;
+    }
+  }
+}
+
+/**
+  * @brief  GPS: print raw data every 1 second (even if incomplete)
+  *         Also polls USART2 SR directly to diagnose hardware vs interrupt issue
+  */
+void gps_print_data(void)
+{
+  uint32_t now = HAL_GetTick();
+  if (now - lastGpsPrintTick >= 1000)
+  {
+    lastGpsPrintTick = now;
+    uint32_t bytesPerSec = gpsByteCount - gpsLastByteCount;
+    gpsLastByteCount = gpsByteCount;
+
+    /* Direct register poll: check if USART2 has pending data */
+    uint32_t sr = huart2.Instance->SR;
+    uint8_t hasRXNE = (sr & USART_SR_RXNE) ? 1 : 0;
+    uint8_t hasFE = (sr & USART_SR_FE) ? 1 : 0;
+    uint8_t hasNE = (sr & USART_SR_NE) ? 1 : 0;
+
+    printf("[GPS] SR=0x%04X RXNE=%d FE=%d NE=%d bytes/s=%lu\r\n",
+           (unsigned)sr, hasRXNE, hasFE, hasNE, (unsigned long)bytesPerSec);
+
+    if (gpsDataReady)
+    {
+      printf("[GPS] %s", (char *)gpsPrintBuf);
+      gpsDataReady = 0;
+    }
+    else if (gpsRxIdx > 0)
+    {
+      gpsRxBuf[gpsRxIdx] = '\0';
+      printf("[GPS] (partial) %s\r\n", (char *)gpsRxBuf);
+      gpsRxIdx = 0;
+    }
+  }
+}
 
 #ifdef __GNUC__
   #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
@@ -273,6 +351,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
 
   /* Initialize NVIC for LoRa IRQ (PA2 EXTI) */
   MX_NVIC_Init();
@@ -366,6 +445,9 @@ int main(void)
         break;
     }
 
+    /* GPS data print every 1s */
+    gps_print_data();
+
     HAL_Delay(10);
   }
   /* USER CODE END 3 */
@@ -434,6 +516,40 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+}
+
+/**
+  * @brief USART2 Initialization Function (GPS, RX only, 9600 baud)
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 9600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+  /* Enable RXNE interrupt */
+  __HAL_UART_ENABLE_IT(&huart2, UART_IT_RXNE);
+  HAL_NVIC_SetPriority(USART2_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(USART2_IRQn);
+  /* USER CODE END USART2_Init 2 */
 }
 
 /**
