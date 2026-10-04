@@ -341,7 +341,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xB</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\user</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\user;../Radio/inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -509,6 +509,26 @@
               <FileName>OLED_IIC_Config.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\user\OLED_IIC_Config.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Radio</GroupName>
+          <Files>
+            <File>
+              <FileName>pan3029_port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Radio/src/pan3029_port.c</FilePath>
+            </File>
+            <File>
+              <FileName>pan3029_rf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Radio/src/pan3029_rf.c</FilePath>
+            </File>
+            <File>
+              <FileName>crc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Radio/src/crc.c</FilePath>
             </File>
           </Files>
         </Group>

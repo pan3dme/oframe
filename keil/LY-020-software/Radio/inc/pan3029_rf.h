@@ -187,15 +187,15 @@ typedef enum
 #define LEVEL_INACTIVE                  0
 #define LEVEL_ACTIVE                    1
 
-#define	GPIO_PIN_IRQ                    GPIO_Pin_1
+#define	GPIO_PIN_IRQ                    GPIO_PIN_1
 #define	GPIO_PORT_IRQ                   GPIOA        
-#define	GPIO_PIN_CAD                    GPIO_Pin_0
+#define	GPIO_PIN_CAD                    GPIO_PIN_0
 #define	GPIO_PORT_CAD                   GPIOA
 
-#define CHECK_IRQ()                     GPIO_ReadInputDataBit(GPIO_PORT_IRQ, GPIO_PIN_IRQ)
-#define CHECK_CAD()                     GPIO_ReadInputDataBit(GPIO_PORT_CAD, GPIO_PIN_CAD)
+#define CHECK_IRQ()                     HAL_GPIO_ReadPin(GPIO_PORT_IRQ, GPIO_PIN_IRQ)
+#define CHECK_CAD()                     HAL_GPIO_ReadPin(GPIO_PORT_CAD, GPIO_PIN_CAD)
 
-#define SET_TIMER_MS(time)              timer6_open_ms(time)
+#define SET_TIMER_MS(time)              do { (void)(time); } while(0)
               
 #define TEST_MODE_BUFFER_LEN            10
 

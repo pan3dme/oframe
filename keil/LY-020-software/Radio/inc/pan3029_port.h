@@ -14,8 +14,19 @@
 #include "stdbool.h"
 #include "math.h"
 #include "pan3029_rf.h"
-#include "stm32f0xx.h"
+#include "stm32f1xx_hal.h"
 
+/* -------- 软件 SPI 引脚定义 (PA5/PA6/PA7) -------- */
+#define RF_SCK_PIN        GPIO_PIN_5
+#define RF_SCK_PORT       GPIOA
+#define RF_MISO_PIN       GPIO_PIN_6
+#define RF_MISO_PORT      GPIOA
+#define RF_MOSI_PIN       GPIO_PIN_7
+#define RF_MOSI_PORT      GPIOA
+
+/* -------- CSN 片选引脚定义 (PB0) -------- */
+#define RF_CSN_PIN        GPIO_PIN_0
+#define RF_CSN_PORT       GPIOB
 
 #define SPI_WRITE_CHECK         1
 #define MODULE_GPIO_TX          0

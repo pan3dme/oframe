@@ -72,8 +72,19 @@ void Error_Handler(void);
 #define K2_GPIO_Port GPIOB
 #define K2_EXTI_IRQn EXTI9_5_IRQn
 
-/* USER CODE BEGIN Private defines */
+#define LED4_Pin GPIO_PIN_0
+#define LED4_GPIO_Port GPIOA
 
+/* USER CODE BEGIN Private defines */
+/* --- LoRa (PAN3029) 软件 SPI 引脚 --- */
+#define LORA_SCK_Pin      GPIO_PIN_5
+#define LORA_SCK_GPIO_Port GPIOA
+#define LORA_MISO_Pin     GPIO_PIN_6
+#define LORA_MISO_GPIO_Port GPIOA
+#define LORA_MOSI_Pin     GPIO_PIN_7
+#define LORA_MOSI_GPIO_Port GPIOA
+#define LORA_CSN_Pin      GPIO_PIN_0
+#define LORA_CSN_GPIO_Port GPIOB
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

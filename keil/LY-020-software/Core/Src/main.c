@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+﻿/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 
 #include "stdio.h"
+#include "pan3029_rf.h"
+#include "pan3029_port.h"
 
 /* USER CODE END Includes */
 
@@ -49,6 +51,9 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 
 uint32_t lastPrintTick = 0;
+uint32_t lastLoraSendTick = 0;
+uint32_t lastLedTick = 0;
+uint8_t  loraReady = 0;
 
 /* USER CODE END PV */
 
@@ -111,6 +116,25 @@ int main(void)
   printf("SYSTEM START\r\n");
   HAL_Delay(1000);
 
+  /* LoRa PAN3029 初始化 */
+  printf("LoRa init...\r\n");
+  rf_port.spi_cs_high();          /* CSN idle high */
+  rf_port.delayms(50);
+  if (rf_init() == RF_OK)
+  {
+      rf_set_freq(433000000);     /* 433 MHz */
+      rf_set_tx_power(0x0d);      /* ~13 dBm */
+      rf_set_sf(7);               /* SF7 */
+      rf_set_bw(0x09);            /* 125 kHz */
+      rf_set_mode(RF_MODE_SLEEP);
+      loraReady = 1;
+      printf("LoRa OK\r\n");
+  }
+  else
+  {
+      printf("LoRa FAIL\r\n");
+  }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -121,12 +145,31 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
+		// LED4 (PA0) 1秒闪烁一次
+		if (HAL_GetTick() - lastLedTick >= 1000)
+		{
+			lastLedTick = HAL_GetTick();
+			HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+		}
+
 		// every 1s print uptime
 		if (HAL_GetTick() - lastPrintTick >= 1000)
 		{
 			lastPrintTick = HAL_GetTick();
 			uint32_t sec = lastPrintTick / 1000;
 			printf("Uptime: %lu:%02lu:%02lu\r\n", sec / 3600, (sec % 3600) / 60, sec % 60);
+		}
+
+		/* 每 3 秒发送一次 LoRa 数据 */
+		if (loraReady && (HAL_GetTick() - lastLoraSendTick >= 3000))
+		{
+			lastLoraSendTick = HAL_GetTick();
+			uint8_t txBuf[] = "I LOVE YOU";
+			rf_set_mode(RF_MODE_SLEEP);
+			rf_send_packet(txBuf, sizeof(txBuf) - 1);
+			rf_set_mode(RF_MODE_SLEEP);
+			printf("LoRa TX: I LOVE YOU\r\n");
+			HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 		}
 
 		printf("LOOP\r\n");
@@ -221,6 +264,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LED1_Pin|LED2_Pin|LED3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : LED1_Pin LED2_Pin LED3_Pin */
   GPIO_InitStruct.Pin = LED1_Pin|LED2_Pin|LED3_Pin;
@@ -243,6 +287,33 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
+
+  /* LED4: PA0 output */
+  GPIO_InitStruct.Pin  = LED4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED4_GPIO_Port, &GPIO_InitStruct);
+
+  /* LoRa SPI GPIO: PA5-SCK, PA6-MISO, PA7-MOSI  (output for bit-bang) */
+  GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MOSI_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin  = LORA_MISO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* LoRa CSN: PB0 output, default HIGH */
+  GPIO_InitStruct.Pin  = LORA_CSN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
 
   /* USER CODE END MX_GPIO_Init_2 */
 }

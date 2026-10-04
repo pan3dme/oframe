@@ -20,6 +20,9 @@
 "ly-020-software\system_stm32f1xx.o"
 "ly-020-software\oled_function.o"
 "ly-020-software\oled_iic_config.o"
+"ly-020-software\pan3029_port.o"
+"ly-020-software\pan3029_rf.o"
+"ly-020-software\crc.o"
 --library_type=microlib --strict --scatter "LY-020-software\LY-020-software.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
