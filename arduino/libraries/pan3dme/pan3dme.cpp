@@ -19,7 +19,9 @@ bool isGpsOn = false;
 
 unsigned long rolaHz = 915000000; // 同步时的本地毫秒计数
 
-const String wechatid = "v5";
+const String wechatid = "v4";
+//金子岭是  sf10  ，其它没变化  crc没有开，  
+//登天界是  sf11,  crc开着
 
 int DEVICE_COUNT_V4 = 30;
 uint64_t list_v4[] = {
