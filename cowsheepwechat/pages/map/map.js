@@ -369,6 +369,22 @@ Page({
     return Date.now() - ts <= 3600 * 1000
   },
 
+  // 把"距上次上报GPS"的时长格式化为相对时间文案，如：刚刚 / 1分钟前 / 1小时前 / 1天3小时前
+  _formatTimeAgo(timeStr) {
+    const ts = this._parseTimeToTs(timeStr)
+    if (isNaN(ts)) return '-'
+    let diff = Math.floor((Date.now() - ts) / 1000)
+    if (diff < 0) diff = 0
+    if (diff < 60) return '刚刚'
+    const minutes = Math.floor(diff / 60)
+    if (minutes < 60) return minutes + '分钟前'
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return hours + '小时前'
+    const days = Math.floor(hours / 24)
+    const restHours = hours % 24
+    return restHours > 0 ? (days + '天' + restHours + '小时前') : (days + '天前')
+  },
+
   // 启动设备图标老化检测：页面停留时每分钟重算一次，
   // 设备最后定位时间跨过 1 小时阈值时自动把图标由绿色切为灰色
   _startStaleTimer() {
@@ -382,10 +398,12 @@ Page({
   _refreshDeviceIconByStale() {
     if (!this._devIconReady || !this._deviceGpsList || this._deviceGpsList.length === 0) return
     const prevIcons = (this._deviceMarkers || []).map(m => m.iconPath).join(',')
+    const prevCallouts = (this._deviceMarkers || []).map(m => (m.callout && m.callout.content) || '').join('\n')
     this._renderDeviceMarkers(this._deviceGpsList, this._deviceInfoMap || {})
     const nextIcons = (this._deviceMarkers || []).map(m => m.iconPath).join(',')
-    // 仅当有图标颜色变化时才刷新地图，避免每60秒无意义地整组重绘
-    if (prevIcons !== nextIcons) this._applyAllMarkers()
+    const nextCallouts = (this._deviceMarkers || []).map(m => (m.callout && m.callout.content) || '').join('\n')
+    // 图标颜色或气泡"上报:x前"相对时间变化时才刷新地图，避免每60秒无意义地整组重绘
+    if (prevIcons !== nextIcons || prevCallouts !== nextCallouts) this._applyAllMarkers()
   },
 
   _renderDeviceMarkers(gpsList, deviceInfoMap) {
@@ -457,8 +475,8 @@ Page({
           ? (this._deviceLightGreenIconPath || this._deviceGrayIconPath || this._deviceIconPath || '')
           : (this._deviceGrayIconPath || this._deviceIconPath || '')
       }
-      const syncInfo = (this._deviceSyncMap || {})[item.deviceId]
-      const syncRaw = (syncInfo && (syncInfo.rawTime || syncInfo.time)) || '-'
+      // 气泡第三行：距离上次上报GPS的相对时间（如 1分钟前 / 1小时前 / 1天3小时前）
+      const gpsAgoText = this._formatTimeAgo(item.rawTime || item.time || '')
 
       markers.push({
         id: index + 50000,
@@ -471,7 +489,7 @@ Page({
         iconPath: iconPath,
         title: '设备 ' + (item.deviceId || '-') + (rename ? '（' + rename + '）' : ''),
         callout: {
-          content: '设备:' + (item.deviceId || '-') + (rename ? '（' + rename + '）' : '') + '\n位置:' + (item.rawTime || '-') + '\n对时:' + syncRaw,
+          content: '设备:' + (item.deviceId || '-') + (rename ? '（' + rename + '）' : '') + '\n位置:' + (item.rawTime || '-') + '\n上报:' + gpsAgoText,
           display: 'BYCLICK',
           textAlign: 'center',
           fontSize: 13,
