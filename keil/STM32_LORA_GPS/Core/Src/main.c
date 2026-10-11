@@ -66,13 +66,15 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 // LED 控制相关时间戳
 static uint32_t lastLedTick = 0;    // LED4 心跳指示灯上次翻转时间（1秒间隔）
-static uint32_t lastLed1Tick = 0;   // LED1 模式指示灯上次翻转时间（RX模式500ms闪烁）
+
+// PB15 (LED1) 接收指示：收到LoRa数据时亮500ms
+static uint32_t led1OnTick = 0;   // LED1 点亮时间戳
+static uint8_t  led1On = 0;       // LED1 当前是否点亮（0=灭, 1=亮）
 
 // 工作模式相关
 static uint8_t  workMode = MODE_IDLE;  // 当前工作模式（RX/TX/IDLE）
 static uint8_t  txMsg[] = "I LOVE YOU"; // TX模式下循环发送的测试消息
 static uint32_t lastTxTick = 0;        // 上次发送时间戳（3秒间隔）
-static uint32_t txLedOnTick = 0;       // TX LED 点亮时间戳（500ms后熄灭）
 static uint32_t lastKeyTick = 0;       // 按键消抖时间戳（300ms消抖间隔）
 
 /* LoRa receive buffers - LoRa 接收缓冲区 */
@@ -222,6 +224,12 @@ static void OnSlave(void)
       prev_rx_buf[i] = local_buf[i];
 
     LedToggle();  // LED4 快速闪烁，指示接收成功
+
+    /* PB15 (LED1) 点亮，指示收到LoRa数据，500ms后由主循环熄灭 */
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+    led1OnTick = HAL_GetTick();
+    led1On = 1;
+
     rf_enter_single_timeout_rx(15000);  // 重新进入接收模式，超时 15 秒
   }
 
@@ -254,6 +262,7 @@ static void enter_rx_mode(void)
 {
     workMode = MODE_RX;  // 设置工作模式为接收
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);  // 关闭 LED1
+    led1On = 0;  // 同步 LED1 状态变量
     printf("\r\n>> Switch to RX mode\r\n");
     rf_enter_single_timeout_rx(5000);  // 进入接收模式，超时 5 秒
 }
@@ -276,18 +285,7 @@ static void do_tx_send(void)
         uint32_t tx_time;
         // 调用驱动发送数据，tx_time 返回实际发送耗时
         rf_single_tx_data(txMsg, sizeof(txMsg) - 1, &tx_time);
-        HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  // 点亮 LED1
-        txLedOnTick = now;  // 记录 LED 点亮时间
         printf("TX: I LOVE YOU\r\n");
-    }
-
-    /* LED1 点亮 500ms 后自动熄灭 */
-    if (HAL_GPIO_ReadPin(LED1_GPIO_Port, LED1_Pin) == GPIO_PIN_SET)
-    {
-        if (now - txLedOnTick >= 500)
-        {
-            HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);  // 熄灭 LED1
-        }
     }
 
     /* 检查并清除发送完成标志 */
@@ -412,16 +410,17 @@ int main(void)
       HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
     }
 
+    /* PB15 (LED1) 接收指示：点亮500ms后自动熄灭 */
+    if (led1On && HAL_GetTick() - led1OnTick >= 500)
+    {
+      led1On = 0;
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+    }
+
     /* 根据当前工作模式执行相应处理 */
     switch (workMode)
     {
       case MODE_RX:  // 接收模式
-        /* LED1: 500ms 闪烁，表示处于接收状态 */
-        if (HAL_GetTick() - lastLed1Tick >= 500)
-        {
-          lastLed1Tick = HAL_GetTick();
-          HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-        }
         OnSlave();  // 调用接收处理函数
         break;
 
@@ -671,7 +670,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
                 lastKeyTick = HAL_GetTick();  // 更新消抖时间戳
                 workMode = MODE_TX;           // 设置工作模式为发送
                 lastTxTick = 0;               // 强制立即发送第一帧
-                HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);  // 关闭 LED1
                 printf("\r\n>> Switch to TX mode\r\n");
             }
         }
