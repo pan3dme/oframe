@@ -543,7 +543,8 @@ int main(void)
         HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
       }
       HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);  // LED1 快速闪烁表示错误
-      HAL_Delay(100);\n    }
+      HAL_Delay(100);
+    }
   }
   printf("RF init ok\r\n");
 
