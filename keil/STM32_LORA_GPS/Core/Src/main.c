@@ -6,7 +6,7 @@
   *                   与 CenterReceiveBLE_v4 LoRa 配置匹配
   * @note           功能说明：
   *                 1. LoRa 通信：支持接收和发送两种模式，可通过按键 K1/K2 切换
-  *                 2. LED 指示：LED4 心跳指示，LED1 模式指示，接收/发送状态指示
+  *                 2. LED 指示：LED1 接收状态指示（收到数据亮500ms）
   *                 3. 调试输出：通过 USART1 输出系统状态
   ******************************************************************************
   * @attention
@@ -64,9 +64,6 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-// LED 控制相关时间戳
-static uint32_t lastLedTick = 0;    // LED4 心跳指示灯上次翻转时间（1秒间隔）
-
 // PB15 (LED1) 接收指示：收到LoRa数据时亮500ms
 static uint32_t led1OnTick = 0;   // LED1 点亮时间戳
 static uint8_t  led1On = 0;       // LED1 当前是否点亮（0=灭, 1=亮）
@@ -97,7 +94,6 @@ static void MX_NVIC_Init(void);      // NVIC 中断控制器初始化
 // 用户自定义函数声明
 static void printf_logo(void);       // 打印工程信息 Logo
 static void OnSlave(void);           // LoRa 从机接收处理函数
-static void LedToggle(void);         // LED4 快速闪烁（接收指示）
 static void enter_rx_mode(void);     // 切换到接收模式
 static void do_tx_send(void);        // 发送模式处理函数
 
@@ -143,18 +139,6 @@ static void printf_logo(void)
   printf("* MCU           : STM32F103C8T6\r\n");       // 主控芯片
   printf("* Radio         : PAN3029 (LoRa)\r\n");      // 射频模块
   printf("*************************************************************\r\n");
-}
-
-/**
-  * @brief  LED4 快速闪烁函数（接收指示）
-  * @note   LED4 亮 50ms 后灭 50ms，用于指示 LoRa 数据接收成功
-  */
-static void LedToggle(void)
-{
-  HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);  // LED4 亮
-  HAL_Delay(50);                                  // 延时 50ms
-  HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);  // LED4 灭
-  HAL_Delay(50);                                  // 延时 50ms
 }
 
 /**
@@ -222,8 +206,6 @@ static void OnSlave(void)
     prev_rx_size = local_size;
     for (uint8_t i = 0; i < local_size; i++)
       prev_rx_buf[i] = local_buf[i];
-
-    LedToggle();  // LED4 快速闪烁，指示接收成功
 
     /* PB15 (LED1) 点亮，指示收到LoRa数据，500ms后由主循环熄灭 */
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
@@ -359,12 +341,6 @@ int main(void)
     printf("RF init fail! Check wiring.\r\n");
     while (1)
     {
-      /* LED4 心跳指示灯 - 始终闪烁，表示系统仍在运行 */
-      if (HAL_GetTick() - lastLedTick >= 1000)
-      {
-        lastLedTick = HAL_GetTick();
-        HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-      }
       HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);  // LED1 快速闪烁表示错误
       HAL_Delay(100);
     }
@@ -402,13 +378,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-    /* LED4 (PA0) 1秒闪烁 - 心跳指示灯（始终运行） */
-    if (HAL_GetTick() - lastLedTick >= 1000)
-    {
-      lastLedTick = HAL_GetTick();
-      HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-    }
 
     /* PB15 (LED1) 接收指示：点亮500ms后自动熄灭 */
     if (led1On && HAL_GetTick() - led1OnTick >= 500)
@@ -543,7 +512,6 @@ static void MX_GPIO_Init(void)
 
   /* 配置 GPIO 输出引脚初始电平 */
   HAL_GPIO_WritePin(GPIOB, LED1_Pin|LED2_Pin|LED3_Pin, GPIO_PIN_RESET);  // LED1/2/3 默认灭
-  HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);           // LED4 默认灭
 
   /* 配置 LED1/LED2/LED3 引脚 (PB3/PB4/PB5) */
   GPIO_InitStruct.Pin = LED1_Pin|LED2_Pin|LED3_Pin;
@@ -566,13 +534,6 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);                 // 使能 K2 中断
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-
-  /* 配置 LED4 引脚 (PA0) - 心跳指示灯 */
-  GPIO_InitStruct.Pin  = LED4_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;       // 推挽输出模式
-  GPIO_InitStruct.Pull = GPIO_NOPULL;               // 无上下拉
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;      // 低速
-  HAL_GPIO_Init(LED4_GPIO_Port, &GPIO_InitStruct);
 
   /* 配置 LoRa SPI 时钟和 MOSI 引脚 (PA5/PA7) - 软件 SPI 输出 */
   GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MOSI_Pin;
