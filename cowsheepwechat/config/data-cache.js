@@ -60,7 +60,9 @@ const _STORAGE_KEYS = {
   deviceConfigCache: 'cache_device_config',
   deviceGpsCache: 'cache_device_gps',
   roadCache: 'cache_road_list',
-  placeCache: 'cache_place_list'
+  placeCache: 'cache_place_list',
+  // 每台设备最近一次成功的电量（来自对时/定位/蓝牙），断网或同步表丢失时兜底显示
+  deviceLastBattery: 'cache_device_last_battery'
 }
 
 // 从本地存储读缓存（任何异常都返回 null，绝不抛错）
@@ -610,6 +612,37 @@ function getCachedDeviceGps(deviceId) {
   return list.find(r => r && r.deviceId === deviceId) || null
 }
 
+// ==================== 每台设备最近一次电量缓存 ====================
+// 设备列表"电量"列的兜底来源：只要对时/定位/蓝牙任一来源能拿到电量，就会把该设备最近一次电量持久化到本地，
+// 下次列表页电量所有来源都拿不到时（断网 / 同步表被清理 / 设备只上报定位且 device_gps 缓存被清），
+// 仍能展示"上次对时/上报时的电量"，避免显示空。
+
+/**
+ * 读取单台设备最近一次成功缓存的电量（按 deviceId 匹配）
+ * @param {string} deviceId
+ * @returns {string} 原始电量字符串（如 "1.0" / "99"），无缓存返回 ''
+ */
+function getCachedDeviceLastBattery(deviceId) {
+  if (!deviceId) return ''
+  const map = _loadFromStorage(_STORAGE_KEYS.deviceLastBattery) || {}
+  return map[deviceId] || ''
+}
+
+/**
+ * 写入/更新单台设备最近一次电量（持久化到本地）
+ * @param {string} deviceId
+ * @param {string|number} battery  - 归一化前的原始电量（直接缓存原始值，显示时再 _formatBatteryPercent）
+ * @returns {boolean}
+ */
+function setCachedDeviceLastBattery(deviceId, battery) {
+  if (!deviceId || battery === undefined || battery === null || battery === '') return false
+  const map = _loadFromStorage(_STORAGE_KEYS.deviceLastBattery) || {}
+  if (map[deviceId] === String(battery)) return true
+  map[deviceId] = String(battery)
+  _saveToStorage(_STORAGE_KEYS.deviceLastBattery, map)
+  return true
+}
+
 /**
  * 强制刷新设备GPS数据（地图TAB无感刷新时调用）
  */
@@ -1142,6 +1175,8 @@ module.exports = {
   getDeviceGpsAll,
   refreshDeviceGpsAll,
   getCachedDeviceGps,
+  getCachedDeviceLastBattery,
+  setCachedDeviceLastBattery,
   getDeviceConfigAll,
   refreshDeviceConfigAll,
   getCachedDeviceConfig,

@@ -231,9 +231,56 @@ Page({
         }
       }
 
-      // 电量仅从同步时间表（device_sync）取，统一归一化为 0~100 显示
+      // 电量：优先从同步时间表（device_sync）取；没有时（如最新上报是定位记录），
+      // 回退解析"定位记录"的 lorastr 第4段（定位与对时的 lorastr 第4段均为电量）
       let battery = ''
-      if (syncInfo && syncInfo.battery) battery = this._formatBatteryPercent(syncInfo.battery)
+      if (syncInfo && syncInfo.battery) {
+        battery = this._formatBatteryPercent(syncInfo.battery)
+      } else if (syncInfo && syncInfo.lorastr) {
+        // 兜底①：sync 表记录存在但 battery 字段为空（该条 lorastr 段数/格式异常）→ 直接从 lorastr 再解析一次
+        const syncBattery = this._parseBatteryFromLorastr(syncInfo.lorastr)
+        if (syncBattery) battery = this._formatBatteryPercent(syncBattery)
+      }
+      let gpsRec = null
+      if (!battery) {
+        // 兜底②：device_gps 缓存表（最新定位记录，地图中心打开过即有缓存）
+        gpsRec = dataCache.getCachedDeviceGps(item.deviceId)
+        if (gpsRec && gpsRec.lorastr) {
+          const gpsBattery = this._parseBatteryFromLorastr(gpsRec.lorastr)
+          if (gpsBattery) battery = this._formatBatteryPercent(gpsBattery)
+        }
+      }
+      if (!battery && lastType === 'gps') {
+        // 兜底③：蓝牙缓存中最新的定位记录（刚通过蓝牙收到、尚未上传服务器）
+        try {
+          const bleRecords = bleManager.getCachedRecords(item.deviceId) || []
+          for (let bi = 0; bi < bleRecords.length; bi++) {
+            const br = bleRecords[bi]
+            if (br.msgType !== '1' && br.msgType !== '5') continue
+            const bb = this._parseBatteryFromLorastr(br.lorastr)
+            if (bb) { battery = this._formatBatteryPercent(bb); break }
+          }
+        } catch (e) { /* 蓝牙缓存读取失败不影响主流程 */ }
+      }
+      // 一旦本次成功拿到电量，写入"最近一次电量"本地缓存，给后续所有来源都拿不到时兜底用
+      // 缓存值是"归一化后"的百分比字符串（如 "99" / "0"），与显示一致；与 _formatBatteryPercent 输出一致即可
+      if (battery) {
+        dataCache.setCachedDeviceLastBattery(item.deviceId, battery)
+      } else {
+        // 兜底④：所有来源都拿不到 → 用本地缓存的"最近一次电量"
+        const lastBattery = dataCache.getCachedDeviceLastBattery(item.deviceId)
+        if (lastBattery) {
+          battery = this._formatBatteryPercent(lastBattery)
+          console.log('[电量] ' + item.deviceId + ' 来自"最近一次电量"缓存: ' + battery)
+        }
+      }
+      // 调试：电量仍缺失时打印各来源原始数据，便于排查（如 v4-12 有对时却无电量）
+      if (!battery) {
+        console.warn('[电量] ' + item.deviceId + ' 无电量 | syncInfo:',
+          syncInfo ? JSON.stringify({ battery: syncInfo.battery, lorastr: syncInfo.lorastr, rawTime: syncInfo.rawTime }) : '无',
+          '| lastType:', lastType || '-',
+          '| gps缓存:', gpsRec ? JSON.stringify({ lorastr: gpsRec.lorastr, rawTime: gpsRec.rawTime }) : '无')
+      }
 
       // 配置：上报间隔（分钟）来自配置表 lorastr 第3段第1项；配置表无此设备 → 不猜测，按未配置处理
       const cfg = (configMapData && configMapData[item.deviceId]) || null
@@ -434,6 +481,17 @@ Page({
     if (isNaN(n)) return raw
     const percent = n > 1 ? Math.round(n) : Math.round(n * 100)
     return String(percent)
+  },
+
+  // 从 lorastr 中解析电量（第4段，索引3），定位/对时格式一致：
+  //   定位 "1|v4-22|26.52968,109.39078|1.0|5.1" → "1.0"
+  //   对时 "2|v3-18|2026/8/10 23:13:33|1.0|4.2|0" → "1.0"
+  // 解析失败返回 ''
+  _parseBatteryFromLorastr(lorastr) {
+    if (!lorastr) return ''
+    const parts = String(lorastr).split(/[｜|]/)
+    if (parts.length > 3 && parts[3] && parts[3] !== '-') return parts[3]
+    return ''
   },
 
   // ========== 时间倒计时（距下次预计上报） ==========
