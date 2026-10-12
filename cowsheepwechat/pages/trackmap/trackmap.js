@@ -1,5 +1,5 @@
 // trackmap.js - 轨迹地图页（接收设备详情传入的GPS数据，红点+连线）
-const { wgs84ToGcj02, parseRoadPoints } = require('../../utils/coord-transform.js')
+const { wgs84ToGcj02, parseRoadPoints, calcDistance } = require('../../utils/coord-transform.js')
 const dataCache = require('../../config/data-cache.js')
 
 Page({
@@ -18,6 +18,9 @@ Page({
     isSatellite: true,
     markers: [],
     polylines: [],
+    // 当前唯一展开气泡的 marker id（-1 表示全部收起），与地图中心设备气泡一致：
+    // 渲染时把该 marker 的 callout.display 切到 'ALWAYS'，其余保持 'BYCLICK'
+    activeCalloutId: -1,
     // 图层切换
     showRoadLayer: false,
     currentLevel: 0,
@@ -97,6 +100,7 @@ Page({
           this._trackData = null
           wx.showToast({ title: '暂无轨迹记录', icon: 'none' })
         }
+        // 地名气泡的 GPS 时间匹配在 _buildPlaceMarkers 中实时计算（不依赖加载顺序）
         this.loadMap()
       },
       fail: (err) => {
@@ -448,6 +452,11 @@ Page({
     const markers = []
     filtered.forEach((row, index) => {
       const { gcj, coord, item } = row
+      // 从 item.time（"2026/10/10 23:05:22" 之类）中只取 HH:mm:ss 部分
+      const tMatch = String(item.time || '').match(/(\d{1,2}:\d{1,2}(?::\d{1,2})?)/)
+      const hms = tMatch ? tMatch[1] : (item.time || '-')
+      // 第三行：距现在多久（如 5分钟前 / 1小时前 / 1天3小时前），与地图中心"上报:"格式一致
+      const agoText = this._formatTimeAgo(item.time || '')
       markers.push({
         id: index,
         latitude: gcj.lat,
@@ -457,9 +466,15 @@ Page({
         title: item.crow_id || item.deviceId || ('点' + (index + 1)),
         callout: {
           content: (item.crow_id ? 'ID:' + item.crow_id : '设备:' + (item.deviceId || '-')) +
-            '\nGPS:' + coord.lat + ',' + coord.lng,
+            '\n' + hms +
+            (agoText && agoText !== '-' ? '\n上报:' + agoText : ''),
           display: 'BYCLICK',
-          textAlign: 'center'
+          textAlign: 'center',
+          // 尺寸与地图中心设备气泡一致（fontSize 13 / padding 8 / borderRadius 6）
+          fontSize: 13,
+          padding: 8,
+          borderRadius: 6,
+          anchorY: -4  // 气泡整体上移 4px（anchorY 向下为正，负值上移）
         },
         label: {
           content: (index + 1) + '',
@@ -586,7 +601,66 @@ Page({
   _applyAllMarkers() {
     const trackMarkers = this._trackMarkers || []
     const placeMarkers = this._placeMarkers || []
-    this.setData({ markers: trackMarkers.concat(placeMarkers) })
+    const activeId = this.data.activeCalloutId
+    // 与地图中心一致：markers 自带 callout，渲染时只按 activeCalloutId 切换 display
+    // 第一行：设备到访该地名时的 GPS 时间（带日期）
+    // 第二行：当前时间 HH:mm:ss（由 _buildPlaceMarkers / onMarkerTap 在需要时写入）
+    const all = [...trackMarkers, ...placeMarkers].map(m => {
+      if (!m.callout) return m
+      return Object.assign({}, m, {
+        callout: Object.assign({}, m.callout, {
+          display: (activeId !== -1 && m.id === activeId) ? 'ALWAYS' : 'BYCLICK'
+        })
+      })
+    })
+    const withCallout = all.filter(m => m.callout).length
+    console.log('[气泡] 重绘 markers=' + all.length + ', 含气泡=' + withCallout +
+      ', activeId=' + activeId + ', 目标=' +
+      (activeId !== -1 ? (all.find(m => m.id === activeId && m.callout) ? '命中' : '未命中') : '无'))
+    this.setData({ markers: all })
+  },
+
+  // 当前时间 HH:mm:ss（无日期），用于气泡第二行
+  _formatNowHms() {
+    const d = new Date()
+    const pad = n => (n < 10 ? '0' + n : '' + n)
+    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+  },
+
+  // ========== 气泡点击：与地图中心 onMarkerTap / onCalloutTap 一致的"切换"逻辑 ==========
+  // 点 marker：把该 marker 的 callout 展开为 ALWAYS；同时用最新的当前时间刷新第二行
+  onMarkerTap(e) {
+    const markerId = e && e.detail ? e.detail.markerId : -1
+    if (markerId === -1) return
+    if (Date.now() - (this._lastCalloutHideTs || 0) < 350) return
+    // 用最新当前时间更新被点击 marker 的 callout.content
+    const placeMarkers = this._placeMarkers || []
+    for (let i = 0; i < placeMarkers.length; i++) {
+      const m = placeMarkers[i]
+      if (m.id === markerId && m.matchTime) {
+        m.callout = Object.assign({}, m.callout, {
+          content: m.matchTime + '\n' + this._formatNowHms()
+        })
+        break
+      }
+    }
+    console.log('[气泡] 点击 markerId=' + markerId +
+      ', 当前 activeCalloutId=' + this.data.activeCalloutId +
+      ', placeMarkers=' + placeMarkers.length +
+      ', 该id有callout=' + !!placeMarkers.find(m => m.id === markerId && m.matchTime))
+    this.setData({ activeCalloutId: markerId }, () => {
+      this._applyAllMarkers()
+    })
+  },
+
+  // 点已展开的气泡：收起
+  onCalloutTap(e) {
+    const markerId = e && e.detail ? e.detail.markerId : -1
+    if (markerId === -1 || markerId !== this.data.activeCalloutId) return
+    this._lastCalloutHideTs = Date.now()
+    this.setData({ activeCalloutId: -1 }, () => {
+      this._applyAllMarkers()
+    })
   },
 
   fetchRoadData() {
@@ -679,43 +753,201 @@ Page({
   },
 
   _buildPlaceMarkers(placeList) {
-    const markers = []
+    const that = this
     const ID_BASE = 90000
+    // 解析坐标，先收集 item 列表
+    const items = []
     placeList.forEach((place, index) => {
       const coord = this._parseSingleGPS(place.gps)
       if (!coord) return
       const gcj = wgs84ToGcj02(coord.lng, coord.lat)
       const name = place.name || place.placeid || '-'
-      markers.push({
-        id: ID_BASE + index,
-        latitude: gcj.lat,
-        longitude: gcj.lng,
-        width: 30,
-        height: 32,
-        iconPath: '/images/place_pin.png',
-        title: name,
-        anchor: { x: 0.5, y: 1 },
-        callout: {
-          content: name + '\n' + coord.lat.toFixed(6) + ',' + coord.lng.toFixed(6),
-          display: 'BYCLICK',
-          textAlign: 'center'
-        },
-        label: {
-          content: name,
-          color: '#C62828',
-          fontSize: 13,
-          bgColor: '#ffffff',
-          borderColor: '#E53935',
-          borderWidth: 1,
-          borderRadius: 4,
-          padding: 2,
-          anchorX: 0,
-          anchorY: -12,
-          textAlign: 'center'
+      // 实时匹配：在设备 GPS 轨迹记录中找"该地名坐标处"的最近一次上报时间
+      // （trackData 与地名数据此时均已就绪，直接计算，不依赖加载顺序）
+      const matchTime = this._findLatestGpsAt(coord.lat, coord.lng)
+      items.push({ id: ID_BASE + index, gcj, name, rawCoord: coord, matchTime })
+    })
+    console.log('[地名] GPS匹配:', items.filter(it => it.matchTime).length, '/', items.length, '个地名有设备到访记录')
+    if (items.length === 0) {
+      this._placeMarkers = []
+      return
+    }
+    // 与地图中心一致：白字+黑描边 + 红点图钉（逐行照搬 pages/map/map.js 同名函数）
+    const markers = []
+    let done = 0
+    items.forEach((item, i) => {
+      this._generatePlaceTextPin(item.name, i, (iconPath, W, H, anchorY) => {
+        if (iconPath) {
+          // marker 自带 callout（与之前可工作版本一致，微信地图对这种结构才稳定刷新）
+          // 第一行：设备到访该地名时的 GPS 时间（带日期）
+          // 第二行：当前时间 HH:mm:ss（打开图层时写入；onMarkerTap 点击时也会刷新）
+          let callout = null
+          if (item.matchTime) {
+            const nowHms = that._formatNowHms()
+            callout = {
+              content: item.matchTime + '\n' + nowHms,
+              display: 'BYCLICK',
+              textAlign: 'center',
+              fontSize: 13,
+              padding: 8,
+              borderRadius: 6,
+              anchorY: -4  // 气泡整体上移 4px（anchorY 向下为正，负值上移）
+            }
+          }
+          markers.push({
+            id: item.id,
+            category: 'place',
+            latitude: item.gcj.lat,
+            longitude: item.gcj.lng,
+            width: W,
+            height: H,
+            iconPath: iconPath,
+            title: item.name,
+            zIndex: 50,
+            // 红点尖端对准坐标点（与地图中心 anchorY 一致 = tipY/H）
+            anchor: { x: 0.5, y: anchorY },
+            callout: callout,
+            matchTime: item.matchTime  // 内部用，onMarkerTap 重新计算 content
+          })
+        }
+        done++
+        if (done === items.length) {
+          console.log('[地名] 生成完成:', markers.length, '个（共', items.length, '个）')
+          that._placeMarkers = markers
+          // canvas 异步渲染完成后再合并到地图上
+          that._applyAllMarkers()
         }
       })
     })
-    console.log('[地名] 构建标记:', markers.length, '个')
-    this._placeMarkers = markers
+  },
+
+  // 把"距上次上报GPS"的时长格式化为相对时间文案，如：刚刚 / 1分钟前 / 1小时前 / 1天3小时前
+  _formatTimeAgo(timeStr) {
+    const ts = this._parseTimeToTs(timeStr)
+    if (!ts) return '-'
+    let diff = Math.floor((Date.now() - ts) / 1000)
+    if (diff < 0) diff = 0
+    if (diff < 60) return '刚刚'
+    const minutes = Math.floor(diff / 60)
+    if (minutes < 60) return minutes + '分钟前'
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return hours + '小时前'
+    const days = Math.floor(hours / 24)
+    const restHours = hours % 24
+    return restHours > 0 ? (days + '天' + restHours + '小时前') : (days + '天前')
+  },
+
+  // 时间字符串 → 毫秒时间戳（兼容 "2026/10/10 23:05:22" / 数字时间戳等）
+  _parseTimeToTs(timeStr) {
+    if (!timeStr) return 0
+    const s = String(timeStr).trim()
+    if (/^\d+$/.test(s)) {
+      const n = parseInt(s, 10)
+      return n > 1e12 ? n : n * 1000
+    }
+    let ts = new Date(s.replace(/\//g, '-').replace(' ', 'T')).getTime()
+    if (isNaN(ts)) {
+      const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/)
+      if (m) ts = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)).getTime()
+    }
+    return (isNaN(ts) || ts <= 0) ? 0 : ts
+  },
+
+  // 在设备 GPS 轨迹记录中查找"距该地名坐标最近"的一次上报时间
+  // GPS 存在漂移，设备到过地名附近时坐标不会精确重合 → 用距离匹配：
+  // 取距地名最近的一条记录，距离不超过 PLACE_MATCH_RADIUS_M（100米）才视为"到访过"
+  // 找不到返回 ''
+  _findLatestGpsAt(lat, lng) {
+    const records = this._trackData || []
+    const RADIUS_M = 100
+    let bestTime = ''
+    let bestDist = Infinity
+    for (let i = 0; i < records.length; i++) {
+      const rec = records[i]
+      if (!rec.gps || rec.gps === '-') continue
+      const parts = String(rec.gps).split(/[｜|,，]\s*/)
+      if (parts.length < 2) continue
+      const rlat = parseFloat(parts[0])
+      const rlng = parseFloat(parts[1])
+      if (isNaN(rlat) || isNaN(rlng)) continue
+      const dist = calcDistance(lat, lng, rlat, rlng)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestTime = rec.time || ''
+      }
+    }
+    if (bestDist <= RADIUS_M) {
+      console.log('[地名] 匹配到 GPS 点: 距离', Math.round(bestDist), '米, 时间', bestTime)
+      return bestTime
+    }
+    return ''
+  },
+
+  // 地名图钉：与 pages/map/map.js 的 _generatePlaceTextPin 完全一致（白字+黑描边+红点图钉，红点尖端对准坐标点）
+  // 该函数是轨迹地图对地图中心显示样式的参考实现，逐行照搬以保证像素级一致。
+  _generatePlaceTextPin(name, idx, cb) {
+    const query = wx.createSelectorQuery()
+    query.select('#placeTextCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) return cb('', 0, 0, 0)
+      const canvas = res[0].node
+      const ctx = canvas.getContext('2d')
+      const dpr = wx.getSystemInfoSync().pixelRatio
+      const fontSize = 13
+      const dotH = 28                    // 红点区高度（与设备/牛图标同规格）
+      const textH = 24                   // 文字区高度
+      const textW = Math.ceil(name.length * fontSize * 1.05) + 10  // 文字宽度估算
+      const W = Math.max(32, textW)
+      const H = textH + dotH
+
+      canvas.width = W * dpr
+      canvas.height = H * dpr
+      ctx.scale(dpr, dpr)
+      ctx.clearRect(0, 0, W, H)
+
+      // ---- 上半部：白字 + 黑色描边 ----
+      ctx.font = 'bold ' + fontSize + 'px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.lineJoin = 'round'
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = 3
+      ctx.strokeText(name, W / 2, textH / 2 + 1)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(name, W / 2, textH / 2 + 1)
+
+      // ---- 下半部：红色定位图钉（圆头尖尾，尖端对准坐标点） ----
+      const cx = W / 2
+      const headCy = textH + 10
+      const headR = 8
+      const tipY = textH + dotH - 2
+
+      ctx.beginPath()
+      ctx.moveTo(cx, headCy - headR)
+      ctx.arc(cx, headCy, headR, -Math.PI / 2, Math.PI / 2 + 0.35, false)
+      ctx.quadraticCurveTo(cx + headR * 0.4, headCy + headR + 2, cx, tipY)
+      ctx.quadraticCurveTo(cx - headR * 0.4, headCy + headR + 2, cx - headR, headCy + headR * 0.35)
+      ctx.arc(cx, headCy, headR, Math.PI / 2 - 0.35, -Math.PI / 2, false)
+      ctx.closePath()
+      ctx.fillStyle = '#E53935'
+      ctx.fill()
+      ctx.strokeStyle = '#C62828'
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      // 中心白点
+      ctx.beginPath()
+      ctx.arc(cx, headCy, 3.5, 0, Math.PI * 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.fill()
+
+      const filePath = (wx.env.USER_DATA_PATH || '') + '/place_' + idx + '.png'
+      wx.canvasToTempFilePath({
+        canvas: canvas,
+        fileType: 'png',
+        filePath: filePath,
+        success: (fileRes) => cb(fileRes.tempFilePath, W, H, tipY / H),
+        fail: () => cb('', 0, 0, 0)
+      })
+    })
   }
 })

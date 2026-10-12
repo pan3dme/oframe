@@ -32,4 +32,7 @@
   </view>
 
   <view class="section-placeholder"></view>
+
+  <!-- 底部当前版本号 -->
+  <view class="version-text" wx:if="{{appVersion}}">当前版本：v{{appVersion}}</view>
 </scroll-view>

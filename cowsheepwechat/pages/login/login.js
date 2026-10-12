@@ -12,16 +12,35 @@ const LAST_LOGIN_KEY = 'last_login'
 
 const dataCache = require('../../config/data-cache.js')
 
+// 当前版本号（与 package.json 保持一致；发布新版本时手动同步更新）
+const APP_VERSION = '1.0.0'
+// 环境标签：develop=开发版 trial=体验版 release=正式版
+const ENV_LABELS = { develop: '开发版', trial: '体验版', release: '' }
+
 Page({
   data: {
     username: '',      // 用户名
     password: '',      // 密码（明文显示，type=text，避免触发 iOS 保存密码提示）
     loginCode: '',     // wx.login 获取的临时凭证 code
     autoLogin: false,  // 是否自动登录（勾选后下次免密进入首页）
-    loading: false
+    loading: false,
+    appVersion: ''     // 登录页底部展示的版本号文案
   },
 
   onLoad() {
+    // 读取当前小程序版本号（用于登录页底部展示）
+    // 正式版取 wx.getAccountInfoSync().miniProgram.version（微信后台上传时填写的版本号）；
+    // 开发版/体验版该字段为空 → 回退到本地 APP_VERSION 常量，并附环境标签
+    try {
+      const acc = wx.getAccountInfoSync && wx.getAccountInfoSync()
+      const mp = (acc && acc.miniProgram) || {}
+      const env = mp.envVersion || 'develop'
+      const v = mp.version || APP_VERSION
+      const envLabel = ENV_LABELS[env] || ''
+      this.setData({ appVersion: envLabel ? (v + '（' + envLabel + '）') : v })
+    } catch (e) {
+      this.setData({ appVersion: APP_VERSION })
+    }
     // 读取自动登录开关状态
     try {
       const autoLogin = wx.getStorageSync(STORAGE_KEY_AUTO_LOGIN)

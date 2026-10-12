@@ -100,3 +100,11 @@ page {
 .section-placeholder {
   height: 40rpx;
 }
+
+/* 底部当前版本号 */
+.version-text {
+  text-align: center;
+  font-size: 24rpx;
+  color: #999999;
+  padding: 40rpx 0 60rpx;
+}
