@@ -76,8 +76,17 @@ Page({
       this._calcDistanceFromMe(gcj.lat, gcj.lng)
       // 查询设备别名（rename），用于气泡第一行"设备（别名）"显示
       this._loadDeviceRename(deviceId, upDateDevice)
+      // 启动气泡"上报:x前"相对时间的老化刷新（每60秒检查，跨档才重绘）
+      this._startAgoTimer()
     } else {
       wx.showToast({ title: '坐标无效', icon: 'none' })
+    }
+  },
+
+  onUnload() {
+    if (this._agoTimer) {
+      clearInterval(this._agoTimer)
+      this._agoTimer = null
     }
   },
 
@@ -141,19 +150,74 @@ Page({
     }, 3000)
   },
 
+  // 把"距上次上报GPS"的时长格式化为相对时间文案，如：刚刚 / 1分钟前 / 1小时前 / 1天3小时前
+  // （与 pages/map/map.js 的 _formatTimeAgo 保持一致）
+  _formatTimeAgo(timeStr) {
+    const ts = this._parseTimeToTs(timeStr)
+    if (!ts) return '-'
+    let diff = Math.floor((Date.now() - ts) / 1000)
+    if (diff < 0) diff = 0
+    if (diff < 60) return '刚刚'
+    const minutes = Math.floor(diff / 60)
+    if (minutes < 60) return minutes + '分钟前'
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return hours + '小时前'
+    const days = Math.floor(hours / 24)
+    const restHours = hours % 24
+    return restHours > 0 ? (days + '天' + restHours + '小时前') : (days + '天前')
+  },
+
+  // 时间字符串 → 毫秒时间戳（兼容 "2026/10/10 23:05:22" / "2026-10-10 23:05:22" / 秒级时间戳）
+  // 解析失败返回 0（iOS 对 "2026/10/10 23:05:22" 直接 new Date 会失败，先规范化）
+  _parseTimeToTs(timeStr) {
+    if (!timeStr) return 0
+    const s = String(timeStr).trim()
+    if (/^\d+$/.test(s)) {
+      const n = parseInt(s, 10)
+      return n > 1e12 ? n : n * 1000
+    }
+    let ts = new Date(s.replace(/\//g, '-').replace(' ', 'T')).getTime()
+    if (isNaN(ts)) {
+      const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/)
+      if (m) ts = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)).getTime()
+    }
+    return (isNaN(ts) || ts <= 0) ? 0 : ts
+  },
+
+  // 启动气泡相对时间老化刷新：每 60 秒检查一次，文案跨档（如 4分钟前→5分钟前）才重绘
+  _startAgoTimer() {
+    if (this._agoTimer) return
+    this._agoTimer = setInterval(() => {
+      if (!this.data.recordTime) return
+      const next = this._formatTimeAgo(this.data.recordTime)
+      if (next !== this._lastAgoText) {
+        this._lastAgoText = next
+        this._applyOverlays()
+      }
+    }, 60000)
+  },
+
   // 统一刷新所有叠加层：设备 marker(0) + 我的蓝点(1) + 虚线 + 线中距离(2) + 道路折线
-  // 设备气泡：第一行 = 设备 +（别名），第二行 = 定位时间
+  // 设备气泡：第一行 = 设备 +（别名），第二行 = 定位时间，第三行 = 距上次上报的相对时间（如 1分钟前，与地图中心一致）
   // 蓝点坐标 = polyline 起点坐标 = 同一份 wx.getLocation 返回值 → 严格对齐，0 位差
   _applyOverlays() {
     const { deviceId } = this.data
     const markers = []
     const polylines = []
 
-    // 设备 marker（绿色图钉）；气泡两行内容 + 可点击开关
+    // 设备 marker（绿色图钉）；气泡内容 + 可点击开关
     if (this._markerGcj) {
       const alias = this._deviceRename || ''
       const calloutLines = [(deviceId || '-') + (alias ? '（' + alias + '）' : '')]
-      if (this.data.recordTime) calloutLines.push(this.data.recordTime)
+      if (this.data.recordTime) {
+        calloutLines.push(this.data.recordTime)
+        // 第三行：距离上次上报 GPS 的相对时间（与地图中心气泡一致）
+        const agoText = this._formatTimeAgo(this.data.recordTime)
+        if (agoText !== '-') {
+          calloutLines.push('上报:' + agoText)
+          this._lastAgoText = agoText
+        }
+      }
       markers.push({
         id: 0,
         latitude: this._markerGcj.lat,

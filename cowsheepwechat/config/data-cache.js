@@ -597,6 +597,20 @@ function getDeviceGpsAll(callback, forceRefresh) {
 }
 
 /**
+ * 取指定设备的 device_gps 缓存记录（按 deviceId 匹配）
+ * 内存缓存优先，内存为空时回退本地存储；纯本地读，不发网络请求
+ * @param {string} deviceId
+ * @returns {object|null} { deviceId, lorastr, rawTime, upDateDevice, lat, lng, ts } 或 null
+ */
+function getCachedDeviceGps(deviceId) {
+  if (!deviceId) return null
+  let cache = gd().deviceGpsCache
+  if (!cache || !cache.gpsList) cache = _loadFromStorage(_STORAGE_KEYS.deviceGpsCache)
+  const list = (cache && cache.gpsList) || []
+  return list.find(r => r && r.deviceId === deviceId) || null
+}
+
+/**
  * 强制刷新设备GPS数据（地图TAB无感刷新时调用）
  */
 function refreshDeviceGpsAll(callback) {
@@ -1127,6 +1141,7 @@ module.exports = {
   getCachedDeviceSyncRecord,
   getDeviceGpsAll,
   refreshDeviceGpsAll,
+  getCachedDeviceGps,
   getDeviceConfigAll,
   refreshDeviceConfigAll,
   getCachedDeviceConfig,

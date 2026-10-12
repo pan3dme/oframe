@@ -1080,9 +1080,82 @@ Page({
   },
 
   // ========== 获取定位（快捷DTU指令） ==========
+  // 优先从 device_gps 缓存表（getDeviceGpsAll）取最新定位；
+  // 若该设备在缓存中有"新鲜"GPS（时间未超过当前应生效的上报间隔），直接跳定位地图页展示；
+  // 否则才发送 upgps DTU 指令让设备立即上报一次。
   onGetLocationTap() {
     const deviceId = this.data.deviceId
     if (!deviceId) return
+    const that = this
+    // 1) 先尝试从 device_gps 缓存表中读取该设备的最新定位坐标
+    //    有缓存就回填（内存→本地），无缓存再走一次网络，确保最近一次上报能被读到
+    this._tryUseCachedGps(deviceId, (rec) => {
+      if (rec) {
+        // 已有新鲜定位 → 直接跳到定位地图页
+        wx.showToast({ title: '使用最近定位 ' + that._formatGpsAge(rec.ts), icon: 'none', duration: 1500 })
+        wx.navigateTo({
+          url: '/pages/location-map/location-map' +
+            '?lat=' + rec.lat +
+            '&lng=' + rec.lng +
+            '&deviceId=' + encodeURIComponent(deviceId) +
+            '&time=' + encodeURIComponent(rec.rawTime || '') +
+            '&lorastr=' + encodeURIComponent(rec.lorastr || '') +
+            '&upDateDevice=' + encodeURIComponent(rec.upDateDevice || '')
+        })
+        return
+      }
+      // 2) 缓存中无该设备/记录已过期 → 发送 upgps DTU 指令（保持原行为）
+      that._sendUpgpsByDtu(deviceId)
+    })
+  },
+
+  // 尝试从 device_gps 缓存表中获取该设备"新鲜"的定位（同步读取，不发网络）
+  // callback(coord|null)
+  _tryUseCachedGps(deviceId, callback) {
+    // 优先读 getDeviceGpsAll 缓存表（之前打开地图中心时已写入的定位坐标）；
+    // 走纯本地读：内存 → 本地存储回退，不会触发网络请求
+    const rec = dataCache.getCachedDeviceGps(deviceId)
+    if (!rec || !rec.lat || !rec.lng || !rec.ts) {
+      console.log('[时时定位] 缓存中无该设备定位:', deviceId)
+      callback(null)
+      return
+    }
+    // 新鲜度判断：当前应生效的上报间隔（工作周期用 reportInterval, 大周期用 mainPeriodMin），
+    // 都取不到则按 30 分钟兜底。处于该窗口内的记录视为"新鲜"，不必再发指令
+    const cfg = dataCache.getCachedDeviceConfig(deviceId) || {}
+    const inPowerOn = !cfg.isDormant
+    const periodMin = inPowerOn
+      ? (cfg.reportInterval || 30)
+      : (cfg.mainPeriodMin || 60)
+    const thresholdMs = periodMin * 60 * 1000
+    if (Date.now() - rec.ts <= thresholdMs) {
+      console.log('[时时定位] 命中缓存 GPS:', deviceId, 'lat=' + rec.lat, 'lng=' + rec.lng,
+        '上报于', rec.rawTime, '已过', this._formatGpsAge(rec.ts))
+      callback(rec)
+    } else {
+      console.log('[时时定位] 缓存 GPS 已过期:', deviceId, '已过', this._formatGpsAge(rec.ts),
+        '阈值', periodMin, '分钟')
+      callback(null)
+    }
+  },
+
+  // 把"距上次上报"的毫秒数格式化为短文本（用于 toast/控制台日志）
+  _formatGpsAge(ts) {
+    if (!ts) return '未知时间'
+    const diff = Math.floor((Date.now() - ts) / 1000)
+    if (diff < 0) diff = 0
+    if (diff < 60) return '刚刚'
+    const minutes = Math.floor(diff / 60)
+    if (minutes < 60) return minutes + '分钟前'
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return hours + '小时前'
+    const days = Math.floor(hours / 24)
+    const restHours = hours % 24
+    return restHours > 0 ? (days + '天' + restHours + '小时前') : (days + '天前')
+  },
+
+  // 走原 upgps DTU 指令流程（缓存没有/已过期时调用）
+  _sendUpgpsByDtu(deviceId) {
     const that = this
     // 页面内存中的设备配置 lorastr（网络已返回/缓存预填），供工作周期/大周期判断
     const configLorastr = (this.data.deviceConfig && this.data.deviceConfig.lorastr) ||

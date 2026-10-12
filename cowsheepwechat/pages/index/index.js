@@ -986,12 +986,17 @@ Page({
   },
 
   // ========== 实时定位：取该设备上报坐标 → 打开单设备定位地图（类似地图中心） ==========
+  // 优先级：① device_gps 缓存表（getDeviceGpsAll，地图中心打开过就有）→ ② 首页 deviceInfo.lorastr → ③ 首页已加载记录
   onRealtimeLocateTap() {
     const deviceId = this.data.selectedDeviceId
     if (!deviceId) return
     const that = this
     // 打开单设备定位地图，仅以该设备坐标为中心显示
     const open = (coord, rawTime, lorastr, upDateDevice) => {
+      console.log('[实时定位] 打开定位地图:', deviceId,
+        'lat=' + coord.lat, 'lng=' + coord.lng,
+        'time=' + (rawTime || '-'), 'upDateDevice=' + (upDateDevice || '-'),
+        'lorastr=' + (lorastr || '-'))
       wx.navigateTo({
         url: '/pages/location-map/location-map' +
           '?lat=' + coord.lat +
@@ -1003,25 +1008,46 @@ Page({
       })
     }
 
+    // ① 优先读 getDeviceGpsAll 缓存表中该设备的定位坐标（之前打开过地图中心时已缓存）
+    const gpsRec = dataCache.getCachedDeviceGps(deviceId)
+    console.log('[实时定位] device_gps 缓存:', gpsRec
+      ? ('deviceId=' + gpsRec.deviceId + ' lat=' + gpsRec.lat + ' lng=' + gpsRec.lng +
+         ' time=' + (gpsRec.rawTime || '-') + ' ts=' + (gpsRec.ts || '-') +
+         ' lorastr=' + (gpsRec.lorastr || '-'))
+      : ('缓存中无设备 ' + deviceId + ' 的定位记录'))
+    if (gpsRec && gpsRec.lat && gpsRec.lng) {
+      open({ lat: gpsRec.lat, lng: gpsRec.lng }, gpsRec.rawTime || '', gpsRec.lorastr || '', gpsRec.upDateDevice || '')
+      return
+    }
+
+    // ② 首页已加载的最新记录坐标
     const info = that.data.deviceInfo || {}
-    // 优先首页已加载的最新记录坐标
     const lorastr = info.lorastr || ''
     const rawTime = info.rawTime || ''
     const coord = that._parseCoordFromLora(lorastr)
+    console.log('[实时定位] deviceInfo.lorastr:', lorastr || '-', '→ 解析坐标:', coord ? ('lat=' + coord.lat + ' lng=' + coord.lng) : '无')
     if (coord) {
       open(coord, rawTime, lorastr, '')
       return
     }
-    // 兜底：从首页已加载的定位/跟踪记录中取最新一条
+    // ③ 兜底：从首页已加载的定位/跟踪记录中取最新一条
     const list = that.data.recordList || []
+    console.log('[实时定位] recordList 共', list.length, '条，逐条解析坐标...')
     for (let i = 0; i < list.length; i++) {
       const r = list[i]
       const c = (r.msgType === '1' || r.msgType === '5') ? that._parseCoordFromLora(r.lorastr) : null
+      console.log('[实时定位] record[' + i + '] msgType=' + (r.msgType || '-') +
+        ' time=' + (r.rawTime || '-') + ' lorastr=' + (r.lorastr || '-') +
+        ' → 坐标:', c ? ('lat=' + c.lat + ' lng=' + c.lng) : '无')
       if (c) {
         open(c, r.rawTime || '', r.lorastr || '', r.upDateDevice || '')
         return
       }
     }
+    console.warn('[实时定位] 所有来源均无有效坐标:', deviceId,
+      '| device_gps缓存:', !!gpsRec,
+      '| deviceInfo.lorastr:', lorastr || '-',
+      '| recordList:', list.length, '条')
     wx.showToast({ title: '该设备暂无有效定位点，请稍后再试', icon: 'none', duration: 2500 })
   },
 
