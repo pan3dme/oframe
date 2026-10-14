@@ -62,6 +62,7 @@
 CAN_HandleTypeDef hcan;
 I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart3;  // USART3 用于 DTU 通信
 
 /* USER CODE BEGIN PV */
 // PB15 (LED1) 接收指示：收到LoRa数据时亮500ms
@@ -80,14 +81,20 @@ static uint8_t  prev_rx_size = 0;           // 上次接收数据的长度
 
 extern struct RxDoneMsg RxDoneParams;  // 外部声明：接收完成时的消息结构体（在驱动中定义）
 
+/* DTU (USART3) 接收缓冲区 */
+#define DTU_RX_BUF_SIZE  256
+static uint8_t  dtuRxBuf[DTU_RX_BUF_SIZE];  // DTU 接收缓冲区
+static uint16_t dtuRxLen = 0;               // 当前接收到的数据长度
+static uint32_t dtuLastRxTick = 0;          // 上次收到字节的时间戳（用于超时判断）
+static uint32_t dtuCsqTick = 0;             // nettime 查询定时器：记录上次发送时间
 
 /* USER CODE END PV */
-
 /* Private function prototypes -----------------------------------------------*/
 // 系统函数声明
 void SystemClock_Config(void);       // 系统时钟配置函数
 static void MX_GPIO_Init(void);      // GPIO 初始化函数
 static void MX_USART1_UART_Init(void); // USART1 初始化（调试串口）
+static void MX_USART3_UART_Init(void); // USART3 初始化（DTU 通信）
 static void MX_NVIC_Init(void);      // NVIC 中断控制器初始化
 
 /* USER CODE BEGIN PFP */
@@ -315,6 +322,7 @@ int main(void)
   /* 初始化所有配置的外设 */
   MX_GPIO_Init();           // GPIO 初始化（LED、按键、LoRa SPI 引脚）
   MX_USART1_UART_Init();    // USART1 初始化（调试串口，115200 波特率）
+  MX_USART3_UART_Init();    // USART3 初始化（DTU 通信，115200 波特率）
 
   /* 初始化 NVIC 中断控制器（LoRa IRQ 使用 PA2 EXTI） */
   MX_NVIC_Init();
@@ -322,6 +330,11 @@ int main(void)
 
   // 打印启动信息
   printf("\r\n===== LoRa Receiver Start =====\r\n");
+  printf("DTU UART (USART3): PB10=TX, PB11=RX, 115200 8N1\r\n");
+  printf("USART3 CR1=0x%04X CR2=0x%04X CR3=0x%04X BRR=0x%04X SR=0x%04X\r\n",
+         (uint16_t)huart3.Instance->CR1, (uint16_t)huart3.Instance->CR2,
+         (uint16_t)huart3.Instance->CR3, (uint16_t)huart3.Instance->BRR,
+         (uint16_t)huart3.Instance->SR);
   printf_logo();  // 显示工程信息 Logo
 
   HAL_Delay(1);  // 短暂延时，等待串口输出完成
@@ -369,6 +382,9 @@ int main(void)
 
   enter_rx_mode();  // 默认进入接收模式
 
+  /* 记录启动时间，用于 5 秒后向 DTU 发送 CSQ 查询 */
+  dtuCsqTick = HAL_GetTick();
+
   /* USER CODE END 2 */
 
   /* 无限循环 */
@@ -402,7 +418,33 @@ int main(void)
     }
 
 
-    HAL_Delay(10);  // 延时 10ms，降低 CPU 占用率
+    /* DTU 一帧完成判断：收到数据后 500ms 无新字节 或 缓冲区满 */
+    if ((dtuRxLen > 0 && HAL_GetTick() - dtuLastRxTick > 500) || dtuRxLen >= DTU_RX_BUF_SIZE)
+    {
+      printf("[DTU RX]: ");
+      for (uint16_t i = 0; i < dtuRxLen; i++)
+      {
+        if (dtuRxBuf[i] >= 0x20 && dtuRxBuf[i] < 0x7F)
+          printf("%c", dtuRxBuf[i]);
+      }
+      printf("\r\n");
+      dtuRxLen = 0;
+      /* 重新启动中断接收 */
+      HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
+    }
+
+    /* 每 10 秒向 DTU 发送 csq + nettime 查询 */
+    if (HAL_GetTick() - dtuCsqTick >= 10000)
+    {
+      dtuCsqTick = HAL_GetTick();
+      uint8_t cmd1[] = "config,get,csq\r\n";
+      HAL_UART_Transmit(&huart3, cmd1, sizeof(cmd1) - 1, 1000);
+      HAL_Delay(300);  // 等待 csq 响应
+      uint8_t cmd2[] = "config,get,nettime\r\n";
+      HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
+    }
+
+    HAL_Delay(1);  // 短延时
   }
   /* USER CODE END 3 */
 }
@@ -585,6 +627,10 @@ static void MX_NVIC_Init(void)
   /* EXTI2 中断用于 LoRa IRQ (PA2) */
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);   // 设置最高优先级
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);           // 使能 EXTI2 中断
+
+  /* USART3 中断用于 DTU 数据接收 */
+  HAL_NVIC_SetPriority(USART3_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
@@ -638,6 +684,51 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 }
 
 /* USER CODE END 4 */
+
+/**
+  * @brief USART3 Initialization Function (DTU 通信)
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* 启动中断接收，每个字节触发一次回调 */
+  HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
+}
+
+/**
+  * @brief  USART3 接收完成回调（HAL 库弱函数重写）
+  * @note   每收到 1 字节触发一次，记录时间戳并续接缓冲区
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3)
+  {
+    dtuRxLen++;
+    dtuLastRxTick = HAL_GetTick();  // 记录收到字节的时间
+    if (dtuRxLen < DTU_RX_BUF_SIZE)
+    {
+      HAL_UART_Receive_IT(&huart3, &dtuRxBuf[dtuRxLen], 1);
+    }
+    else
+    {
+      dtuRxLen = 0;  // 缓冲区满，丢弃
+    }
+  }
+}
 
 /**
   * @brief  错误处理函数
