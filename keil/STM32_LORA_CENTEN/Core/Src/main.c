@@ -39,6 +39,15 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+/* DTU 发送队列：环形缓冲区，每条消息最大 256 字节，最多 16 条 */
+#define DTU_QUEUE_SIZE     5
+#define DTU_MSG_MAX_LEN    256
+
+typedef struct {
+  char   buf[DTU_MSG_MAX_LEN];  // 消息内容
+  uint16_t len;                 // 消息长度
+} DtuQueueItem_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -102,6 +111,14 @@ static int dtuCsqRssi = 0;                  // DTU CSQ 信号强度值
 static uint32_t rtcSendCount = 0;           // 对时上报计数器
 static int batteryValue = 85;               // 电池电量（%）
 static char configStr[32] = "30,0M";          // 配置信息字符串（可通过DTU修改）
+static uint8_t configBootSent = 0;           // 开机配置是否已上报（0=未上报, 1=已上报）
+
+/* DTU 发送队列变量 */
+static DtuQueueItem_t dtuQueue[DTU_QUEUE_SIZE];
+static uint8_t dtuQueueHead = 0;   // 出队索引
+static uint8_t dtuQueueTail = 0;   // 入队索引
+static uint8_t dtuQueueCount = 0;  // 当前队列中的消息数量
+static uint32_t dtuLastSendTick = 0;  // 上次发送时间戳（用于 1 秒间隔控制）
 
 /* Flash 配置存储 */
 #define CONFIG_FLASH_ADDR  0x0800FC00  // Flash 最后一页（STM32F103C8T6 64KB）
@@ -122,12 +139,15 @@ static void printf_logo(void);       // 打印工程信息 Logo
 static void OnSlave(void);           // LoRa 从机接收处理函数
 static void enter_rx_mode(void);     // 切换到接收模式
 static void do_tx_send(void);        // 发送模式处理函数
-static void sendToDtu(const char *loraStr, int rssi, int snr);  // 统一上报DTU（JSON格式）
+static void sendToDtu(const char *loraStr, int rssi, int snr);  // 统一上报DTU（JSON格式，入队）
+static void enqueueDtuMsg(const char *msg, int len);  // 将消息加入 DTU 发送队列
+static void processDtuQueue(void);  // 处理 DTU 发送队列（每秒发一条）
 static void loadConfigFromFlash(void);      // 从 Flash 加载配置
 static void saveConfigToFlash(const char *str);  // 保存配置到 Flash
 static void parseDtuCommand(char *buf);      // JSON 解析 DTU 下发指令
 static uint32_t getCurrentTimestamp(void);   // 获取当前实时时间戳
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int min, int sec);  // 日期转Unix时间戳
+static uint32_t getConfigIntervalMs(void);   // 从 configStr 解析对时间隔（毫秒）
 
 /* USER CODE END PFP */
 
@@ -389,6 +409,20 @@ static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int 
 }
 
 /**
+  * @brief  从 configStr 解析对时间隔（毫秒）
+  * @note   configStr 格式如 "30,0M"，取逗号前的数字作为分钟数
+  *         限制范围：5~60 分钟，超出则按边界值处理
+  * @retval 间隔时间（毫秒）
+  */
+static uint32_t getConfigIntervalMs(void)
+{
+  int minutes = atoi(configStr);
+  if (minutes < 5)  minutes = 5;
+  if (minutes > 60) minutes = 60;
+  return (uint32_t)minutes * 60 * 1000;
+}
+
+/**
   * @brief  获取当前实时时间戳（基于网络对时 + HAL 计时）
   * @note   对时后以 dtuTimestamp 为基准，加上经过的秒数
   */
@@ -452,14 +486,66 @@ static void saveConfigToFlash(const char *str)
 }
 
 /**
+  * @brief  将消息加入 DTU 发送队列（环形缓冲区）
+  * @param  msg: 消息数据指针
+  * @param  len: 消息长度
+  * @note   队列满时丢弃最早的消息（覆盖队头）
+  */
+static void enqueueDtuMsg(const char *msg, int len)
+{
+  if (len <= 0 || len >= DTU_MSG_MAX_LEN) return;
+
+  __disable_irq();
+  if (dtuQueueCount >= DTU_QUEUE_SIZE)
+  {
+    // 队列满，丢弃最早的一条（队头前移）
+    dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
+    dtuQueueCount--;
+    printf("[DTU Queue] 队列满，丢弃旧消息\r\n");
+  }
+  // 拷贝消息到队尾
+  memcpy(dtuQueue[dtuQueueTail].buf, msg, len);
+  dtuQueue[dtuQueueTail].buf[len] = '\0';
+  dtuQueue[dtuQueueTail].len = (uint16_t)len;
+  dtuQueueTail = (dtuQueueTail + 1) % DTU_QUEUE_SIZE;
+  dtuQueueCount++;
+  __enable_irq();
+}
+
+/**
+  * @brief  处理 DTU 发送队列：每 1 秒从队头取出一条消息发送
+  * @note   在主循环中调用，非阻塞
+  */
+static void processDtuQueue(void)
+{
+  if (dtuQueueCount == 0) return;
+
+  if (HAL_GetTick() - dtuLastSendTick >= 100)
+  {
+    dtuLastSendTick = HAL_GetTick();
+
+    // 从队头取出一条消息
+    DtuQueueItem_t *item = &dtuQueue[dtuQueueHead];
+    HAL_UART_Transmit(&huart3, (uint8_t *)item->buf, item->len, 1000);
+    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
+    printf("[DTU 队列发送] %s\r\n", item->buf);
+
+    // 出队
+    dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
+    dtuQueueCount--;
+  }
+}
+
+/**
   * @brief  统一上报数据给 DTU（JSON格式）
+  * @note   数据先入队，由 processDtuQueue() 每秒发送一条
   * @param  loraStr: lorainfo 字段内容
   * @param  rssi:    RSSI 信号强度
   * @param  snr:     SNR 信噪比
   */
 static void sendToDtu(const char *loraStr, int rssi, int snr)
 {
-  static char txBuf[256];
+  char txBuf[DTU_MSG_MAX_LEN];
   int len = snprintf(txBuf, sizeof(txBuf),
       "{"
       "\"version\":\"1.0\","
@@ -476,9 +562,8 @@ static void sendToDtu(const char *loraStr, int rssi, int snr)
 
   if (len > 0 && len < (int)sizeof(txBuf))
   {
-    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
-    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
-    printf("[DTU 上报] %s\r\n", txBuf);
+    enqueueDtuMsg(txBuf, len);
+    printf("[DTU 入队] 队列=%d/%d\r\n", dtuQueueCount, DTU_QUEUE_SIZE);
   }
 }
 
@@ -761,6 +846,9 @@ int main(void)
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
     }
 
+    /* DTU 发送队列处理：每秒从队列取出一条消息发送 */
+    processDtuQueue();
+
     /* 根据当前工作模式执行相应处理 */
     switch (workMode)
     {
@@ -818,13 +906,16 @@ int main(void)
           dtuSyncTick = HAL_GetTick();  // 记录对时时刻
           printf("[DTU] Unix timestamp: %lu\r\n", (unsigned long)dtuTimestamp);
           dtuTimeValid = 1;  // 标记网络时间已获取
-          printf("[DTU] 网络时间获取成功，切换为10分钟对时\r\n");
+          printf("[DTU] 网络时间获取成功，切换为%lu分钟对时\r\n", (unsigned long)(getConfigIntervalMs() / 60000));
 
-          // 获取到正确时间后，立即上报一次对时信息
+          // 获取到正确时间后，立即上报一次对时信息（入队，由队列控制间隔）
           sendTimeSyncToDtu();
-          HAL_Delay(1000);  // 间隔 1 秒，避免 DTU 无法识别
-          // 开机网络正常后，上报一次配置信息
-          sendConfigToDtu();
+          // 开机后首次获取到网络时间，上报一次配置信息（仅上报一次）
+          if (!configBootSent)
+          {
+            configBootSent = 1;
+            sendConfigToDtu();
+          }
         }
       }
 
@@ -842,9 +933,9 @@ int main(void)
 
     /* 向 DTU 发送 csq + nettime 查询
      * 未获取到时间前：每 5 秒查询一次
-     * 获取到时间后：每 10 分钟查询一次 */
+     * 获取到时间后：由 configStr 配置决定（默认 30 分钟，范围 5~60 分钟） */
     {
-      uint32_t queryInterval = dtuTimeValid ? 600000 : 5000;
+      uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
       if (HAL_GetTick() - dtuCsqTick >= queryInterval)
       {
         dtuCsqTick = HAL_GetTick();
