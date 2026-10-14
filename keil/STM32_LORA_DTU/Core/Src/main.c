@@ -421,13 +421,51 @@ int main(void)
     /* DTU 一帧完成判断：收到数据后 500ms 无新字节 或 缓冲区满 */
     if ((dtuRxLen > 0 && HAL_GetTick() - dtuLastRxTick > 500) || dtuRxLen >= DTU_RX_BUF_SIZE)
     {
-      printf("[DTU RX]: ");
-      for (uint16_t i = 0; i < dtuRxLen; i++)
+      /* 确保字符串结尾 */
+      if (dtuRxLen < DTU_RX_BUF_SIZE)
+        dtuRxBuf[dtuRxLen] = '\0';
+      else
+        dtuRxBuf[DTU_RX_BUF_SIZE - 1] = '\0';
+
+      char *pBuf = (char *)dtuRxBuf;
+
+      /* 解析 CSQ 信号质量: config,csq,ok,<value> */
+      char *pCsq = strstr(pBuf, "config,csq,ok,");
+      if (pCsq)
       {
-        if (dtuRxBuf[i] >= 0x20 && dtuRxBuf[i] < 0x7F)
-          printf("%c", dtuRxBuf[i]);
+        int csqVal = 0;
+        if (sscanf(pCsq, "config,csq,ok,%d", &csqVal) == 1)
+        {
+          int percent = csqVal * 100 / 31;
+          printf("[DTU] 信号强度: %d (%d%%)\r\n", csqVal, percent);
+        }
       }
-      printf("\r\n");
+
+      /* 解析网络时间: config,nettime,ok,年,月,日,时,分,秒,毫秒 */
+      char *pNet = strstr(pBuf, "config,nettime,ok,");
+      if (pNet)
+      {
+        int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
+        if (sscanf(pNet, "config,nettime,ok,%d,%d,%d,%d,%d,%d,%d",
+                   &y, &mo, &d, &h, &mi, &s, &ms) >= 6)
+        {
+          printf("[DTU] 网络时间: %04d/%02d/%02d %02d:%02d:%02d\r\n",
+                 y, mo, d, h, mi, s);
+        }
+      }
+
+      /* 都没匹配到，原样打印明文 */
+      if (!pCsq && !pNet)
+      {
+        printf("[DTU RX]: ");
+        for (uint16_t i = 0; i < dtuRxLen; i++)
+        {
+          if (dtuRxBuf[i] >= 0x20 && dtuRxBuf[i] < 0x7F)
+            printf("%c", dtuRxBuf[i]);
+        }
+        printf("\r\n");
+      }
+
       dtuRxLen = 0;
       /* 重新启动中断接收 */
       HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
