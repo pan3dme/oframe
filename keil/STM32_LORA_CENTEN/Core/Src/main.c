@@ -122,9 +122,7 @@ static void printf_logo(void);       // 打印工程信息 Logo
 static void OnSlave(void);           // LoRa 从机接收处理函数
 static void enter_rx_mode(void);     // 切换到接收模式
 static void do_tx_send(void);        // 发送模式处理函数
-static void sendGpsToDtu(const char *loraStr, int rssi, int snr);  // GPS信息上报DTU
-static void sendTimeSyncToDtu(void);        // 对时信息上报DTU
-static void sendConfigToDtu(void);          // 配置信息上报DTU
+static void sendToDtu(const char *loraStr, int rssi, int snr);  // 统一上报DTU（JSON格式）
 static void loadConfigFromFlash(void);      // 从 Flash 加载配置
 static void saveConfigToFlash(const char *str);  // 保存配置到 Flash
 static void parseDtuCommand(char *buf);      // JSON 解析 DTU 下发指令
@@ -253,21 +251,41 @@ static void OnSlave(void)
 
     if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME)
     {
-      // 上报给 DTU
-      sendGpsToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+      char reportBuf[RX_LEN];
+
+      if (msgType == MSG_TYPE_TIME)
+      {
+        // 调用 common 函数替换时间字段（仅用于上报 DTU）
+        int ret = common_replaceTimeSegment((char *)local_buf, reportBuf, sizeof(reportBuf),
+                                            getCurrentTimestamp(), NULL);
+        if (ret == 0)
+        {
+          printf("[LoRa RX] Replaced: %s\r\n", reportBuf);
+          sendToDtu(reportBuf, local_rssi - 256, (int)local_snr);
+        }
+        else
+        {
+          sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+        }
+      }
+      else
+      {
+        // MSG_TYPE_GPS: 直接上报原始数据
+        sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+      }
 
       // 延时 800ms 后下发对时信息
       HAL_Delay(800);
 
-      // 构造下发数据: 4|deviceName|timestamp|
+      // 构造下发数据: 4|deviceName|timestamp| （使用 STM32 实时时间戳）
       char txData[64];
-      int txLen = snprintf(txData, sizeof(txData), "%d|%s|%lu|",
-                           MSG_TYPE_SYN_TIME, deviceName, (unsigned long)getCurrentTimestamp());
+      int txLen = snprintf(txData, sizeof(txData), "%d|%lu|%s|",
+                           MSG_TYPE_SYN_TIME, (unsigned long)getCurrentTimestamp(), deviceName);
 
       // 发送 LoRa 数据
       uint32_t tx_time = 0;
       rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-      printf("[LoRa TX] %s\r\n", txData);
+      printf("[LoRa 下发对时] %s\r\n", txData);
 
       // 等待发送完成
       uint32_t waitStart = HAL_GetTick();
@@ -276,6 +294,12 @@ static void OnSlave(void)
         if (HAL_GetTick() - waitStart > 3000) break;  // 3秒超时保护
       }
       rf_set_transmit_flag(RADIO_FLAG_IDLE);
+    }
+
+    /* MSG_TYPE_CONFIG: 直接上报原始数据，不对时 */
+    if (msgType == MSG_TYPE_CONFIG)
+    {
+      sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
     }
 
     rf_enter_single_timeout_rx(15000);  // 重新进入接收模式，超时 15 秒
@@ -349,14 +373,15 @@ static void do_tx_send(void)
   */
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int min, int sec)
 {
-  // 每月天数累加（非闰年）
   static const int daysBeforeMonth[] = {0,0,31,59,90,120,151,181,212,243,273,304,334};
-  int leapYears;
   uint32_t days, timestamp;
+  int y;
 
-  year -= 1900;
-  leapYears = ((year + 69) / 4) - ((year + 69) / 100) + ((year + 369) / 400);
-  days = (uint32_t)(year - 70) * 365 + leapYears + daysBeforeMonth[month] + day - 1;
+  // 计算从 1970-01-01 到指定日期的天数
+  y = year - 1;
+  days = (uint32_t)(year - 1970) * 365
+       + (y/4 - y/100 + y/400) - (1969/4 - 1969/100 + 1969/400)
+       + daysBeforeMonth[month] + day - 1;
   if (month > 2 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)))
     days++;
   timestamp = days * 86400UL + (uint32_t)hour * 3600 + (uint32_t)min * 60 + (uint32_t)sec;
@@ -427,13 +452,12 @@ static void saveConfigToFlash(const char *str)
 }
 
 /**
-  * @brief  将LoRa收到的GPS信息通过DTU串口上报（JSON格式）
-  * @param  loraStr: LoRa 原始载荷字符串（如 "1|v4-88|26.12345,109.54321|"）
-  * @param  rssi:    接收信号强度 (dBm)
-  * @param  snr:     信噪比 (dB)
-  * @retval None
+  * @brief  统一上报数据给 DTU（JSON格式）
+  * @param  loraStr: lorainfo 字段内容
+  * @param  rssi:    RSSI 信号强度
+  * @param  snr:     SNR 信噪比
   */
-static void sendGpsToDtu(const char *loraStr, int rssi, int snr)
+static void sendToDtu(const char *loraStr, int rssi, int snr)
 {
   static char txBuf[256];
   int len = snprintf(txBuf, sizeof(txBuf),
@@ -454,12 +478,12 @@ static void sendGpsToDtu(const char *loraStr, int rssi, int snr)
   {
     HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
     HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
-    printf("[DTU TX] %s\r\n", txBuf);
+    printf("[DTU 上报] %s\r\n", txBuf);
   }
 }
 
 /**
-  * @brief  获取到网络时间后，上报一次对时信息给 DTU（JSON格式）
+  * @brief  获取到网络时间后，上报一次对时信息给 DTU
   * @note   数据格式: 2|deviceName|timestamp|battery|count
   */
 static void sendTimeSyncToDtu(void)
@@ -470,32 +494,11 @@ static void sendTimeSyncToDtu(void)
            (unsigned long)getCurrentTimestamp(),
            batteryValue,
            (unsigned long)rtcSendCount++);
-
-  static char txBuf[256];
-  int len = snprintf(txBuf, sizeof(txBuf),
-      "{"
-      "\"version\":\"1.0\","
-      "\"method\":\"thing.event.property.post\","
-      "\"params\":{"
-      "\"lorainfo\":\"%s\","
-      "\"upDateDevice\":\"%s\","
-      "\"tm\":%lu,"
-      "\"rssi\":%d,"
-      "\"snr\":0"
-      "}"
-      "}",
-      dataStr, (char *)deviceName, (unsigned long)getCurrentTimestamp(), dtuCsqRssi);
-
-  if (len > 0 && len < (int)sizeof(txBuf))
-  {
-    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
-    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
-    printf("[DTU TX] %s\r\n", txBuf);
-  }
+  sendToDtu(dataStr, dtuCsqRssi, 0);
 }
 
 /**
-  * @brief  开机网络正常后，上报一次配置信息给 DTU（JSON格式）
+  * @brief  开机网络正常后，上报一次配置信息给 DTU
   * @note   数据格式: 6|deviceName|config_str|count
   */
 static void sendConfigToDtu(void)
@@ -505,28 +508,7 @@ static void sendConfigToDtu(void)
            MSG_TYPE_CONFIG, deviceName,
            configStr,
            (unsigned long)rtcSendCount++);
-
-  static char txBuf[256];
-  int len = snprintf(txBuf, sizeof(txBuf),
-      "{"
-      "\"version\":\"1.0\","
-      "\"method\":\"thing.event.property.post\","
-      "\"params\":{"
-      "\"lorainfo\":\"%s\","
-      "\"upDateDevice\":\"%s\","
-      "\"tm\":%lu,"
-      "\"rssi\":%d,"
-      "\"snr\":0"
-      "}"
-      "}",
-      dataStr, (char *)deviceName, (unsigned long)getCurrentTimestamp(), dtuCsqRssi);
-
-  if (len > 0 && len < (int)sizeof(txBuf))
-  {
-    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
-    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
-    printf("[DTU TX] %s\r\n", txBuf);
-  }
+  sendToDtu(dataStr, dtuCsqRssi, 0);
 }
 
 /**
@@ -769,7 +751,7 @@ int main(void)
       lastPrintTick = HAL_GetTick();
       char timeBuf[24];
       common_formatTimestamp(getCurrentTimestamp(), timeBuf, sizeof(timeBuf));
-      printf("[TIME] %s\r\n", timeBuf);
+      // printf("[TIME] %s\r\n", timeBuf);
     }
 
     /* PB15 (LED1) 接收指示：点亮500ms后自动熄灭 */
