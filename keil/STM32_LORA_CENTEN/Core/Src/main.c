@@ -39,7 +39,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-/* DTU 发送队列：环形缓冲区，每条消息最大 256 字节，最多 16 条 */
+/* DTU 发送队列：环形缓冲区，每条消息最大 256 字节，最多 5 条 */
 #define DTU_QUEUE_SIZE     5
 #define DTU_MSG_MAX_LEN    256
 
@@ -118,7 +118,7 @@ static DtuQueueItem_t dtuQueue[DTU_QUEUE_SIZE];
 static uint8_t dtuQueueHead = 0;   // 出队索引
 static uint8_t dtuQueueTail = 0;   // 入队索引
 static uint8_t dtuQueueCount = 0;  // 当前队列中的消息数量
-static uint32_t dtuLastSendTick = 0;  // 上次发送时间戳（用于 1 秒间隔控制）
+static uint32_t dtuLastSendTick = 0;  // 上次发送时间戳（用于 100ms 间隔控制）
 
 /* Flash 配置存储 */
 #define CONFIG_FLASH_ADDR  0x0800FC00  // Flash 最后一页（STM32F103C8T6 64KB）
@@ -336,7 +336,7 @@ static void OnSlave(void)
   // 处理接收超时
   if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT)
   {
-    printf("");
+    printf(".");
     rf_set_recv_flag(RADIO_FLAG_IDLE);
     rf_enter_single_timeout_rx(5000);  // 重新进入接收模式，超时 5 秒
   }
@@ -520,7 +520,7 @@ static void processDtuQueue(void)
 {
   if (dtuQueueCount == 0) return;
 
-  if (HAL_GetTick() - dtuLastSendTick >= 100)
+  if (HAL_GetTick() - dtuLastSendTick >= 500)
   {
     dtuLastSendTick = HAL_GetTick();
 
