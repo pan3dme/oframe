@@ -32,6 +32,7 @@
 #include "string.h"       // 字符串处理库，提供 memcpy/strncmp/memset 等函数
 #include "pan3029_rf.h"   // PAN3029 LoRa 射频驱动头文件
 #include "pan3029_port.h" // PAN3029 硬件端口适配层头文件
+#include "common_test.h"  // 公共测试模块（Common 目录共享）
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -336,6 +337,10 @@ int main(void)
          (uint16_t)huart3.Instance->CR3, (uint16_t)huart3.Instance->BRR,
          (uint16_t)huart3.Instance->SR);
   printf_logo();  // 显示工程信息 Logo
+
+  /* 测试公共模块 */
+  commonTest_PrintInfo();
+  printf("commonTest_Increment = %lu\r\n", (unsigned long)commonTest_Increment());
 
   HAL_Delay(1);  // 短暂延时，等待串口输出完成
 
