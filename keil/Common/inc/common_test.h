@@ -21,6 +21,19 @@ extern "C" {
 /* Exported constants --------------------------------------------------------*/
 #define COMMON_TEST_VERSION  "V1.0"
 
+/* Exported types ------------------------------------------------------------*/
+typedef enum {
+  MSG_TYPE_GPS = 1,         // GPS定位信息
+  MSG_TYPE_TIME = 2,        // 对时信息
+  MSG_TYPE_BATTERY = 3,     // 电量信息（小数，如0.5、0.1）
+  MSG_TYPE_SYN_TIME = 4,    // 下发对时信息
+  MSG_TYPE_UP_GPS = 5,      //   上报GPS坐标
+  MSG_TYPE_CONFIG = 6,      // 时间戳的下发对时
+  MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
+  MSG_TYPE_WARN = 8,        // 警告消息
+  MSG_TYPE_COM = 9          // 下载指令到设备
+} MessageType_t;
+
 /* Exported variables --------------------------------------------------------*/
 extern uint32_t commonTestCounter;   // 公共测试计数器
 extern uint8_t  commonTestFlag;      // 公共测试标志位

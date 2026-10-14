@@ -46,7 +46,7 @@
 #define DEMO_VER     "V1.0"                  // 演示版本号
 #define EXAMPLE_DATE "2026/10/04"            // 工程日期
 
-#define RX_LEN       64                      // LoRa 接收缓冲区最大长度（字节）
+#define RX_LEN       36                      // LoRa 接收缓冲区最大长度（字节）
 
 /* Work mode - 工作模式定义 */
 #define MODE_IDLE    0  // 空闲模式
@@ -64,6 +64,10 @@ CAN_HandleTypeDef hcan;
 I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;  // USART3 用于 DTU 通信
+
+
+
+static char deviceName[] = "v4-108";            // 设备名称
 
 /* USER CODE BEGIN PV */
 // PB15 (LED1) 接收指示：收到LoRa数据时亮500ms
@@ -88,6 +92,17 @@ static uint8_t  dtuRxBuf[DTU_RX_BUF_SIZE];  // DTU 接收缓冲区
 static uint16_t dtuRxLen = 0;               // 当前接收到的数据长度
 static uint32_t dtuLastRxTick = 0;          // 上次收到字节的时间戳（用于超时判断）
 static uint32_t dtuCsqTick = 0;             // nettime 查询定时器：记录上次发送时间
+static char dtuNetTimeStr[32] = "0";        // DTU 网络时间戳（秒），用于上报
+static uint32_t dtuTimestamp = 0;           // DTU 网络时间 Unix 时间戳（秒）
+static uint8_t dtuTimeValid = 0;            // 网络时间是否已获取成功
+static int dtuCsqRssi = 0;                  // DTU CSQ 信号强度值
+static uint32_t rtcSendCount = 0;           // 对时上报计数器
+static int batteryValue = 85;               // 电池电量（%）
+static char configStr[32] = "30,0M";          // 配置信息字符串（可通过DTU修改）
+
+/* Flash 配置存储 */
+#define CONFIG_FLASH_ADDR  0x0800FC00  // Flash 最后一页（STM32F103C8T6 64KB）
+#define CONFIG_MAGIC       0xA5A5A5A5  // 有效数据标志
 
 /* USER CODE END PV */
 /* Private function prototypes -----------------------------------------------*/
@@ -104,6 +119,13 @@ static void printf_logo(void);       // 打印工程信息 Logo
 static void OnSlave(void);           // LoRa 从机接收处理函数
 static void enter_rx_mode(void);     // 切换到接收模式
 static void do_tx_send(void);        // 发送模式处理函数
+static void sendGpsToDtu(const char *loraStr, int rssi, int snr);  // GPS信息上报DTU
+static void sendTimeSyncToDtu(void);        // 对时信息上报DTU
+static void sendConfigToDtu(void);          // 配置信息上报DTU
+static void loadConfigFromFlash(void);      // 从 Flash 加载配置
+static void saveConfigToFlash(const char *str);  // 保存配置到 Flash
+static void parseDtuCommand(char *buf);      // JSON 解析 DTU 下发指令
+static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int min, int sec);  // 日期转Unix时间戳
 
 /* USER CODE END PFP */
 
@@ -220,6 +242,38 @@ static void OnSlave(void)
     led1OnTick = HAL_GetTick();
     led1On = 1;
 
+    /* 解析消息类型并处理上报 */
+    if (local_size < RX_LEN) local_buf[local_size] = '\0';
+    int msgType = atoi((char *)local_buf);
+    printf("[LoRa] MsgType: %d\r\n", msgType);
+
+    if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME)
+    {
+      // 上报给 DTU
+      sendGpsToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+
+      // 延时 800ms 后下发对时信息
+      HAL_Delay(800);
+
+      // 构造下发数据: 4|deviceName|timestamp|
+      char txData[64];
+      int txLen = snprintf(txData, sizeof(txData), "%d|%s|%lu|",
+                           MSG_TYPE_SYN_TIME, deviceName, (unsigned long)dtuTimestamp);
+
+      // 发送 LoRa 数据
+      uint32_t tx_time = 0;
+      rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
+      printf("[LoRa TX] %s\r\n", txData);
+
+      // 等待发送完成
+      uint32_t waitStart = HAL_GetTick();
+      while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE)
+      {
+        if (HAL_GetTick() - waitStart > 3000) break;  // 3秒超时保护
+      }
+      rf_set_transmit_flag(RADIO_FLAG_IDLE);
+    }
+
     rf_enter_single_timeout_rx(15000);  // 重新进入接收模式，超时 15 秒
   }
 
@@ -234,7 +288,7 @@ static void OnSlave(void)
   // 处理接收超时
   if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT)
   {
-    printf("rx time out\r\n");
+    printf("");
     rf_set_recv_flag(RADIO_FLAG_IDLE);
     rf_enter_single_timeout_rx(5000);  // 重新进入接收模式，超时 5 秒
   }
@@ -283,6 +337,298 @@ static void do_tx_send(void)
     {
         rf_set_transmit_flag(RADIO_FLAG_IDLE);  // 清除标志，准备下次发送
     }
+}
+
+/**
+  * @brief  将日期时间转换为 Unix 时间戳（秒）
+  * @note   基于 1970-01-01 00:00:00 UTC，不考虑时区
+  */
+static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int min, int sec)
+{
+  // 每月天数累加（非闰年）
+  static const int daysBeforeMonth[] = {0,0,31,59,90,120,151,181,212,243,273,304,334};
+  int leapYears;
+  uint32_t days, timestamp;
+
+  year -= 1900;
+  leapYears = ((year + 69) / 4) - ((year + 69) / 100) + ((year + 369) / 400);
+  days = (uint32_t)(year - 70) * 365 + leapYears + daysBeforeMonth[month] + day - 1;
+  if (month > 2 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)))
+    days++;
+  timestamp = days * 86400UL + (uint32_t)hour * 3600 + (uint32_t)min * 60 + (uint32_t)sec;
+  return timestamp;
+}
+
+/**
+  * @brief  从 Flash 加载配置信息
+  * @note   开机时调用，如果 Flash 中有有效配置则加载到 configStr
+  */
+static void loadConfigFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)CONFIG_FLASH_ADDR;
+  if (magic == CONFIG_MAGIC)
+  {
+    const char *p = (const char *)(CONFIG_FLASH_ADDR + 4);
+    uint8_t i;
+    for (i = 0; i < sizeof(configStr) - 1 && p[i] != '\0'; i++)
+      configStr[i] = p[i];
+    configStr[i] = '\0';
+    printf("[Flash] 加载配置: %s\r\n", configStr);
+  }
+  else
+  {
+    printf("[Flash] 无有效配置，使用默认: %s\r\n", configStr);
+  }
+}
+
+/**
+  * @brief  保存配置信息到 Flash
+  * @param  str: 要保存的配置字符串
+  */
+static void saveConfigToFlash(const char *str)
+{
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+  uint8_t i;
+
+  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = CONFIG_FLASH_ADDR;
+  eraseInit.NbPages = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+
+  // 写入魔术字
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CONFIG_FLASH_ADDR, CONFIG_MAGIC);
+
+  // 写入配置字符串（按半字写入）
+  for (i = 0; i < strlen(str) + 1; i += 2)
+  {
+    uint16_t halfWord = str[i] | (str[i + 1] << 8);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_FLASH_ADDR + 4 + i, halfWord);
+  }
+
+  HAL_FLASH_Lock();
+  printf("[Flash] 配置已保存: %s\r\n", str);
+}
+
+/**
+  * @brief  将LoRa收到的GPS信息通过DTU串口上报（JSON格式）
+  * @param  loraStr: LoRa 原始载荷字符串（如 "1|v4-88|26.12345,109.54321|"）
+  * @param  rssi:    接收信号强度 (dBm)
+  * @param  snr:     信噪比 (dB)
+  * @retval None
+  */
+static void sendGpsToDtu(const char *loraStr, int rssi, int snr)
+{
+  static char txBuf[256];
+  int len = snprintf(txBuf, sizeof(txBuf),
+      "{"
+      "\"version\":\"1.0\","
+      "\"method\":\"thing.event.property.post\","
+      "\"params\":{"
+      "\"lorainfo\":\"%s\","
+      "\"upDateDevice\":\"%s\","
+      "\"tm\":%lu,"
+      "\"rssi\":%d,"
+      "\"snr\":%d"
+      "}"
+      "}",
+      loraStr, (char *)deviceName, (unsigned long)dtuTimestamp, rssi, snr);
+
+  if (len > 0 && len < (int)sizeof(txBuf))
+  {
+    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
+    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
+    printf("[DTU TX] %s\r\n", txBuf);
+  }
+}
+
+/**
+  * @brief  获取到网络时间后，上报一次对时信息给 DTU（JSON格式）
+  * @note   数据格式: 2|deviceName|timestamp|battery|count
+  */
+static void sendTimeSyncToDtu(void)
+{
+  char dataStr[64];
+  snprintf(dataStr, sizeof(dataStr), "%d|%s|%lu|%d|%lu",
+           MSG_TYPE_TIME, deviceName,
+           (unsigned long)dtuTimestamp,
+           batteryValue,
+           (unsigned long)rtcSendCount++);
+
+  static char txBuf[256];
+  int len = snprintf(txBuf, sizeof(txBuf),
+      "{"
+      "\"version\":\"1.0\","
+      "\"method\":\"thing.event.property.post\","
+      "\"params\":{"
+      "\"lorainfo\":\"%s\","
+      "\"upDateDevice\":\"%s\","
+      "\"tm\":%lu,"
+      "\"rssi\":%d,"
+      "\"snr\":0"
+      "}"
+      "}",
+      dataStr, (char *)deviceName, (unsigned long)dtuTimestamp, dtuCsqRssi);
+
+  if (len > 0 && len < (int)sizeof(txBuf))
+  {
+    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
+    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
+    printf("[DTU TX] %s\r\n", txBuf);
+  }
+}
+
+/**
+  * @brief  开机网络正常后，上报一次配置信息给 DTU（JSON格式）
+  * @note   数据格式: 6|deviceName|config_str|count
+  */
+static void sendConfigToDtu(void)
+{
+  char dataStr[64];
+  snprintf(dataStr, sizeof(dataStr), "%d|%s|%s|%lu",
+           MSG_TYPE_CONFIG, deviceName,
+           configStr,
+           (unsigned long)rtcSendCount++);
+
+  static char txBuf[256];
+  int len = snprintf(txBuf, sizeof(txBuf),
+      "{"
+      "\"version\":\"1.0\","
+      "\"method\":\"thing.event.property.post\","
+      "\"params\":{"
+      "\"lorainfo\":\"%s\","
+      "\"upDateDevice\":\"%s\","
+      "\"tm\":%lu,"
+      "\"rssi\":%d,"
+      "\"snr\":0"
+      "}"
+      "}",
+      dataStr, (char *)deviceName, (unsigned long)dtuTimestamp, dtuCsqRssi);
+
+  if (len > 0 && len < (int)sizeof(txBuf))
+  {
+    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
+    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
+    printf("[DTU TX] %s\r\n", txBuf);
+  }
+}
+
+/**
+  * @brief  JSON 解析 DTU 下发的指令
+  * @note   从外层 JSON 提取 cominfo 字段，反转义后解析内部 JSON
+  *         内部格式: {"cmd":"xxx","value":"xxx","deviceId":"xxx"}
+  */
+static void parseDtuCommand(char *buf)
+{
+  /* Step 1: 从外层 JSON 提取 cominfo 字段值（处理转义） */
+  char *pCominfo = strstr(buf, "\"cominfo\":\"");
+  if (!pCominfo)
+  {
+    printf("[DTU JSON] 未找到 cominfo 字段\r\n");
+    return;
+  }
+
+  pCominfo += 11;  // 跳过 "cominfo":"
+  char unescaped[200];
+  int ui = 0;
+
+  // 读取 cominfo 字符串值，处理转义序列
+  while (*pCominfo && ui < (int)sizeof(unescaped) - 1)
+  {
+    if (*pCominfo == '\\' && *(pCominfo + 1) != '\0')
+    {
+      char next = *(pCominfo + 1);
+      if (next == '"' || next == '\\' || next == '/')
+      {
+        unescaped[ui++] = next;
+        pCominfo += 2;
+        continue;
+      }
+    }
+    else if (*pCominfo == '"')
+    {
+      break;  // 未转义的引号 = cominfo 字符串结束
+    }
+    unescaped[ui++] = *pCominfo++;
+  }
+  unescaped[ui] = '\0';
+  printf("[DTU JSON] cominfo: %s\r\n", unescaped);
+
+  /* Step 2: 从反转义后的 JSON 提取各字段 */
+  char cmd[32] = {0}, devId[32] = {0}, val[32] = {0};
+
+  // 提取 cmd
+  char *p = strstr(unescaped, "\"cmd\":");
+  if (p)
+  {
+    p += 6;
+    while (*p == ' ' || *p == '"') p++;
+    int i = 0;
+    while (*p && *p != '"' && i < 31) cmd[i++] = *p++;
+    cmd[i] = '\0';
+  }
+
+  // 提取 deviceId
+  p = strstr(unescaped, "\"deviceId\":");
+  if (p)
+  {
+    p += 11;
+    while (*p == ' ' || *p == '"') p++;
+    int i = 0;
+    while (*p && *p != '"' && i < 31) devId[i++] = *p++;
+    devId[i] = '\0';
+  }
+
+  // 提取 value
+  p = strstr(unescaped, "\"value\":");
+  if (p)
+  {
+    p += 8;
+    while (*p == ' ' || *p == '"') p++;
+    int i = 0;
+    while (*p && *p != '"' && i < 31) val[i++] = *p++;
+    val[i] = '\0';
+  }
+
+  printf("[DTU JSON] cmd=%s, deviceId=%s, value=%s\r\n", cmd, devId, val);
+
+  /* Step 3: 检查 deviceId 是否为本机 */
+  if (strcmp(devId, (char *)deviceName) != 0)
+  {
+    printf("[DTU CMD] 非本机指令 (target=%s, local=%s)，忽略\r\n", devId, deviceName);
+    return;
+  }
+
+  /* Step 4: 执行指令 */
+  if (strcmp(cmd, "relayreboot") == 0)
+  {
+    printf("[DTU CMD] 执行设备重启...\r\n");
+    HAL_Delay(500);
+    NVIC_SystemReset();
+  }
+  else if (strcmp(cmd, "A") == 0)
+  {
+    if (val[0] != '\0')
+    {
+      strncpy(configStr, val, sizeof(configStr) - 1);
+      configStr[sizeof(configStr) - 1] = '\0';
+      saveConfigToFlash(configStr);
+      printf("[DTU CMD] 配置已更新: %s\r\n", configStr);
+      HAL_Delay(1000);
+      sendConfigToDtu();
+      printf("[DTU CMD] 配置已上报\r\n");
+    }
+    else
+    {
+      printf("[DTU CMD] value 为空\r\n");
+    }
+  }
+  else
+  {
+    printf("[DTU CMD] 未知指令: %s\r\n", cmd);
+  }
 }
 
 /* USER CODE END 0 */
@@ -337,6 +683,9 @@ int main(void)
          (uint16_t)huart3.Instance->CR3, (uint16_t)huart3.Instance->BRR,
          (uint16_t)huart3.Instance->SR);
   printf_logo();  // 显示工程信息 Logo
+
+  /* 从 Flash 加载配置 */
+  loadConfigFromFlash();
 
   /* 测试公共模块 */
   commonTest_PrintInfo();
@@ -443,6 +792,7 @@ int main(void)
         {
           int percent = csqVal * 100 / 31;
           printf("[DTU] 信号强度: %d (%d%%)\r\n", csqVal, percent);
+          dtuCsqRssi = csqVal;  // 保存 CSQ 值供对时上报使用
         }
       }
 
@@ -456,19 +806,27 @@ int main(void)
         {
           printf("[DTU] 网络时间: %04d/%02d/%02d %02d:%02d:%02d\r\n",
                  y, mo, d, h, mi, s);
+          /* 保存时间戳供 LoRa 上报使用 */
+          snprintf(dtuNetTimeStr, sizeof(dtuNetTimeStr),
+                   "%04d%02d%02d%02d%02d%02d", y, mo, d, h, mi, s);
+          dtuTimestamp = dateTimeToTimestamp(y, mo, d, h, mi, s);
+          printf("[DTU] Unix时间戳: %lu\r\n", (unsigned long)dtuTimestamp);
+          dtuTimeValid = 1;  // 标记网络时间已获取
+          printf("[DTU] 网络时间获取成功，切换为10分钟对时\r\n");
+
+          // 获取到正确时间后，立即上报一次对时信息
+          sendTimeSyncToDtu();
+          HAL_Delay(1000);  // 间隔 1 秒，避免 DTU 无法识别
+          // 开机网络正常后，上报一次配置信息
+          sendConfigToDtu();
         }
       }
 
       /* 都没匹配到，原样打印明文 */
       if (!pCsq && !pNet)
       {
-        printf("[DTU RX]: ");
-        for (uint16_t i = 0; i < dtuRxLen; i++)
-        {
-          if (dtuRxBuf[i] >= 0x20 && dtuRxBuf[i] < 0x7F)
-            printf("%c", dtuRxBuf[i]);
-        }
-        printf("\r\n");
+        /* JSON 解析 DTU 下发的指令 */
+        parseDtuCommand(pBuf);
       }
 
       dtuRxLen = 0;
@@ -476,15 +834,22 @@ int main(void)
       HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
     }
 
-    /* 每 10 秒向 DTU 发送 csq + nettime 查询 */
-    if (HAL_GetTick() - dtuCsqTick >= 10000)
+    /* 向 DTU 发送 csq + nettime 查询
+     * 未获取到时间前：每 5 秒查询一次
+     * 获取到时间后：每 10 分钟查询一次 */
     {
-      dtuCsqTick = HAL_GetTick();
-      uint8_t cmd1[] = "config,get,csq\r\n";
-      HAL_UART_Transmit(&huart3, cmd1, sizeof(cmd1) - 1, 1000);
-      HAL_Delay(300);  // 等待 csq 响应
-      uint8_t cmd2[] = "config,get,nettime\r\n";
-      HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
+      uint32_t queryInterval = dtuTimeValid ? 600000 : 5000;
+      if (HAL_GetTick() - dtuCsqTick >= queryInterval)
+      {
+        dtuCsqTick = HAL_GetTick();
+        uint8_t cmd1[] = "config,get,csq\r\n";
+        HAL_UART_Transmit(&huart3, cmd1, sizeof(cmd1) - 1, 1000);
+        HAL_Delay(300);  // 等待 csq 响应
+        uint8_t cmd2[] = "config,get,nettime\r\n";
+        HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
+        if (!dtuTimeValid)
+          printf("[DTU] 等待网络时间... (%lus后重试)\r\n", queryInterval / 1000);
+      }
     }
 
     HAL_Delay(1);  // 短延时
