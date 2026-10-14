@@ -57,6 +57,7 @@ typedef struct {
 #define EXAMPLE_DATE "2026/10/04"            // 工程日期
 
 #define RX_LEN       36                      // LoRa 接收缓冲区最大长度（字节）
+#define LORA_TX_DELAY_MS  800                // LoRa 接收后延时发送时间（ms）
 
 /* Work mode - 工作模式定义 */
 #define MODE_IDLE    0  // 空闲模式
@@ -124,6 +125,18 @@ static uint32_t dtuLastSendTick = 0;  // 上次发送时间戳（用于 100ms �
 #define CONFIG_FLASH_ADDR  0x0800FC00  // Flash 最后一页（STM32F103C8T6 64KB）
 #define CONFIG_MAGIC       0xA5A5A5A5  // 有效数据标志
 
+/* 待执行指令缓存：每个设备最多缓存一条 DTU 下发的指令 */
+#define PENDING_CMD_MAX_SLOTS  8   // 最多缓存 8 个设备的待执行指令
+
+typedef struct {
+  uint8_t used;                  // 该槽位是否被占用
+  char    deviceId[32];          // 目标设备 ID
+  char    cmd[32];               // 指令内容
+  char    val[32];               // 指令参数
+} PendingCmd_t;
+
+static PendingCmd_t pendingCmdCache[PENDING_CMD_MAX_SLOTS];
+
 /* USER CODE END PV */
 /* Private function prototypes -----------------------------------------------*/
 // 系统函数声明
@@ -148,6 +161,9 @@ static void parseDtuCommand(char *buf);      // JSON 解析 DTU 下发指令
 static uint32_t getCurrentTimestamp(void);   // 获取当前实时时间戳
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int min, int sec);  // 日期转Unix时间戳
 static uint32_t getConfigIntervalMs(void);   // 从 configStr 解析对时间隔（毫秒）
+static void cachePendingCommand(const char *deviceId, const char *cmd, const char *val);  // 缓存待执行指令
+static uint8_t checkPendingCommand(const char *deviceId);  // 检查是否有缓存指令，返回1=有,0=无
+static uint8_t sendPendingCommand(const char *deviceId);   // 发送缓存指令并清除，返回1=已发送,0=无
 
 /* USER CODE END PFP */
 
@@ -271,6 +287,21 @@ static void OnSlave(void)
 
     if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME)
     {
+      /* 从 LoRa 数据中提取 deviceId（第二个 | 分隔字段），检查是否有缓存的待执行指令 */
+      uint8_t hasPendingCmd = 0;
+      char loraDevId[32] = {0};
+      const char *p1 = strchr((char *)local_buf, '|');
+      if (p1)
+      {
+        const char *p2 = p1 + 1;
+        const char *p3 = strchr(p2, '|');
+        int idLen = p3 ? (int)(p3 - p2) : (int)strlen(p2);
+        if (idLen > 31) idLen = 31;
+        memcpy(loraDevId, p2, idLen);
+        loraDevId[idLen] = '\0';
+        hasPendingCmd = checkPendingCommand(loraDevId);
+      }
+
       char reportBuf[RX_LEN];
 
       if (msgType == MSG_TYPE_TIME)
@@ -280,7 +311,7 @@ static void OnSlave(void)
                                             getCurrentTimestamp(), NULL);
         if (ret == 0)
         {
-          printf("[LoRa RX] Replaced: %s\r\n", reportBuf);
+          printf("[LoRa 接收] : %s\r\n", reportBuf);
           sendToDtu(reportBuf, local_rssi - 256, (int)local_snr);
         }
         else
@@ -294,26 +325,33 @@ static void OnSlave(void)
         sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
       }
 
-      // 延时 800ms 后下发对时信息
-      HAL_Delay(800);
+      /* 统一延时后下发：有缓存指令则下发指令，否则下发对时 */
+      HAL_Delay(LORA_TX_DELAY_MS);
 
-      // 构造下发数据: 4|deviceName|timestamp| （使用 STM32 实时时间戳）
-      char txData[64];
-      int txLen = snprintf(txData, sizeof(txData), "%d|%lu|%s|",
-                           MSG_TYPE_SYN_TIME, (unsigned long)getCurrentTimestamp(), deviceName);
-
-      // 发送 LoRa 数据
-      uint32_t tx_time = 0;
-      rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-      printf("[LoRa 下发对时] %s\r\n", txData);
-
-      // 等待发送完成
-      uint32_t waitStart = HAL_GetTick();
-      while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE)
+      if (hasPendingCmd)
       {
-        if (HAL_GetTick() - waitStart > 3000) break;  // 3秒超时保护
+        sendPendingCommand(loraDevId);
       }
-      rf_set_transmit_flag(RADIO_FLAG_IDLE);
+      else
+      {
+        // 构造下发数据: 4|deviceName|timestamp| （使用 STM32 实时时间戳）
+        char txData[64];
+        int txLen = snprintf(txData, sizeof(txData), "%d|%lu|%s|",
+                             MSG_TYPE_SYN_TIME, (unsigned long)getCurrentTimestamp(), deviceName);
+
+        // 发送 LoRa 数据
+        uint32_t tx_time = 0;
+        rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
+        printf("[LoRa 下发对时] %s\r\n", txData);
+
+        // 等待发送完成
+        uint32_t waitStart = HAL_GetTick();
+        while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE)
+        {
+          if (HAL_GetTick() - waitStart > 3000) break;  // 3秒超时保护
+        }
+        rf_set_transmit_flag(RADIO_FLAG_IDLE);
+      }
     }
 
     /* MSG_TYPE_CONFIG: 直接上报原始数据，不对时 */
@@ -597,6 +635,108 @@ static void sendConfigToDtu(void)
 }
 
 /**
+  * @brief  缓存待执行指令（每个设备最多一条，新指令替换旧指令）
+  * @param  deviceId: 目标设备 ID
+  * @param  cmd:      指令内容
+  * @param  val:      指令参数
+  */
+static void cachePendingCommand(const char *deviceId, const char *cmd, const char *val)
+{
+  int freeSlot = -1;
+
+  /* 先查找是否已有该设备的缓存槽位 */
+  for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++)
+  {
+    if (pendingCmdCache[i].used && strcmp(pendingCmdCache[i].deviceId, deviceId) == 0)
+    {
+      /* 已有该设备的缓存，直接替换 */
+      strncpy(pendingCmdCache[i].cmd, cmd, sizeof(pendingCmdCache[i].cmd) - 1);
+      pendingCmdCache[i].cmd[sizeof(pendingCmdCache[i].cmd) - 1] = '\0';
+      strncpy(pendingCmdCache[i].val, val, sizeof(pendingCmdCache[i].val) - 1);
+      pendingCmdCache[i].val[sizeof(pendingCmdCache[i].val) - 1] = '\0';
+      printf("[PENDING CMD] Replaced: device=%s, cmd=%s, val=%s\r\n", deviceId, cmd, val);
+      return;
+    }
+    if (!pendingCmdCache[i].used && freeSlot < 0)
+      freeSlot = i;
+  }
+
+  /* 未找到已有槽位，使用空闲槽位 */
+  if (freeSlot >= 0)
+  {
+    pendingCmdCache[freeSlot].used = 1;
+    strncpy(pendingCmdCache[freeSlot].deviceId, deviceId, sizeof(pendingCmdCache[freeSlot].deviceId) - 1);
+    pendingCmdCache[freeSlot].deviceId[sizeof(pendingCmdCache[freeSlot].deviceId) - 1] = '\0';
+    strncpy(pendingCmdCache[freeSlot].cmd, cmd, sizeof(pendingCmdCache[freeSlot].cmd) - 1);
+    pendingCmdCache[freeSlot].cmd[sizeof(pendingCmdCache[freeSlot].cmd) - 1] = '\0';
+    strncpy(pendingCmdCache[freeSlot].val, val, sizeof(pendingCmdCache[freeSlot].val) - 1);
+    pendingCmdCache[freeSlot].val[sizeof(pendingCmdCache[freeSlot].val) - 1] = '\0';
+    printf("[PENDING CMD] Cached: device=%s, cmd=%s, val=%s\r\n", deviceId, cmd, val);
+  }
+  else
+  {
+    printf("[PENDING CMD] Cache full! Cannot cache cmd for device=%s\r\n", deviceId);
+  }
+}
+
+/**
+  * @brief  检查并处理指定设备的待执行缓存指令
+  * @note   当 LoRa 收到该设备的上报数据时调用，打印缓存指令并清除缓存
+  * @param  deviceId: 上报数据的设备 ID
+  */
+static uint8_t checkPendingCommand(const char *deviceId)
+{
+  for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++)
+  {
+    if (pendingCmdCache[i].used && strcmp(pendingCmdCache[i].deviceId, deviceId) == 0)
+    {
+      printf("[PENDING CMD] Found pending cmd for device=%s: cmd=%s, val=%s\r\n",
+             deviceId, pendingCmdCache[i].cmd, pendingCmdCache[i].val);
+      return 1;  /* 有缓存指令 */
+    }
+  }
+  return 0;  /* 无缓存指令 */
+}
+
+/**
+  * @brief  通过 LoRa 发送缓存指令给目标设备并清除缓存
+  * @param  deviceId: 目标设备 ID
+  * @retval 1=已发送, 0=无缓存
+  */
+static uint8_t sendPendingCommand(const char *deviceId)
+{
+  for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++)
+  {
+    if (pendingCmdCache[i].used && strcmp(pendingCmdCache[i].deviceId, deviceId) == 0)
+    {
+      /* 通过 LoRa 下发指令给目标设备，格式: 9|deviceId|cmd|val| */
+      char txData[64];
+      int txLen = snprintf(txData, sizeof(txData), "%d|%s|%s|%s|",
+                           MSG_TYPE_COM, pendingCmdCache[i].deviceId,
+                           pendingCmdCache[i].cmd, pendingCmdCache[i].val);
+      uint32_t tx_time = 0;
+      rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
+      printf("[PENDING CMD] LoRa TX: %s\r\n", txData);
+
+      /* 等待发送完成 */
+      uint32_t waitStart = HAL_GetTick();
+      while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE)
+      {
+        if (HAL_GetTick() - waitStart > 3000) break;
+      }
+      rf_set_transmit_flag(RADIO_FLAG_IDLE);
+
+      /* 清除该缓存槽位 */
+      pendingCmdCache[i].used = 0;
+      memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
+      printf("[PENDING CMD] Cache cleared for device=%s, cmd delivered\r\n", deviceId);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/**
   * @brief  JSON 解析 DTU 下发的指令
   * @note   从外层 JSON 提取 cominfo 字段，反转义后解析内部 JSON
   *         内部格式: {"cmd":"xxx","value":"xxx","deviceId":"xxx"}
@@ -678,7 +818,8 @@ static void parseDtuCommand(char *buf)
   /* Step 3: 检查 deviceId 是否为本机 */
   if (strcmp(devId, (char *)deviceName) != 0)
   {
-    printf("[DTU CMD] Not this device (target=%s, local=%s), skip\r\n", devId, deviceName);
+    printf("[DTU CMD] Not this device (target=%s, local=%s), cache it\r\n", devId, deviceName);
+    cachePendingCommand(devId, cmd, val);
     return;
   }
 
