@@ -47,17 +47,17 @@ void setup() {
 }
 
 void loop() {
-    const char *msg = "cctv  arduino v4 like ";
+    const char *msg = "1|v4-88|26.12345,109.54321|";
     int len = strlen(msg);
 
     int ret = loraRadio.transmit((uint8_t *)msg, len);
     if (ret == RADIOLIB_ERR_NONE) {
-        Serial.print("TX OK | Len: ");
+        Serial.print("1|v4-88|26.12345,109.54321  | Len: ");
         Serial.println(len);
     } else {
         Serial.print("TX Error: ");
         Serial.println(ret);
     }
 
-    delay(1000);
+    delay(60000*3);
 }
