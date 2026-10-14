@@ -16,7 +16,7 @@
 #if defined(ETSI_433)
 #define DEFAULT_PWR            22
 #define DEFAULT_FREQ           (915000000)
-#define DEFAULT_SF             SF_10
+#define DEFAULT_SF             SF_11
 #define DEFAULT_BW             BW_125K
 #define DEFAULT_CR             CODE_RATE_45
 #else

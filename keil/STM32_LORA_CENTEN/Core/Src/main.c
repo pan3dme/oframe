@@ -32,6 +32,7 @@
 #include "string.h"       // 字符串处理库，提供 memcpy/strncmp/memset 等函数
 #include "pan3029_rf.h"   // PAN3029 LoRa 射频驱动头文件
 #include "pan3029_port.h" // PAN3029 硬件端口适配层头文件
+#include "radio.h"        // LoRa 射频参数配置 (DEFAULT_FREQ/DEFAULT_SF 等)
 #include "common_test.h"  // 公共测试模块（Common 目录共享）
 /* USER CODE END Includes */
 
@@ -94,6 +95,8 @@ static uint32_t dtuLastRxTick = 0;          // 上次收到字节的时间戳（
 static uint32_t dtuCsqTick = 0;             // nettime 查询定时器：记录上次发送时间
 static char dtuNetTimeStr[32] = "0";        // DTU 网络时间戳（秒），用于上报
 static uint32_t dtuTimestamp = 0;           // DTU 网络时间 Unix 时间戳（秒）
+static uint32_t dtuSyncTick = 0;            // 对时时的 HAL_GetTick() 值，用于实时计算
+static uint32_t lastPrintTick = 0;          // [调试] 每秒打印时间用
 static uint8_t dtuTimeValid = 0;            // 网络时间是否已获取成功
 static int dtuCsqRssi = 0;                  // DTU CSQ 信号强度值
 static uint32_t rtcSendCount = 0;           // 对时上报计数器
@@ -125,6 +128,7 @@ static void sendConfigToDtu(void);          // 配置信息上报DTU
 static void loadConfigFromFlash(void);      // 从 Flash 加载配置
 static void saveConfigToFlash(const char *str);  // 保存配置到 Flash
 static void parseDtuCommand(char *buf);      // JSON 解析 DTU 下发指令
+static uint32_t getCurrentTimestamp(void);   // 获取当前实时时间戳
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int min, int sec);  // 日期转Unix时间戳
 
 /* USER CODE END PFP */
@@ -258,7 +262,7 @@ static void OnSlave(void)
       // 构造下发数据: 4|deviceName|timestamp|
       char txData[64];
       int txLen = snprintf(txData, sizeof(txData), "%d|%s|%lu|",
-                           MSG_TYPE_SYN_TIME, deviceName, (unsigned long)dtuTimestamp);
+                           MSG_TYPE_SYN_TIME, deviceName, (unsigned long)getCurrentTimestamp());
 
       // 发送 LoRa 数据
       uint32_t tx_time = 0;
@@ -360,6 +364,16 @@ static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour, int 
 }
 
 /**
+  * @brief  获取当前实时时间戳（基于网络对时 + HAL 计时）
+  * @note   对时后以 dtuTimestamp 为基准，加上经过的秒数
+  */
+static uint32_t getCurrentTimestamp(void)
+{
+  if (!dtuTimeValid) return 0;
+  return dtuTimestamp + (HAL_GetTick() - dtuSyncTick) / 1000;
+}
+
+/**
   * @brief  从 Flash 加载配置信息
   * @note   开机时调用，如果 Flash 中有有效配置则加载到 configStr
   */
@@ -409,7 +423,7 @@ static void saveConfigToFlash(const char *str)
   }
 
   HAL_FLASH_Lock();
-  printf("[Flash] 配置已保存: %s\r\n", str);
+  printf("[Flash] Config saved: %s\r\n", str);
 }
 
 /**
@@ -434,7 +448,7 @@ static void sendGpsToDtu(const char *loraStr, int rssi, int snr)
       "\"snr\":%d"
       "}"
       "}",
-      loraStr, (char *)deviceName, (unsigned long)dtuTimestamp, rssi, snr);
+      loraStr, (char *)deviceName, (unsigned long)getCurrentTimestamp(), rssi, snr);
 
   if (len > 0 && len < (int)sizeof(txBuf))
   {
@@ -453,7 +467,7 @@ static void sendTimeSyncToDtu(void)
   char dataStr[64];
   snprintf(dataStr, sizeof(dataStr), "%d|%s|%lu|%d|%lu",
            MSG_TYPE_TIME, deviceName,
-           (unsigned long)dtuTimestamp,
+           (unsigned long)getCurrentTimestamp(),
            batteryValue,
            (unsigned long)rtcSendCount++);
 
@@ -470,7 +484,7 @@ static void sendTimeSyncToDtu(void)
       "\"snr\":0"
       "}"
       "}",
-      dataStr, (char *)deviceName, (unsigned long)dtuTimestamp, dtuCsqRssi);
+      dataStr, (char *)deviceName, (unsigned long)getCurrentTimestamp(), dtuCsqRssi);
 
   if (len > 0 && len < (int)sizeof(txBuf))
   {
@@ -505,7 +519,7 @@ static void sendConfigToDtu(void)
       "\"snr\":0"
       "}"
       "}",
-      dataStr, (char *)deviceName, (unsigned long)dtuTimestamp, dtuCsqRssi);
+      dataStr, (char *)deviceName, (unsigned long)getCurrentTimestamp(), dtuCsqRssi);
 
   if (len > 0 && len < (int)sizeof(txBuf))
   {
@@ -526,7 +540,7 @@ static void parseDtuCommand(char *buf)
   char *pCominfo = strstr(buf, "\"cominfo\":\"");
   if (!pCominfo)
   {
-    printf("[DTU JSON] 未找到 cominfo 字段\r\n");
+    printf("[DTU JSON] cominfo not found\r\n");
     return;
   }
 
@@ -597,7 +611,7 @@ static void parseDtuCommand(char *buf)
   /* Step 3: 检查 deviceId 是否为本机 */
   if (strcmp(devId, (char *)deviceName) != 0)
   {
-    printf("[DTU CMD] 非本机指令 (target=%s, local=%s)，忽略\r\n", devId, deviceName);
+    printf("[DTU CMD] Not this device (target=%s, local=%s), skip\r\n", devId, deviceName);
     return;
   }
 
@@ -615,7 +629,7 @@ static void parseDtuCommand(char *buf)
       strncpy(configStr, val, sizeof(configStr) - 1);
       configStr[sizeof(configStr) - 1] = '\0';
       saveConfigToFlash(configStr);
-      printf("[DTU CMD] 配置已更新: %s\r\n", configStr);
+      printf("[DTU CMD] Config updated: %s\r\n", configStr);
       HAL_Delay(1000);
       sendConfigToDtu();
       printf("[DTU CMD] 配置已上报\r\n");
@@ -720,15 +734,15 @@ int main(void)
    * 此函数还会打印: FREQ= xxx  SF=x   BW=x  CR=x */
   rf_set_default_para();
 
-  // 打印 LoRa 配置信息
+  // 打印 LoRa 配置信息（读取 radio.h 实际配置）
   printf("===== LoRa Ready =====\r\n");
-  printf("  Freq    : 915.000 MHz\r\n");   // 载波频率
-  printf("  SF      : 10\r\n");            // 扩频因子
-  printf("  BW      : 125 kHz\r\n");       // 信号带宽
-  printf("  CR      : 4/5\r\n");           // 编码率
-  printf("  Power   : 22 dBm\r\n");        // 发射功率
-  printf("  CRC     : OFF\r\n");           // CRC 校验关闭
-  printf("  SyncWord: 0x12\r\n");          // 同步字
+  printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
+  printf("  SF      : %d\r\n", DEFAULT_SF);
+  printf("  BW      : 125 kHz\r\n");
+  printf("  CR      : 4/5\r\n");
+  printf("  Power   : %d dBm\r\n", DEFAULT_PWR);
+  printf("  CRC     : OFF\r\n");
+  printf("  SyncWord: 0x12\r\n");
   printf("----------------------------\r\n");
   printf("  K1 -> RX mode (LED 500ms blink)\r\n");  // 按键 K1 功能说明
   printf("  K2 -> TX mode (send 'I LOVE YOU' / 3s)\r\n");  // 按键 K2 功能说明
@@ -748,6 +762,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    /* [调试] 每秒打印一次 STM32 实时时间 */
+    if (dtuTimeValid && HAL_GetTick() - lastPrintTick >= 1000)
+    {
+      lastPrintTick = HAL_GetTick();
+      char timeBuf[24];
+      common_formatTimestamp(getCurrentTimestamp(), timeBuf, sizeof(timeBuf));
+      printf("[TIME] %s\r\n", timeBuf);
+    }
 
     /* PB15 (LED1) 接收指示：点亮500ms后自动熄灭 */
     if (led1On && HAL_GetTick() - led1OnTick >= 500)
@@ -810,7 +833,8 @@ int main(void)
           snprintf(dtuNetTimeStr, sizeof(dtuNetTimeStr),
                    "%04d%02d%02d%02d%02d%02d", y, mo, d, h, mi, s);
           dtuTimestamp = dateTimeToTimestamp(y, mo, d, h, mi, s);
-          printf("[DTU] Unix时间戳: %lu\r\n", (unsigned long)dtuTimestamp);
+          dtuSyncTick = HAL_GetTick();  // 记录对时时刻
+          printf("[DTU] Unix timestamp: %lu\r\n", (unsigned long)dtuTimestamp);
           dtuTimeValid = 1;  // 标记网络时间已获取
           printf("[DTU] 网络时间获取成功，切换为10分钟对时\r\n");
 
@@ -848,7 +872,7 @@ int main(void)
         uint8_t cmd2[] = "config,get,nettime\r\n";
         HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
         if (!dtuTimeValid)
-          printf("[DTU] 等待网络时间... (%lus后重试)\r\n", queryInterval / 1000);
+          printf("[DTU] Waiting for net time... (retry %lus)\r\n", queryInterval / 1000);
       }
     }
 

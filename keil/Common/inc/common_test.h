@@ -54,6 +54,15 @@ uint32_t commonTest_Increment(void);
   */
 void commonTest_PrintInfo(void);
 
+/**
+  * @brief  将 Unix 时间戳格式化为 "YYYY/MM/DD HH:MM:SS" 字符串
+  * @param  timestamp: Unix 时间戳（秒）
+  * @param  buf:       输出缓冲区
+  * @param  bufSize:   缓冲区大小（建议 >= 20）
+  * @retval 写入的字符数
+  */
+int common_formatTimestamp(uint32_t timestamp, char *buf, uint8_t bufSize);
+
 #ifdef __cplusplus
 }
 #endif
