@@ -57,7 +57,7 @@ typedef struct {
 #define EXAMPLE_DATE "2026/10/04"            // 工程日期
 
 #define RX_LEN       36                      // LoRa 接收缓冲区最大长度（字节）
-#define LORA_TX_DELAY_MS  800                // LoRa 接收后延时发送时间（ms）
+#define LORA_TX_DELAY_MS  1500               // LoRa 接收后延时发送时间（ms）
 
 /* Work mode - 工作模式定义 */
 #define MODE_IDLE    0  // 空闲模式
