@@ -63,7 +63,10 @@
 CAN_HandleTypeDef hcan;
 I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;  // USART2 用于 GPS 模块（PA3=RX，仅接收）
 UART_HandleTypeDef huart3;  // USART3 用于 DTU 通信
+
+static char deviceName[] = "v4-108";            // 设备名称
 
 /* USER CODE BEGIN PV */
 // PB15 (LED1) 接收指示：收到LoRa数据时亮500ms
@@ -89,6 +92,25 @@ static uint16_t dtuRxLen = 0;               // 当前接收到的数据长度
 static uint32_t dtuLastRxTick = 0;          // 上次收到字节的时间戳（用于超时判断）
 static uint32_t dtuCsqTick = 0;             // nettime 查询定时器：记录上次发送时间
 
+/* GPS (USART2) 接收与解析 */
+#define GPS_RX_BUF_SIZE  128
+static uint8_t  gpsRxBuf[GPS_RX_BUF_SIZE];  // GPS 单帧接收缓冲区
+static uint16_t gpsRxLen = 0;               // 当前接收长度
+static uint32_t gpsLastRxTick = 0;          // 上次收到字节的时间戳
+
+typedef struct {
+  uint8_t  valid;       // GPS 数据是否有效（0=无效, 1=有效）
+  char     timeStr[16]; // UTC 时间 "HHMMSS" 或 "HHMMSS.SS"
+  char     lat[16];     // 纬度 "DDMM.MMMMM"
+  char     latDir;      // 纬度方向 'N'/'S'
+  char     lng[16];     // 经度 "DDDMM.MMMMM"
+  char     lngDir;      // 经度方向 'E'/'W'
+  char     speed[12];   // 速度（节）
+  char     altitude[12];// 海拔（米）
+} GpsData_t;
+
+static GpsData_t gpsData = {0};  // 解析后的 GPS 数据
+
 /* USER CODE END PV */
 /* Private function prototypes -----------------------------------------------*/
 // 系统函数声明
@@ -104,6 +126,10 @@ static void printf_logo(void);       // 打印工程信息 Logo
 static void OnSlave(void);           // LoRa 从机接收处理函数
 static void enter_rx_mode(void);     // 切换到接收模式
 static void do_tx_send(void);        // 发送模式处理函数
+static void MX_USART2_UART_Init(void); // USART2 初始化（GPS 模块）
+static void parseGpsNmea(const char *line);  // 解析 GPS NMEA 语句
+static void sendGpsToDtu(void);      // 将 GPS 数据以 JSON 格式上报给 DTU
+static void sendLoraToDtu(const char *loraStr, int rssi, int snr);  // LoRa 数据上报 DTU
 
 /* USER CODE END PFP */
 
@@ -220,6 +246,10 @@ static void OnSlave(void)
     led1OnTick = HAL_GetTick();
     led1On = 1;
 
+    /* 将 LoRa 接收到的数据上报给 DTU（JSON 格式） */
+    if (local_size < RX_LEN) local_buf[local_size] = '\0';
+    sendLoraToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+
     rf_enter_single_timeout_rx(15000);  // 重新进入接收模式，超时 15 秒
   }
 
@@ -323,6 +353,7 @@ int main(void)
   /* 初始化所有配置的外设 */
   MX_GPIO_Init();           // GPIO 初始化（LED、按键、LoRa SPI 引脚）
   MX_USART1_UART_Init();    // USART1 初始化（调试串口，115200 波特率）
+  MX_USART2_UART_Init();    // USART2 初始化（GPS 模块，9600 波特率）
   MX_USART3_UART_Init();    // USART3 初始化（DTU 通信，115200 波特率）
 
   /* 初始化 NVIC 中断控制器（LoRa IRQ 使用 PA2 EXTI） */
@@ -459,16 +490,25 @@ int main(void)
         }
       }
 
-      /* 都没匹配到，原样打印明文 */
+      /* 都没匹配到，检查是否为 upgps 指令或普通数据 */
       if (!pCsq && !pNet)
       {
-        printf("[DTU RX]: ");
-        for (uint16_t i = 0; i < dtuRxLen; i++)
+        /* 检查是否为 upgps 指令 */
+        if (strstr(pBuf, "upgps") != NULL)
         {
-          if (dtuRxBuf[i] >= 0x20 && dtuRxBuf[i] < 0x7F)
-            printf("%c", dtuRxBuf[i]);
+          printf("[DTU RX] 收到 upgps 指令，上报 GPS 数据\r\n");
+          sendGpsToDtu();
         }
-        printf("\r\n");
+        else
+        {
+          printf("[DTU RX]: ");
+          for (uint16_t i = 0; i < dtuRxLen; i++)
+          {
+            if (dtuRxBuf[i] >= 0x20 && dtuRxBuf[i] < 0x7F)
+              printf("%c", dtuRxBuf[i]);
+          }
+          printf("\r\n");
+        }
       }
 
       dtuRxLen = 0;
@@ -674,9 +714,183 @@ static void MX_NVIC_Init(void)
   /* USART3 中断用于 DTU 数据接收 */
   HAL_NVIC_SetPriority(USART3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(USART3_IRQn);
+
+  /* USART2 中断用于 GPS 数据接收 */
+  HAL_NVIC_SetPriority(USART2_IRQn, 1, 1);
+  HAL_NVIC_EnableIRQ(USART2_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  USART2 初始化函数（GPS 模块）
+  * @note   PA3=RX（仅接收），9600 波特率，8N1
+  */
+static void MX_USART2_UART_Init(void)
+{
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 9600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_RX;        // 仅接收模式
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* 启动中断接收，每个字节触发一次回调 */
+  HAL_UART_Receive_IT(&huart2, gpsRxBuf, 1);
+}
+
+/**
+  * @brief  解析 GPS NMEA 语句（支持 $GPRMC 和 $GPGGA）
+  * @param  line: 一条完整的 NMEA 语句（以 $ 开头）
+  */
+static void parseGpsNmea(const char *line)
+{
+  /* 解析 $GPRMC: 时间、日期、纬度、经度、速度 */
+  if (strncmp(line, "$GPRMC", 6) == 0)
+  {
+    /* $GPRMC,HHMMSS.ss,A,DDMM.MMMMM,N,DDDMM.MMMMM,E,Speed,Course,DDMMYY,... */
+    char fields[14][20] = {{0}};
+    int fieldIdx = 0, charIdx = 0;
+    const char *p = line + 7;  // 跳过 "$GPRMC,"
+
+    while (*p && fieldIdx < 13)
+    {
+      if (*p == ',' || *p == '*')
+      {
+        fields[fieldIdx][charIdx] = '\0';
+        fieldIdx++;
+        charIdx = 0;
+        if (*p == '*') break;
+      }
+      else if (charIdx < 19)
+      {
+        fields[fieldIdx][charIdx++] = *p;
+      }
+      p++;
+    }
+
+    /* field[0]=时间, field[1]=状态(A/V), field[2]=纬度, field[3]=N/S,
+     * field[4]=经度, field[5]=E/W, field[6]=速度 */
+    if (fieldIdx >= 7 && fields[1][0] == 'A')
+    {
+      gpsData.valid = 1;
+      strncpy(gpsData.timeStr, fields[0], sizeof(gpsData.timeStr) - 1);
+      strncpy(gpsData.lat, fields[2], sizeof(gpsData.lat) - 1);
+      gpsData.latDir = fields[3][0];
+      strncpy(gpsData.lng, fields[4], sizeof(gpsData.lng) - 1);
+      gpsData.lngDir = fields[5][0];
+      strncpy(gpsData.speed, fields[6], sizeof(gpsData.speed) - 1);
+    }
+    else
+    {
+      gpsData.valid = 0;
+    }
+  }
+
+  /* 解析 $GPGGA: 海拔高度 */
+  if (strncmp(line, "$GPGGA", 6) == 0)
+  {
+    /* $GPGGA,HHMMSS.ss,DDMM.MMMMM,N,DDDMM.MMMMM,E,quality,numSV,HDOP,alt,M,... */
+    char fields[15][20] = {{0}};
+    int fieldIdx = 0, charIdx = 0;
+    const char *p = line + 7;  // 跳过 "$GPGGA,"
+
+    while (*p && fieldIdx < 14)
+    {
+      if (*p == ',' || *p == '*')
+      {
+        fields[fieldIdx][charIdx] = '\0';
+        fieldIdx++;
+        charIdx = 0;
+        if (*p == '*') break;
+      }
+      else if (charIdx < 19)
+      {
+        fields[fieldIdx][charIdx++] = *p;
+      }
+      p++;
+    }
+
+    /* field[8]=海拔高度, field[9]=单位 */
+    if (fieldIdx >= 9)
+    {
+      strncpy(gpsData.altitude, fields[8], sizeof(gpsData.altitude) - 1);
+    }
+  }
+}
+
+/**
+  * @brief  将 GPS 数据以 JSON 格式上报给 DTU
+  * @note   格式: {"version":"1.0","method":"thing.event.property.post",
+  *         "params":{"deviceName":"xxx","time":"xxx","lat":"xxx",
+  *         "lng":"xxx","altitude":"xxx","speed":"xxx"}}
+  */
+static void sendGpsToDtu(void)
+{
+  char txBuf[256];
+  int len = snprintf(txBuf, sizeof(txBuf),
+      "{"
+      "\"version\":\"1.0\","
+      "\"method\":\"thing.event.property.post\","
+      "\"params\":{"
+      "\"deviceName\":\"%s\","
+      "\"time\":\"%s\","
+      "\"lat\":\"%s\","
+      "\"lng\":\"%s\","
+      "\"altitude\":\"%s\","
+      "\"speed\":\"%s\""
+      "}"
+      "}",
+      deviceName,
+      gpsData.valid ? gpsData.timeStr : "0",
+      gpsData.valid ? gpsData.lat : "0",
+      gpsData.valid ? gpsData.lng : "0",
+      gpsData.valid ? gpsData.altitude : "0",
+      gpsData.valid ? gpsData.speed : "0");
+
+  if (len > 0 && len < (int)sizeof(txBuf))
+  {
+    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
+    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
+    printf("[GPS 上报] %s\r\n", txBuf);
+  }
+}
+
+/**
+  * @brief  将 LoRa 接收到的数据以 JSON 格式上报给 DTU
+  * @param  loraStr: LoRa 原始数据字符串
+  * @param  rssi:    RSSI 信号强度
+  * @param  snr:     SNR 信噪比
+  */
+static void sendLoraToDtu(const char *loraStr, int rssi, int snr)
+{
+  char txBuf[256];
+  int len = snprintf(txBuf, sizeof(txBuf),
+      "{"
+      "\"version\":\"1.0\","
+      "\"method\":\"thing.event.property.post\","
+      "\"params\":{"
+      "\"lorainfo\":\"%s\","
+      "\"upDateDevice\":\"%s\","
+      "\"rssi\":%d,"
+      "\"snr\":%d"
+      "}"
+      "}",
+      loraStr, deviceName, rssi, snr);
+
+  if (len > 0 && len < (int)sizeof(txBuf))
+  {
+    HAL_UART_Transmit(&huart3, (uint8_t *)txBuf, len, 1000);
+    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
+    printf("[LoRa->DTU] %s\r\n", txBuf);
+  }
+}
 
 /**
   * @brief  GPIO 外部中断回调函数
@@ -769,6 +983,44 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     else
     {
       dtuRxLen = 0;  // 缓冲区满，丢弃
+    }
+  }
+  else if (huart->Instance == USART2)
+  {
+    /* GPS NMEA 数据按字节接收，以 '\n' 为一帧结束 */
+    uint8_t ch = gpsRxBuf[gpsRxLen];
+    gpsLastRxTick = HAL_GetTick();
+
+    if (ch == '\n' || gpsRxLen >= GPS_RX_BUF_SIZE - 1)
+    {
+      /* 一帧接收完成，确保字符串结尾 */
+      gpsRxBuf[gpsRxLen] = '\0';
+
+      /* 去掉尾部 \r\n */
+      while (gpsRxLen > 0 && (gpsRxBuf[gpsRxLen - 1] == '\r' || gpsRxBuf[gpsRxLen - 1] == '\n'))
+        gpsRxBuf[--gpsRxLen] = '\0';
+
+      /* 解析以 $ 开头的 NMEA 语句 */
+      if (gpsRxLen > 0 && gpsRxBuf[0] == '$')
+      {
+        parseGpsNmea((char *)gpsRxBuf);
+      }
+
+      gpsRxLen = 0;  // 重置缓冲区
+    }
+    else
+    {
+      gpsRxLen++;
+    }
+
+    /* 继续接收下一个字节 */
+    if (gpsRxLen < GPS_RX_BUF_SIZE)
+    {
+      HAL_UART_Receive_IT(&huart2, &gpsRxBuf[gpsRxLen], 1);
+    }
+    else
+    {
+      gpsRxLen = 0;  // 缓冲区满，丢弃
     }
   }
 }

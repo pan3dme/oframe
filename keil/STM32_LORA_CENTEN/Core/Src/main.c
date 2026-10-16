@@ -137,6 +137,11 @@ typedef struct {
 
 static PendingCmd_t pendingCmdCache[PENDING_CMD_MAX_SLOTS];
 
+/* gpstm 中继指令状态：收到 gpstm 后在有效期内下发 upgps 指令 */
+static uint8_t  gpstmActive = 0;              // gpstm 中继是否激活（0=未激活, 1=激活）
+static uint32_t gpstmRecvTick = 0;            // 收到 gpstm 时的 HAL_GetTick() 值
+static uint32_t gpstmTimeoutMin = 0;          // gpstm 有效时长（分钟），来自 value 字段
+
 /* USER CODE END PV */
 /* Private function prototypes -----------------------------------------------*/
 // 系统函数声明
@@ -325,12 +330,30 @@ static void OnSlave(void)
         sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
       }
 
-      /* 统一延时后下发：有缓存指令则下发指令，否则下发对时 */
+      /* 统一延时后下发：有缓存指令则下发指令，否则检查 gpstm 中继或对时 */
       HAL_Delay(LORA_TX_DELAY_MS);
 
       if (hasPendingCmd)
       {
         sendPendingCommand(loraDevId);
+      }
+      else if (gpstmActive && (HAL_GetTick() - gpstmRecvTick) < gpstmTimeoutMin * 60 * 1000)
+      {
+        /* gpstm 中继有效：在有效期内，任意设备上报时下发 upgps 指令 */
+        char txData[64];
+        int txLen = snprintf(txData, sizeof(txData), "%d|%s|upgps|0",
+                             MSG_TYPE_COM, loraDevId);
+        uint32_t tx_time = 0;
+        rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
+        printf("[LoRa gpstm 中继] %s\r\n", txData);
+
+        /* 等待发送完成 */
+        uint32_t waitStart = HAL_GetTick();
+        while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE)
+        {
+          if (HAL_GetTick() - waitStart > 3000) break;
+        }
+        rf_set_transmit_flag(RADIO_FLAG_IDLE);
       }
       else
       {
@@ -849,6 +872,21 @@ static void parseDtuCommand(char *buf)
     {
       printf("[DTU CMD] value 为空\r\n");
     }
+  }
+  else if (strcmp(cmd, "gpstm") == 0)
+  {
+    /* gpstm 中继指令：仅当 deviceId 匹配本机时激活，记录当前时间和有效时长 */
+    if (strcmp(devId, (char *)deviceName) != 0)
+    {
+      printf("[DTU CMD] gpstm 目标设备不匹配(目标=%s, 本机=%s)，忽略\r\n", devId, deviceName);
+      return;
+    }
+    gpstmActive = 1;
+    gpstmRecvTick = HAL_GetTick();
+    gpstmTimeoutMin = (uint32_t)atoi(val);
+    if (gpstmTimeoutMin == 0) gpstmTimeoutMin = 30;  // 默认 30 分钟
+    printf("[DTU CMD] gpstm 中继已记录: device=%s, timeout=%lu min\r\n",
+           deviceName, (unsigned long)gpstmTimeoutMin);
   }
   else
   {
