@@ -143,7 +143,7 @@ void formatTimestamp(uint32_t ts, char *buf, uint8_t len) {
 }
 
 /* ========================== 设备信息 ========================== */
-#define DEVICE_NAME  "f030-1"   /* 设备名称，每个节点不同 */
+#define DEVICE_NAME  "v4-18"   /* 设备名称，每个节点不同 */
 #define BATTERY_VAL 100         /* 电量值（无 ADC，固定 100） */
 
 /* ========================== 收发缓冲区定义 ========================== */
@@ -310,12 +310,14 @@ void parse_rx_message(uint8_t *buf, uint8_t len) {
  *         3. 等待 3 分钟后进入下一次发送
  * ===================================================================== */
 void OnMaster(void) {
+  static uint32_t tx_count = 0;  /* 步进计数器 */
   char tx_msg[TX_LEN];
   uint32_t today_sec = getTodaySecond(); /* 获取当天秒数（已同步则用真实时间） */
 
-  /* 按 ESP32 格式组包：2|f030-1|12345|100| */
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|",
-           MSG_TYPE_TIME, DEVICE_NAME, (unsigned long)today_sec, BATTERY_VAL);
+  tx_count++;
+  /* 按 ESP32 格式组包：2|f030-1|12345|100|1 */
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
+           MSG_TYPE_TIME, DEVICE_NAME, (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
 
   /* 发送数据 */
   if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != OK) {
@@ -489,7 +491,7 @@ int main(void) {
   }
   printf("RF init ok\r\n");
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
-  rf_set_crc(true);      /* 开启 CRC 校验 */
+  // rf_set_crc(true);      /* 开启 CRC 校验 */
 
   /* 默认进入发送模式 */
   current_mode = 1;
