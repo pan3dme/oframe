@@ -336,7 +336,7 @@ static void OnSlave(void)
       {
         // 构造下发数据: 4|deviceName|timestamp| （使用 STM32 实时时间戳）
         char txData[64];
-        int txLen = snprintf(txData, sizeof(txData), "%d|%lu|%s|",
+        int txLen = snprintf(txData, sizeof(txData), "%d|%lu|%s",
                              MSG_TYPE_SYN_TIME, (unsigned long)getCurrentTimestamp(), deviceName);
 
         // 发送 LoRa 数据
@@ -711,7 +711,7 @@ static uint8_t sendPendingCommand(const char *deviceId)
     {
       /* 通过 LoRa 下发指令给目标设备，格式: 9|deviceId|cmd|val| */
       char txData[64];
-      int txLen = snprintf(txData, sizeof(txData), "%d|%s|%s|%s|",
+      int txLen = snprintf(txData, sizeof(txData), "%d|%s|%s|%s",
                            MSG_TYPE_COM, pendingCmdCache[i].deviceId,
                            pendingCmdCache[i].cmd, pendingCmdCache[i].val);
       uint32_t tx_time = 0;
@@ -811,6 +811,9 @@ static void parseDtuCommand(char *buf)
     int i = 0;
     while (*p && *p != '"' && i < 31) val[i++] = *p++;
     val[i] = '\0';
+    // 去除 value 尾部多余的逗号
+    int vlen = (int)strlen(val);
+    while (vlen > 0 && val[vlen - 1] == ',') val[--vlen] = '\0';
   }
 
   printf("[DTU JSON] cmd=%s, deviceId=%s, value=%s\r\n", cmd, devId, val);
