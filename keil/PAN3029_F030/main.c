@@ -489,7 +489,7 @@ int main(void) {
   }
   printf("RF init ok\r\n");
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
-  rf_set_crc(false);     /* 关闭 CRC 校验 */
+  rf_set_crc(true);      /* 开启 CRC 校验 */
 
   /* 默认进入发送模式 */
   current_mode = 1;
