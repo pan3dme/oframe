@@ -4,8 +4,8 @@
  *
  * @file main.c
  * @brief PAN3029/PAN3060 LoRa 单工通信演示程序（Simplex）
- *        - Master 模式：每隔 5 秒发送一帧数据，不开启接收，关闭 CRC
- *        - Slave  模式：持续接收数据，打印 RSSI/SNR/载荷，并与上次接收做比对
+ *        - TX 模式：每隔 3 分钟上报一帧，发送后开启 3 秒接收窗口并解析一条消息
+ *        - RX 模式：持续接收数据，打印 RSSI/SNR/载荷，并与上次接收做比对
  *
  * @hardware  MCU: STM32F030  |  射频芯片: PAN3029 / PAN3060
  *            开发板: PAN3029_PAN3060_DK V2.3
@@ -50,11 +50,107 @@ static uint8_t current_mode = 0; /* 0=RX, 1=TX */
 #define KEY1_PRESSED  (GPIO_ReadInputDataBit(KEY1_PORT, KEY1_PIN) == 0)
 #define KEY2_PRESSED  (GPIO_ReadInputDataBit(KEY2_PORT, KEY2_PIN) == 0)
 
+/* ========================== 消息类型定义（与 ESP32 对齐） ========================== */
+#define MSG_TYPE_TIME     2   /* 定时上报（时间戳） */
+#define MSG_TYPE_GPS      1   /* GPS 上报（预留，暂不使用） */
+#define MSG_TYPE_COM      9   /* 指令消息 */
+#define MSG_TYPE_CONFIG   6   /* 配置消息 */
+#define MSG_TYPE_SYN_TIME 4   /* 下发对时信息（中继→本设备） */
+#define MSG_TYPE_WARN     8   /* 告警消息 */
+#define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
+
+/* ========================== 时间同步变量 ========================== */
+static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
+static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
+static uint8_t  timeSynced = 0;       /* 是否已同步时间：0=未同步, 1=已同步 */
+
+/**
+ * @brief  获取当前"当天秒数"（从 00:00:00 开始的秒数）
+ * @return 当天秒数
+ *         - 未同步时：把开机当作 00:00，返回开机秒数
+ *         - 已同步后：返回真实时间戳 % 86400
+ */
+uint32_t getTodaySecond(void) {
+  if (!timeSynced) {
+    /* 未同步：把开机当作 00:00，返回开机秒数 */
+    return HAL_GetTick() / 1000;
+  }
+  /* 已同步：计算当前时间戳 = 同步时间戳 + 经过的秒数 */
+  uint32_t elapsed_sec = (HAL_GetTick() - syncedTick) / 1000;
+  uint32_t currentTs = syncedTimestamp + elapsed_sec;
+  /* 返回当天秒数（不含年月日） */
+  return currentTs % 86400;  /* 86400 = 24 * 60 * 60 */
+}
+
+/**
+ * @brief  获取当前完整时间戳
+ * @return Unix 时间戳
+ *         - 未同步时：返回开机秒数（从 1970-01-01 00:00:00 开始）
+ *         - 已同步后：返回真实时间戳
+ */
+uint32_t getCurrentTimestamp(void) {
+  if (!timeSynced) {
+    return HAL_GetTick() / 1000;  /* 从 1970-01-01 开始 */
+  }
+  uint32_t elapsed_sec = (HAL_GetTick() - syncedTick) / 1000;
+  return syncedTimestamp + elapsed_sec;
+}
+
+/**
+ * @brief  判断闰年
+ */
+static uint8_t isLeapYear(uint16_t year) {
+  return ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) ? 1 : 0;
+}
+
+/**
+ * @brief  将 Unix 时间戳格式化为 "YYYY-MM-DD HH:MM:SS" 字符串
+ * @param  ts    Unix 时间戳
+ * @param  buf   输出缓冲区（至少 20 字节）
+ * @param  len   缓冲区长度
+ */
+void formatTimestamp(uint32_t ts, char *buf, uint8_t len) {
+  uint32_t sec = ts % 60; ts /= 60;
+  uint32_t min = ts % 60; ts /= 60;
+  uint32_t hour = ts % 24; ts /= 24;
+  
+  /* 从 1970-01-01 开始计算年月日 */
+  uint16_t year = 1970;
+  uint8_t month = 1;
+  uint8_t day = 1;
+  
+  /* 计算年份 */
+  while (1) {
+    uint16_t days_in_year = isLeapYear(year) ? 366 : 365;
+    if (ts < days_in_year) break;
+    ts -= days_in_year;
+    year++;
+  }
+  
+  /* 计算月份 */
+  uint8_t days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (isLeapYear(year)) days_in_month[1] = 29;
+  
+  while (month <= 12) {
+    if (ts < days_in_month[month - 1]) break;
+    ts -= days_in_month[month - 1];
+    month++;
+  }
+  day = ts + 1;
+  
+  snprintf(buf, len, "%04d-%02d-%02d %02d:%02d:%02d",
+           year, month, day, hour, min, sec);
+}
+
+/* ========================== 设备信息 ========================== */
+#define DEVICE_NAME  "f030-1"   /* 设备名称，每个节点不同 */
+#define BATTERY_VAL 100         /* 电量值（无 ADC，固定 100） */
+
 /* ========================== 收发缓冲区定义 ========================== */
-#define TX_LEN 32   /* 发送缓冲区长度（字节） */
+#define TX_LEN 64   /* 发送缓冲区长度（字节） */
 #define RX_LEN 64   /* 接收缓冲区长度（字节） */
 
-uint8_t tx_test_buf[TX_LEN] = "I LOVE U";             /* 待发送的测试数据 */
+uint8_t tx_test_buf[TX_LEN];                                /* 待发送的数据 */
 uint8_t rx_test_buf[RX_LEN] = {0};                  /* 接收数据缓冲区（保留） */
 uint8_t prev_rx_buf[RX_LEN] = {0};                  /* 上一次接收的数据（用于比对） */
 uint8_t prev_rx_size = 0;                           /* 上一次接收数据的长度 */
@@ -163,15 +259,63 @@ void LedToggle(void) {
 uint32_t tx_time = 1000; /* 发送间隔参数（ms） */
 
 /* =====================================================================
+ * @brief  解析接收到的消息（按 '|' 分割字段）
+ *         格式：MSG_TYPE|字段1|字段2|...|
+ * ===================================================================== */
+void parse_rx_message(uint8_t *buf, uint8_t len) {
+  char *str = (char *)buf;
+  char *fields[8] = {0};
+  uint8_t field_count = 0;
+
+  /* 按 '|' 分割，提取各字段 */
+  fields[field_count++] = str;
+  for (uint8_t i = 0; i < len && field_count < 8; i++) {
+    if (str[i] == '|') {
+      str[i] = '\0';
+      if (i + 1 < len)
+        fields[field_count++] = &str[i + 1];
+    }
+  }
+
+  if (field_count < 2) {
+    printf("[parse] invalid msg\r\n");
+    return;
+  }
+
+  uint8_t msg_type = atoi(fields[0]);
+
+  switch (msg_type) {
+    case MSG_TYPE_SYN_TIME: /* 4: 下发对时信息 4|timestamp|xxx */
+      if (field_count >= 2) {
+        syncedTimestamp = atoi(fields[1]);
+        syncedTick = HAL_GetTick();
+        timeSynced = 1;
+        printf("[SYNC] ts=%lu today=%lu\r\n",
+               (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
+      }
+      break;
+    case MSG_TYPE_COM:    /* 9: 指令 */
+      printf("[CMD] %s\r\n", field_count > 2 ? fields[2] : "");
+      break;
+    default:
+      printf("[MSG] type=%d\r\n", msg_type);
+      break;
+  }
+}
+
+/* =====================================================================
  * @brief  Master（主机/发射端）流程
- *         每隔 5 秒发送一帧数据，发送完成后等待，不开启接收
+ *         1. 按 ESP32 格式组包并发送（MSG_TYPE_TIME|设备名|秒数|电量）
+ *         2. 发送完成后开启 3 秒接收窗口，只处理一条消息并解析
+ *         3. 等待 3 分钟后进入下一次发送
  * ===================================================================== */
 void OnMaster(void) {
-  static uint16_t tx_count = 0; /* 发送计数器 */
   char tx_msg[TX_LEN];
+  uint32_t today_sec = getTodaySecond(); /* 获取当天秒数（已同步则用真实时间） */
 
-  tx_count++;
-  snprintf(tx_msg, sizeof(tx_msg), "I LOVE U %u", tx_count);
+  /* 按 ESP32 格式组包：2|f030-1|12345|100| */
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|",
+           MSG_TYPE_TIME, DEVICE_NAME, (unsigned long)today_sec, BATTERY_VAL);
 
   /* 发送数据 */
   if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != OK) {
@@ -183,11 +327,65 @@ void OnMaster(void) {
     ;
   rf_set_transmit_flag(RADIO_FLAG_IDLE); /* 清除发送完成标志 */
 
-  LedToggle();          /* LED 闪烁，表示发送成功 */
-  printf("tx ok -> \"%s\"\r\n", tx_msg); /* 打印发送内容 */
+  LedToggle();
+  printf("tx ok -> \"%s\"\r\n", tx_msg);
 
-  /* 等待 5 秒后进入下一次发送（基于 SysTick 硬件定时器，准确） */
-  HAL_Delay_nMs(5000);
+  /* ---- 开启 3 秒接收窗口（single 模式，最多只收一条） ---- */
+  rf_enter_single_timeout_rx(3000);
+  printf("[RX window] 3s listening...\r\n");
+
+  /* 等待接收完成或超时（收到消息会立刻退出，不会等满 3 秒） */
+  while (rf_get_recv_flag() == RADIO_FLAG_IDLE)
+    ;
+
+  if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) {
+    uint8_t local_buf[RX_LEN];
+    uint8_t local_size;
+    uint8_t local_rssi;
+    uint8_t local_snr;
+
+    __disable_irq();
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    local_rssi = RxDoneParams.Rssi;
+    local_snr = RxDoneParams.Snr;
+    local_size = RxDoneParams.Size;
+    if (local_size > RX_LEN) local_size = RX_LEN;
+    for (uint8_t i = 0; i < local_size; i++)
+      local_buf[i] = RxDoneParams.Payload[i];
+    __enable_irq();
+
+    /* 确保字符串结束 */
+    if (local_size < RX_LEN)
+      local_buf[local_size] = '\0';
+    else
+      local_buf[RX_LEN - 1] = '\0';
+
+    /* 打印接收数据（精简版，适配 115200） */
+    printf("[RX] len=%d rssi=%d snr=%d data=%s\r\n",
+           local_size, local_rssi - 256, local_snr, (char *)local_buf);
+
+    /* 解析消息 */
+    parse_rx_message(local_buf, local_size);
+  } else if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    printf("[RX window] timeout, no data.\r\n");
+  } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    printf("[RX window] crc error.\r\n");
+  }
+
+  /* 调试模式：不进入休眠，打印当前时间和倒计时 */
+  /* rf_set_mode(RF_MODE_STB1); */
+  /* printf("[RF] enter standby\r\n"); */
+
+  /* 等待 1 分钟，每秒打印当前时间和倒计时 */
+  printf("[DEBUG] 等待下次上报...\r\n");
+  for (int i = 60; i > 0; i--) {
+    HAL_Delay_nMs(1000);
+    char time_str[20];
+    formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
+    printf("[DEBUG] %s  倒计时: %d s\r\n", time_str, i);
+  }
 }
 
 /* =====================================================================
@@ -240,9 +438,9 @@ void OnSlave(void) {
       printf("%c", local_buf[i]);
     }
     if (is_same)
-      printf("  [SAME]"); /* 与上次相同 A*/
+      printf("  [SAME]"); /* 与上次相同 */
     else
-      printf("  [DIFF]"); /* 与上次不同 B */
+      printf("  [DIFF]"); /* 与上次不同 */
     printf("\r\n");
 
     /* 保存本次数据作为下次比对的基准 */
@@ -293,15 +491,9 @@ int main(void) {
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
   rf_set_crc(false);     /* 关闭 CRC 校验 */
 
-  /* 根据 PA2 引脚电平确定初始模式 */
-  if (GPIO_ReadInputDataBit(RF_MODE_PORT, RF_MODE_PIN)) {
-    current_mode = 1;
-    printf("TX mode: transmit only.\r\n");
-  } else {
-    current_mode = 0;
-    printf("RX mode: receive only.\r\n");
-    rf_enter_single_timeout_rx(5000);
-  }
+  /* 默认进入发送模式 */
+  current_mode = 1;
+  printf("TX mode: transmit only.\r\n");
 
   /* 主循环：支持按键切换模式 */
   while (1) {
