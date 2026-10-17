@@ -423,10 +423,14 @@ String makeMidName()
 
     if (wechatid == "v4")
     {
+      //
         static const uint64_t list_v4[] = {
             0x1C05A78FCBA4, // 100
-            0x20A261F3,     // 101
-            0x1C05A3        // 102
+            0x3CB7A21B5BF8,     // 101
+            0xD4A284697090,     // 102
+            0x20A261F3,     // 103
+            0x20A261F3,     // 104
+            0x1C05A3        // 105
         };
         all = list_v4;
         count = sizeof(list_v4) / sizeof(list_v4[0]);

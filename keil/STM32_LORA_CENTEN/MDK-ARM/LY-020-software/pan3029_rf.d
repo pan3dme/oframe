@@ -36,4 +36,3 @@ ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\
 ly-020-software\pan3029_rf.o: ../Radio/inc/pan3029_param.h
 ly-020-software\pan3029_rf.o: ../Radio/inc/pan3029_rf.h
 ly-020-software\pan3029_rf.o: ../Radio/inc/radio.h
-ly-020-software\pan3029_rf.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\math.h
