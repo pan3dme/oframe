@@ -20,7 +20,7 @@
 #include "time.h"
 
 /* ========================== 演示工程基本信息 ========================== */
-#define EXAMPLE_NAME "(Simplex)PAN3029_PAN3060_DK"  /* 工程名称 */
+#define EXAMPLE_NAME "stm32中继"  /* 工程名称 */
 #define DEMO_VER "V2.3"                             /* 固件版本 */
 #define EXAMPLE_DATE "2025/08/30"                   /* 编译日期 */
 

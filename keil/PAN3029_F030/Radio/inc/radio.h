@@ -10,15 +10,15 @@
 #define __RADIO_H_
 #include "pan3029_port.h"
 
-//#define JAP_915
+#define JAP_915
 //#define FCC_915
 //#define ETSI_433
-#define ETSI_868
+// #define ETSI_868
 
 #if defined(JAP_915)
 #define DEFAULT_PWR            22
 #define DEFAULT_FREQ           (915000000)
-#define DEFAULT_SF             SF_7
+#define DEFAULT_SF             SF_11
 #define DEFAULT_BW             BW_125K
 #define DEFAULT_CR             CODE_RATE_48
 
