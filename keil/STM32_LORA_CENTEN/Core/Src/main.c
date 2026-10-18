@@ -270,7 +270,7 @@ static void OnSlave(void)
   {
     uint8_t local_buf[RX_LEN];    // 本地接收缓冲区
     uint8_t local_size;           // 接收数据长度
-    int8_t  local_rssi;           // 接收信号强度指示 (dBm)
+    uint8_t  local_rssi;          // 接收信号强度指示 (寄存器原始值，需减256得dBm)
     float   local_snr;            // 信噪比 (dB)
     uint8_t is_same = 0;          // 数据重复标志
 
@@ -301,7 +301,7 @@ static void OnSlave(void)
 
     // 打印接收信息
     printf("Rssi: %d  ", local_rssi - 256);  // RSSI 值（需减去 256 得到实际 dBm）
-    printf("Snr: %d   ", (int)local_snr);    // SNR 值
+    printf("Snr: %.1f   ", local_snr);          // SNR 值（dB）
     printf("Len: %d  ", local_size);         // 数据长度
     printf("Str: ");
     for (uint8_t i = 0; i < local_size; i++)

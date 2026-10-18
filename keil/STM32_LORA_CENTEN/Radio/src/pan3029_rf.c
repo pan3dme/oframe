@@ -9,6 +9,7 @@
 #include "pan3029_port.h"
 #include "pan3029_param.h"
 #include "radio.h"
+#include <math.h>
 
 
 // #define USE_MODEM_CHIRPlOT
@@ -1123,25 +1124,32 @@ RF_Err_t rf_set_rx_single_timeout(uint16_t timeout)
 float rf_get_snr(void)
 {
     float snr_val;
-    uint32_t sig_pow_val;
-    uint32_t noise_pow_val;
+    float sig_pow_f;
+    float noise_pow_f;
     uint32_t sf_val;
     uint8_t temp[3];
 
     rf_read_spec_page_regs(PAGE2_SEL, 0x71, temp, 3);
-    noise_pow_val = ((temp[2] << 16) | (temp[1] << 8) | temp[0]);
+    noise_pow_f = (float)(((uint32_t)temp[2] << 16) | ((uint32_t)temp[1] << 8) | temp[0]);
 
     rf_read_spec_page_regs(PAGE1_SEL, 0x74, temp, 3);
-    sig_pow_val = ((temp[2] << 16) | (temp[1] << 8) | temp[0]);
+    sig_pow_f = (float)(((uint32_t)temp[2] << 16) | ((uint32_t)temp[1] << 8) | temp[0]);
 
     sf_val = (rf_read_spec_page_reg(PAGE1_SEL, 0x7c) & 0xf0) >> 4;
 
-    if (noise_pow_val == 0)
+    if (noise_pow_f < 1.0f)
     {
-        noise_pow_val = 1;
+        noise_pow_f = 1.0f;
     }
 
-    snr_val = (float)(10 * log10((sig_pow_val / (2 << sf_val)) / noise_pow_val));
+    /* 用浮点除法避免整数除法截断为 0 导致 log10(0) = -inf */
+    float ratio = (sig_pow_f / (float)(2u << sf_val)) / noise_pow_f;
+    if (ratio < 0.0001f)
+    {
+        ratio = 0.0001f;  /* 下限保护，避免 log10(0) 产生 -inf/NaN */
+    }
+
+    snr_val = 10.0f * log10f(ratio);
 
     return snr_val;
 }
