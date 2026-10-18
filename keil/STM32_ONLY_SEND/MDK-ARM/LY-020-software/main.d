@@ -36,4 +36,3 @@ ly-020-software\main.o: ../Radio/inc/pan3029_rf.h
 ly-020-software\main.o: ../Radio/inc/pan3029_port.h
 ly-020-software\main.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdbool.h
 ly-020-software\main.o: ../Radio/inc/radio.h
-ly-020-software\main.o: ../../Common/inc/common_test.h

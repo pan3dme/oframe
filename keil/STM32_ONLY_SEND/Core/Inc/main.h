@@ -57,23 +57,11 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define TNOW_Pin GPIO_PIN_4
-#define TNOW_GPIO_Port GPIOA
 #define LED1_Pin GPIO_PIN_15
 #define LED1_GPIO_Port GPIOB
-#define LED2_Pin GPIO_PIN_13
-#define LED2_GPIO_Port GPIOB
-#define LED3_Pin GPIO_PIN_14
-#define LED3_GPIO_Port GPIOB
-#define K1_Pin GPIO_PIN_4
-#define K1_GPIO_Port GPIOB
-#define K1_EXTI_IRQn EXTI4_IRQn
-#define K2_Pin GPIO_PIN_5
-#define K2_GPIO_Port GPIOB
-#define K2_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
-/* --- LoRa (PAN3029) 软件 SPI 引脚 --- */
+/* --- LoRa (PAN3029) 硬件 SPI1 引脚 --- */
 #define LORA_SCK_Pin      GPIO_PIN_5
 #define LORA_SCK_GPIO_Port GPIOA
 #define LORA_MISO_Pin     GPIO_PIN_6
