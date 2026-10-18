@@ -17,6 +17,7 @@
 "ly-020-software\stm32f1xx_hal_exti.o"
 "ly-020-software\stm32f1xx_hal_i2c.o"
 "ly-020-software\stm32f1xx_hal_uart.o"
+"ly-020-software\stm32f1xx_hal_spi.o"
 "ly-020-software\system_stm32f1xx.o"
 "ly-020-software\oled_function.o"
 "ly-020-software\oled_iic_config.o"

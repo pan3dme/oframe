@@ -73,6 +73,7 @@ typedef struct {
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
 I2C_HandleTypeDef hi2c1;
+SPI_HandleTypeDef hspi1;              // SPI1 用于 LoRa PAN3029（硬件 SPI）
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;  // USART3 用于 DTU 通信
 
@@ -147,6 +148,7 @@ static uint32_t gpstmTimeoutMin = 0;          // gpstm 有效时长（分钟）�
 // 系统函数声明
 void SystemClock_Config(void);       // 系统时钟配置函数
 static void MX_GPIO_Init(void);      // GPIO 初始化函数
+static void MX_SPI1_Init(void);       // SPI1 初始化（LoRa 硬件 SPI）
 static void MX_USART1_UART_Init(void); // USART1 初始化（调试串口）
 static void MX_USART3_UART_Init(void); // USART3 初始化（DTU 通信）
 static void MX_NVIC_Init(void);      // NVIC 中断控制器初始化
@@ -930,7 +932,8 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* 初始化所有配置的外设 */
-  MX_GPIO_Init();           // GPIO 初始化（LED、按键、LoRa SPI 引脚）
+  MX_GPIO_Init();           // GPIO 初始化（LED、按键、LoRa CSN/RST/IRQ）
+  MX_SPI1_Init();           // SPI1 初始化（LoRa 硬件 SPI）
   MX_USART1_UART_Init();    // USART1 初始化（调试串口，115200 波特率）
   MX_USART3_UART_Init();    // USART3 初始化（DTU 通信，115200 波特率）
 
@@ -1264,17 +1267,11 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* 配置 LoRa SPI 时钟和 MOSI 引脚 (PA5/PA7) - 软件 SPI 输出 */
-  GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MOSI_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;       // 推挽输出模式
-  GPIO_InitStruct.Pull = GPIO_NOPULL;               // 无上下拉
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;     // 高速（SPI 时序要求）
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /* 配置 LoRa SPI MISO 引脚 (PA6) - 软件 SPI 输入 */
-  GPIO_InitStruct.Pin  = LORA_MISO_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;           // 输入模式
-  GPIO_InitStruct.Pull = GPIO_NOPULL;               // 无上下拉
+  /* 配置 LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
+  GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;             // 复用推挽输出（硬件 SPI）
+  GPIO_InitStruct.Pull = GPIO_NOPULL;                 // 无上下拉
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;       // 高速
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* 配置 LoRa CSN 片选引脚 (PB0) - 默认高电平（未选中） */
@@ -1300,6 +1297,33 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE END MX_GPIO_Init_2 */
+}
+
+/**
+  * @brief  SPI1 初始化函数（LoRa PAN3029 硬件 SPI）
+  * @note   配置 SPI1 外设：
+  *         - 主机模式，全双工，8-bit 数据
+  *         - CPOL=0, CPHA=0（空闲时 SCK 低电平，第一边沿采样）
+  *         - MSB 优先，软件 NSS，波特率分频 16（72MHz/16 = 4.5MHz）
+  * @param  None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;     // CPOL=0
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;         // CPHA=0
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;  // 72/16 = 4.5MHz (< 5MHz)
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /**

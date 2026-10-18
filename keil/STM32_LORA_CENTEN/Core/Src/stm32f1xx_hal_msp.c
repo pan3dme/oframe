@@ -385,4 +385,29 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
 
 /* USER CODE BEGIN 1 */
 
+/**
+* @brief SPI MSP Initialization
+*        使能 SPI1 时钟，配置 PA5(SCK)/PA6(MISO)/PA7(MOSI) 为复用推挽输出
+*/
+void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  if(hspi->Instance == SPI1)
+  {
+    /* 使能 SPI1 外设时钟 */
+    __HAL_RCC_SPI1_CLK_ENABLE();
+
+    /* 使能 GPIOA 时钟 */
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+
+    /* PA5(SCK), PA6(MISO), PA7(MOSI) 复用推挽输出 */
+    GPIO_InitStruct.Pin   = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
+    GPIO_InitStruct.Mode  = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull  = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  }
+}
+
 /* USER CODE END 1 */

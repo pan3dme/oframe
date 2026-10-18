@@ -29,5 +29,6 @@ ly-020-software\oled_function.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_h
 ly-020-software\oled_function.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
 ly-020-software\oled_function.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 ly-020-software\oled_function.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
+ly-020-software\oled_function.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_spi.h
 ly-020-software\oled_function.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
 ly-020-software\oled_function.o: ..\user\OLED_Front.h

@@ -2,13 +2,16 @@
   ******************************************************************************
   * @file    pan3029_port.c
   * @brief   PAN3029 port layer for STM32F103 HAL
-  *          Software SPI (bit-bang) + GPIO control
+  *          Hardware SPI1 + GPIO control
   ******************************************************************************
   */
 #include "pan3029_port.h"
 #include "pan3029_rf.h"
 
-/* ---- Software SPI (CPOL=0, CPHA=0, MSB first) ---- */
+/* 外部引用 main.c 中定义的 SPI1 句柄 */
+extern SPI_HandleTypeDef hspi1;
+
+/* ---- Hardware SPI1 (CPOL=0, CPHA=0, MSB first, 4.5MHz) ---- */
 
 static void spi_cs_set_high(void)
 {
@@ -22,27 +25,9 @@ static void spi_cs_set_low(void)
 
 static uint8_t spi_readwritebyte(uint8_t tx_data)
 {
-    uint8_t i, rx = 0;
-    for (i = 0; i < 8; i++)
-    {
-        /* MOSI: setup before rising edge */
-        if (tx_data & 0x80)
-            HAL_GPIO_WritePin(LORA_MOSI_GPIO_Port, LORA_MOSI_Pin, GPIO_PIN_SET);
-        else
-            HAL_GPIO_WritePin(LORA_MOSI_GPIO_Port, LORA_MOSI_Pin, GPIO_PIN_RESET);
-        tx_data <<= 1;
-
-        /* SCK high - sample MISO */
-        HAL_GPIO_WritePin(LORA_SCK_GPIO_Port, LORA_SCK_Pin, GPIO_PIN_SET);
-
-        rx <<= 1;
-        if (HAL_GPIO_ReadPin(LORA_MISO_GPIO_Port, LORA_MISO_Pin) == GPIO_PIN_SET)
-            rx |= 0x01;
-
-        /* SCK low */
-        HAL_GPIO_WritePin(LORA_SCK_GPIO_Port, LORA_SCK_Pin, GPIO_PIN_RESET);
-    }
-    return rx;
+    uint8_t rx_data = 0;
+    HAL_SPI_TransmitReceive(&hspi1, &tx_data, &rx_data, 1, 100);
+    return rx_data;
 }
 
 /* ---- Delay functions ---- */
