@@ -315,9 +315,13 @@ void OnMaster(void) {
   uint32_t today_sec = getTodaySecond(); /* 获取当天秒数（已同步则用真实时间） */
 
   tx_count++;
+  tx_count=99;
   /* 按 ESP32 格式组包：2|f030-1|12345|100|1 */
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
-           MSG_TYPE_TIME, DEVICE_NAME, (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
+  // snprintf(tx_msg, sizeof(tx_msg), "01234567890abcdefg");
+  snprintf(tx_msg, sizeof(tx_msg), "123,456789,abcdefg0123");
+    snprintf(tx_msg, sizeof(tx_msg), "123|456789|abcdefg|0123");
+  // snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
+  //         MSG_TYPE_WARN, DEVICE_NAME, (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
 
   /* 发送数据 */
   if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != OK) {
@@ -382,7 +386,7 @@ void OnMaster(void) {
 
   /* 等待 1 分钟，每秒打印当前时间和倒计时 */
   printf("[DEBUG] 等待下次上报...\r\n");
-  for (int i = 60; i > 0; i--) {
+  for (int i = 6; i > 0; i--) {
     HAL_Delay_nMs(1000);
     char time_str[20];
     formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));

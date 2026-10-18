@@ -1317,7 +1317,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;     // CPOL=0
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;         // CPHA=0
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;  // 72/16 = 4.5MHz (< 5MHz)
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;  // 72/16 = 4.5MHz
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
