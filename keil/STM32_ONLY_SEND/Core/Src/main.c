@@ -63,7 +63,7 @@
 #define BATTERY_VAL  100
 
 /* 上报间隔（秒）：3 分钟 = 180 秒，此处用 600 秒倒计时（与 F030 一致） */
-#define TX_INTERVAL_S  600
+#define TX_INTERVAL_S  10
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
