@@ -386,7 +386,7 @@ void OnMaster(void) {
 
   /* 等待 1 分钟，每秒打印当前时间和倒计时 */
   printf("[DEBUG] 等待下次上报...\r\n");
-  for (int i = 60; i > 0; i--) {
+  for (int i = 600; i > 0; i--) {
     HAL_Delay_nMs(1000);
     char time_str[20];
     formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));

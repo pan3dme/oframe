@@ -79,9 +79,24 @@ UART_HandleTypeDef huart3;  // USART3 用于 DTU 通信
 
 
 
-static char deviceName[] = "v4-108";            // 设备名称
+static char deviceName[16] = "v4-0";            // 设备名称（根据 UID 动态生成）
 
 /* USER CODE BEGIN PV */
+/* 设备 UID 列表（10 台设备），用于根据芯片 UID 确定设备编号 */
+static const uint32_t deviceUidList[10][3] = {
+  {0x003A002E, 0x46343030, 0x35343138},  // 设备 0
+  {0x003A002E, 0x46343030, 0x35343139},  // 设备 1
+  {0x003A002E, 0x46343030, 0x3534313A},  // 设备 2
+  {0x003A002E, 0x46343030, 0x3534313B},  // 设备 3
+  {0x003A002E, 0x46343030, 0x3534313C},  // 设备 4
+  {0x003A002E, 0x46343030, 0x3534313D},  // 设备 5
+  {0x003A002E, 0x46343030, 0x3534313E},  // 设备 6
+  {0x003A002E, 0x46343030, 0x3534313F},  // 设备 7
+  {0x67184122, 0x49867050, 0x066BFF49},  // 设备 8
+  {0x67183650, 0x49867050, 0x0669FF49},  // 设备 9
+ 
+};
+
 // PB15 (LED1) 接收指示：收到LoRa数据时亮500ms
 static uint32_t led1OnTick = 0;   // LED1 点亮时间戳
 static uint8_t  led1On = 0;       // LED1 当前是否点亮（0=灭, 1=亮）
@@ -156,6 +171,7 @@ static void MX_NVIC_Init(void);      // NVIC 中断控制器初始化
 /* USER CODE BEGIN PFP */
 // 用户自定义函数声明
 static void printf_logo(void);       // 打印工程信息 Logo
+static int  getDeviceIndex(void);    // 根据芯片 UID 获取设备编号
 static void OnSlave(void);           // LoRa 从机接收处理函数
 static void enter_rx_mode(void);     // 切换到接收模式
 static void do_tx_send(void);        // 发送模式处理函数
@@ -177,6 +193,28 @@ static uint8_t sendPendingCommand(const char *deviceId);   // 发送缓存指令
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/**
+  * @brief  根据芯片 UID 获取设备编号
+  * @note   读取芯片 96 位 UID，在 deviceUidList 中查找匹配项
+  * @retval 设备编号 (0-9)，未找到返回 -1
+  */
+static int getDeviceIndex(void)
+{
+  uint32_t uid0 = *(volatile uint32_t *)0x1FFFF7E8;
+  uint32_t uid1 = *(volatile uint32_t *)0x1FFFF7EC;
+  uint32_t uid2 = *(volatile uint32_t *)0x1FFFF7F0;
+
+  for (int i = 0; i < 10; i++)
+  {
+    if (deviceUidList[i][0] == uid2 &&
+        deviceUidList[i][1] == uid1 &&
+        deviceUidList[i][2] == uid0)
+    {
+      return i;
+    }
+  }
+  return -1;  // 未找到匹配的设备
+}
 
 
 #ifdef __GNUC__
@@ -949,6 +987,25 @@ int main(void)
          (uint16_t)huart3.Instance->CR3, (uint16_t)huart3.Instance->BRR,
          (uint16_t)huart3.Instance->SR);
   printf_logo();  // 显示工程信息 Logo
+
+  /* 打印芯片唯一 ID 并根据 UID 生成 deviceName */
+  {
+    uint32_t uid0 = *(volatile uint32_t *)0x1FFFF7E8;
+    uint32_t uid1 = *(volatile uint32_t *)0x1FFFF7EC;
+    uint32_t uid2 = *(volatile uint32_t *)0x1FFFF7F0;
+    printf("Chip UID    : %08X-%08X-%08X\r\n", (unsigned int)uid2, (unsigned int)uid1, (unsigned int)uid0);
+
+    int devIndex = getDeviceIndex();
+    if (devIndex >= 0)
+    {
+      snprintf(deviceName, sizeof(deviceName), "v4-%d", 100 + devIndex);
+      printf("Device Name : %s (index=%d)\r\n", deviceName, 100 + devIndex);
+    }
+    else
+    {
+      printf("Device Name : %s (UID not in list, use default)\r\n", deviceName);
+    }
+  }
 
   /* 从 Flash 加载配置 */
   loadConfigFromFlash();
