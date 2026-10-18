@@ -11,8 +11,8 @@
 #include "radio.h"
 
 
-// #define USE_MODEM_CHIRPlOT
-#define USE_MODEM_LORA
+#define USE_MODEM_CHIRPlOT
+// #define USE_MODEM_LORA
 
 /*
  * flag that indicate if a new packet is received.
@@ -2498,11 +2498,9 @@ RF_Err_t rf_set_default_para(void)
 {
 	
 #if defined( USE_MODEM_LORA )		
-	set_test_mode1_reg();//LoRa模式
-	RF_ASSERT(rf_set_crc(CRC_OFF));//关闭CRC	
-#else	
-	RF_ASSERT(rf_set_crc(CRC_ON));
-#endif	
+	//set_test_mode1_reg();//LoRa模式必须调用  ← 临时注释测试
+#endif
+	RF_ASSERT(rf_set_crc(CRC_ON));//开启CRC	
  
     RF_ASSERT(rf_set_freq(DEFAULT_FREQ));
     RF_ASSERT(rf_set_code_rate(DEFAULT_CR));

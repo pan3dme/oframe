@@ -1,33 +1,49 @@
-./objects/stm32f0xx_it.o: ..\stm32f0xx_it.c ..\stm32f0xx_it.h ..\main.h \
-  ..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h \
-  ..\Libraries\CMSIS\Include\core_cm0.h \
-  ..\Libraries\CMSIS\Include\core_cmInstr.h \
-  ..\Libraries\CMSIS\Include\core_cmFunc.h \
-  ..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h \
-  ..\..\(Simplex)PAN3029_PAN3060_DK_V2.3\stm32f0xx_conf.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h \
-  ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h ..\user.h \
-  ..\gpio.h ..\delay.h ..\spi.h ..\Radio\inc\crc.h ..\uart.h \
-  ..\Radio\inc\pan3029_port.h ..\Radio\inc\pan3029_rf.h \
-  ..\Radio\inc\radio.h
+.\objects\stm32f0xx_it.o: ..\stm32f0xx_it.c
+.\objects\stm32f0xx_it.o: ..\stm32f0xx_it.h
+.\objects\stm32f0xx_it.o: ..\main.h
+.\objects\stm32f0xx_it.o: ..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h
+.\objects\stm32f0xx_it.o: ..\Libraries\CMSIS\Include\core_cm0.h
+.\objects\stm32f0xx_it.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+.\objects\stm32f0xx_it.o: ..\Libraries\CMSIS\Include\core_cmInstr.h
+.\objects\stm32f0xx_it.o: ..\Libraries\CMSIS\Include\core_cmFunc.h
+.\objects\stm32f0xx_it.o: ..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\system_stm32f0xx.h
+.\objects\stm32f0xx_it.o: ..\..\(Simplex)PAN3029_PAN3060_DK_V2.3\stm32f0xx_conf.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_adc.h
+.\objects\stm32f0xx_it.o: ..\Libraries\CMSIS\Device\ST\STM32F0xx\Include\stm32f0xx.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_can.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_cec.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crc.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_crs.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_comp.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dac.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dbgmcu.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_dma.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_exti.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_flash.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_gpio.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_syscfg.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_i2c.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_iwdg.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_pwr.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rcc.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_rtc.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_spi.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_tim.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_usart.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_wwdg.h
+.\objects\stm32f0xx_it.o: ..\Libraries\STM32F0xx_StdPeriph_Driver\inc\stm32f0xx_misc.h
+.\objects\stm32f0xx_it.o: ..\user.h
+.\objects\stm32f0xx_it.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+.\objects\stm32f0xx_it.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+.\objects\stm32f0xx_it.o: ..\gpio.h
+.\objects\stm32f0xx_it.o: ..\delay.h
+.\objects\stm32f0xx_it.o: ..\spi.h
+.\objects\stm32f0xx_it.o: ..\Radio\inc\crc.h
+.\objects\stm32f0xx_it.o: ..\uart.h
+.\objects\stm32f0xx_it.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+.\objects\stm32f0xx_it.o: ..\Radio\inc\pan3029_port.h
+.\objects\stm32f0xx_it.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+.\objects\stm32f0xx_it.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+.\objects\stm32f0xx_it.o: ..\Radio\inc\pan3029_rf.h
+.\objects\stm32f0xx_it.o: ..\Radio\inc\pan3029_port.h
+.\objects\stm32f0xx_it.o: ..\Radio\inc\radio.h
