@@ -341,7 +341,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xB</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\user;../Radio/inc;../../Common/inc</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\user;../../Common/RadioF103/inc;../../Common/inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -523,17 +523,17 @@
             <File>
               <FileName>pan3029_port.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../Radio/src/pan3029_port.c</FilePath>
+              <FilePath>../../Common/RadioF103/src/pan3029_port.c</FilePath>
             </File>
             <File>
               <FileName>pan3029_rf.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../Radio/src/pan3029_rf.c</FilePath>
+              <FilePath>../../Common/RadioF103/src/pan3029_rf.c</FilePath>
             </File>
             <File>
               <FileName>crc.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../Radio/src/crc.c</FilePath>
+              <FilePath>../../Common/RadioF103/src/crc.c</FilePath>
             </File>
           </Files>
         </Group>

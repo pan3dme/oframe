@@ -1146,7 +1146,7 @@ float rf_get_snr(void)
     float ratio = (sig_pow_f / (float)(2u << sf_val)) / noise_pow_f;
     if (ratio < 0.0001f)
     {
-        ratio = 0.0001f;  /* 下限保护，避免 log10(0) 产生 -inf/NaN */
+        ratio = 0.0001f;  /* 下限保护，避�?log10(0) 产生 -inf/NaN */
     }
 
     snr_val = 10.0f * log10f(ratio);
@@ -1183,7 +1183,7 @@ int8_t rf_get_channel_rssi(void)
 
 /**
  * @brief set tx_power
- * @param[in] <tx_power> open gears (range in 1--23（405MHz-565MHz）1-22(868/915MHz))
+ * @param[in] <tx_power> open gears (range in 1--23�?05MHz-565MHz�?-22(868/915MHz))
  * @return result
  */
 RF_Err_t rf_set_tx_power(uint8_t tx_power)

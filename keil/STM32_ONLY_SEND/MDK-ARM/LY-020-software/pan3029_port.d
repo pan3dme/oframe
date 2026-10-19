@@ -1,5 +1,5 @@
-ly-020-software\pan3029_port.o: ../Radio/src/pan3029_port.c
-ly-020-software\pan3029_port.o: ../Radio/inc/pan3029_port.h
+ly-020-software\pan3029_port.o: ../../Common/RadioF103/src/pan3029_port.c
+ly-020-software\pan3029_port.o: ../../Common/RadioF103/inc/pan3029_port.h
 ly-020-software\pan3029_port.o: ../Core/Inc/main.h
 ly-020-software\pan3029_port.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h
 ly-020-software\pan3029_port.o: ../Core/Inc/stm32f1xx_hal_conf.h
@@ -34,4 +34,4 @@ ly-020-software\pan3029_port.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\includ
 ly-020-software\pan3029_port.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdio.h
 ly-020-software\pan3029_port.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\stdlib.h
 ly-020-software\pan3029_port.o: D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin\..\include\string.h
-ly-020-software\pan3029_port.o: ../Radio/inc/pan3029_rf.h
+ly-020-software\pan3029_port.o: ../../Common/RadioF103/inc/pan3029_rf.h
