@@ -59,7 +59,7 @@
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
 /* 设备信息 */
-#define DEVICE_NAME  "v4-18"
+#define DEVICE_NAME  "v3-10"
 #define BATTERY_VAL  100
 
 /* 上报间隔（秒）：3 分钟 = 180 秒，此处用 600 秒倒计时（与 F030 一致） */
