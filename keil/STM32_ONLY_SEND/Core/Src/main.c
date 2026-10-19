@@ -61,10 +61,10 @@
 /* 设备信息 */
 #define DEFAULT_DEVICE_NAME  "v0-0"
 char deviceName[32] = DEFAULT_DEVICE_NAME;  /* 可变设备名，从 Flash 加载 */
-#define BATTERY_VAL  100
+#define BATTERY_VAL  99
 
 /* 配置字符串（持久化到 Flash，可通过指令修改） */
-#define DEFAULT_CONFIG_STR  "5,0M,3t,6"
+#define DEFAULT_CONFIG_STR  "1,0M,3t,6"
 char configStr[64] = DEFAULT_CONFIG_STR;
 
 /* Flash 存储地址（STM32F103C8T6 64KB） */
@@ -92,7 +92,8 @@ I2C_HandleTypeDef hi2c1;  /* OLED 模块需要 */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
 static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
 static uint8_t  timeSynced = 0;       /* 是否已同步时间 */
-static uint8_t  configSentOnce = 0;   /* 配置消息是否已发送（重启后只发一次） */
+static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
+static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -120,6 +121,9 @@ static void loadConfigFromFlash(void);
 static void saveConfigToFlash(const char *str);
 static void sendConfigMessage(void);
 static uint32_t getConfigIntervalSec(void);
+static uint8_t  getDeviceIndex(void);
+static uint32_t getSlotOffsetSec(void);
+static void calcNextTxTime(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -276,9 +280,57 @@ static void sendConfigMessage(void)
 }
 
 /**
+  * @brief  计算下次上报时间
+  * @note   已对时：基于时隙调度，nextTx = 下一个 slot 边界（休眠时保持在 RAM）
+  *         未对时：nextTx = 当前 boot seconds + 间隔（重启后重新计算）
+  */
+static void calcNextTxTime(void)
+{
+  uint32_t intervalSec = getConfigIntervalSec();
+
+  if (timeSynced) {
+    /* 已对时：基于当天 00:00 的时隙调度 */
+    uint32_t slotOffset = getSlotOffsetSec();
+    uint32_t nowSec = getTodaySecond();
+    uint32_t currentSlot = nowSec / intervalSec;
+    uint32_t nextSlotTime = (currentSlot + 1) * intervalSec + slotOffset;
+    /* 如果计算的时间已过，再加一个周期 */
+    if (nextSlotTime <= nowSec) {
+      nextSlotTime += intervalSec;
+    }
+    /* 防止对时后等待时间过短导致重复上报（< 半周期则再加一个周期） */
+    uint32_t waitSec = nextSlotTime - nowSec;
+    if (waitSec < intervalSec / 2) {
+      nextSlotTime += intervalSec;
+    }
+    nextTxTimestamp = getCurrentTimestamp() + (nextSlotTime - nowSec);
+    {
+      uint32_t nowHms = nowSec % 86400;
+      uint32_t nextHms = nextTxTimestamp % 86400;
+      printf("[SCHED] synced | now=%lu %02lu:%02lu:%02lu slot=%lu wait=%lu (%lu:%02lu) | nextTx=%lu %02lu:%02lu:%02lu\r\n",
+             (unsigned long)nowSec,
+             (unsigned long)(nowHms / 3600), (unsigned long)((nowHms % 3600) / 60), (unsigned long)(nowHms % 60),
+             (unsigned long)slotOffset,
+             (unsigned long)(nextSlotTime - nowSec),
+             (unsigned long)((nextSlotTime - nowSec) / 60),
+             (unsigned long)((nextSlotTime - nowSec) % 60),
+             (unsigned long)nextTxTimestamp,
+             (unsigned long)(nextHms / 3600), (unsigned long)((nextHms % 3600) / 60), (unsigned long)(nextHms % 60));
+    }
+  } else {
+    /* 未对时：当前 boot seconds + 间隔 */
+    nextTxTimestamp = getCurrentTimestamp() + intervalSec;
+    printf("[SCHED] no-sync | interval=%lu (%lu:%02lu) | nextTx=%lu\r\n",
+           (unsigned long)intervalSec,
+           (unsigned long)(intervalSec / 60), (unsigned long)(intervalSec % 60),
+           (unsigned long)nextTxTimestamp);
+  }
+}
+
+/**
   * @brief  从 configStr 解析上报间隔（秒）
   * @note   configStr 格式: "30,0M,3t,6" → 第一个字段 30 = 30 分钟 = 1800 秒
-  *         取值范围: 1~60 分钟，超出则用默认值
+  *         取值范围: 1~60 分钟
   */
 static uint32_t getConfigIntervalSec(void)
 {
@@ -286,6 +338,32 @@ static uint32_t getConfigIntervalSec(void)
   if (min == 0) min = 1;    /* 最小 1 分钟 */
   if (min > 60) min = 60;   /* 最大 60 分钟 */
   return min * 60;
+}
+
+/**
+  * @brief  从 deviceName 解析设备序号
+  * @note   "v0-0" → 0, "v0-1" → 1, "v0-27" → 27
+  *         格式: "vX-Y" 取 '-' 后面的数字
+  */
+static uint8_t getDeviceIndex(void)
+{
+  char *dash = strchr(deviceName, '-');
+  if (dash != NULL) {
+    return (uint8_t)atoi(dash + 1);
+  }
+  return 0;
+}
+
+/**
+  * @brief  计算本设备在上报周期中的时隙偏移（秒）
+  * @note   公式: deviceIndex / 30 * intervalSec
+  *         如: v0-27, 30 分钟周期 → 27/30*1800 = 1740 秒
+  */
+static uint32_t getSlotOffsetSec(void)
+{
+  uint32_t intervalSec = getConfigIntervalSec();
+  uint8_t  index = getDeviceIndex();
+  return (uint32_t)index * intervalSec / 30;
 }
 
 /**
@@ -402,6 +480,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         timeSynced = 1;
         printf("[SYNC] ts=%lu today=%lu\r\n",
                (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
+        /* 对时成功后重新计算下次上报时间（基于真实时间） */
+        calcNextTxTime();
       }
       break;
     case MSG_TYPE_COM: /* 9: 指令  9|deviceId|cmd|value */
@@ -420,6 +500,28 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
+        /* A: 9|v3-17|A|10,0M,3t,6  →  更新配置并标记上报 */
+        else if (strcmp(fields[2], "A") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            /* 合法性检查：上报周期必须在 1~60 分钟之间 */
+            uint32_t newMin = (uint32_t)atoi(fields[3]);
+            if (newMin >= 1 && newMin <= 60) {
+              strncpy(configStr, fields[3], sizeof(configStr) - 1);
+              configStr[sizeof(configStr) - 1] = '\0';
+              saveConfigToFlash(configStr);
+              configNeedReport = 1;  /* 标记需要上报配置 */
+              printf("[CMD] Config updated: %s\r\n", configStr);
+            } else {
+              printf("[CMD] A: interval=%lu out of range (1~60), reject\r\n",
+                     (unsigned long)newMin);
+            }
+          } else {
+            printf("[CMD] A: target=%s != local=%s, skip\r\n",
+                   fields[1], deviceName);
+          }
+        } else {
+          printf("[CMD] unknown cmd: %s\r\n", fields[2]);
+        }
       }
       break;
     default:
@@ -432,7 +534,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   * @brief  Master（主机/发射端）流程
   * @note   1. 组包并发送（MSG_TYPE_TIME|设备名|当天秒数|电量|计数）
   *         2. 发送完成后开启 3 秒接收窗口，解析对时消息
-  *         3. 等待 600 秒后进入下一次发送
+  *         3. 计算下次上报时间并保存到 Flash
   */
 static void OnMaster(void)
 {
@@ -511,22 +613,15 @@ static void OnMaster(void)
     printf("[RX window] crc error.\r\n");
   }
 
-  /* 首次上报后延迟 1 秒发送配置消息（每次重启只发一次） */
-  if (!configSentOnce) {
+  /* 配置需要上报时，延迟 1 秒发送配置消息（开机首次或收到配置更新指令） */
+  if (configNeedReport) {
     HAL_Delay(1000);
     sendConfigMessage();
-    configSentOnce = 1;
+    configNeedReport = 0;  /* 标记已上报 */
   }
 
-  /* 等待下次上报，每秒打印当前时间和倒计时 */
-  uint32_t intervalSec = getConfigIntervalSec();
-  printf("[DEBUG] Wait for next TX (%lu s)...\r\n", (unsigned long)intervalSec);
-  for (uint32_t i = intervalSec; i > 0; i--) {
-    HAL_Delay(1000);
-    char time_str[20];
-    formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
-    printf("[DEBUG] %s  count: %d s\r\n", time_str, i);
-  }
+  /* 计算下次上报时间（配置更新后间隔可能变化） */
+  calcNextTxTime();
 }
 
 /* USER CODE END 0 */
@@ -564,6 +659,11 @@ int main(void)
   printf("\r\n===== LoRa Only Send Start =====\r\n");
   printf_logo();
   printf("Device: %s\r\n", deviceName);
+  printf("Config: %s\r\n", configStr);
+  printf("Slot  : index=%d, interval=%lu s, offset=%lu s\r\n",
+         getDeviceIndex(),
+         (unsigned long)getConfigIntervalSec(),
+         (unsigned long)getSlotOffsetSec());
 
   HAL_Delay(1);
 
@@ -598,6 +698,19 @@ int main(void)
   /* 默认进入 TX 模式（与 PAN3029_F030 一致） */
   printf("TX mode: transmit only.\r\n");
 
+  /* 开机 5 秒倒计时（未对时，时间为 1970 起始） */
+  printf("[BOOT] 5s countdown (time from 1970)...\r\n");
+  for (int i = 5; i > 0; i--) {
+    char time_str[20];
+    formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
+    printf("[BOOT] %s  %d\r\n", time_str, i);
+    HAL_Delay(1000);
+  }
+
+  /* 倒计时结束后立即上报第一次（nextTx=0，主循环马上触发） */
+  nextTxTimestamp = 0;
+  printf("[SCHED] Ready, first TX immediately...\r\n");
+
   /* USER CODE END 2 */
 
   /* 无限循环 */
@@ -605,7 +718,14 @@ int main(void)
   while (1)
   {
     /* USER CODE BEGIN 3 */
-    OnMaster();
+
+    /* 检查是否到达上报时间 */
+    if (getCurrentTimestamp() >= nextTxTimestamp) {
+      OnMaster();
+    }
+
+    HAL_Delay(100);
+
     /* USER CODE END 3 */
   }
   /* USER CODE END WHILE */
