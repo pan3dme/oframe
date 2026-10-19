@@ -94,6 +94,8 @@ I2C_HandleTypeDef hi2c1;  /* OLED 模块需要 */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
 static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
 static uint8_t  timeSynced = 0;       /* 是否已同步时间 */
+static uint32_t anchorTick = 0;       /* 首次对时的 tick 基准（用于晶振偏差计算） */
+static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
@@ -323,7 +325,7 @@ static void sendConfigMessage(void)
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
   LedToggle();
-  printf("[CONFIG] tx ok -> \"%s\"\r\n", tx_msg);
+  printf("[配置] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -522,8 +524,35 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   switch (msg_type) {
     case MSG_TYPE_SYN_TIME: /* 4: 下发对时信息 4|timestamp|xxx */
       if (field_count >= 2) {
-        syncedTimestamp = atoi(fields[1]);
-        syncedTick = HAL_GetTick();
+        uint32_t recvTs = (uint32_t)atoi(fields[1]);
+        uint32_t nowTick = HAL_GetTick();
+
+        /* 晶振偏差计算（首次对时设为锚点，后续每次对时输出偏差） */
+        if (timeSynced) {
+          uint32_t localElapsedMs = nowTick - anchorTick;
+          uint32_t localElapsedSec = localElapsedMs / 1000;
+          uint32_t remoteElapsedSec = recvTs - anchorTimestamp;
+          /* 直接用间隔差值计算偏差，避免绝对时间戳整数截断 */
+          int32_t  driftSec = (int32_t)localElapsedSec - (int32_t)remoteElapsedSec;
+          int32_t  driftPerHour = (remoteElapsedSec > 0)
+              ? (driftSec * 3600 / (int32_t)remoteElapsedSec)
+              : 0;
+          printf("[XTAL] drift=%d s / %lu s  =>  %d s/hour  local=%lu remote=%lu\r\n",
+                 (int)driftSec,
+                 (unsigned long)localElapsedSec,
+                 (int)driftPerHour,
+                 (unsigned long)localElapsedSec,
+                 (unsigned long)remoteElapsedSec);
+        } else {
+          /* 首次对时：记录锚点 */
+          anchorTick = nowTick;
+          anchorTimestamp = recvTs;
+          printf("[XTAL] anchor set  ts=%lu tick=%lu\r\n",
+                 (unsigned long)recvTs, (unsigned long)nowTick);
+        }
+
+        syncedTimestamp = recvTs;
+        syncedTick = nowTick;
         timeSynced = 1;
         printf("[SYNC] ts=%lu today=%lu\r\n",
                (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
