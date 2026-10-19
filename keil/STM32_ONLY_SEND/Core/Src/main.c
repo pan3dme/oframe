@@ -59,22 +59,21 @@
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
 /* 设备信息 */
-#define DEFAULT_DEVICE_NAME  "v3-10"
+#define DEFAULT_DEVICE_NAME  "v0-0"
 char deviceName[32] = DEFAULT_DEVICE_NAME;  /* 可变设备名，从 Flash 加载 */
 #define BATTERY_VAL  100
 
 /* 配置字符串（持久化到 Flash，可通过指令修改） */
-#define DEFAULT_CONFIG_STR  "30,0M,3t,6"
+#define DEFAULT_CONFIG_STR  "5,0M,3t,6"
 char configStr[64] = DEFAULT_CONFIG_STR;
 
 /* Flash 存储地址（STM32F103C8T6 64KB） */
 #define DEVNAME_FLASH_ADDR  0x0800F800  /* 设备名存储（倒数第二页） */
-#define DEVNAME_MAGIC       0xA5A55A5A
+#define DEVNAME_MAGIC       0xA5A55A5B  /* 修改魔术字使旧 Flash 数据失效 */
 #define CONFIG_FLASH_ADDR   0x0800F400  /* 配置字符串存储（倒数第三页） */
-#define CONFIG_MAGIC        0x5A5AA5A5
+#define CONFIG_MAGIC        0x5A5AA5A6  /* 修改魔术字使旧 Flash 数据失效 */
 
-/* 上报间隔（秒）：3 分钟 = 180 秒，此处用 600 秒倒计时（与 F030 一致） */
-#define TX_INTERVAL_S  10
+/* 上报间隔：由 configStr 第一个字段决定（分钟），如 "30,0M,3t,6" = 30 分钟 */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -120,6 +119,7 @@ static void saveDeviceNameToFlash(const char *name);
 static void loadConfigFromFlash(void);
 static void saveConfigToFlash(const char *str);
 static void sendConfigMessage(void);
+static uint32_t getConfigIntervalSec(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -273,6 +273,19 @@ static void sendConfigMessage(void)
 
   LedToggle();
   printf("[CONFIG] tx ok -> \"%s\"\r\n", tx_msg);
+}
+
+/**
+  * @brief  从 configStr 解析上报间隔（秒）
+  * @note   configStr 格式: "30,0M,3t,6" → 第一个字段 30 = 30 分钟 = 1800 秒
+  *         取值范围: 1~60 分钟，超出则用默认值
+  */
+static uint32_t getConfigIntervalSec(void)
+{
+  uint32_t min = (uint32_t)atoi(configStr);
+  if (min == 0) min = 1;    /* 最小 1 分钟 */
+  if (min > 60) min = 60;   /* 最大 60 分钟 */
+  return min * 60;
 }
 
 /**
@@ -435,6 +448,14 @@ static void OnMaster(void)
            MSG_TYPE_TIME, deviceName,
            (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
 
+  /* 发送前 LED 闪 3 次，每次 200ms */
+  for (uint8_t i = 0; i < 3; i++) {
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+    HAL_Delay(100);
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+    HAL_Delay(100);
+  }
+
   /* 发送数据 */
   if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
@@ -498,8 +519,9 @@ static void OnMaster(void)
   }
 
   /* 等待下次上报，每秒打印当前时间和倒计时 */
-  printf("[DEBUG] Wait for next TX...\r\n");
-  for (int i = TX_INTERVAL_S; i > 0; i--) {
+  uint32_t intervalSec = getConfigIntervalSec();
+  printf("[DEBUG] Wait for next TX (%lu s)...\r\n", (unsigned long)intervalSec);
+  for (uint32_t i = intervalSec; i > 0; i--) {
     HAL_Delay(1000);
     char time_str[20];
     formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
