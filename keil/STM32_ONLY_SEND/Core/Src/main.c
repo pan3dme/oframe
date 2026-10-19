@@ -59,8 +59,19 @@
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
 /* 设备信息 */
-#define DEVICE_NAME  "v3-10"
+#define DEFAULT_DEVICE_NAME  "v3-10"
+char deviceName[32] = DEFAULT_DEVICE_NAME;  /* 可变设备名，从 Flash 加载 */
 #define BATTERY_VAL  100
+
+/* 配置字符串（持久化到 Flash，可通过指令修改） */
+#define DEFAULT_CONFIG_STR  "30,0M,3t,6"
+char configStr[64] = DEFAULT_CONFIG_STR;
+
+/* Flash 存储地址（STM32F103C8T6 64KB） */
+#define DEVNAME_FLASH_ADDR  0x0800F800  /* 设备名存储（倒数第二页） */
+#define DEVNAME_MAGIC       0xA5A55A5A
+#define CONFIG_FLASH_ADDR   0x0800F400  /* 配置字符串存储（倒数第三页） */
+#define CONFIG_MAGIC        0x5A5AA5A5
 
 /* 上报间隔（秒）：3 分钟 = 180 秒，此处用 600 秒倒计时（与 F030 一致） */
 #define TX_INTERVAL_S  10
@@ -82,6 +93,7 @@ I2C_HandleTypeDef hi2c1;  /* OLED 模块需要 */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
 static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
 static uint8_t  timeSynced = 0;       /* 是否已同步时间 */
+static uint8_t  configSentOnce = 0;   /* 配置消息是否已发送（重启后只发一次） */
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -103,6 +115,11 @@ static void formatTimestamp(uint32_t ts, char *buf, uint8_t len);
 static void OnMaster(void);
 static void parse_rx_message(uint8_t *buf, uint8_t len);
 static void LedToggle(void);
+static void loadDeviceNameFromFlash(void);
+static void saveDeviceNameToFlash(const char *name);
+static void loadConfigFromFlash(void);
+static void saveConfigToFlash(const char *str);
+static void sendConfigMessage(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -136,6 +153,126 @@ static void printf_logo(void)
   printf("* MCU           : STM32F103C8T6\r\n");
   printf("* Radio         : PAN3029 (LoRa)\r\n");
   printf("*************************************************************\r\n");
+}
+
+/**
+  * @brief  从 Flash 加载设备名
+  * @note   如果 Flash 中有有效魔术字则加载，否则使用默认名
+  */
+static void loadDeviceNameFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)DEVNAME_FLASH_ADDR;
+  if (magic == DEVNAME_MAGIC) {
+    const char *p = (const char *)(DEVNAME_FLASH_ADDR + 4);
+    uint8_t i;
+    for (i = 0; i < sizeof(deviceName) - 1 && p[i] != '\0'; i++)
+      deviceName[i] = p[i];
+    deviceName[i] = '\0';
+    printf("[Flash] DeviceName loaded: %s\r\n", deviceName);
+  } else {
+    printf("[Flash] No saved name, use default: %s\r\n", deviceName);
+  }
+}
+
+/**
+  * @brief  保存设备名到 Flash
+  * @param  name: 要保存的设备名字符串
+  */
+static void saveDeviceNameToFlash(const char *name)
+{
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+  uint8_t i;
+
+  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = DEVNAME_FLASH_ADDR;
+  eraseInit.NbPages = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+
+  /* 写入魔术字 */
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DEVNAME_FLASH_ADDR, DEVNAME_MAGIC);
+
+  /* 写入设备名字符串（按半字写入） */
+  for (i = 0; i < strlen(name) + 1; i += 2) {
+    uint16_t halfWord = name[i] | (name[i + 1] << 8);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, DEVNAME_FLASH_ADDR + 4 + i,
+                      halfWord);
+  }
+
+  HAL_FLASH_Lock();
+  printf("[Flash] DeviceName saved: %s\r\n", name);
+}
+
+/**
+  * @brief  从 Flash 加载配置字符串
+  */
+static void loadConfigFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)CONFIG_FLASH_ADDR;
+  if (magic == CONFIG_MAGIC) {
+    const char *p = (const char *)(CONFIG_FLASH_ADDR + 4);
+    uint8_t i;
+    for (i = 0; i < sizeof(configStr) - 1 && p[i] != '\0'; i++)
+      configStr[i] = p[i];
+    configStr[i] = '\0';
+    printf("[Flash] Config loaded: %s\r\n", configStr);
+  } else {
+    printf("[Flash] No saved config, use default: %s\r\n", configStr);
+  }
+}
+
+/**
+  * @brief  保存配置字符串到 Flash
+  */
+static void saveConfigToFlash(const char *str)
+{
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+  uint8_t i;
+
+  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = CONFIG_FLASH_ADDR;
+  eraseInit.NbPages = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CONFIG_FLASH_ADDR, CONFIG_MAGIC);
+
+  for (i = 0; i < strlen(str) + 1; i += 2) {
+    uint16_t halfWord = str[i] | (str[i + 1] << 8);
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_FLASH_ADDR + 4 + i,
+                      halfWord);
+  }
+
+  HAL_FLASH_Lock();
+  printf("[Flash] Config saved: %s\r\n", str);
+}
+
+/**
+  * @brief  发送配置消息（重启后只发一次）
+  * @note   格式: MSG_TYPE_CONFIG|deviceName|config_str
+  */
+static void sendConfigMessage(void)
+{
+  char tx_msg[TX_LEN];
+  uint32_t tx_time = 1000;
+
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|",
+           MSG_TYPE_CONFIG, deviceName, configStr);
+
+  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+  }
+
+  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
+    ;
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+
+  LedToggle();
+  printf("[CONFIG] tx ok -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -254,8 +391,23 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
       }
       break;
-    case MSG_TYPE_COM: /* 9: 指令 */
-      printf("[CMD] %s\r\n", field_count > 2 ? fields[2] : "");
+    case MSG_TYPE_COM: /* 9: 指令  9|deviceId|cmd|value */
+      if (field_count >= 3) {
+        printf("[CMD] devId=%s, cmd=%s, val=%s\r\n",
+               fields[1], fields[2], field_count > 3 ? fields[3] : "");
+        /* realyname: 9|v3-10|realyname|v3-11  →  本机改名 */
+        if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
+            deviceName[sizeof(deviceName) - 1] = '\0';
+            saveDeviceNameToFlash(deviceName);
+            printf("[CMD] Device renamed to: %s\r\n", deviceName);
+          } else {
+            printf("[CMD] realyname: target=%s != local=%s, skip\r\n",
+                   fields[1], deviceName);
+          }
+        }
+      }
       break;
     default:
       printf("[MSG] type=%d\r\n", msg_type);
@@ -280,7 +432,7 @@ static void OnMaster(void)
 
   /* 组包：2|v4-18|当天秒数|100|计数 */
   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
-           MSG_TYPE_TIME, DEVICE_NAME,
+           MSG_TYPE_TIME, deviceName,
            (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
 
   /* 发送数据 */
@@ -338,6 +490,13 @@ static void OnMaster(void)
     printf("[RX window] crc error.\r\n");
   }
 
+  /* 首次上报后延迟 1 秒发送配置消息（每次重启只发一次） */
+  if (!configSentOnce) {
+    HAL_Delay(1000);
+    sendConfigMessage();
+    configSentOnce = 1;
+  }
+
   /* 等待下次上报，每秒打印当前时间和倒计时 */
   printf("[DEBUG] Wait for next TX...\r\n");
   for (int i = TX_INTERVAL_S; i > 0; i--) {
@@ -375,10 +534,14 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
+  /* 从 Flash 加载设备名和配置 */
+  loadDeviceNameFromFlash();
+  loadConfigFromFlash();
+
   /* 打印启动信息 */
   printf("\r\n===== LoRa Only Send Start =====\r\n");
   printf_logo();
-  printf("Device: %s\r\n", DEVICE_NAME);
+  printf("Device: %s\r\n", deviceName);
 
   HAL_Delay(1);
 

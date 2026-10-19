@@ -894,8 +894,18 @@ static void parseDtuCommand(char *buf) {
            deviceName, (unsigned long)gpstmTimeoutMin);
   } else if (strcmp(cmd, "realyname") == 0) {
     /* realyname 更换设备名字 */
-    // {"cmd":"realyname","value":"v3-10=v3-11"}
-    
+    /* value 格式: "v3-10=v3-11"  →  目标设备=v3-10, 新名字=v3-11 */
+    char *eq = strchr(val, '=');
+    if (eq != NULL) {
+      *eq = '\0';
+      char *targetDevId = val;
+      char *newName = eq + 1;
+      printf("[DTU CMD] realyname: target=%s, newName=%s, cache it\r\n",
+             targetDevId, newName);
+      cachePendingCommand(targetDevId, cmd, newName);
+    } else {
+      printf("[DTU CMD] realyname: value 格式错误 (缺少 '=')\r\n");
+    }
 
 
   } else {
