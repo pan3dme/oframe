@@ -99,6 +99,7 @@ static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
+static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -126,6 +127,7 @@ static void loadConfigFromFlash(void);
 static void saveConfigToFlash(const char *str);
 static void loadTxPowerFromFlash(void);
 static void saveTxPowerToFlash(uint8_t power);
+static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
 static uint32_t getConfigIntervalSec(void);
 static uint8_t  getDeviceIndex(void);
@@ -179,9 +181,9 @@ static void loadDeviceNameFromFlash(void)
     for (i = 0; i < sizeof(deviceName) - 1 && p[i] != '\0'; i++)
       deviceName[i] = p[i];
     deviceName[i] = '\0';
-    printf("[Flash] DeviceName loaded: %s\r\n", deviceName);
+    printf("[Flash] 设备名已加载: %s\r\n", deviceName);
   } else {
-    printf("[Flash] No saved name, use default: %s\r\n", deviceName);
+    printf("[Flash] 无保存设备名, 使用默认: %s\r\n", deviceName);
   }
 }
 
@@ -213,7 +215,7 @@ static void saveDeviceNameToFlash(const char *name)
   }
 
   HAL_FLASH_Lock();
-  printf("[Flash] DeviceName saved: %s\r\n", name);
+  printf("[Flash] 设备名已保存: %s\r\n", name);
 }
 
 /**
@@ -228,9 +230,9 @@ static void loadConfigFromFlash(void)
     for (i = 0; i < sizeof(configStr) - 1 && p[i] != '\0'; i++)
       configStr[i] = p[i];
     configStr[i] = '\0';
-    printf("[Flash] Config loaded: %s\r\n", configStr);
+    printf("[Flash] 配置已加载: %s\r\n", configStr);
   } else {
-    printf("[Flash] No saved config, use default: %s\r\n", configStr);
+    printf("[Flash] 无保存配置, 使用默认: %s\r\n", configStr);
   }
 }
 
@@ -259,7 +261,7 @@ static void saveConfigToFlash(const char *str)
   }
 
   HAL_FLASH_Lock();
-  printf("[Flash] Config saved: %s\r\n", str);
+  printf("[Flash] 配置已保存: %s\r\n", str);
 }
 
 /**
@@ -272,13 +274,13 @@ static void loadTxPowerFromFlash(void)
     uint8_t saved = (uint8_t)(*(volatile uint32_t *)(TXPWR_FLASH_ADDR + 4));
     if (saved >= 4 && saved <= 20) {
       currentTxPower = saved;
-      printf("[Flash] TxPower loaded: %d dBm\r\n", currentTxPower);
+      printf("[Flash] 发射功率已加载: %d dBm\r\n", currentTxPower);
     } else {
-      printf("[Flash] TxPower out of range (%d), use default: %d\r\n",
+      printf("[Flash] 发射功率超范围(%d), 使用默认: %d\r\n",
              saved, DEFAULT_PWR);
     }
   } else {
-    printf("[Flash] No saved TxPower, use default: %d dBm\r\n", DEFAULT_PWR);
+    printf("[Flash] 无保存发射功率, 使用默认: %d dBm\r\n", DEFAULT_PWR);
   }
 }
 
@@ -301,7 +303,44 @@ static void saveTxPowerToFlash(uint8_t power)
   HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, TXPWR_FLASH_ADDR + 4, (uint32_t)power);
 
   HAL_FLASH_Lock();
-  printf("[Flash] TxPower saved: %d dBm\r\n", power);
+  printf("[Flash] 发射功率已保存: %d dBm\r\n", power);
+}
+
+/**
+  * @brief  首次初始化 LoRa 模块（从关机状态启动）
+  * @note   仅在第一次 TX 前或从 deepsleep 唤醒后调用
+  */
+static void loraInitFirstTime(void)
+{
+  printf("LoRa 初始化中...\r\n");
+
+  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
+  HAL_Delay(100);
+
+  if (rf_init() != RF_OK) {
+    printf("射频初始化失败! 请检查接线\r\n");
+    while (1) {
+      HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+      HAL_Delay(100);
+    }
+  }
+  printf("射频初始化成功\r\n");
+
+  rf_set_default_para();
+  rf_set_tx_power(currentTxPower);
+
+  printf("===== LoRa 就绪 =====\r\n");
+  printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
+  printf("  SF      : %d\r\n", DEFAULT_SF);
+  printf("  BW      : 125 kHz\r\n");
+  printf("  CR      : 4/5\r\n");
+  printf("  功率    : %d dBm (当前)\r\n", currentTxPower);
+  printf("  CRC     : OFF\r\n");
+  printf("  SyncWord: 0x12\r\n");
+  printf("----------------------------\r\n");
+
+  loraInitialized = 1;
 }
 
 /**
@@ -515,7 +554,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   }
 
   if (field_count < 2) {
-    printf("[parse] invalid msg\r\n");
+    printf("[解析] 无效消息\r\n");
     return;
   }
 
@@ -537,7 +576,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           int32_t  driftPerHour = (remoteElapsedSec > 0)
               ? (driftSec * 3600 / (int32_t)remoteElapsedSec)
               : 0;
-          printf("[XTAL] drift=%d s / %lu s  =>  %d s/hour  local=%lu remote=%lu\r\n",
+          printf("[晶振] 偏差=%d秒 / %lu秒 => %d秒/小时  本地=%lu 服务器=%lu\r\n",
                  (int)driftSec,
                  (unsigned long)localElapsedSec,
                  (int)driftPerHour,
@@ -547,14 +586,14 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           /* 首次对时：记录锚点 */
           anchorTick = nowTick;
           anchorTimestamp = recvTs;
-          printf("[XTAL] anchor set  ts=%lu tick=%lu\r\n",
+          printf("[晶振] 锚点已设置  ts=%lu tick=%lu\r\n",
                  (unsigned long)recvTs, (unsigned long)nowTick);
         }
 
         syncedTimestamp = recvTs;
         syncedTick = nowTick;
         timeSynced = 1;
-        printf("[SYNC] ts=%lu today=%lu\r\n",
+        printf("[对时] ts=%lu 当天秒=%lu\r\n",
                (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
         /* 对时成功后重新计算下次上报时间（基于真实时间） */
         calcNextTxTime();
@@ -562,7 +601,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
       break;
     case MSG_TYPE_COM: /* 9: 指令  9|deviceId|cmd|value */
       if (field_count >= 3) {
-        printf("[CMD] devId=%s, cmd=%s, val=%s\r\n",
+        printf("[指令] 设备=%s, 命令=%s, 值=%s\r\n",
                fields[1], fields[2], field_count > 3 ? fields[3] : "");
         /* realyname: 9|v3-10|realyname|v3-11  →  本机改名 */
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
@@ -570,9 +609,9 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
             deviceName[sizeof(deviceName) - 1] = '\0';
             saveDeviceNameToFlash(deviceName);
-            printf("[CMD] Device renamed to: %s\r\n", deviceName);
+            printf("[指令] 设备已改名: %s\r\n", deviceName);
           } else {
-            printf("[CMD] realyname: target=%s != local=%s, skip\r\n",
+            printf("[指令] 改名: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
           }
         }
@@ -583,9 +622,9 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             currentTxPower = newPwr;
             rf_set_tx_power(newPwr);
             saveTxPowerToFlash(newPwr);
-            printf("[CMD] TxPower set to: %d dBm\r\n", newPwr);
+            printf("[指令] 发射功率已设置: %d dBm\r\n", newPwr);
           } else {
-            printf("[CMD] txpower: target=%s != local=%s, skip\r\n",
+            printf("[指令] 功率: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
           }
         }
@@ -599,22 +638,22 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               configStr[sizeof(configStr) - 1] = '\0';
               saveConfigToFlash(configStr);
               configNeedReport = 1;  /* 标记需要上报配置 */
-              printf("[CMD] Config updated: %s\r\n", configStr);
+              printf("[指令] 配置已更新: %s\r\n", configStr);
             } else {
-              printf("[CMD] A: interval=%lu out of range (1~60), reject\r\n",
+              printf("[指令] A: 间隔=%lu 超范围(1~60), 拒绝\r\n",
                      (unsigned long)newMin);
             }
           } else {
-            printf("[CMD] A: target=%s != local=%s, skip\r\n",
+            printf("[指令] A: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
           }
         } else {
-          printf("[CMD] unknown cmd: %s\r\n", fields[2]);
+          printf("[指令] 未知指令: %s\r\n", fields[2]);
         }
       }
       break;
     default:
-      printf("[MSG] type=%d\r\n", msg_type);
+      printf("[消息] 类型=%d\r\n", msg_type);
       break;
   }
 }
@@ -658,11 +697,11 @@ static void OnMaster(void)
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
   LedToggle();
-  printf("tx ok -> \"%s\"\r\n", tx_msg);
+  printf("发送成功 -> \"%s\"\r\n", tx_msg);
 
   /* ---- 开启 3 秒接收窗口（single 模式，最多只收一条） ---- */
   rf_enter_single_timeout_rx(3000);
-  printf("[RX window] 3s listening...\r\n");
+  printf("[接收窗口] 3秒监听中...\r\n");
 
   /* 等待接收完成或超时 */
   while (rf_get_recv_flag() == RADIO_FLAG_IDLE)
@@ -689,17 +728,17 @@ static void OnMaster(void)
     else
       local_buf[RX_LEN - 1] = '\0';
 
-    printf("[RX] len=%d rssi=%d snr=%d data=%s\r\n",
+    printf("[接收] len=%d rssi=%d snr=%d data=%s\r\n",
            local_size, local_rssi - 256, local_snr, (char *)local_buf);
 
     /* 解析消息 */
     parse_rx_message(local_buf, local_size);
   } else if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    printf("[RX window] timeout, no data.\r\n");
+    printf("[接收窗口] 超时, 无数据\r\n");
   } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    printf("[RX window] crc error.\r\n");
+    printf("[接收窗口] CRC校验错误\r\n");
   }
 
   /* 配置需要上报时，延迟 1 秒发送配置消息（开机首次或收到配置更新指令） */
@@ -711,6 +750,20 @@ static void OnMaster(void)
 
   /* 计算下次上报时间（配置更新后间隔可能变化） */
   calcNextTxTime();
+
+  /* 判断是否需要进入深度休眠 */
+  {
+    uint32_t nowTs = getCurrentTimestamp();
+    uint32_t waitSec = (nextTxTimestamp > nowTs) ? (nextTxTimestamp - nowTs) : 0;
+    if (waitSec > 10) {
+      /* 下次上报 > 10 秒后 → PAN3029 进入深度休眠省电 */
+      printf("[休眠] 下次发送 %lu 秒后, LoRa进入深度休眠...\r\n", (unsigned long)waitSec);
+      rf_deepsleep();
+      loraInitialized = 0;  /* 标记需要唤醒后重新初始化 */
+    } else {
+      printf("[活跃] 下次发送 %lu 秒后, LoRa保持就绪\r\n", (unsigned long)waitSec);
+    }
+  }
 }
 
 /* USER CODE END 0 */
@@ -746,61 +799,19 @@ int main(void)
   loadTxPowerFromFlash();
 
   /* 打印启动信息 */
-  printf("\r\n===== LoRa Only Send Start =====\r\n");
+  printf("\r\n===== LoRa 仅发送模式启动 =====\r\n");
   printf_logo();
-  printf("Device: %s\r\n", deviceName);
-  printf("Config: %s\r\n", configStr);
-  printf("Slot  : index=%d, interval=%lu s, offset=%lu s\r\n",
+  printf("设备: %s\r\n", deviceName);
+  printf("配置: %s\r\n", configStr);
+  printf("时隙  : 序号=%d, 间隔=%lu秒, 偏移=%lu秒\r\n",
          getDeviceIndex(),
          (unsigned long)getConfigIntervalSec(),
          (unsigned long)getSlotOffsetSec());
 
-  HAL_Delay(1);
-
-  /* LoRa PAN3029 模块初始化 */
-  printf("LoRa init...\r\n");
-
-  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
-  HAL_Delay(100);
-
-  if (rf_init() != RF_OK) {
-    printf("RF init fail! Check wiring.\r\n");
-    while (1) {
-      HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-      HAL_Delay(100);
-    }
-  }
-  printf("RF init ok\r\n");
-
-  rf_set_default_para();
-  rf_set_tx_power(currentTxPower);  /* 应用持久化的发射功率 */
-
-  printf("===== LoRa Ready =====\r\n");
-  printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
-  printf("  SF      : %d\r\n", DEFAULT_SF);
-  printf("  BW      : 125 kHz\r\n");
-  printf("  CR      : 4/5\r\n");
-  printf("  Power   : %d dBm (current)\r\n", currentTxPower);
-  printf("  CRC     : OFF\r\n");
-  printf("  SyncWord: 0x12\r\n");
-  printf("----------------------------\r\n");
-
-  /* 默认进入 TX 模式（与 PAN3029_F030 一致） */
-  printf("TX mode: transmit only.\r\n");
-
-  /* 开机 5 秒倒计时（未对时，时间为 1970 起始） */
-  printf("[BOOT] 5s countdown (time from 1970)...\r\n");
-  for (int i = 5; i > 0; i--) {
-    char time_str[20];
-    formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
-    printf("[BOOT] %s  %d\r\n", time_str, i);
-    HAL_Delay(1000);
-  }
-
-  /* 倒计时结束后立即上报第一次（nextTx=0，主循环马上触发） */
-  nextTxTimestamp = 0;
-  printf("[SCHED] Ready, first TX immediately...\r\n");
+  /* 首次 TX 延迟到主循环中执行（LoRa 在首次 TX 前才初始化） */
+  printf("TX模式: 仅发送\r\n");
+  nextTxTimestamp = 0;  /* 首次立即触发 TX */
+  printf("[调度] 就绪, 首次立即发送...\r\n");
 
   /* USER CODE END 2 */
 
@@ -809,10 +820,27 @@ int main(void)
   while (1)
   {
     /* USER CODE BEGIN 3 */
+    uint32_t nowTs = getCurrentTimestamp();
 
-    /* 检查是否到达上报时间 */
-    if (getCurrentTimestamp() >= nextTxTimestamp) {
-      OnMaster();
+    if (loraInitialized) {
+      /* LoRa 已激活：检查是否到达发送时间 */
+      if (nowTs >= nextTxTimestamp) {
+        OnMaster();  /* 内部会处理发送、接收窗口、以及发送后的休眠判断 */
+      }
+    } else {
+      /* LoRa 未初始化（首次启动 或 从 deepsleep 唤醒） */
+      uint32_t wakeTime = (nextTxTimestamp > 5) ? (nextTxTimestamp - 5) : 0;
+      if (nowTs >= wakeTime) {
+        /* 唤醒 LoRa 并执行 5 秒倒计时 */
+        printf("[WAKE] LoRa 唤醒中, 5秒倒计时...\r\n");
+        loraInitFirstTime();
+        for (int i = 5; i > 0; i--) {
+          char time_str[20];
+          formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
+          printf("[WAKE] %s  %d\r\n", time_str, i);
+          HAL_Delay(1000);
+        }
+      }
     }
 
     HAL_Delay(100);
