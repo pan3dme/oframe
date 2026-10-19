@@ -72,6 +72,8 @@ char configStr[64] = DEFAULT_CONFIG_STR;
 #define DEVNAME_MAGIC       0xA5A55A5B  /* 修改魔术字使旧 Flash 数据失效 */
 #define CONFIG_FLASH_ADDR   0x0800F400  /* 配置字符串存储（倒数第三页） */
 #define CONFIG_MAGIC        0x5A5AA5A6  /* 修改魔术字使旧 Flash 数据失效 */
+#define TXPWR_FLASH_ADDR    0x0800F000  /* 发射功率存储（倒数第四页） */
+#define TXPWR_MAGIC         0xA5A55A5C  /* 功率魔术字 */
 
 /* 上报间隔：由 configStr 第一个字段决定（分钟），如 "30,0M,3t,6" = 30 分钟 */
 /* USER CODE END PD */
@@ -94,6 +96,7 @@ static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
 static uint8_t  timeSynced = 0;       /* 是否已同步时间 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
+static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -119,6 +122,8 @@ static void loadDeviceNameFromFlash(void);
 static void saveDeviceNameToFlash(const char *name);
 static void loadConfigFromFlash(void);
 static void saveConfigToFlash(const char *str);
+static void loadTxPowerFromFlash(void);
+static void saveTxPowerToFlash(uint8_t power);
 static void sendConfigMessage(void);
 static uint32_t getConfigIntervalSec(void);
 static uint8_t  getDeviceIndex(void);
@@ -253,6 +258,48 @@ static void saveConfigToFlash(const char *str)
 
   HAL_FLASH_Lock();
   printf("[Flash] Config saved: %s\r\n", str);
+}
+
+/**
+  * @brief  从 Flash 加载发射功率
+  */
+static void loadTxPowerFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)TXPWR_FLASH_ADDR;
+  if (magic == TXPWR_MAGIC) {
+    uint8_t saved = (uint8_t)(*(volatile uint32_t *)(TXPWR_FLASH_ADDR + 4));
+    if (saved >= 4 && saved <= 20) {
+      currentTxPower = saved;
+      printf("[Flash] TxPower loaded: %d dBm\r\n", currentTxPower);
+    } else {
+      printf("[Flash] TxPower out of range (%d), use default: %d\r\n",
+             saved, DEFAULT_PWR);
+    }
+  } else {
+    printf("[Flash] No saved TxPower, use default: %d dBm\r\n", DEFAULT_PWR);
+  }
+}
+
+/**
+  * @brief  保存发射功率到 Flash
+  */
+static void saveTxPowerToFlash(uint8_t power)
+{
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+
+  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = TXPWR_FLASH_ADDR;
+  eraseInit.NbPages = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, TXPWR_FLASH_ADDR, TXPWR_MAGIC);
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, TXPWR_FLASH_ADDR + 4, (uint32_t)power);
+
+  HAL_FLASH_Lock();
+  printf("[Flash] TxPower saved: %d dBm\r\n", power);
 }
 
 /**
@@ -500,6 +547,19 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
+        /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率 */
+        else if (strcmp(fields[2], "txpower") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            uint8_t newPwr = (uint8_t)atoi(fields[3]);
+            currentTxPower = newPwr;
+            rf_set_tx_power(newPwr);
+            saveTxPowerToFlash(newPwr);
+            printf("[CMD] TxPower set to: %d dBm\r\n", newPwr);
+          } else {
+            printf("[CMD] txpower: target=%s != local=%s, skip\r\n",
+                   fields[1], deviceName);
+          }
+        }
         /* A: 9|v3-17|A|10,0M,3t,6  →  更新配置并标记上报 */
         else if (strcmp(fields[2], "A") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
@@ -651,9 +711,10 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
-  /* 从 Flash 加载设备名和配置 */
+  /* 从 Flash 加载设备名、配置和发射功率 */
   loadDeviceNameFromFlash();
   loadConfigFromFlash();
+  loadTxPowerFromFlash();
 
   /* 打印启动信息 */
   printf("\r\n===== LoRa Only Send Start =====\r\n");
@@ -684,13 +745,14 @@ int main(void)
   printf("RF init ok\r\n");
 
   rf_set_default_para();
+  rf_set_tx_power(currentTxPower);  /* 应用持久化的发射功率 */
 
   printf("===== LoRa Ready =====\r\n");
   printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
   printf("  SF      : %d\r\n", DEFAULT_SF);
   printf("  BW      : 125 kHz\r\n");
   printf("  CR      : 4/5\r\n");
-  printf("  Power   : %d dBm\r\n", DEFAULT_PWR);
+  printf("  Power   : %d dBm (current)\r\n", currentTxPower);
   printf("  CRC     : OFF\r\n");
   printf("  SyncWord: 0x12\r\n");
   printf("----------------------------\r\n");
