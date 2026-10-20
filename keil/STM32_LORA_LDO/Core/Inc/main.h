@@ -75,6 +75,10 @@ void Error_Handler(void);
 
 /* ONLY_SEND 项目使用低功率 (4 dBm) */
 #define DEFAULT_PWR            4
+
+/* --- GPS 模组 USART3 引脚 --- */
+#define GPS_RX_Pin      GPIO_PIN_11
+#define GPS_RX_GPIO_Port GPIOB
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

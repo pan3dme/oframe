@@ -86,9 +86,13 @@ char configStr[64] = DEFAULT_CONFIG_STR;
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart3;  /* GPS 模组 USART3 */
 I2C_HandleTypeDef hi2c1;  /* OLED 模块需要 */
 
 /* USER CODE BEGIN PV */
+
+/* GPS 接收 */
+static uint8_t gps_byte;
 
 /* 时间同步变量 */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
@@ -111,6 +115,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_USART3_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_NVIC_Init(void);
 
@@ -793,6 +798,7 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   MX_ADC1_Init();
   MX_NVIC_Init();
 
@@ -917,6 +923,28 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+}
+
+/**
+  * @brief USART3 初始化（GPS 模组接收，9600 波特率）
+  */
+static void MX_USART3_UART_Init(void)
+{
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 9600;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* 开启 GPS 数据接收中断（逐字节） */
+  HAL_UART_Receive_IT(&huart3, &gps_byte, 1);
 }
 
 /**
@@ -1062,6 +1090,10 @@ static void MX_NVIC_Init(void)
 {
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  /* GPS USART3 中断 */
+  HAL_NVIC_SetPriority(USART3_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
@@ -1126,6 +1158,25 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     {
         rf_irq_process();
     }
+}
+
+/**
+  * @brief USART3 中断处理（GPS 数据）
+  */
+void USART3_IRQHandler(void)
+{
+  HAL_UART_IRQHandler(&huart3);
+}
+
+/**
+  * @brief USART3 接收回调（GPS 数据逐字节转发到调试串口）
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3) {
+    HAL_UART_Transmit(&huart1, &gps_byte, 1, 10);
+    HAL_UART_Receive_IT(&huart3, &gps_byte, 1);
+  }
 }
 
 /* USER CODE END 4 */
