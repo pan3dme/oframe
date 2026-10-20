@@ -93,6 +93,17 @@ I2C_HandleTypeDef hi2c1;  /* OLED 模块需要 */
 
 /* GPS 接收 */
 static uint8_t gps_byte;
+static char gps_buf[128];          /* NMEA 语句缓冲区 */
+static uint8_t gps_idx = 0;        /* 缓冲区当前索引 */
+static uint8_t gps_fix_valid = 0;  /* 定位是否有效 (来自 RMC 的 A/V) */
+static uint8_t gps_sat_count = 0;  /* 卫星数 */
+static uint8_t gps_fix_quality = 0; /* 定位质量 (GGA field6: 0=无效,1=GPS,2=DGPS) */
+static char gps_time[16] = "";     /* UTC 时间 hhmmss.sss */
+static char gps_lat[16] = "";      /* 纬度 ddmm.mmmmm */
+static char gps_ns[2] = "";        /* N/S */
+static char gps_lng[16] = "";      /* 经度 dddmm.mmmmm */
+static char gps_ew[2] = "";        /* E/W */
+static uint8_t gps_data_ready = 0; /* 是否有新数据待打印 */
 
 /* 时间同步变量 */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
@@ -105,6 +116,7 @@ static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒�
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
 static uint8_t  cachedBatteryPercent = 99;  /* 缓存电量（启动倒计时时读取） */
+static uint32_t gpsLastPrintTick = 0;       /* GPS 上次打印时间（用于定时输出） */
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -142,6 +154,7 @@ static uint32_t getSlotOffsetSec(void);
 static void calcNextTxTime(void);
 static uint8_t GetBatteryPercent(void);
 static uint16_t ADC1_Read(void);
+static void printGpsInfo(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -856,6 +869,15 @@ int main(void)
       }
     }
 
+    /* GPS 状态打印：有数据时立即输出；无新数据时，仅当 GPS 完全无信息才每 5 秒提示一次 */
+    if (gps_data_ready) {
+      printGpsInfo();
+      gpsLastPrintTick = HAL_GetTick();
+    } else if (gps_lat[0] == '\0' && gps_sat_count == 0 && HAL_GetTick() - gpsLastPrintTick >= 5000) {
+      gpsLastPrintTick = HAL_GetTick();
+      printGpsInfo();
+    }
+
     HAL_Delay(100);
 
     /* USER CODE END 3 */
@@ -1169,12 +1191,126 @@ void USART3_IRQHandler(void)
 }
 
 /**
-  * @brief USART3 接收回调（GPS 数据逐字节转发到调试串口）
+  * @brief 解析 GPS NMEA 语句
+  */
+static void parseGpsNmea(const char *sentence)
+{
+  char *p;
+  char *fields[20];
+  uint8_t field_count = 0;
+  char temp[128];
+  uint8_t i;
+  
+  /* 复制一份用于解析 */
+  strncpy(temp, sentence, sizeof(temp) - 1);
+  temp[sizeof(temp) - 1] = '\0';
+  
+  /* 去掉末尾的 \r\n */
+  for (i = 0; temp[i]; i++) {
+    if (temp[i] == '\r' || temp[i] == '\n') {
+      temp[i] = '\0';
+      break;
+    }
+  }
+  
+  /* 按逗号分割 */
+  p = strtok(temp, ",");
+  while (p != NULL && field_count < 20) {
+    fields[field_count++] = p;
+    p = strtok(NULL, ",");
+  }
+  
+  if (field_count < 2) return;
+  
+  /* 解析 $GNGGA / $GPGGA */
+  if (strcmp(fields[0], "$GNGGA") == 0 || strcmp(fields[0], "$GPGGA") == 0) {
+    if (field_count >= 10) {
+      strncpy(gps_time, fields[1], sizeof(gps_time) - 1);
+      strncpy(gps_lat, fields[2], sizeof(gps_lat) - 1);
+      strncpy(gps_ns, fields[3], sizeof(gps_ns) - 1);
+      strncpy(gps_lng, fields[4], sizeof(gps_lng) - 1);
+      strncpy(gps_ew, fields[5], sizeof(gps_ew) - 1);
+      gps_fix_quality = (uint8_t)atoi(fields[6]);
+      gps_sat_count = (uint8_t)atoi(fields[7]);
+      /* 只有当有坐标数据时才触发打印，避免无定位时频繁输出无效信息 */
+      if (gps_lat[0] != '\0') {
+        gps_data_ready = 1;
+      }
+    }
+  }
+  /* 解析 $GNRMC / $GPRMC */
+  else if (strcmp(fields[0], "$GNRMC") == 0 || strcmp(fields[0], "$GPRMC") == 0) {
+    if (field_count >= 3) {
+      gps_fix_valid = (fields[2][0] == 'A') ? 1 : 0;
+    }
+  }
+}
+
+/**
+  * @brief 打印 GPS 信息（一行）
+  * @note  无论是否有有效数据都打印，无数据时输出提示信息
+  */
+static void printGpsInfo(void)
+{
+  char time_str[16];
+  uint8_t h, m, s;
+  
+  if (!gps_data_ready) {
+    printf("[GPS] 无数据 | 未定位 | -- | 0 sats\r\n");
+    return;
+  }
+  gps_data_ready = 0;
+  
+  /* 解析时间 hhmmss.sss -> hh:mm:ss */
+  if (strlen(gps_time) >= 6) {
+    h = (gps_time[0] - '0') * 10 + (gps_time[1] - '0');
+    m = (gps_time[2] - '0') * 10 + (gps_time[3] - '0');
+    s = (gps_time[4] - '0') * 10 + (gps_time[5] - '0');
+    snprintf(time_str, sizeof(time_str), "%02d:%02d:%02d", h, m, s);
+  } else {
+    strncpy(time_str, "--:--:--", sizeof(time_str));
+  }
+  
+  /* 打印一行：坐标 | 时间 | 星数 | 质量 */
+  if (gps_lat[0] != '\0' && gps_lng[0] != '\0') {
+    printf("[GPS] %s%s %s%s | %s | %d sats | Q=%d\r\n",
+           gps_lat, gps_ns,
+           gps_lng, gps_ew,
+           time_str,
+           gps_sat_count,
+           gps_fix_quality);
+  } else {
+    printf("[GPS] ---- | %s | %d sats | Q=%d\r\n",
+           time_str,
+           gps_sat_count,
+           gps_fix_quality);
+  }
+}
+
+/**
+  * @brief USART3 接收回调（GPS 数据逐字节累积并解析）
   */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART3) {
-    HAL_UART_Transmit(&huart1, &gps_byte, 1, 10);
+    /* 未定位时转发原始字节到调试串口，便于确认 GPS 模块在工作 */
+    if (!gps_fix_valid) {
+      HAL_UART_Transmit(&huart1, &gps_byte, 1, 10);
+    }
+
+    /* 累积到缓冲区 */
+    if (gps_byte == '$') {
+      gps_idx = 0;  /* 新语句开始 */
+    }
+    if (gps_idx < sizeof(gps_buf) - 1) {
+      gps_buf[gps_idx++] = (char)gps_byte;
+    }
+    /* 收到换行符，解析完整语句（不在此处打印，由主循环统一处理） */
+    if (gps_byte == '\n') {
+      gps_buf[gps_idx] = '\0';
+      parseGpsNmea(gps_buf);
+      gps_idx = 0;
+    }
     HAL_UART_Receive_IT(&huart3, &gps_byte, 1);
   }
 }
