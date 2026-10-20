@@ -100,6 +100,7 @@ static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
+static uint8_t  cachedBatteryPercent = 99;  /* 缓存电量（启动倒计时时读取） */
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -110,6 +111,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_ADC1_Init(void);
 static void MX_NVIC_Init(void);
 
 /* USER CODE BEGIN PFP */
@@ -133,6 +135,8 @@ static uint32_t getConfigIntervalSec(void);
 static uint8_t  getDeviceIndex(void);
 static uint32_t getSlotOffsetSec(void);
 static void calcNextTxTime(void);
+static uint8_t GetBatteryPercent(void);
+static uint16_t ADC1_Read(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -673,10 +677,10 @@ static void OnMaster(void)
 
   tx_count++;
 
-  /* 组包：2|v4-18|当天秒数|100|计数 */
+  /* 组包：2|v4-18|当天秒数|电量|计数 */
   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
            MSG_TYPE_TIME, deviceName,
-           (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
+           (unsigned long)today_sec, cachedBatteryPercent, (unsigned long)tx_count);
 
   /* 发送前 LED 闪 3 次，每次 200ms */
   for (uint8_t i = 0; i < 3; i++) {
@@ -789,6 +793,7 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_ADC1_Init();
   MX_NVIC_Init();
 
   /* USER CODE BEGIN 2 */
@@ -834,6 +839,8 @@ int main(void)
         /* 唤醒 LoRa 并执行 5 秒倒计时 */
         printf("[WAKE] LoRa 唤醒中, 5秒倒计时...\r\n");
         loraInitFirstTime();
+        /* 读取电量并缓存 */
+        cachedBatteryPercent = GetBatteryPercent();
         for (int i = 5; i > 0; i--) {
           char time_str[20];
           formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
@@ -1000,6 +1007,55 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief  ADC1 初始化（电池电量检测 PA0/ADC1_CH0，寄存器方式）
+  * @note   不依赖 stm32f1xx_hal_adc.c，直接操作寄存器
+  */
+static void MX_ADC1_Init(void)
+{
+  uint32_t timeout;
+  uint16_t test_val;
+
+  /* 1. 先设置 ADC 时钟分频 /8（必须在 ADC 时钟使能之前） */
+  RCC->CFGR &= ~(3u << 14);
+  RCC->CFGR |=  (3u << 14);               /* ADCPRE = /8, 9MHz */
+
+  /* 2. 使能 GPIOA 和 ADC1 时钟 */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  RCC->APB2ENR |= (1u << 9);            /* ADC1EN = 1 */
+  (void)RCC->APB2ENR;
+
+  /* 3. 复位 ADC1 外设 */
+  RCC->APB2RSTR |=  (1u << 9);
+  RCC->APB2RSTR &= ~(1u << 9);
+
+  /* 4. 配置寄存器 */
+  ADC1->CR1 = 0;
+  ADC1->CR2 = 0;
+  ADC1->SQR1 = 0;                         /* 1 个转换 */
+  ADC1->SQR2 = 0;
+  ADC1->SQR3 = 0;                         /* CH0 (PA0) */
+  ADC1->SMPR2 = (7u << 0);                /* CH0 采样 239.5 周期 */
+
+  /* 5. 上电 ADC */
+  ADC1->CR2 = ADC_CR2_ADON;
+  HAL_Delay(10);
+
+  /* 6. 校准（STM32F1 必须校准才能正常工作） */
+  ADC1->CR2 |= ADC_CR2_RSTCAL;
+  timeout = 1000000;
+  while ((ADC1->CR2 & ADC_CR2_RSTCAL) && --timeout);
+  ADC1->CR2 |= ADC_CR2_CAL;
+  timeout = 1000000;
+  while ((ADC1->CR2 & ADC_CR2_CAL) && --timeout);
+
+  printf("[ADC] 校准完成 CR2=0x%08lX\r\n", (unsigned long)ADC1->CR2);
+
+  /* 7. 试读一次 */
+  test_val = ADC1_Read();
+  printf("[ADC] 试读=%d\r\n", test_val);
+}
+
+/**
   * @brief  NVIC 中断控制器初始化（LoRa IRQ EXTI2）
   */
 static void MX_NVIC_Init(void)
@@ -1009,6 +1065,56 @@ static void MX_NVIC_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  ADC1 单次读取（寄存器方式）
+  * @return 12 位 ADC 值（0~4095）
+  */
+static uint16_t ADC1_Read(void)
+{
+  uint32_t timeout = 1000000;
+  /* STM32F1: 设置 ADON 触发转换（比 SWSTART 更可靠） */
+  ADC1->CR2 |= ADC_CR2_ADON;
+  while (!(ADC1->SR & ADC_SR_EOC) && --timeout);
+  return (uint16_t)(ADC1->DR & 0xFFF);
+}
+
+/**
+  * @brief  获取电池电量百分比（0~99）
+  * @note   PA0 接分压电路（100K+100K），V_bat = ADC值/4096 * 3.3V * 2
+  *         锂电池映射：4.2V=99%, 3.3V=0%，分段线性插值
+  */
+static uint8_t GetBatteryPercent(void)
+{
+  uint32_t adc_sum = 0;
+  uint8_t i;
+
+  /* 连续采样 8 次取平均，抑制噪声 */
+  for (i = 0; i < 8; i++) {
+    adc_sum += ADC1_Read();
+  }
+  uint16_t adc_val = adc_sum / 8;
+
+  /* 计算电池电压：分压比 1:1，基准 3.3V */
+  /* V_bat(mV) = adc_val * 3300 * 2 / 4096 = adc_val * 6600 / 4096 */
+  uint32_t bat_mv = (uint32_t)adc_val * 6600 / 4096;
+
+  /* 锂电池电压 → 百分比 分段线性映射 */
+  uint8_t percent;
+  if (bat_mv >= 4200)      percent = 99;
+  else if (bat_mv >= 4000) percent = 80 + (bat_mv - 4000) * 19 / 200;
+  else if (bat_mv >= 3700) percent = 50 + (bat_mv - 3700) * 30 / 300;
+  else if (bat_mv >= 3500) percent = 20 + (bat_mv - 3500) * 30 / 200;
+  else if (bat_mv >= 3300) percent = (bat_mv - 3300) * 20 / 200;
+  else                     percent = 0;
+
+  if (percent > 99) percent = 99;
+
+  printf("[电量] ADC=%d V=%lu.%01luV => %d%%\r\n",
+         adc_val, (unsigned long)(bat_mv / 1000), (unsigned long)((bat_mv / 100) % 10), percent);
+
+  return percent;
+}
 
 /**
   * @brief  GPIO 外部中断回调函数
