@@ -155,6 +155,10 @@ static void calcNextTxTime(void);
 static uint8_t GetBatteryPercent(void);
 static uint16_t ADC1_Read(void);
 static void printGpsInfo(void);
+static void PwrSw_Init(void);
+static void PwrSw_On(void);
+static void PwrSw_Off(void);
+static uint8_t isValidDeviceName(const char *name);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -465,6 +469,39 @@ static uint8_t getDeviceIndex(void)
 }
 
 /**
+  * @brief  校验设备名合法性
+  * @note   规则：仅允许小写字母(a-z)、数字(0-9)和一个连字符(-)，总长度 ≤ 6
+  *         示例："v0-0" ✓  "v3-17" ✗(超6)  "V0-1" ✗(大写)  "v0_1" ✗(非法字符)
+  */
+static uint8_t isValidDeviceName(const char *name)
+{
+  uint8_t len = 0;
+  uint8_t hyphen_count = 0;
+
+  if (name == NULL || name[0] == '\0') return 0;
+
+  while (name[len] != '\0') {
+    char c = name[len];
+    if (c == '-') {
+      hyphen_count++;
+      if (hyphen_count > 1) return 0;
+    } else if (c >= 'a' && c <= 'z') {
+      /* 合法小写字母 */
+    } else if (c >= '0' && c <= '9') {
+      /* 合法数字 */
+    } else {
+      return 0;  /* 非法字符 */
+    }
+    len++;
+  }
+
+  if (len > 6) return 0;
+  if (hyphen_count != 1) return 0;
+
+  return 1;
+}
+
+/**
   * @brief  计算本设备在上报周期中的时隙偏移（秒）
   * @note   公式: deviceIndex / 30 * intervalSec
   *         如: v0-27, 30 分钟周期 → 27/30*1800 = 1740 秒
@@ -628,10 +665,14 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         /* realyname: 9|v3-10|realyname|v3-11  →  本机改名 */
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
-            strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
-            deviceName[sizeof(deviceName) - 1] = '\0';
-            saveDeviceNameToFlash(deviceName);
-            printf("[指令] 设备已改名: %s\r\n", deviceName);
+            if (isValidDeviceName(fields[3])) {
+              strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
+              deviceName[sizeof(deviceName) - 1] = '\0';
+              saveDeviceNameToFlash(deviceName);
+              printf("[指令] 设备已改名: %s\r\n", deviceName);
+            } else {
+              printf("[指令] 设备名格式非法(需小写字母+数字+一个-, ≤6字符): %s\r\n", fields[3]);
+            }
           } else {
             printf("[指令] 改名: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
@@ -647,6 +688,22 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             printf("[指令] 发射功率已设置: %d dBm\r\n", newPwr);
           } else {
             printf("[指令] 功率: 目标=%s != 本机=%s, 跳过\r\n",
+                   fields[1], deviceName);
+          }
+        }
+        /* sendmode: 9|v3-10|sendmode|1  →  三级管电源开关 (1=开, 0=关) */
+        else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            uint8_t val = (uint8_t)atoi(fields[3]);
+            if (val) {
+              PwrSw_On();
+              printf("[电源] 三级管开关: ON\r\n");
+            } else {
+              PwrSw_Off();
+              printf("[电源] 三级管开关: OFF\r\n");
+            }
+          } else {
+            printf("[电源] 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
           }
         }
@@ -1031,6 +1088,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /* 三级管电源开关控制引脚 (PB1) - 默认关闭 */
+  PwrSw_Init();
+
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
@@ -1119,6 +1179,36 @@ static void MX_NVIC_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  三级管电源开关初始化 (PB1 推挽输出)
+  */
+static void PwrSw_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin  = PWR_SW_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(PWR_SW_GPIO_Port, &GPIO_InitStruct);
+  PwrSw_Off();  /* 默认关闭 */
+}
+
+/**
+  * @brief  打开三级管电源开关 (PB1 高电平)
+  */
+static void PwrSw_On(void)
+{
+  HAL_GPIO_WritePin(PWR_SW_GPIO_Port, PWR_SW_Pin, GPIO_PIN_SET);
+}
+
+/**
+  * @brief  关闭三级管电源开关 (PB1 低电平)
+  */
+static void PwrSw_Off(void)
+{
+  HAL_GPIO_WritePin(PWR_SW_GPIO_Port, PWR_SW_Pin, GPIO_PIN_RESET);
+}
 
 /**
   * @brief  ADC1 单次读取（寄存器方式）

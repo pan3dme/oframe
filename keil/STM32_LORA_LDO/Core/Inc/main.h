@@ -79,6 +79,10 @@ void Error_Handler(void);
 /* --- GPS 模组 USART3 引脚 --- */
 #define GPS_RX_Pin      GPIO_PIN_11
 #define GPS_RX_GPIO_Port GPIOB
+
+/* --- 三级管电源开关控制引脚 (PB1) --- */
+#define PWR_SW_Pin      GPIO_PIN_1
+#define PWR_SW_GPIO_Port GPIOB
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
