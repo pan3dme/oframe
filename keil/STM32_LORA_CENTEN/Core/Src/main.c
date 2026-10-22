@@ -892,6 +892,21 @@ static void parseDtuCommand(char *buf) {
       gpstmTimeoutMin = 30; // 默认 30 分钟
     printf("[DTU CMD] gpstm 中继已记录: device=%s, timeout=%lu min\r\n",
            deviceName, (unsigned long)gpstmTimeoutMin);
+  } else if (strcmp(cmd, "txpower") == 0) {
+    /* txpower: 缓存指令给目标设备，并立即重新获取信号强度和网络时间 */
+    printf("[DTU CMD] txpower: target=%s, value=%s, cache it\r\n", devId, val);
+    cachePendingCommand(devId, cmd, val);
+    /* 将查询命令加入 DTU 发送队列（由 processDtuQueue 每 500ms 发送一条） */
+    {
+      const char *csqCmd = "config,get,csq";
+      const char *nettimeCmd = "config,get,nettime";
+      enqueueDtuMsg(csqCmd, strlen(csqCmd));
+      enqueueDtuMsg(nettimeCmd, strlen(nettimeCmd));
+      printf("[DTU CMD] 已将 CSQ + nettime 查询加入队列\r\n");
+    }
+    /* 重置查询定时器，后续按正常间隔查询 */
+    dtuCsqTick = HAL_GetTick();
+    return;
   } else if (strcmp(cmd, "realyname") == 0) {
     /* realyname 更换设备名字 */
     /* value 格式: "v3-10=v3-11"  →  目标设备=v3-10, 新名字=v3-11 */
