@@ -117,6 +117,7 @@ static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash
 static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
 static uint8_t  cachedBatteryPercent = 99;  /* 缓存电量（启动倒计时时读取） */
 static uint32_t gpsLastPrintTick = 0;       /* GPS 上次打印时间（用于定时输出） */
+static uint8_t pwrSwState = 0;              /* 三级管开关状态 (0=OFF, 1=ON) */
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -1200,6 +1201,7 @@ static void PwrSw_Init(void)
 static void PwrSw_On(void)
 {
   HAL_GPIO_WritePin(PWR_SW_GPIO_Port, PWR_SW_Pin, GPIO_PIN_SET);
+  pwrSwState = 1;
 }
 
 /**
@@ -1208,6 +1210,7 @@ static void PwrSw_On(void)
 static void PwrSw_Off(void)
 {
   HAL_GPIO_WritePin(PWR_SW_GPIO_Port, PWR_SW_Pin, GPIO_PIN_RESET);
+  pwrSwState = 0;
 }
 
 /**
@@ -1346,7 +1349,7 @@ static void printGpsInfo(void)
   uint8_t h, m, s;
   
   if (!gps_data_ready) {
-    printf("[GPS] 无数据 | 未定位 | -- | 0 sats\r\n");
+    printf("[GPS] 无数据 | 未定位 | -- | 0 sats | 三级管开关: %s\r\n", pwrSwState ? "ON" : "OFF");
     return;
   }
   gps_data_ready = 0;
@@ -1361,19 +1364,21 @@ static void printGpsInfo(void)
     strncpy(time_str, "--:--:--", sizeof(time_str));
   }
   
-  /* 打印一行：坐标 | 时间 | 星数 | 质量 */
+  /* 打印一行：坐标 | 时间 | 星数 | 质量 | 三级管开关状态 */
   if (gps_lat[0] != '\0' && gps_lng[0] != '\0') {
-    printf("[GPS] %s%s %s%s | %s | %d sats | Q=%d\r\n",
+    printf("[GPS] %s%s %s%s | %s | %d sats | Q=%d | 三级管开关: %s\r\n",
            gps_lat, gps_ns,
            gps_lng, gps_ew,
            time_str,
            gps_sat_count,
-           gps_fix_quality);
+           gps_fix_quality,
+           pwrSwState ? "ON" : "OFF");
   } else {
-    printf("[GPS] ---- | %s | %d sats | Q=%d\r\n",
+    printf("[GPS] ---- | %s | %d sats | Q=%d | 三级管开关: %s\r\n",
            time_str,
            gps_sat_count,
-           gps_fix_quality);
+           gps_fix_quality,
+           pwrSwState ? "ON" : "OFF");
   }
 }
 
