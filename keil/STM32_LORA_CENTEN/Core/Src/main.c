@@ -128,6 +128,7 @@ static uint32_t dtuSyncTick = 0;     // 对时时的 HAL_GetTick() 值，用于�
 static uint32_t lastPrintTick = 0;   // [调试] 每秒打印时间用
 static uint8_t dtuTimeValid = 0;     // 网络时间是否已获取成功
 static int dtuCsqRssi = 0;           // DTU CSQ 信号强度值
+static uint8_t dtuNetTimeFailCount = 0;  // DTU 网络时间连续失败计数器（达到 3 次复位 DTU）
 static uint32_t rtcSendCount = 0;    // 对时上报计数器
 static int batteryValue = 85;        // 电池电量（%）
 static char configStr[32] = "30,0M"; // 配置信息字符串（可通过DTU修改）
@@ -1149,6 +1150,7 @@ int main(void) {
           dtuSyncTick = HAL_GetTick(); // 记录对时时刻
           printf("[DTU] Unix timestamp: %lu\r\n", (unsigned long)dtuTimestamp);
           dtuTimeValid = 1; // 标记网络时间已获取
+          dtuNetTimeFailCount = 0;  /* 重置连续失败计数器 */
           printf("[DTU] 网络时间获取成功，切换为%lu分钟对时\r\n",
                  (unsigned long)(getConfigIntervalMs() / 60000));
 
@@ -1185,9 +1187,20 @@ int main(void) {
         HAL_Delay(300); // 等待 csq 响应
         uint8_t cmd2[] = "config,get,nettime\r\n";
         HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
-        if (!dtuTimeValid)
-          printf("[DTU] Waiting for net time... (retry %lus)\r\n",
-                 queryInterval / 1000);
+        if (!dtuTimeValid) {
+          dtuNetTimeFailCount++;
+          printf("[DTU] Waiting for net time... (retry %lus, fail=%d/3)\r\n",
+                 queryInterval / 1000, dtuNetTimeFailCount);
+          /* 连续 3 次失败，复位 DTU 模块 */
+          if (dtuNetTimeFailCount >= 3) {
+            printf("[DTU] 连续 3 次获取网络时间失败，复位 DTU 模块...\r\n");
+            HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET);
+            HAL_Delay(100);
+            HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);
+            dtuNetTimeFailCount = 0;  /* 重置计数器 */
+            printf("[DTU] DTU 复位完成，等待重新连接...\r\n");
+          }
+        }
       }
     }
 
