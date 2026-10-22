@@ -78,9 +78,10 @@ SPI_HandleTypeDef hspi1; // SPI1 用于 LoRa PAN3029（硬件 SPI）
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3; // USART3 用于 DTU 通信
 
-static char deviceName[16] = "v4-0"; // 设备名称（根据 UID 动态生成）
-//67151723-48825550-0669FF49
-
+static char deviceName[16] = "vv-xx"; // 设备名称（根据 UID 动态生成）
+ 
+  // {0x67151723, 0x48825550, 0x0669FF49}, // 这是插板编号
+//   0 -> Chip UID    : 67151723-48825550-0669FF49
 /* USER CODE BEGIN PV */
 /* 设备 UID 列表（10 台设备），用于根据芯片 UID 确定设备编号 */
 static const uint32_t deviceUidList[10][3] = {
@@ -91,9 +92,9 @@ static const uint32_t deviceUidList[10][3] = {
     {0x003A002E, 0x46343030, 0x3534313C}, // 设备 4
     {0x003A002E, 0x46343030, 0x3534313D}, // 设备 5
     {0x003A002E, 0x46343030, 0x3534313E}, // 设备 6
-    {0x67151723, 0x48825550, 0x0669FF49}, // 设备 7
+    {0x67151723, 0x48825550, 0x0669FF49}, // 这是插板编号
     {0x67184122, 0x49867050, 0x066BFF49}, // 设备 8
-    {0x67183650, 0x49867050, 0x0669FF49}, // 设备 9
+    {0x67184240, 0x49867050, 0x0669FF49}, // 设备 9
 
 };
 
@@ -1200,16 +1201,13 @@ int main(void) {
         HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
         if (!dtuTimeValid) {
           dtuNetTimeFailCount++;
-          printf("[DTU] Waiting for net time... (retry %lus, fail=%d/3)\r\n",
+          printf("[DTU] Waiting for net time... (retry %lus, fail=%d/5)\r\n",
                  queryInterval / 1000, dtuNetTimeFailCount);
-          /* 连续 3 次失败，复位 DTU 模块 */
-          if (dtuNetTimeFailCount >= 3) {
-            printf("[DTU] 连续 3 次获取网络时间失败，复位 DTU 模块...\r\n");
-            HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET);
-            HAL_Delay(100);
-            HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);
-            dtuNetTimeFailCount = 0;  /* 重置计数器 */
-            printf("[DTU] DTU 复位完成，等待重新连接...\r\n");
+          /* 连续 5 次失败，重启 STM32 */
+          if (dtuNetTimeFailCount >= 5) {
+            printf("[DTU] 连续 5 次获取网络时间失败，重启 STM32...\r\n");
+            HAL_Delay(500);
+            NVIC_SystemReset();
           }
         }
       }
