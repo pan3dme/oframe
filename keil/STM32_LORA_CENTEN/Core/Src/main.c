@@ -1039,12 +1039,23 @@ int main(void) {
 
   // 初始化 LoRa 射频模块
   if (rf_init() != RF_OK) {
-    // 初始化失败，进入错误循环
-    printf("RF init fail! Check wiring.\r\n");
-    while (1) {
-      HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin); // LED1 快速闪烁表示错误
-      HAL_Delay(100);
+    // 第一次初始化失败，尝试 RST 复位后重试
+    printf("[LoRa] 首次初始化失败，尝试 RST 复位...\r\n");
+    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET); // RST 拉低
+    HAL_Delay(100);                                                       // 保持 100ms
+    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);   // RST 拉高
+    HAL_Delay(100);                                                       // 等待模块稳定
+    
+    // 重新初始化
+    if (rf_init() != RF_OK) {
+      // 仍然失败，进入错误循环
+      printf("[LoRa] RST 复位后仍初始化失败! Check wiring.\r\n");
+      while (1) {
+        HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin); // LED1 快速闪烁表示错误
+        HAL_Delay(100);
+      }
     }
+    printf("[LoRa] RST 复位后初始化成功\r\n");
   }
   printf("RF init ok\r\n");
 
