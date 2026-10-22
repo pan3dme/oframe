@@ -83,6 +83,10 @@ void Error_Handler(void);
 /* --- 三级管电源开关控制引脚 (PB1) --- */
 #define PWR_SW_Pin      GPIO_PIN_1
 #define PWR_SW_GPIO_Port GPIOB
+
+/* --- GNSS 复位引脚 (PB12) --- */
+#define GNSS_RST_Pin      GPIO_PIN_12
+#define GNSS_RST_GPIO_Port GPIOB
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

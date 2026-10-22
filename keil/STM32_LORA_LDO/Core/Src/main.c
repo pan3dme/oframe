@@ -159,6 +159,8 @@ static void printGpsInfo(void);
 static void PwrSw_Init(void);
 static void PwrSw_On(void);
 static void PwrSw_Off(void);
+static void GnssRst_Init(void);
+static void GnssRst_Reset(void);
 static uint8_t isValidDeviceName(const char *name);
 /* USER CODE END PFP */
 
@@ -708,6 +710,16 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
+        /* test_gps: 9|v3-10|test_gps|1  →  GNSS 模块复位 (不管 val 值) */
+        else if (strcmp(fields[2], "test_gps") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            printf("[指令] 设备=%s, 执行 GNSS 复位\r\n", deviceName);
+            GnssRst_Reset();
+          } else {
+            printf("[指令] GNSS复位: 目标=%s != 本机=%s, 跳过\r\n",
+                   fields[1], deviceName);
+          }
+        }
         /* A: 9|v3-17|A|10,0M,3t,6  →  更新配置并标记上报 */
         else if (strcmp(fields[2], "A") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
@@ -1092,6 +1104,9 @@ static void MX_GPIO_Init(void)
   /* 三级管电源开关控制引脚 (PB1) - 默认关闭 */
   PwrSw_Init();
 
+  /* GNSS 复位引脚 (PB12) - 默认高电平 */
+  GnssRst_Init();
+
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
@@ -1211,6 +1226,32 @@ static void PwrSw_Off(void)
 {
   HAL_GPIO_WritePin(PWR_SW_GPIO_Port, PWR_SW_Pin, GPIO_PIN_RESET);
   pwrSwState = 0;
+}
+
+/**
+  * @brief  GNSS 复位引脚初始化 (PB12 推挽输出)
+  */
+static void GnssRst_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin  = GNSS_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GNSS_RST_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GNSS_RST_GPIO_Port, GNSS_RST_Pin, GPIO_PIN_SET);  /* 默认高电平 */
+}
+
+/**
+  * @brief  GNSS 模块复位操作 (拉低 100ms 再拉高)
+  */
+static void GnssRst_Reset(void)
+{
+  printf("[GNSS] 开始复位...\r\n");
+  HAL_GPIO_WritePin(GNSS_RST_GPIO_Port, GNSS_RST_Pin, GPIO_PIN_RESET);  /* 拉低 */
+  HAL_Delay(100);                                                        /* 保持 100ms */
+  HAL_GPIO_WritePin(GNSS_RST_GPIO_Port, GNSS_RST_Pin, GPIO_PIN_SET);    /* 拉高 */
+  printf("[GNSS] 复位完成\r\n");
 }
 
 /**
