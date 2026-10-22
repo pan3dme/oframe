@@ -79,6 +79,7 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3; // USART3 用于 DTU 通信
 
 static char deviceName[16] = "v4-0"; // 设备名称（根据 UID 动态生成）
+//67151723-48825550-0669FF49
 
 /* USER CODE BEGIN PV */
 /* 设备 UID 列表（10 台设备），用于根据芯片 UID 确定设备编号 */
@@ -90,7 +91,7 @@ static const uint32_t deviceUidList[10][3] = {
     {0x003A002E, 0x46343030, 0x3534313C}, // 设备 4
     {0x003A002E, 0x46343030, 0x3534313D}, // 设备 5
     {0x003A002E, 0x46343030, 0x3534313E}, // 设备 6
-    {0x003A002E, 0x46343030, 0x3534313F}, // 设备 7
+    {0x67151723, 0x48825550, 0x0669FF49}, // 设备 7
     {0x67184122, 0x49867050, 0x066BFF49}, // 设备 8
     {0x67183650, 0x49867050, 0x0669FF49}, // 设备 9
 
@@ -853,6 +854,11 @@ static void parseDtuCommand(char *buf) {
 
   printf("[DTU JSON] cmd=%s, deviceId=%s, value=%s\r\n", cmd, devId, val);
 
+  /* debug 指令特殊处理：无论 deviceId 是否匹配都打印调试信息 */
+  if (strcmp(cmd, "debug") == 0) {
+    printf("[DTU CMD] 接收到了 debug 命令 (deviceId=%s, value=%s)\r\n", devId, val);
+  }
+
   /* Step 3: 检查 deviceId 是否为本机 */
   if (strcmp(devId, (char *)deviceName) != 0) {
     printf("[DTU CMD] Not this device (target=%s, local=%s), cache it\r\n",
@@ -866,6 +872,19 @@ static void parseDtuCommand(char *buf) {
     printf("[DTU CMD] 执行设备重启...\r\n");
     HAL_Delay(500);
     NVIC_SystemReset();
+  } else if (strcmp(cmd, "debug") == 0) {
+     printf("[DTU CMD] 接收到了debug命令...\r\n");
+    /* debug: value=2 时复位 DTU 模块 */
+    int debugVal = atoi(val);
+    if (debugVal == 2) {
+      printf("[DTU CMD] debug: 复位 DTU 模块 (PA3 拉低 100ms)\r\n");
+      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET); // 拉低
+      HAL_Delay(100);                                                     // 保持 100ms
+      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);   // 拉高
+      printf("[DTU CMD] DTU 复位完成\r\n");
+    } else {
+      printf("[DTU CMD] debug: value=%d (非 2，不执行复位)\r\n", debugVal);
+    }
   } else if (strcmp(cmd, "A") == 0) {
     if (val[0] != '\0') {
       strncpy(configStr, val, sizeof(configStr) - 1);
@@ -1320,6 +1339,14 @@ static void MX_GPIO_Init(void) {
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // 高速
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET); // RST 拉高
+
+  /* 配置 DTU RST 复位引脚 (PA3) - 默认高电平（不复位） */
+  GPIO_InitStruct.Pin = DTU_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(DTU_RST_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET); // 默认高电平
 
   /* 配置 LoRa IRQ 中断引脚 (PA2) - 上升沿触发，下拉 */
   GPIO_InitStruct.Pin = GPIO_PIN_2;

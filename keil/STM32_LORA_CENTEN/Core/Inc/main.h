@@ -84,6 +84,10 @@ void Error_Handler(void);
 #define LORA_CSN_GPIO_Port GPIOB
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
+
+/* --- DTU 复位引脚 (PA3) --- */
+#define DTU_RST_Pin       GPIO_PIN_3
+#define DTU_RST_GPIO_Port GPIOA
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
