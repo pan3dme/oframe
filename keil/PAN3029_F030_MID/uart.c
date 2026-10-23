@@ -1,14 +1,32 @@
 #include "uart.h"
 #include "dtu.h"
 
+/* 行首状态：1=下一字符是新行第一个字符（用于自动加 {usb} 前缀） */
+static int s_line_start = 1;
+
+/* 底层发送单字符 */
+static void uart1_putc(uint8_t ch) {
+    USART_SendData(USART1, ch);
+    while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
+}
+
 int fputc(int ch, FILE *f) {
 #if (SERIAL_MODE == SERIAL_MODE_DTU)
     /* DTU 模式：串口接 DTU 模块，丢弃调试打印，避免污染协议流 */
     (void)f;
     return ch;
 #else
-    USART_SendData(USART1, (uint8_t)ch);
-    while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
+    /* 开发阶段：调试打印每行自动加 {usb} 前缀，与 [dtu] 协议流区分 */
+    (void)f;
+    if (s_line_start && ch != '\r' && ch != '\n') {
+        const char *tag = "{usb} ";
+        while (*tag)
+            uart1_putc((uint8_t)*tag++);
+        s_line_start = 0;
+    }
+    if (ch == '\n')
+        s_line_start = 1;
+    uart1_putc((uint8_t)ch);
     return ch;
 #endif
 }
@@ -95,5 +113,8 @@ void Uart1_SendBytes(const uint8_t* pData,uint16_t len)
     USART_SendData(USART1, pData[i]);
     while(USART_GetFlagStatus(USART1,USART_FLAG_TXE) == RESET);
   }
+  /* 原始发送以换行结尾时，同步 fputc 的行首状态 */
+  if (len > 0 && pData[len-1] == '\n')
+    s_line_start = 1;
 }
 

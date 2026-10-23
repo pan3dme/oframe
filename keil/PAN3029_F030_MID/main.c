@@ -1,16 +1,16 @@
 /**********************************************************************************************
- * @note Copyright (C) 2023 Shanghai Panchip Microelectronics Co., Ltd. All
- * rights reserved.
- *
  * @file main.c
- * @brief PAN3029/PAN3060 LoRa 单工通信演示程序（Simplex）
- *        - TX 模式：每隔 3 分钟上报一帧，发送后开启 3 秒接收窗口并解析一条消息
- *        - RX 模式：持续接收数据，打印 RSSI/SNR/载荷，并与上次接收做比对
+ * @brief PAN3029 LoRa 集中器主程序（功能同 STM32_LORA_CENTEN）
+ *        - LoRa 接收终端设备上报 → 经 USART1 以 JSON 上报 DTU
+ *        - USART1 接收 DTU 下发：网络对时 / 配置 / 指令缓存 / gpstm 中继
+ *        - 收到上报后延时下发：缓存指令 > gpstm(upgps) > 对时消息
  *
  * @hardware  MCU: STM32F030  |  射频芯片: PAN3029 / PAN3060
- *            开发板: PAN3029_PAN3060_DK V2.3
+ *            串口: USART1(PA9/PA10) 调试与 DTU 共用，用途见 dtu.h 中 SERIAL_MODE
+ *            - 开发阶段(SERIAL_MODE_DEBUG): 调试打印带 {usb} 前缀, 协议流带 [dtu] 前缀
+ *            - 正式阶段(SERIAL_MODE_DTU)  : 串口纯跑 DTU 协议, 无前缀无调试打印
  *
- * @history - V0.8, 2024-4
+ * @history - V3.0, 2026-10  由 CENTEN 迁移, 移除旧 TX/RX 双模式逻辑
  ********************************************************************************************/
 
 #include "delay.h"
@@ -19,11 +19,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* ========================== 演示工程基本信息 ========================== */
-#define EXAMPLE_NAME "stm32中继"  /* 工程名称 */
-#define DEMO_VER "V2.3"                             /* 固件版本 */
-#define EXAMPLE_DATE "2025/08/30"                   /* 编译日期 */
+#define EXAMPLE_NAME "stm32集中器"  /* 工程名称 */
+#define DEMO_VER "V3.0"                             /* 固件版本 */
+#define EXAMPLE_DATE "2026/10/23"                   /* 编译日期 */
 
 /**
  * @brief  串口打印启动信息（工程名、版本号、日期、公司）
@@ -38,53 +39,18 @@ void printf_logo(void) {
   printf("*************************************************************\r\n");
 }
 
-/* ========================== 主从模式选择 ==============================
- * 方式一：底板按键切换
- *   S2 (PB6) → 切换为 TX 模式
- *   S3 (PB7) → 切换为 RX 模式
- * 方式二：拨码开关/跳线（Header 3 P6）
- *   PA2 高电平 = Master（发射端），低电平 = Slave（接收端）
- * ==================================================================== */
-static uint8_t current_mode = 0; /* 0=RX, 1=TX */
-
-/* 读取按键（低电平有效），返回 1 表示按下 */
-#define KEY1_PRESSED  (GPIO_ReadInputDataBit(KEY1_PORT, KEY1_PIN) == 0)
-#define KEY2_PRESSED  (GPIO_ReadInputDataBit(KEY2_PORT, KEY2_PIN) == 0)
-
-/* 消息类型定义已迁移至 dtu.h（与 ESP32 / CENTEN 对齐） */
-
 /* ========================== 时间同步变量 ========================== */
-static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
+static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳（DTU 网络时间） */
 static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
 static uint8_t  timeSynced = 0;       /* 是否已同步时间：0=未同步, 1=已同步 */
 
 /**
- * @brief  获取当前"当天秒数"（从 00:00:00 开始的秒数）
- * @return 当天秒数
- *         - 未同步时：把开机当作 00:00，返回开机秒数
- *         - 已同步后：返回真实时间戳 % 86400
- */
-uint32_t getTodaySecond(void) {
-  if (!timeSynced) {
-    /* 未同步：把开机当作 00:00，返回开机秒数 */
-    return HAL_GetTick() / 1000;
-  }
-  /* 已同步：计算当前时间戳 = 同步时间戳 + 经过的秒数 */
-  uint32_t elapsed_sec = (HAL_GetTick() - syncedTick) / 1000;
-  uint32_t currentTs = syncedTimestamp + elapsed_sec;
-  /* 返回当天秒数（不含年月日） */
-  return currentTs % 86400;  /* 86400 = 24 * 60 * 60 */
-}
-
-/**
  * @brief  获取当前完整时间戳
- * @return Unix 时间戳
- *         - 未同步时：返回开机秒数（从 1970-01-01 00:00:00 开始）
- *         - 已同步后：返回真实时间戳
+ * @return Unix 时间戳（未同步时返回开机秒数）
  */
 uint32_t getCurrentTimestamp(void) {
   if (!timeSynced) {
-    return HAL_GetTick() / 1000;  /* 从 1970-01-01 开始 */
+    return HAL_GetTick() / 1000;
   }
   uint32_t elapsed_sec = (HAL_GetTick() - syncedTick) / 1000;
   return syncedTimestamp + elapsed_sec;
@@ -100,69 +66,10 @@ void app_set_synced_time(uint32_t ts) {
   timeSynced = 1;
 }
 
-/**
- * @brief  判断闰年
- */
-static uint8_t isLeapYear(uint16_t year) {
-  return ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) ? 1 : 0;
-}
-
-/**
- * @brief  将 Unix 时间戳格式化为 "YYYY-MM-DD HH:MM:SS" 字符串
- * @param  ts    Unix 时间戳
- * @param  buf   输出缓冲区（至少 20 字节）
- * @param  len   缓冲区长度
- */
-void formatTimestamp(uint32_t ts, char *buf, uint8_t len) {
-  uint32_t sec = ts % 60; ts /= 60;
-  uint32_t min = ts % 60; ts /= 60;
-  uint32_t hour = ts % 24; ts /= 24;
-  
-  /* 从 1970-01-01 开始计算年月日 */
-  uint16_t year = 1970;
-  uint8_t month = 1;
-  uint8_t day = 1;
-  
-  /* 计算年份 */
-  while (1) {
-    uint16_t days_in_year = isLeapYear(year) ? 366 : 365;
-    if (ts < days_in_year) break;
-    ts -= days_in_year;
-    year++;
-  }
-  
-  /* 计算月份 */
-  uint8_t days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-  if (isLeapYear(year)) days_in_month[1] = 29;
-  
-  while (month <= 12) {
-    if (ts < days_in_month[month - 1]) break;
-    ts -= days_in_month[month - 1];
-    month++;
-  }
-  day = ts + 1;
-  
-  snprintf(buf, len, "%04d-%02d-%02d %02d:%02d:%02d",
-           year, month, day, hour, min, sec);
-}
-
-/* ========================== 设备信息 ========================== */
-/* DEVICE_NAME 已迁移至 dtu.h */
-#define BATTERY_VAL 100         /* 电量值（无 ADC，固定 100） */
-
 /* ========================== 收发缓冲区定义 ========================== */
-#define TX_LEN 64   /* 发送缓冲区长度（字节） */
-#define RX_LEN 64   /* 接收缓冲区长度（字节） */
+#define RX_LEN 64              /* 接收缓冲区长度（字节） */
 #define LORA_TX_DELAY_MS 1500  /* LoRa 接收后延时下发时间（ms） */
 
-uint8_t tx_test_buf[TX_LEN];                                /* 待发送的数据 */
-uint8_t rx_test_buf[RX_LEN] = {0};                  /* 接收数据缓冲区（保留） */
-uint8_t prev_rx_buf[RX_LEN] = {0};                  /* 上一次接收的数据（用于比对） */
-uint8_t prev_rx_size = 0;                           /* 上一次接收数据的长度 */
-
-uint16_t crc_value;          /* CRC 校验值（保留） */
-uint8_t Rssi_dBm;            /* 接收信号强度指示（dBm） */
-uint8_t Snr_value;           /* 信噪比 SNR */
 extern struct RxDoneMsg RxDoneParams; /* 接收完成时的消息结构体（由射频驱动提供） */
 
 /* =====================================================================
@@ -247,7 +154,7 @@ void HW_Int()
   RCC_Configuration(); /* 开启外设时钟 */
   GPIO_int();          /* GPIO 引脚初始化 */
   SPI2_Int();          /* SPI2 初始化（连接射频芯片） */
-  Uart1_Int();         /* USART1 初始化（串口调试） */
+  Uart1_Int();         /* USART1 初始化（调试/DTU 共用串口） */
   NVIC_Config();       /* 外部中断配置（射频 DIO1） */
 }
 
@@ -261,152 +168,12 @@ void LedToggle(void) {
   HAL_Delay_nMs(50);
 }
 
-uint32_t tx_time = 1000; /* 发送间隔参数（ms） */
-
 /* =====================================================================
- * @brief  解析接收到的消息（按 '|' 分割字段）
- *         格式：MSG_TYPE|字段1|字段2|...|
- * ===================================================================== */
-void parse_rx_message(uint8_t *buf, uint8_t len) {
-  char *str = (char *)buf;
-  char *fields[8] = {0};
-  uint8_t field_count = 0;
-
-  /* 按 '|' 分割，提取各字段 */
-  fields[field_count++] = str;
-  for (uint8_t i = 0; i < len && field_count < 8; i++) {
-    if (str[i] == '|') {
-      str[i] = '\0';
-      if (i + 1 < len)
-        fields[field_count++] = &str[i + 1];
-    }
-  }
-
-  if (field_count < 2) {
-    printf("[parse] invalid msg\r\n");
-    return;
-  }
-
-  uint8_t msg_type = atoi(fields[0]);
-
-  switch (msg_type) {
-    case MSG_TYPE_SYN_TIME: /* 4: 下发对时信息 4|timestamp|xxx */
-      if (field_count >= 2) {
-        syncedTimestamp = atoi(fields[1]);
-        syncedTick = HAL_GetTick();
-        timeSynced = 1;
-        printf("[SYNC] ts=%lu today=%lu\r\n",
-               (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
-      }
-      break;
-    case MSG_TYPE_COM:    /* 9: 指令 */
-      printf("[CMD] %s\r\n", field_count > 2 ? fields[2] : "");
-      break;
-    default:
-      printf("[MSG] type=%d\r\n", msg_type);
-      break;
-  }
-}
-
-/* =====================================================================
- * @brief  Master（主机/发射端）流程
- *         1. 按 ESP32 格式组包并发送（MSG_TYPE_TIME|设备名|秒数|电量）
- *         2. 发送完成后开启 3 秒接收窗口，只处理一条消息并解析
- *         3. 等待 3 分钟后进入下一次发送
- * ===================================================================== */
-void OnMaster(void) {
-  static uint32_t tx_count = 0;  /* 步进计数器 */
-  char tx_msg[TX_LEN];
-  uint32_t today_sec = getTodaySecond(); /* 获取当天秒数（已同步则用真实时间） */
-
-  tx_count++;
- 
-  /* 按 ESP32 格式组包：2|f030-1|12345|100|1 */
-  // snprintf(tx_msg, sizeof(tx_msg), "01234567890abcdefg");
-  // snprintf(tx_msg, sizeof(tx_msg), "123,456789,abcdefg0123");
-  //   snprintf(tx_msg, sizeof(tx_msg), "123|456789|abcdefg|0123");
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
-          MSG_TYPE_TIME, DEVICE_NAME, (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
-
-  /* 发送数据 */
-  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != OK) {
-    GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_SET); /* 发送失败，LED 熄灭 */
-  }
-
-  /* 等待发送完成标志 */
-  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-    ;
-  rf_set_transmit_flag(RADIO_FLAG_IDLE); /* 清除发送完成标志 */
-
-  LedToggle();
-  printf("tx ok -> \"%s\"\r\n", tx_msg);
-
-  /* ---- 开启 3 秒接收窗口（single 模式，最多只收一条） ---- */
-  rf_enter_single_timeout_rx(3000);
-  printf("[RX window] 3s listening...\r\n");
-
-  /* 等待接收完成或超时（收到消息会立刻退出，不会等满 3 秒） */
-  while (rf_get_recv_flag() == RADIO_FLAG_IDLE)
-    ;
-
-  if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) {
-    uint8_t local_buf[RX_LEN];
-    uint8_t local_size;
-    uint8_t local_rssi;
-    uint8_t local_snr;
-
-    __disable_irq();
-    rf_set_recv_flag(RADIO_FLAG_IDLE);
-    local_rssi = RxDoneParams.Rssi;
-    local_snr = RxDoneParams.Snr;
-    local_size = RxDoneParams.Size;
-    if (local_size > RX_LEN) local_size = RX_LEN;
-    for (uint8_t i = 0; i < local_size; i++)
-      local_buf[i] = RxDoneParams.Payload[i];
-    __enable_irq();
-
-    /* 确保字符串结束 */
-    if (local_size < RX_LEN)
-      local_buf[local_size] = '\0';
-    else
-      local_buf[RX_LEN - 1] = '\0';
-
-    /* 打印接收数据（精简版，适配 115200） */
-    printf("[RX] len=%d rssi=%d snr=%d data=%s\r\n",
-           local_size, local_rssi - 256, local_snr, (char *)local_buf);
-
-    /* 解析消息 */
-    parse_rx_message(local_buf, local_size);
-  } else if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
-    rf_set_recv_flag(RADIO_FLAG_IDLE);
-    printf("[RX window] timeout, no data.\r\n");
-  } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
-    rf_set_recv_flag(RADIO_FLAG_IDLE);
-    printf("[RX window] crc error.\r\n");
-  }
-
-  /* 调试模式：不进入休眠，打印当前时间和倒计时 */
-  /* rf_set_mode(RF_MODE_STB1); */
-  /* printf("[RF] enter standby\r\n"); */
-
-  /* 等待 1 分钟，每秒打印当前时间和倒计时 */
-  printf("[DEBUG] 等待下次上报...\r\n");
-  for (int i = 600; i > 0; i--) {
-    HAL_Delay_nMs(1000);
-    char time_str[20];
-    formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
-    printf("[DEBUG] %s  倒计时: %d s\r\n", time_str, i);
-  }
-}
-
-/* =====================================================================
- * @brief  Slave（从机/接收端）流程
- *         1. 检查是否收到完整数据包（RXDONE）
- *            - 读取 RSSI / SNR / 载荷长度 / 载荷内容
- *            - 与上一次接收数据比对，标记 [SAME] 或 [DIFF]
- *            - 串口打印接收信息
- *         2. 检查是否 CRC 错误（RXERR）
- *         3. 检查是否接收超时（RXTIMEOUT）
+ * @brief  集中器接收处理（同 CENTEN OnSlave）
+ *         1. 收到完整包：打印 RSSI/SNR/载荷 → 上报 DTU → 延时 1.5s →
+ *            下发缓存指令 > gpstm 中继(upgps) > 对时消息
+ *         2. CRC 标志：CRC 关闭时数据仍可读，照常打印/上报
+ *         3. 接收超时：重新进入接收
  * ===================================================================== */
 void OnSlave(void) {
   /* ---- 接收完成：成功收到一帧数据 ---- */
@@ -415,7 +182,6 @@ void OnSlave(void) {
     uint8_t local_size;          /* 本次数据长度本地副本 */
     uint8_t local_rssi;          /* RSSI 本地副本 */
     uint8_t local_snr;           /* SNR 本地副本 */
-    uint8_t is_same = 0;         /* 与上次数据是否相同的标志 */
 
     /* 关中断，快速拷贝接收数据，避免被中断覆盖 */
     __disable_irq();
@@ -428,17 +194,6 @@ void OnSlave(void) {
       local_buf[i] = RxDoneParams.Payload[i];
     __enable_irq(); /* 恢复中断 */
 
-    /* 与上一次接收的数据逐字节比对 */
-    if (local_size == prev_rx_size && prev_rx_size > 0) {
-      is_same = 1;
-      for (uint8_t i = 0; i < local_size; i++) {
-        if (local_buf[i] != prev_rx_buf[i]) {
-          is_same = 0; /* 发现不同，标记并退出比对 */
-          break;
-        }
-      }
-    }
-
     /* 串口打印接收信息 */
     printf("Rssi: %d  ", local_rssi - 256); /* RSSI 需减去 256 得到实际 dBm 值 */
     printf("Snr: %d   ", local_snr);
@@ -448,20 +203,12 @@ void OnSlave(void) {
       if (local_buf[i] == 0) break; /* 遇到字符串结束符则停止 */
       printf("%c", local_buf[i]);
     }
-    if (is_same)
-      printf("  [SAME]"); /* 与上次相同 */
-    else
-      printf("  [DIFF]"); /* 与上次不同 */
     printf("\r\n");
 
-    /* 保存本次数据作为下次比对的基准 */
-    prev_rx_size = local_size;
-    for (uint8_t i = 0; i < local_size; i++)
-      prev_rx_buf[i] = local_buf[i];
+    LedToggle(); /* LED 闪烁，表示收到数据 */
 
-    /* ---- DTU 集中器逻辑（仅 DTU 模式生效，DEBUG 模式编译期裁掉） ----
-     * 自 CENTEN 移植：上报 DTU → 延时 → 缓存指令 / gpstm 中继 / 对时下发 */
-    if (SERIAL_MODE == SERIAL_MODE_DTU) {
+    /* ---- 集中器处理：上报 DTU → 延时 → 缓存指令 / gpstm / 对时 ---- */
+    {
       int msgType;
       char loraDevId[32] = {0};
       uint8_t hasPendingCmd = 0;
@@ -469,6 +216,7 @@ void OnSlave(void) {
       if (local_size < RX_LEN)
         local_buf[local_size] = '\0';
       msgType = atoi((char *)local_buf);
+      printf("[LoRa] MsgType: %d\r\n", msgType);
 
       if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
         /* 提取 deviceId（第 2 个 '|' 分隔字段），检查缓存指令 */
@@ -492,16 +240,18 @@ void OnSlave(void) {
           else
             dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
         } else {
+          /* MSG_TYPE_GPS: 直接上报原始数据 */
           dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
         }
 
-        /* 延时后下发：缓存指令 > gpstm 中继 > 对时（需已同步时间） */
+        /* 延时后下发（同 CENTEN）：缓存指令 > gpstm 中继 > 对时消息
+         * 无缓存指令且无 gpstm 时，无条件 LoRa 下发对时（未同步时下发开机秒数） */
         Delay_Ms(LORA_TX_DELAY_MS);
         if (hasPendingCmd) {
           dtu_send_pending(loraDevId);
         } else if (dtu_gpstm_active()) {
           dtu_send_upgps(loraDevId);
-        } else if (timeSynced) {
+        } else {
           dtu_send_time_reply();
         }
       } else if (msgType == MSG_TYPE_CONFIG) {
@@ -510,7 +260,6 @@ void OnSlave(void) {
       }
     }
 
-    LedToggle();                      /* LED 闪烁，表示收到数据 */
     rf_enter_single_timeout_rx(15000); /* 继续进入接收模式，超时 15 秒 */
   }
 
@@ -532,7 +281,6 @@ void OnSlave(void) {
     __enable_irq();
 
     if (local_size > 0) {
-      /* 有数据：照常打印，标记 [CRC-FLAG] 表示芯片置了 CRC 标志但数据可用 */
       printf("Rssi: %d  ", local_rssi - 256);
       printf("Snr: %d   ", local_snr);
       printf("Len: %d  ", local_size);
@@ -542,7 +290,6 @@ void OnSlave(void) {
         printf("%c", local_buf[i]);
       }
       printf("  [CRC-FLAG]\r\n");
-      LedToggle();
     } else {
       printf("crc error (no data)\r\n");
     }
@@ -558,10 +305,10 @@ void OnSlave(void) {
 }
 
 /* =====================================================================
- * @brief  主函数
+ * @brief  主函数（集中器：上电即持续接收）
  *         1. 初始化硬件和射频芯片
- *         2. 根据 RF_MODE 引脚电平确定初始角色
- *         3. 主循环中支持按键切换模式：S2→TX, S3→RX
+ *         2. 初始化 DTU 协议层（加载 Flash 配置）
+ *         3. 主循环：DTU 轮询 + 接收处理
  * ===================================================================== */
 int main(void) {
   uint32_t ret = 0;
@@ -579,52 +326,22 @@ int main(void) {
   }
   printf("RF init ok\r\n");
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
-  // rf_set_crc(true);      /* 开启 CRC 校验 */
 
   dtu_init(); /* 加载 Flash 配置，启动 DTU 查询定时器 */
   if (SERIAL_MODE == SERIAL_MODE_DTU)
-    printf("UART mode: DTU\r\n"); /* DTU 模式下此打印被 fputc 丢弃，仅作标记 */
+    printf("UART mode: DTU (raw protocol)\r\n");
   else
-    printf("UART mode: DEBUG\r\n");
+    printf("UART mode: DEV shared ({usb}=debug, [dtu]=protocol)\r\n");
 
-  /* 默认进入接收模式 */
-  current_mode = 0;
-  printf("RX mode: continuous receive.\r\n");
-  rf_enter_single_timeout_rx(5000);  /* 启动首次接收，超时 5 秒 */
+  rf_enter_single_timeout_rx(5000); /* 上电进入接收模式 */
+  printf("RX mode: concentrator listening...\r\n");
 
-  /* 主循环：支持按键切换模式 */
+  /* 主循环 */
   while (1) {
-    /* DTU 协议轮询：队列发送/帧解析/周期查询（DEBUG 模式内部直接返回） */
+    /* DTU 协议轮询：队列发送/帧解析/csq+nettime 周期查询 */
     dtu_poll();
 
-    /* ---- 按键扫描（带消抖） ---- */
-    if (KEY1_PRESSED) {
-      Delay_Ms(20); /* 消抖 */
-      if (KEY1_PRESSED && current_mode != 1) {
-        current_mode = 1;
-        printf("\r\n[KEY1] Switch to TX mode.\r\n");
-        rf_set_mode(RF_MODE_STB1); /* 切回待机，退出接收 */
-      }
-      while (KEY1_PRESSED); /* 等待松手 */
-      Delay_Ms(20);
-    }
-    if (KEY2_PRESSED) {
-      Delay_Ms(20); /* 消抖 */
-      if (KEY2_PRESSED && current_mode != 0) {
-        current_mode = 0;
-        printf("\r\n[KEY2] Switch to RX mode.\r\n");
-        rf_set_mode(RF_MODE_STB1); /* 切回待机，退出发送 */
-        rf_enter_single_timeout_rx(5000);
-      }
-      while (KEY2_PRESSED); /* 等待松手 */
-      Delay_Ms(20);
-    }
-
-    /* ---- 根据当前模式执行对应流程 ---- */
-    if (current_mode == 1) {
-      OnMaster(); /* TX：每 5 秒发送一帧 */
-    } else {
-      OnSlave();  /* RX：持续接收 */
-    }
+    /* LoRa 接收处理：上报 DTU + 下发响应 */
+    OnSlave();
   }
 }

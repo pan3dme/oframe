@@ -96,6 +96,17 @@ static void enqueueDtuMsg(const char *msg, int len) {
 }
 
 /* =====================================================================
+ * @brief  协议流发送：开发阶段加 [dtu] 前缀，与 {usb} 调试打印区分；
+ *         DTU 正式模式原样发送
+ * ===================================================================== */
+static void dtu_wire_send(const uint8_t *p, uint16_t len) {
+#if (SERIAL_MODE != SERIAL_MODE_DTU)
+  Uart1_SendBytes((const uint8_t *)"[dtu] ", 6);
+#endif
+  Uart1_SendBytes(p, len);
+}
+
+/* =====================================================================
  * @brief  处理 DTU 发送队列：每 500ms 从队头取出一条发送
  * ===================================================================== */
 static void processDtuQueue(void) {
@@ -105,7 +116,7 @@ static void processDtuQueue(void) {
   if (HAL_GetTick() - dtuLastSendTick >= 500) {
     dtuLastSendTick = HAL_GetTick();
     DtuQueueItem_t *item = &dtuQueue[dtuQueueHead];
-    Uart1_SendBytes((const uint8_t *)item->buf, item->len);
+    dtu_wire_send((const uint8_t *)item->buf, item->len);
     Uart1_SendBytes((const uint8_t *)"\r\n", 2);
     dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
     dtuQueueCount--;
@@ -501,11 +512,10 @@ static void parseDtuCommand(char *buf) {
 }
 
 /* =====================================================================
- * @brief  串口中断收到 1 字节时调用（仅 DTU 模式有效）
+ * @brief  串口中断收到 1 字节时调用
+ *         开发/DTU 两种模式都解析（开发阶段可由串口助手模拟 DTU 下发指令）
  * ===================================================================== */
 void dtu_uart_rx_byte(uint8_t b) {
-  if (SERIAL_MODE != SERIAL_MODE_DTU)
-    return;
   if (dtuRxLen < DTU_RX_BUF_SIZE) {
     dtuRxBuf[dtuRxLen++] = b;
     dtuLastRxTick = HAL_GetTick();
@@ -522,12 +532,9 @@ void dtu_init(void) {
 
 /* =====================================================================
  * @brief  主循环轮询：队列发送 / 帧解析 / csq+nettime 周期查询
- *         DEBUG 模式下直接返回，不占用串口
+ *         开发模式同样运行（协议流带 [dtu] 前缀输出），仅自动重启限 DTU 模式
  * ===================================================================== */
 void dtu_poll(void) {
-  if (SERIAL_MODE != SERIAL_MODE_DTU)
-    return;
-
   processDtuQueue();
 
   /* DTU 一帧完成判断：500ms 无新字节 或 缓冲区满 */
@@ -578,14 +585,16 @@ void dtu_poll(void) {
     dtuRxLen = 0;
   }
 
-  /* 周期查询：未对时每 5 秒，对时后按 configStr 配置间隔 */
+  /* 周期查询 csq+nettime：仅 DTU 正式模式主动查询；
+   * 开发阶段不重试，由串口助手手动下发 nettime/csq 响应模拟 DTU */
+#if (SERIAL_MODE == SERIAL_MODE_DTU)
   {
     uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
     if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
       dtuCsqTick = HAL_GetTick();
-      Uart1_SendBytes((const uint8_t *)"config,get,csq\r\n", 16);
+      dtu_wire_send((const uint8_t *)"config,get,csq\r\n", 16);
       Delay_Ms(300);
-      Uart1_SendBytes((const uint8_t *)"config,get,nettime\r\n", 20);
+      dtu_wire_send((const uint8_t *)"config,get,nettime\r\n", 20);
       if (!dtuTimeValid) {
         dtuNetTimeFailCount++;
         printf("[DTU] Waiting for net time... (fail=%d/5)\r\n",
@@ -598,4 +607,5 @@ void dtu_poll(void) {
       }
     }
   }
+#endif
 }

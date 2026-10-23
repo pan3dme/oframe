@@ -5,17 +5,24 @@
 
 /* =====================================================================
  * 串口用途选择（编译期标记，烧录前修改 SERIAL_MODE 一行后重新编译）
+ * 两种模式均使用 USART1(PA9/PA10)，不改动任何引脚
  *
- * SERIAL_MODE_DEBUG : USART1(PA9/PA10) 接电脑串口助手，输出调试打印
- * SERIAL_MODE_DTU   : USART1(PA9/PA10) 接 DTU 模块，跑 DTU 协议，
- *                     所有 printf 调试打印自动关闭，不污染协议流
+ * SERIAL_MODE_DEBUG : 开发测试阶段，串口接电脑串口助手
+ *                     - 调试打印每行自动加 {usb} 前缀
+ *                     - DTU 协议流每帧自动加 [dtu] 前缀
+ *                     - 可由串口助手模拟 DTU 下发指令测试解析
+ *                     - 不主动周期查询 csq/nettime，不重启
+ * SERIAL_MODE_DTU   : 调试完成后，串口接 DTU 设备
+ *                     - 协议流原样收发，无前缀
+ *                     - 调试打印全部丢弃
+ *                     - 主动周期查询 csq/nettime，对时失败 5 次自动重启
  * ===================================================================== */
 #define SERIAL_MODE_DEBUG 0
 #define SERIAL_MODE_DTU   1
 #define SERIAL_MODE       SERIAL_MODE_DEBUG   /* <-- 烧录标记：改这里 */
 
 /* ========================== 设备信息 ========================== */
-#define DEVICE_NAME  "v4-18"   /* 设备名称（DTU 上报 / LoRa 下发共用） */
+#define DEVICE_NAME  "v4-102"   /* 设备名称（DTU 上报 / LoRa 下发共用） */
 
 /* ========================== 消息类型定义（与 ESP32 / CENTEN 对齐） ========================== */
 #define MSG_TYPE_TIME     2   /* 定时上报（时间戳） */
