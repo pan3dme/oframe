@@ -569,6 +569,11 @@
               <FileType>1</FileType>
               <FilePath>..\uart.c</FilePath>
             </File>
+            <File>
+              <FileName>dtu.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\dtu.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>

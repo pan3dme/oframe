@@ -51,14 +51,7 @@ static uint8_t current_mode = 0; /* 0=RX, 1=TX */
 #define KEY1_PRESSED  (GPIO_ReadInputDataBit(KEY1_PORT, KEY1_PIN) == 0)
 #define KEY2_PRESSED  (GPIO_ReadInputDataBit(KEY2_PORT, KEY2_PIN) == 0)
 
-/* ========================== 消息类型定义（与 ESP32 对齐） ========================== */
-#define MSG_TYPE_TIME     2   /* 定时上报（时间戳） */
-#define MSG_TYPE_GPS      1   /* GPS 上报（预留，暂不使用） */
-#define MSG_TYPE_COM      9   /* 指令消息 */
-#define MSG_TYPE_CONFIG   6   /* 配置消息 */
-#define MSG_TYPE_SYN_TIME 4   /* 下发对时信息（中继→本设备） */
-#define MSG_TYPE_WARN     8   /* 告警消息 */
-#define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
+/* 消息类型定义已迁移至 dtu.h（与 ESP32 / CENTEN 对齐） */
 
 /* ========================== 时间同步变量 ========================== */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
@@ -95,6 +88,16 @@ uint32_t getCurrentTimestamp(void) {
   }
   uint32_t elapsed_sec = (HAL_GetTick() - syncedTick) / 1000;
   return syncedTimestamp + elapsed_sec;
+}
+
+/**
+ * @brief  将 DTU 网络时间写入主时间源（由 dtu.c 调用）
+ * @param  ts  Unix 时间戳
+ */
+void app_set_synced_time(uint32_t ts) {
+  syncedTimestamp = ts;
+  syncedTick = HAL_GetTick();
+  timeSynced = 1;
 }
 
 /**
@@ -144,12 +147,13 @@ void formatTimestamp(uint32_t ts, char *buf, uint8_t len) {
 }
 
 /* ========================== 设备信息 ========================== */
-#define DEVICE_NAME  "v4-18"   /* 设备名称，每个节点不同 */
+/* DEVICE_NAME 已迁移至 dtu.h */
 #define BATTERY_VAL 100         /* 电量值（无 ADC，固定 100） */
 
 /* ========================== 收发缓冲区定义 ========================== */
 #define TX_LEN 64   /* 发送缓冲区长度（字节） */
 #define RX_LEN 64   /* 接收缓冲区长度（字节） */
+#define LORA_TX_DELAY_MS 1500  /* LoRa 接收后延时下发时间（ms） */
 
 uint8_t tx_test_buf[TX_LEN];                                /* 待发送的数据 */
 uint8_t rx_test_buf[RX_LEN] = {0};                  /* 接收数据缓冲区（保留） */
@@ -455,6 +459,57 @@ void OnSlave(void) {
     for (uint8_t i = 0; i < local_size; i++)
       prev_rx_buf[i] = local_buf[i];
 
+    /* ---- DTU 集中器逻辑（仅 DTU 模式生效，DEBUG 模式编译期裁掉） ----
+     * 自 CENTEN 移植：上报 DTU → 延时 → 缓存指令 / gpstm 中继 / 对时下发 */
+    if (SERIAL_MODE == SERIAL_MODE_DTU) {
+      int msgType;
+      char loraDevId[32] = {0};
+      uint8_t hasPendingCmd = 0;
+
+      if (local_size < RX_LEN)
+        local_buf[local_size] = '\0';
+      msgType = atoi((char *)local_buf);
+
+      if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
+        /* 提取 deviceId（第 2 个 '|' 分隔字段），检查缓存指令 */
+        const char *p1 = strchr((char *)local_buf, '|');
+        if (p1) {
+          const char *p2 = p1 + 1;
+          const char *p3 = strchr(p2, '|');
+          int idLen = p3 ? (int)(p3 - p2) : (int)strlen(p2);
+          if (idLen > 31) idLen = 31;
+          memcpy(loraDevId, p2, idLen);
+          loraDevId[idLen] = '\0';
+          hasPendingCmd = dtu_check_pending(loraDevId);
+        }
+
+        /* 上报 DTU：TIME 消息替换时间字段为当前时间戳 */
+        if (msgType == MSG_TYPE_TIME) {
+          char reportBuf[RX_LEN];
+          if (dtu_replace_time_segment((char *)local_buf, reportBuf,
+                                       sizeof(reportBuf)) == 0)
+            dtu_report_lora(reportBuf, local_rssi - 256, local_snr);
+          else
+            dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+        } else {
+          dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+        }
+
+        /* 延时后下发：缓存指令 > gpstm 中继 > 对时（需已同步时间） */
+        Delay_Ms(LORA_TX_DELAY_MS);
+        if (hasPendingCmd) {
+          dtu_send_pending(loraDevId);
+        } else if (dtu_gpstm_active()) {
+          dtu_send_upgps(loraDevId);
+        } else if (timeSynced) {
+          dtu_send_time_reply();
+        }
+      } else if (msgType == MSG_TYPE_CONFIG) {
+        /* 配置消息：原样上报，不对时 */
+        dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+      }
+    }
+
     LedToggle();                      /* LED 闪烁，表示收到数据 */
     rf_enter_single_timeout_rx(15000); /* 继续进入接收模式，超时 15 秒 */
   }
@@ -526,6 +581,12 @@ int main(void) {
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
   // rf_set_crc(true);      /* 开启 CRC 校验 */
 
+  dtu_init(); /* 加载 Flash 配置，启动 DTU 查询定时器 */
+  if (SERIAL_MODE == SERIAL_MODE_DTU)
+    printf("UART mode: DTU\r\n"); /* DTU 模式下此打印被 fputc 丢弃，仅作标记 */
+  else
+    printf("UART mode: DEBUG\r\n");
+
   /* 默认进入接收模式 */
   current_mode = 0;
   printf("RX mode: continuous receive.\r\n");
@@ -533,6 +594,9 @@ int main(void) {
 
   /* 主循环：支持按键切换模式 */
   while (1) {
+    /* DTU 协议轮询：队列发送/帧解析/周期查询（DEBUG 模式内部直接返回） */
+    dtu_poll();
+
     /* ---- 按键扫描（带消抖） ---- */
     if (KEY1_PRESSED) {
       Delay_Ms(20); /* 消抖 */

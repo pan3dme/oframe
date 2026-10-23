@@ -130,7 +130,12 @@ void SysTick_Handler(void)
 
 void USART1_IRQHandler(void)
 {
-
+  /* DTU 模式：USART1 接收中断，逐字节送入 DTU 协议层 */
+  if (USART_GetITStatus(USART1, USART_IT_RXNE) != RESET)
+  {
+    uint8_t byte = (uint8_t)USART_ReceiveData(USART1);
+    dtu_uart_rx_byte(byte);
+  }
 }
 
 void ADC1_IRQHandler(void)

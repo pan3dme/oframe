@@ -14,6 +14,7 @@
 
 void Uart1_Int(void);
 void Uart1_Print(uint8_t* pData,uint16_t len);
+void Uart1_SendBytes(const uint8_t* pData,uint16_t len);
 
 
 #endif
