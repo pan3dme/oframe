@@ -315,17 +315,57 @@ int main(void) {
 
   HW_Int();       /* 硬件外设初始化 */
   Delay_Ms(1);    /* 短暂延时，等待外设稳定 */
+
+  /* 开机倒计时 5 秒（最前）：每秒打印一次，用 SysTick 精确 1 秒间隔 */
+  for (int i = 5; i >= 1; i--) {
+    printf("Boot countdown: %d s\r\n", i);
+    HAL_Delay_nMs(1000); /* 精确延时 1 秒（Delay_Ms 是软件空循环，时长不准） */
+  }
+  printf("Boot countdown done, starting...\r\n");
+
   printf_logo();  /* 打印工程信息 */
 
   /* 初始化射频芯片 */
   ret = rf_init();
   if (ret != RF_OK) {
-    printf("RF init fail\r\n");  /* 射频初始化失败，死循环 */
+    printf("[LoRa] init FAIL (ret=%lu), system halted\r\n",
+           (unsigned long)ret); /* 射频初始化失败，死循环 */
     while (1)
       ;
   }
-  printf("RF init ok\r\n");
+  printf("[LoRa] init OK\r\n");
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
+
+  /* 打印当前 LoRa 配置，便于开机核对与发送端是否一致 */
+  {
+    const char *bwStr;
+    const char *crStr;
+
+    switch (DEFAULT_BW) {
+      case BW_62_5K: bwStr = "62.5"; break;
+      case BW_125K:  bwStr = "125";  break;
+      case BW_250K:  bwStr = "250";  break;
+      case BW_500K:  bwStr = "500";  break;
+      default:       bwStr = "?";    break;
+    }
+    switch (DEFAULT_CR) {
+      case CODE_RATE_45: crStr = "4/5"; break;
+      case CODE_RATE_46: crStr = "4/6"; break;
+      case CODE_RATE_47: crStr = "4/7"; break;
+      case CODE_RATE_48: crStr = "4/8"; break;
+      default:           crStr = "?";   break;
+    }
+
+    printf("===== LoRa Config =====\r\n");
+    printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
+    printf("  SF      : %d\r\n", DEFAULT_SF);
+    printf("  BW      : %s kHz\r\n", bwStr);
+    printf("  CR      : %s\r\n", crStr);
+    printf("  Power   : %d dBm\r\n", DEFAULT_PWR);
+    printf("  CRC     : OFF\r\n"); /* rf_set_default_para 内硬编码 CRC_OFF */
+    printf("  SyncWord: 0x%02X\r\n", rf_get_syncword()); /* 回读芯片实际值 */
+    printf("=======================\r\n");
+  }
 
   dtu_init(); /* 加载 Flash 配置，启动 DTU 查询定时器 */
   if (SERIAL_MODE == SERIAL_MODE_DTU)

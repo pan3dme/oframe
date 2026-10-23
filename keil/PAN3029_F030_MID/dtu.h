@@ -22,7 +22,7 @@
 #define SERIAL_MODE       SERIAL_MODE_DEBUG   /* <-- 烧录标记：改这里 */
 
 /* ========================== 设备信息 ========================== */
-#define DEVICE_NAME  "v4-102"   /* 设备名称（DTU 上报 / LoRa 下发共用） */
+#define DEVICE_NAME  "v3-107"   /* 设备名称（DTU 上报 / LoRa 下发共用） */
 
 /* ========================== 消息类型定义（与 ESP32 / CENTEN 对齐） ========================== */
 #define MSG_TYPE_TIME     2   /* 定时上报（时间戳） */
