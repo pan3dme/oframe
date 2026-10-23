@@ -38,10 +38,10 @@ typedef enum
 #define BIT6           0x40
 #define BIT7           0x80
 
-#define BIT(v)         ((u8)(1 << v))                                   // mask for bit v
-#define GENMASK(h, l)  ((u8)(((1 << (h + 1)) - 1) & (~((1 << l) - 1)))) // mask for bits[h,l]
+#define BIT(v)         ((uint8_t)(1 << v))                                   // mask for bit v
+#define GENMASK(h, l)  ((uint8_t)(((1 << (h + 1)) - 1) & (~((1 << l) - 1)))) // mask for bits[h,l]
 #define GET_SHIFT(v)   ((__ctz(v)))                                     // bit shift in a uint8_t value
-#define NOBITS         ((u8)0x00)
+#define NOBITS         ((uint8_t)0x00)
 
 /* RF mode define*/
 #define RF_MODE_DEEP_SLEEP              0

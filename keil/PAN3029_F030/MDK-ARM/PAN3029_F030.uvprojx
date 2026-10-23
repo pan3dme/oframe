@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F030  USE_STDPERIPH_DRIVER</Define>
               <Undefine></Undefine>
-              <IncludePath>..\Libraries\CMSIS\Device\ST\STM32F0xx\Include;..\Libraries\STM32F0xx_StdPeriph_Driver\inc;..\Radio\inc;..\Libraries\CMSIS\Include;..\..\(Simplex)PAN3029_PAN3060_DK_V2.3</IncludePath>
+              <IncludePath>..;..\Libraries\CMSIS\Device\ST\STM32F0xx\Include;..\Libraries\STM32F0xx_StdPeriph_Driver\inc;..\Radio\inc;..\..\Common\RadioF103\inc;..\Libraries\CMSIS\Include</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>

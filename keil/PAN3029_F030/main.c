@@ -17,7 +17,8 @@
 #include "stm32f0xx.h"
 #include "user.h"
 
-#include "time.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 /* ========================== 演示工程基本信息 ========================== */
 #define EXAMPLE_NAME "stm32中继"  /* 工程名称 */
