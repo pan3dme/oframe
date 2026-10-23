@@ -108,13 +108,16 @@ static void dtu_wire_send(const uint8_t *p, uint16_t len) {
 }
 
 /* =====================================================================
- * @brief  处理 DTU 发送队列：每 500ms 从队头取出一条发送
+ * @brief  处理 DTU 发送队列：每 1500ms 从队头取出一条发送
+ *         所有向 DTU 的发送统一走本队列（JSON 上报 / csq+nettime 查询 /
+ *         开机配置上报），保证相邻两条至少间隔 1.5s，DTU 有时间回复
+ *         （对时上报 + 配置上报算两条，也需要 1.5s 间隔）
  * ===================================================================== */
 static void processDtuQueue(void) {
   if (dtuQueueCount == 0)
     return;
 
-  if (HAL_GetTick() - dtuLastSendTick >= 500) {
+  if (HAL_GetTick() - dtuLastSendTick >= 1500) {
     dtuLastSendTick = HAL_GetTick();
     DtuQueueItem_t *item = &dtuQueue[dtuQueueHead];
     dtu_wire_send((const uint8_t *)item->buf, item->len);
@@ -586,16 +589,16 @@ void dtu_poll(void) {
     dtuRxLen = 0;
   }
 
-  /* 周期查询 csq+nettime（始终主动查询）；
+  /* 周期查询 csq+nettime（始终主动查询）：统一入队，相邻 1s 发一条；
    * 对时失败 5 次自动重启仅正式装机模式(DTU_PROD_MODE=1)启用，
    * 桌面调试时 DTU 口可能空接，不重启避免反复复位 */
   {
     uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
     if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
       dtuCsqTick = HAL_GetTick();
-      dtu_wire_send((const uint8_t *)"config,get,csq\r\n", 16);
-      Delay_Ms(300);
-      dtu_wire_send((const uint8_t *)"config,get,nettime\r\n", 20);
+      /* 两条查询入队，processDtuQueue 会以 1s 间隔逐条发出（末尾 \r\n 由队列统一追加）*/
+      enqueueDtuMsg("config,get,csq", strlen("config,get,csq"));
+      enqueueDtuMsg("config,get,nettime", strlen("config,get,nettime"));
       if (!dtuTimeValid) {
         dtuNetTimeFailCount++;
         printf("[DTU] Waiting for net time... (fail=%d/5)\r\n",

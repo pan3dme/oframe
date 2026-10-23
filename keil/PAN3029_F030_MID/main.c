@@ -6,10 +6,9 @@
  *        - 收到上报后延时下发：缓存指令 > gpstm(upgps) > 对时消息
  *
  * @hardware  MCU: STM32F030  |  射频芯片: PAN3029 / PAN3060
- *            串口: USART1(PA9/PA10) 调试与 DTU 共用（USB 串口主输出）
- *            镜像: PA0 软串口复刻 USART1 TX 字节流（开发阶段，9600 8N1）
+ *            串口: USART1(PA9/PA10) 调试与 DTU 共用（USB 串口主输出，115200 8N1）
  *            - 开发阶段(DTU_PROD_MODE=0): 调试打印带 {usb} 前缀, 协议流带 [dtu] 前缀
- *            - 正式装机(DTU_PROD_MODE=1): 串口纯跑 DTU 协议, 无前缀无调试打印, 镜像关闭
+ *            - 正式装机(DTU_PROD_MODE=1): 串口纯跑 DTU 协议, 无前缀无调试打印
  *
  * @history - V3.0, 2026-10  由 CENTEN 迁移, 移除旧 TX/RX 双模式逻辑
  ********************************************************************************************/
@@ -156,59 +155,7 @@ void HW_Int()
   GPIO_int();          /* GPIO 引脚初始化 */
   SPI2_Int();          /* SPI2 初始化（连接射频芯片） */
   Uart1_Int();         /* USART1 初始化（调试打印 + DTU 协议，PA9/PA10） */
-#if !DTU_PROD_MODE
-  soft_uart_init();    /* PA0 软串口：开发阶段镜像监测口（复刻 USART1 TX） */
-#endif
   NVIC_Config();       /* 外部中断配置（射频 DIO1） */
-}
-
-/* =====================================================================
- * @brief  PA0 抢线自检（不需改接线、不需接收端、无短路风险）
- *         方法：把 PA0 临时切成输入，分别开内部弱下拉/弱上拉（约 40k）各读一次：
- *           网络空闲（无外部驱动） → 下拉读 0、上拉读 1
- *           被外部推挽输出钉住高   → 两次都读 1（弱下拉拉不下来）
- *           被外部推挽输出钉住低   → 两次都读 0
- *         若判定被钉住，说明 PA0 网络上有其它芯片输出（如 PAN3029 模块的
- *         天线/TCXO 控制脚）→ 作镜像口必乱码，与波特率/驱动代码无关
- *         （不用推挽对顶测试：避免与外部输出形成短路电流）
- * @param  tag  打印标识（区分“射频未启动”与“已进入接收”两个时机）
- * ===================================================================== */
-static void pa0_contention_probe(const char *tag) {
-#if !DTU_PROD_MODE
-  GPIO_InitTypeDef io;
-  uint8_t rd_pulldown, rd_pullup;
-
-  io.GPIO_Pin   = SOFT_UART_TX_PIN;
-  io.GPIO_Mode  = GPIO_Mode_IN;
-  io.GPIO_Speed = GPIO_Speed_Level_2;
-  io.GPIO_OType = GPIO_OType_PP;
-
-  io.GPIO_PuPd = GPIO_PuPd_DOWN; /* 弱下拉 */
-  GPIO_Init(SOFT_UART_TX_PORT, &io);
-  HAL_Delay_nMs(2);
-  rd_pulldown = (uint8_t)GPIO_ReadInputDataBit(SOFT_UART_TX_PORT, SOFT_UART_TX_PIN);
-
-  io.GPIO_PuPd = GPIO_PuPd_UP;   /* 弱上拉 */
-  GPIO_Init(SOFT_UART_TX_PORT, &io);
-  HAL_Delay_nMs(2);
-  rd_pullup = (uint8_t)GPIO_ReadInputDataBit(SOFT_UART_TX_PORT, SOFT_UART_TX_PIN);
-
-  /* 测完恢复为镜像口的推挽输出（空闲高） */
-  soft_uart_init();
-
-  printf("[PA0-PROBE %s] pull-down read=%d, pull-up read=%d  (free net expects 0 / 1)\r\n",
-         tag, rd_pulldown, rd_pullup);
-  if (rd_pulldown == 0 && rd_pullup == 1)
-    printf("[PA0-PROBE] OK: PA0 net is free -> mirror should work\r\n");
-  else if (rd_pulldown == 1 && rd_pullup == 1)
-    printf("[PA0-PROBE] CONTEST: PA0 is held HIGH by an external driver\r\n");
-  else if (rd_pulldown == 0 && rd_pullup == 0)
-    printf("[PA0-PROBE] CONTEST: PA0 is held LOW by an external driver\r\n");
-  else
-    printf("[PA0-PROBE] UNSTABLE: PA0 level floats/oscillates\r\n");
-#else
-  (void)tag; /* 装机模式不做自检 */
-#endif
 }
 
 /* =====================================================================
@@ -369,18 +316,14 @@ int main(void) {
   HW_Int();       /* 硬件外设初始化 */
   Delay_Ms(1);    /* 短暂延时，等待外设稳定 */
 
-  /* 开机倒计时 5 秒（最前）：每秒打印一次，用 SysTick 精确 1 秒间隔 */
-  for (int i = 5; i >= 1; i--) {
+  /* 开机倒计时 1 秒（最前）：用 SysTick 精确 1 秒间隔 */
+  for (int i = 1; i >= 1; i--) {
     printf("Boot countdown: %d s\r\n", i);
     HAL_Delay_nMs(1000); /* 精确延时 1 秒（Delay_Ms 是软件空循环，时长不准） */
   }
   printf("Boot countdown done, starting...\r\n");
 
   printf_logo();  /* 打印工程信息 */
-
-#if !DTU_PROD_MODE
-  pa0_contention_probe("before-rf"); /* 射频未启动：PA0 网络是否已被外部驱动 */
-#endif
 
   /* 初始化射频芯片 */
   ret = rf_init();
@@ -433,12 +376,6 @@ int main(void) {
 
   rf_enter_single_timeout_rx(5000); /* 上电进入接收模式 */
   printf("RX mode: concentrator listening...\r\n");
-
-#if !DTU_PROD_MODE
-  /* 已进入接收：模块天线 RX/TCXO 控制脚此时处于工作状态，
-   * 与开机前对比可判断抢线是否由射频收发引起 */
-  pa0_contention_probe("in-rx");
-#endif
 
   /* 主循环 */
   while (1) {

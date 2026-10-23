@@ -1,18 +1,13 @@
 #include "uart.h"
 #include "dtu.h"
-#include "soft_uart.h"
 
 /* 行首状态：1=下一字符是新行第一个字符（用于自动加 {usb} 前缀） */
 static int s_line_start = 1;
 
-/* 底层发送单字符：USART1(PA9) 硬件主输出；开发阶段同时在 PA0 软串口
- * 复刻一份相同字节流（波形/波特率一致），供第二处监测 */
+/* 底层发送单字符：USART1(PA9) 硬件串口输出 */
 static void uart1_putc(uint8_t ch) {
     USART_SendData(USART1, ch);
     while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
-#if !DTU_PROD_MODE
-    soft_uart_putc(ch); /* PA0 镜像（复刻 USART1 TX） */
-#endif
 }
 
 /* 调试打印与 DTU 协议共用 USART1(PA9/PA10)：
@@ -68,7 +63,7 @@ void Uart1_Int(void)
 	
 
 		USART_DeInit(USART1);
-		USART_InitStruct1.USART_BaudRate=9600;  /* 与 PA0 镜像口统一 9600 */
+		USART_InitStruct1.USART_BaudRate=115200;  /* 与镜像口统一 115200 */
 		USART_InitStruct1.USART_StopBits=USART_StopBits_1;
 		USART_InitStruct1.USART_Parity=USART_Parity_No;
 		USART_InitStruct1.USART_WordLength=USART_WordLength_8b;
@@ -97,7 +92,7 @@ void Uart1_Print(uint8_t* pData,uint16_t len)
   
   for(i=0;i<len;i++)
   { 
-    uart1_putc(*pData); /* USART1 主输出 + PA0 镜像 */
+    uart1_putc(*pData); /* USART1 硬件串口输出 */
     pData++;
   }
 }
@@ -108,7 +103,7 @@ void Uart1_SendBytes(const uint8_t* pData,uint16_t len)
 
   for(i=0;i<len;i++)
   {
-    uart1_putc(pData[i]); /* USART1 主输出 + PA0 镜像 */
+    uart1_putc(pData[i]); /* USART1 硬件串口输出 */
   }
   /* 原始发送以换行结尾时，同步 fputc 的行首状态 */
   if (len > 0 && pData[len-1] == '\n')
