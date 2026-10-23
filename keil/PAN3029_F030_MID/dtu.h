@@ -4,22 +4,16 @@
 #include <stdint.h>
 
 /* =====================================================================
- * 串口用途选择（编译期标记，烧录前修改 SERIAL_MODE 一行后重新编译）
- * 两种模式均使用 USART1(PA9/PA10)，不改动任何引脚
+ * 串口架构：调试打印与 DTU 协议共用 USART1(PA9/PA10)，不改动任何引脚
+ * 开发阶段 PA0 软串口(soft_uart.c)复刻 USART1 TX 的完整字节流，供第二处监测
+ * （PA11/PA12 实测乱码已弃用；PA0 抢线自检见 main.c 的 pa0_contention_probe）
  *
- * SERIAL_MODE_DEBUG : 开发测试阶段，串口接电脑串口助手
- *                     - 调试打印每行自动加 {usb} 前缀
- *                     - DTU 协议流每帧自动加 [dtu] 前缀
- *                     - 可由串口助手模拟 DTU 下发指令测试解析
- *                     - 不主动周期查询 csq/nettime，不重启
- * SERIAL_MODE_DTU   : 调试完成后，串口接 DTU 设备
- *                     - 协议流原样收发，无前缀
- *                     - 调试打印全部丢弃
- *                     - 主动周期查询 csq/nettime，对时失败 5 次自动重启
+ * DTU_PROD_MODE : 0 = 桌面调试（调试打印带 {usb} 前缀，协议流带 [dtu] 前缀，
+ *                     对时失败 5 次不重启）
+ *                 1 = 正式装机（串口纯跑 DTU 协议：无前缀、丢弃调试打印，
+ *                     对时失败 5 次自动重启，同 CENTEN）
  * ===================================================================== */
-#define SERIAL_MODE_DEBUG 0
-#define SERIAL_MODE_DTU   1
-#define SERIAL_MODE       SERIAL_MODE_DEBUG   /* <-- 烧录标记：改这里 */
+#define DTU_PROD_MODE 0
 
 /* ========================== 设备信息 ========================== */
 #define DEVICE_NAME  "v3-107"   /* 设备名称（DTU 上报 / LoRa 下发共用） */

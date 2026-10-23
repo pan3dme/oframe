@@ -1,8 +1,9 @@
 /**********************************************************************************************
  * @file dtu.c
  * @brief DTU 协议层（自 STM32_LORA_CENTEN 移植，适配 STM32F030 StdPeriph 库）
- *        - 与调试串口共用 USART1，由 dtu.h 中 SERIAL_MODE 编译期标记选择用途
- *        - DTU 模式功能：JSON 上报 / csq+nettime 周期查询 / JSON 指令解析 /
+ *        - 与调试打印共用 USART1(PA9/PA10)：开发阶段协议流带 [dtu] 前缀，
+ *          正式装机(DTU_PROD_MODE=1)原样收发且丢弃调试打印
+ *        - 功能：JSON 上报 / csq+nettime 周期查询 / JSON 指令解析 /
  *          待执行指令缓存 / gpstm 中继 / Flash 配置存储
  ********************************************************************************************/
 #include "user.h"
@@ -97,10 +98,10 @@ static void enqueueDtuMsg(const char *msg, int len) {
 
 /* =====================================================================
  * @brief  协议流发送：开发阶段加 [dtu] 前缀，与 {usb} 调试打印区分；
- *         DTU 正式模式原样发送
+ *         正式装机原样发送
  * ===================================================================== */
 static void dtu_wire_send(const uint8_t *p, uint16_t len) {
-#if (SERIAL_MODE != SERIAL_MODE_DTU)
+#if !DTU_PROD_MODE
   Uart1_SendBytes((const uint8_t *)"[dtu] ", 6);
 #endif
   Uart1_SendBytes(p, len);
@@ -532,7 +533,7 @@ void dtu_init(void) {
 
 /* =====================================================================
  * @brief  主循环轮询：队列发送 / 帧解析 / csq+nettime 周期查询
- *         开发模式同样运行（协议流带 [dtu] 前缀输出），仅自动重启限 DTU 模式
+ *         自动重启仅正式装机模式(DTU_PROD_MODE=1)启用
  * ===================================================================== */
 void dtu_poll(void) {
   processDtuQueue();
@@ -585,9 +586,9 @@ void dtu_poll(void) {
     dtuRxLen = 0;
   }
 
-  /* 周期查询 csq+nettime：仅 DTU 正式模式主动查询；
-   * 开发阶段不重试，由串口助手手动下发 nettime/csq 响应模拟 DTU */
-#if (SERIAL_MODE == SERIAL_MODE_DTU)
+  /* 周期查询 csq+nettime（始终主动查询）；
+   * 对时失败 5 次自动重启仅正式装机模式(DTU_PROD_MODE=1)启用，
+   * 桌面调试时 DTU 口可能空接，不重启避免反复复位 */
   {
     uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
     if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
@@ -599,7 +600,7 @@ void dtu_poll(void) {
         dtuNetTimeFailCount++;
         printf("[DTU] Waiting for net time... (fail=%d/5)\r\n",
                dtuNetTimeFailCount);
-        if (dtuNetTimeFailCount >= 5) {
+        if (DTU_PROD_MODE && dtuNetTimeFailCount >= 5) {
           printf("[DTU] 连续 5 次获取网络时间失败，重启 STM32...\r\n");
           Delay_Ms(500);
           NVIC_SystemReset();
@@ -607,5 +608,4 @@ void dtu_poll(void) {
       }
     }
   }
-#endif
 }

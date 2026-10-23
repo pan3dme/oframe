@@ -12,6 +12,7 @@
 #include "spi.h"
 #include "crc.h"
 #include "uart.h"
+#include "soft_uart.h"
 #include "dtu.h"
 
 #include "pan3029_port.h"

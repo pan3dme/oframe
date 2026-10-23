@@ -574,6 +574,11 @@
               <FileType>1</FileType>
               <FilePath>..\dtu.c</FilePath>
             </File>
+            <File>
+              <FileName>soft_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\soft_uart.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>
