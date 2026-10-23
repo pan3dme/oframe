@@ -1,0 +1,43 @@
+#ifndef _GPIO_H_
+#define _GPIO_H_
+
+
+#define  RF_SCK_PORT       GPIOB
+#define  RF_SCK_IO         GPIO_Pin_13
+#define  RF_SCK_AF         GPIO_PinSource13
+
+#define  RF_MISO_PORT      GPIOB
+#define  RF_MISO_IO        GPIO_Pin_14
+#define  RF_MISO_AF        GPIO_PinSource14
+
+#define  RF_MOSI_PORT      GPIOB
+#define  RF_MOSI_IO        GPIO_Pin_15
+#define  RF_MOSI_AF        GPIO_PinSource15
+
+#define  RF_CSN_PORT       GPIOB
+#define  RF_CSN_IO         GPIO_Pin_12
+
+#define  RF_IRQ_PORT       GPIOA
+#define  RF_IRQ_IO         GPIO_Pin_1
+
+#define  CAD_PORT          GPIOA
+#define  CAD_IO            GPIO_Pin_0
+
+#define LED1_PORT          GPIOA
+#define LED1_PIN           GPIO_Pin_15
+
+//底板切换主从模式选择引脚 
+#define RF_MODE_PIN        GPIO_Pin_2
+#define RF_MODE_PORT       GPIOA
+
+// 底板按键（低电平有效，按下 = GND）
+#define KEY1_PORT          GPIOB   /* S2 → PB6：切换为 TX 模式 */
+#define KEY1_PIN           GPIO_Pin_6
+#define KEY2_PORT          GPIOB   /* S3 → PB7：切换为 RX 模式（与 LED2 共用） */
+#define KEY2_PIN           GPIO_Pin_7
+
+void GPIO_int(void);
+
+
+#endif
+
