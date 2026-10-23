@@ -2379,7 +2379,11 @@ void rf_irq_process(void)
 		}
 		if(irq & REG_IRQ_CRC_ERR)
 		{
-				rf_read_fifo(REG_FIFO_ACC_ADDR, RxDoneParams.TestModePayload, 10);
+				/* CRC 关闭时芯片仍可能因信号噪声置 CRC_ERR 标志，
+				 * 但 FIFO 中的数据通常仍完整可读，这里照常读取长度和载荷 */
+				RxDoneParams.Snr = rf_get_snr();
+				RxDoneParams.Rssi = rf_get_rssi();
+				RxDoneParams.Size = rf_recv_packet(RxDoneParams.Payload);
 				irq &= ~REG_IRQ_CRC_ERR;
 				rf_clr_irq(REG_IRQ_CRC_ERR);
 				rf_set_recv_flag(RADIO_FLAG_RXERR);
