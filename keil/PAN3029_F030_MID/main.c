@@ -459,11 +459,39 @@ void OnSlave(void) {
     rf_enter_single_timeout_rx(15000); /* 继续进入接收模式，超时 15 秒 */
   }
 
-  /* ---- CRC 校验错误 ---- */
+  /* ---- CRC 标志（CRC 关闭时数据仍可读，照常打印） ---- */
   if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
-    printf("crc error\r\n");
+    uint8_t local_buf[RX_LEN];
+    uint8_t local_size;
+    uint8_t local_rssi;
+    uint8_t local_snr;
+
+    __disable_irq();
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    rf_enter_single_timeout_rx(5000); /* 错误后较短超时重新接收 */
+    local_rssi = RxDoneParams.Rssi;
+    local_snr = RxDoneParams.Snr;
+    local_size = RxDoneParams.Size;
+    if (local_size > RX_LEN) local_size = RX_LEN;
+    for (uint8_t i = 0; i < local_size; i++)
+      local_buf[i] = RxDoneParams.Payload[i];
+    __enable_irq();
+
+    if (local_size > 0) {
+      /* 有数据：照常打印，标记 [CRC-FLAG] 表示芯片置了 CRC 标志但数据可用 */
+      printf("Rssi: %d  ", local_rssi - 256);
+      printf("Snr: %d   ", local_snr);
+      printf("Len: %d  ", local_size);
+      printf("Str: ");
+      for (uint8_t i = 0; i < local_size; i++) {
+        if (local_buf[i] == 0) break;
+        printf("%c", local_buf[i]);
+      }
+      printf("  [CRC-FLAG]\r\n");
+      LedToggle();
+    } else {
+      printf("crc error (no data)\r\n");
+    }
+    rf_enter_single_timeout_rx(5000); /* 重新接收 */
   }
 
   /* ---- 接收超时（无数据到达） ---- */
@@ -498,9 +526,10 @@ int main(void) {
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
   // rf_set_crc(true);      /* 开启 CRC 校验 */
 
-  /* 默认进入发送模式 */
-  current_mode = 1;
-  printf("TX mode: transmit only.\r\n");
+  /* 默认进入接收模式 */
+  current_mode = 0;
+  printf("RX mode: continuous receive.\r\n");
+  rf_enter_single_timeout_rx(5000);  /* 启动首次接收，超时 5 秒 */
 
   /* 主循环：支持按键切换模式 */
   while (1) {
