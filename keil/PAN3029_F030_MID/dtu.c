@@ -41,11 +41,14 @@ static int      dtuCsqRssi = 0;          /* DTU CSQ 信号强度 */
 static uint32_t rtcSendCount = 0;        /* 对时上报计数器 */
 static int      batteryValue = 100;      /* 电池电量（%） */
 static uint8_t  configBootSent = 0;      /* 开机配置是否已上报 */
+static uint8_t  configSendPending = 0;   /* 配置上报延迟待发标志 */
+static uint32_t configSendTick = 0;      /* 配置上报延迟计时起点 */
+#define CONFIG_SEND_DELAY_MS  5000       /* 对时上报后延迟 5s 再上报配置 */
 
 /* ========================== Flash 配置存储（F030C8 最后一页 1KB） ========================== */
 #define CONFIG_FLASH_ADDR 0x0800FC00
 #define CONFIG_MAGIC      0xA5A5A5A5
-static char configStr[32] = "30,0M";
+static char configStr[32] = "2,0M";
 
 /* ========================== 待执行指令缓存 ========================== */
 #define PENDING_CMD_MAX_SLOTS 8
@@ -78,6 +81,7 @@ static void lora_tx_wait(void) {
 
 /* =====================================================================
  * @brief  将消息加入 DTU 发送队列（队列满时丢弃最早一条）
+ *         统一存储字符串：原始命令和 JSON 上报都走同一个队列
  * ===================================================================== */
 static void enqueueDtuMsg(const char *msg, int len) {
   if (len <= 0 || len >= DTU_MSG_MAX_LEN)
@@ -111,7 +115,6 @@ static void dtu_wire_send(const uint8_t *p, uint16_t len) {
  * @brief  处理 DTU 发送队列：每 1500ms 从队头取出一条发送
  *         所有向 DTU 的发送统一走本队列（JSON 上报 / csq+nettime 查询 /
  *         开机配置上报），保证相邻两条至少间隔 1.5s，DTU 有时间回复
- *         （对时上报 + 配置上报算两条，也需要 1.5s 间隔）
  * ===================================================================== */
 static void processDtuQueue(void) {
   if (dtuQueueCount == 0)
@@ -209,12 +212,14 @@ static void saveConfigToFlash(const char *str) {
 }
 
 /* =====================================================================
- * @brief  从 configStr 解析对时间隔（毫秒），限制 5~60 分钟
+ * @brief  从 configStr 解析对时间隔（毫秒），限制 1~60 分钟
+ *         configStr 格式: "<分钟>,<子参数>M"，例如 "2,0M" = 2 分钟
+ *         atoi() 只取第一个数字，后面的 ",0M" 忽略
  * ===================================================================== */
 static uint32_t getConfigIntervalMs(void) {
   int minutes = atoi(configStr);
-  if (minutes < 5)
-    minutes = 5;
+  if (minutes < 1)
+    minutes = 1;
   if (minutes > 60)
     minutes = 60;
   return (uint32_t)minutes * 60 * 1000;
@@ -541,6 +546,12 @@ void dtu_init(void) {
 void dtu_poll(void) {
   processDtuQueue();
 
+  /* 开机首次配置上报：对时上报后延迟 5s 再入队，保证两条不挤在一起 */
+  if (configSendPending && HAL_GetTick() - configSendTick >= CONFIG_SEND_DELAY_MS) {
+    configSendPending = 0;
+    sendConfigToDtu();
+  }
+
   /* DTU 一帧完成判断：500ms 无新字节 或 缓冲区满 */
   if ((dtuRxLen > 0 && HAL_GetTick() - dtuLastRxTick > 500) ||
       dtuRxLen >= DTU_RX_BUF_SIZE) {
@@ -574,10 +585,14 @@ void dtu_poll(void) {
         dtuTimeValid = 1;
         dtuNetTimeFailCount = 0;
 
-        sendTimeSyncToDtu(); /* 立即上报一次对时信息 */
-        if (!configBootSent) { /* 开机首次上报配置 */
+        /* 每次拿到网络时间后上报对时信息（周期由 configStr 控制，如 "2,0M"=2分钟）
+         * 流程：定时查询 csq+nettime → DTU 回复 nettime → 上报对时 JSON */
+        sendTimeSyncToDtu();
+        if (!configBootSent) {
+          /* 开机首次：对时上报后延迟 5s 再上报配置，避免两条挤在一起 */
           configBootSent = 1;
-          sendConfigToDtu();
+          configSendPending = 1;
+          configSendTick = HAL_GetTick();
         }
       }
     }
@@ -589,14 +604,15 @@ void dtu_poll(void) {
     dtuRxLen = 0;
   }
 
-  /* 周期查询 csq+nettime（始终主动查询）：统一入队，相邻 1s 发一条；
+  /* 周期查询 csq+nettime（始终主动查询）：统一入队，相邻 1.5s 发一条；
+   * 对时成功后间隔由 configStr 控制（如 "2,0M"=2分钟），未对时时固定 5s 重试；
    * 对时失败 5 次自动重启仅正式装机模式(DTU_PROD_MODE=1)启用，
    * 桌面调试时 DTU 口可能空接，不重启避免反复复位 */
   {
     uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
     if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
       dtuCsqTick = HAL_GetTick();
-      /* 两条查询入队，processDtuQueue 会以 1s 间隔逐条发出（末尾 \r\n 由队列统一追加）*/
+      /* 两条查询入队，processDtuQueue 会以 1.5s 间隔逐条发出（末尾 \r\n 由队列统一追加）*/
       enqueueDtuMsg("config,get,csq", strlen("config,get,csq"));
       enqueueDtuMsg("config,get,nettime", strlen("config,get,nettime"));
       if (!dtuTimeValid) {
