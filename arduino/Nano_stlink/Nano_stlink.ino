@@ -12,5 +12,4 @@ void loop() {
     Serial.write(mySerial.read());
   }
 } 
- config,get,csq
-  config,get,nettime
+  

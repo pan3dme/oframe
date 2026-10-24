@@ -16,9 +16,9 @@
 // #define ETSI_868
 
 #if defined(JAP_915)
-#define DEFAULT_PWR            4
+#define DEFAULT_PWR            10
 #define DEFAULT_FREQ           (915000000)
-#define DEFAULT_SF             SF_11
+#define DEFAULT_SF             SF_6
 #define DEFAULT_BW             BW_125K
 #define DEFAULT_CR             CODE_RATE_48
 
