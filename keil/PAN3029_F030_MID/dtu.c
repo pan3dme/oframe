@@ -12,9 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ========================== DTU 发送队列：环形缓冲区 ========================== */
-#define DTU_QUEUE_SIZE    5
-#define DTU_MSG_MAX_LEN   256
+/* ========================== DTU 发送队列：环形缓冲区
+ * ========================== */
+#define DTU_QUEUE_SIZE 5
+#define DTU_MSG_MAX_LEN 256
 
 typedef struct {
   char buf[DTU_MSG_MAX_LEN];
@@ -22,32 +23,33 @@ typedef struct {
 } DtuQueueItem_t;
 
 static DtuQueueItem_t dtuQueue[DTU_QUEUE_SIZE];
-static uint8_t  dtuQueueHead = 0;
-static uint8_t  dtuQueueTail = 0;
-static uint8_t  dtuQueueCount = 0;
+static uint8_t dtuQueueHead = 0;
+static uint8_t dtuQueueTail = 0;
+static uint8_t dtuQueueCount = 0;
 static uint32_t dtuLastSendTick = 0;
 
 /* ========================== DTU 接收缓冲区 ========================== */
 #define DTU_RX_BUF_SIZE 256
-static uint8_t  dtuRxBuf[DTU_RX_BUF_SIZE];
+static uint8_t dtuRxBuf[DTU_RX_BUF_SIZE];
 static uint16_t dtuRxLen = 0;
 static uint32_t dtuLastRxTick = 0;
 
 /* ========================== 查询 / 时间状态 ========================== */
-static uint32_t dtuCsqTick = 0;          /* 周期查询定时器 */
-static uint8_t  dtuTimeValid = 0;        /* DTU 网络时间是否已获取 */
-static uint8_t  dtuNetTimeFailCount = 0; /* 连续失败计数（5 次重启） */
-static int      dtuCsqRssi = 0;          /* DTU CSQ 信号强度 */
-static uint32_t rtcSendCount = 0;        /* 对时上报计数器 */
-static int      batteryValue = 100;      /* 电池电量（%） */
-static uint8_t  configBootSent = 0;      /* 开机配置是否已上报 */
-static uint8_t  configSendPending = 0;   /* 配置上报延迟待发标志 */
-static uint32_t configSendTick = 0;      /* 配置上报延迟计时起点 */
-#define CONFIG_SEND_DELAY_MS  5000       /* 对时上报后延迟 5s 再上报配置 */
+static uint32_t dtuCsqTick = 0;         /* 周期查询定时器 */
+static uint8_t dtuTimeValid = 0;        /* DTU 网络时间是否已获取 */
+static uint8_t dtuNetTimeFailCount = 0; /* 连续失败计数（5 次重启） */
+static int dtuCsqRssi = 0;              /* DTU CSQ 信号强度 */
+static uint32_t rtcSendCount = 0;       /* 对时上报计数器 */
+static int batteryValue = 100;          /* 电池电量（%） */
+static uint8_t configBootSent = 0;      /* 开机配置是否已上报 */
+static uint8_t configSendPending = 0;   /* 配置上报延迟待发标志 */
+static uint32_t configSendTick = 0;     /* 配置上报延迟计时起点 */
+#define CONFIG_SEND_DELAY_MS 5000       /* 对时上报后延迟 5s 再上报配置 */
 
-/* ========================== Flash 配置存储（F030C8 最后一页 1KB） ========================== */
+/* ========================== Flash 配置存储（F030C8 最后一页 1KB）
+ * ========================== */
 #define CONFIG_FLASH_ADDR 0x0800FC00
-#define CONFIG_MAGIC      0xA5A5A5A5
+#define CONFIG_MAGIC 0xA5A5A5A5
 static char configStr[32] = "2,0M";
 
 /* ========================== 待执行指令缓存 ========================== */
@@ -63,7 +65,7 @@ typedef struct {
 static PendingCmd_t pendingCmdCache[PENDING_CMD_MAX_SLOTS];
 
 /* ========================== gpstm 中继状态 ========================== */
-static uint8_t  gpstmActive = 0;
+static uint8_t gpstmActive = 0;
 static uint32_t gpstmRecvTick = 0;
 static uint32_t gpstmTimeoutMin = 0;
 
@@ -136,7 +138,7 @@ static void processDtuQueue(void) {
 void dtu_report_lora(const char *loraStr, int rssi, int snr) {
   char txBuf[DTU_MSG_MAX_LEN];
   int len = snprintf(txBuf, sizeof(txBuf),
-                     "{"
+                     "\n{"
                      "\"version\":\"1.0\","
                      "\"method\":\"thing.event.property.post\","
                      "\"params\":{"
@@ -147,8 +149,8 @@ void dtu_report_lora(const char *loraStr, int rssi, int snr) {
                      "\"snr\":%d"
                      "}"
                      "}",
-                     loraStr, DEVICE_NAME,
-                     (unsigned long)getCurrentTimestamp(), rssi, snr);
+                     loraStr, DEVICE_NAME, (unsigned long)getCurrentTimestamp(),
+                     rssi, snr);
 
   if (len > 0 && len < (int)sizeof(txBuf))
     enqueueDtuMsg(txBuf, len);
@@ -340,8 +342,8 @@ uint8_t dtu_gpstm_active(void) {
  * ===================================================================== */
 void dtu_send_upgps(const char *deviceId) {
   char txData[64];
-  int txLen = snprintf(txData, sizeof(txData), "%d|%s|upgps|0", MSG_TYPE_COM,
-                       deviceId);
+  int txLen =
+      snprintf(txData, sizeof(txData), "%d|%s|upgps|0", MSG_TYPE_COM, deviceId);
   uint32_t tx_time = 0;
   rf_single_tx_data((uint8_t *)txData, (uint8_t)txLen, &tx_time);
   printf("[LoRa gpstm 中继] %s\r\n", txData);
@@ -547,7 +549,8 @@ void dtu_poll(void) {
   processDtuQueue();
 
   /* 开机首次配置上报：对时上报后延迟 5s 再入队，保证两条不挤在一起 */
-  if (configSendPending && HAL_GetTick() - configSendTick >= CONFIG_SEND_DELAY_MS) {
+  if (configSendPending &&
+      HAL_GetTick() - configSendTick >= CONFIG_SEND_DELAY_MS) {
     configSendPending = 0;
     sendConfigToDtu();
   }
@@ -585,8 +588,9 @@ void dtu_poll(void) {
         dtuTimeValid = 1;
         dtuNetTimeFailCount = 0;
 
-        /* 每次拿到网络时间后上报对时信息（周期由 configStr 控制，如 "2,0M"=2分钟）
-         * 流程：定时查询 csq+nettime → DTU 回复 nettime → 上报对时 JSON */
+        /* 每次拿到网络时间后上报对时信息（周期由 configStr 控制，如
+         * "2,0M"=2分钟） 流程：定时查询 csq+nettime → DTU 回复 nettime →
+         * 上报对时 JSON */
         sendTimeSyncToDtu();
         if (!configBootSent) {
           /* 开机首次：对时上报后延迟 5s 再上报配置，避免两条挤在一起 */
@@ -612,7 +616,8 @@ void dtu_poll(void) {
     uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
     if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
       dtuCsqTick = HAL_GetTick();
-      /* 两条查询入队，processDtuQueue 会以 1.5s 间隔逐条发出（末尾 \r\n 由队列统一追加）*/
+      /* 两条查询入队，processDtuQueue 会以 1.5s 间隔逐条发出（末尾 \r\n
+       * 由队列统一追加）*/
       enqueueDtuMsg("config,get,csq", strlen("config,get,csq"));
       enqueueDtuMsg("config,get,nettime", strlen("config,get,nettime"));
       if (!dtuTimeValid) {

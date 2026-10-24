@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 /* ========================== 演示工程基本信息 ========================== */
 #define EXAMPLE_NAME "stm32集中器"  /* 工程名称 */
@@ -42,7 +43,7 @@ void printf_logo(void) {
 /* ========================== 时间同步变量 ========================== */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳（DTU 网络时间） */
 static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
-static uint8_t  timeSynced = 0;       /* 是否已同步时间：0=未同步, 1=已同步 */
+static bool     timeSynced = false;   /* 是否已同步时间：false=未同步, true=已同步 */
 
 /**
  * @brief  获取当前完整时间戳
@@ -63,7 +64,7 @@ uint32_t getCurrentTimestamp(void) {
 void app_set_synced_time(uint32_t ts) {
   syncedTimestamp = ts;
   syncedTick = HAL_GetTick();
-  timeSynced = 1;
+  timeSynced = true;
 }
 
 /* ========================== 收发缓冲区定义 ========================== */
