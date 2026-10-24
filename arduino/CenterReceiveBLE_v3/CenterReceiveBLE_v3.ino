@@ -655,7 +655,7 @@ void sendDownInfo(String loraStr, String deviceId) {
       String cmd = tmpDoc["cmd"].as<String>();
       String value = tmpDoc["value"].as<String>();
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|" + cmd + "|" + value;
-      sendLoraToDeviceid(dataStr, 800);
+      sendLoraToDeviceid(dataStr, 1000);
 
       //    char gpsBuf[32];
       // snprintf(gpsBuf, sizeof(gpsBuf), "%.5f,%.5f", cfg_gps_lat, cfg_gps_lon);
@@ -665,7 +665,7 @@ void sendDownInfo(String loraStr, String deviceId) {
     if (gpstimeAll > millis()) {
       DEBUG_PRINTLN("现在是强制所有设备要上报GPS的时间");
       dataStr = String(MSG_TYPE_COM) + "|" + deviceId + "|upgps|0";
-      sendLoraToDeviceid(dataStr, 800);
+      sendLoraToDeviceid(dataStr, 1000);
 
     } else {
       needSyncTimeDeviceid = deviceId;
