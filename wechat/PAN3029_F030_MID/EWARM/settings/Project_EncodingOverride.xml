@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<userOverrides>
+    <override>
+        <path>G:\PROJECT\PAN3031\PAN3031_Easy_Demo_v1.0\Radio\src\pan3031.c</path>
+        <encoding>GB2312</encoding>
+    </override>
+    <override>
+        <path>G:\PROJECT\PAN3031\PAN3031_Easy_Demo_v1.0\Radio\src\radio.c</path>
+        <encoding>UTF-8</encoding>
+    </override>
+    <override>
+        <path>G:\PROJECT\PAN3031\PAN3031_Easy_Demo_v1.0\main.c</path>
+        <encoding>System</encoding>
+    </override>
+    <override>
+        <path>G:\PROJECT\PAN3031\PAN3031_Easy_Demo_v2.0\main.c</path>
+        <encoding>GB2312</encoding>
+    </override>
+    <override>
+        <path>G:\PROJECT\磐启微RF\PAN3031_Easy_Demo_v1.0\Radio\src\pan3031_port.c</path>
+        <encoding>GB2312</encoding>
+    </override>
+</userOverrides>
