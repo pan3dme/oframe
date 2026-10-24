@@ -305,10 +305,12 @@ uint8_t dtu_check_pending(const char *deviceId) {
 }
 
 /* =====================================================================
- * @brief  通过 LoRa 发送缓存指令给目标设备并清除缓存
+ * @brief  通过 LoRa 回复缓存指令给目标设备并清除缓存
  *         格式: 9|deviceId|cmd|val
+ *         由 main.c OnSlave() 在收到该设备上报后，延时
+ *         LORA_REPLY_DELAY_CMD_MS(1000ms) 调用，落在子设备接收窗口内
  * ===================================================================== */
-uint8_t dtu_send_pending(const char *deviceId) {
+uint8_t lora_reply_pending_cmd(const char *deviceId) {
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used &&
         strcmp(pendingCmdCache[i].deviceId, deviceId) == 0) {
@@ -338,9 +340,11 @@ uint8_t dtu_gpstm_active(void) {
 }
 
 /* =====================================================================
- * @brief  LoRa 下发 upgps 指令：9|deviceId|upgps|0
+ * @brief  LoRa 回复 upgps 指令：9|deviceId|upgps|0
+ *         由 main.c OnSlave() 在收到该设备上报后，延时
+ *         LORA_REPLY_DELAY_CMD_MS(1000ms) 调用，落在子设备接收窗口内
  * ===================================================================== */
-void dtu_send_upgps(const char *deviceId) {
+void lora_reply_upgps(const char *deviceId) {
   char txData[64];
   int txLen =
       snprintf(txData, sizeof(txData), "%d|%s|upgps|0", MSG_TYPE_COM, deviceId);
@@ -351,9 +355,14 @@ void dtu_send_upgps(const char *deviceId) {
 }
 
 /* =====================================================================
- * @brief  LoRa 下发对时消息：4|timestamp|deviceName
+ * @brief  LoRa 回复对时消息：4|timestamp|deviceName
+ *         被动回复而非主动下发：只在收到子设备上报后，由 main.c OnSlave()
+ *         延时 LORA_REPLY_DELAY_TIMESYNC_MS(1500ms) 调用。
+ *         延时的原因：子设备发完 LoRa 需要从 TX 切回 RX，1.5s 后本中继
+ *         才下发，正好落在子设备的接收窗口内，否则子设备收不到。
+ *         对时比指令类回复（1000ms）多等 500ms，是按子设备侧实测窗口定的。
  * ===================================================================== */
-void dtu_send_time_reply(void) {
+void lora_reply_time_sync(void) {
   char txData[64];
   int txLen = snprintf(txData, sizeof(txData), "%d|%lu|%s", MSG_TYPE_SYN_TIME,
                        (unsigned long)getCurrentTimestamp(), DEVICE_NAME);

@@ -25,17 +25,22 @@
 #define MSG_TYPE_WARN     8   /* 告警消息 */
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
-/* ========================== DTU 协议层接口 ========================== */
+/* ========================== DTU 协议层接口（USART1 上云） ========================== */
 void    dtu_init(void);                       /* 加载 Flash 配置，初始化查询定时器 */
 void    dtu_poll(void);                       /* 主循环调用：队列发送/帧解析/周期查询 */
 void    dtu_uart_rx_byte(uint8_t b);          /* 串口中断收到 1 字节时调用 */
 void    dtu_report_lora(const char *loraStr, int rssi, int snr); /* JSON 上报入队 */
 int     dtu_replace_time_segment(const char *src, char *dst, int dstSize); /* 替换时间字段 */
-uint8_t dtu_check_pending(const char *deviceId);  /* 是否有缓存指令 */
-uint8_t dtu_send_pending(const char *deviceId);   /* LoRa 下发缓存指令并清除 */
-uint8_t dtu_gpstm_active(void);                   /* gpstm 中继是否在有效期内 */
-void    dtu_send_upgps(const char *deviceId);     /* LoRa 下发 upgps 指令 */
-void    dtu_send_time_reply(void);                /* LoRa 下发对时消息 */
+
+/* ========================== LoRa 回复接口（下行给子设备） ==========================
+ * 这三个都是"被动回复"：只在收到子设备上报后，由 main.c OnSlave() 延时
+ * 一次调用（见 main.c 的 LORA_REPLY_DELAY_*_MS），不可主动调用。
+ * ================================================================================ */
+uint8_t dtu_check_pending(const char *deviceId);    /* 该设备是否有缓存指令 */
+uint8_t dtu_gpstm_active(void);                     /* gpstm 中继是否在有效期内 */
+uint8_t lora_reply_pending_cmd(const char *deviceId); /* 回复：下发缓存指令并清除 */
+void    lora_reply_upgps(const char *deviceId);       /* 回复：下发 upgps 指令 */
+void    lora_reply_time_sync(void);                   /* 回复：下发对时消息 */
 
 /* ========================== 由 main.c 提供 ========================== */
 extern uint32_t getCurrentTimestamp(void);    /* 当前 Unix 时间戳 */

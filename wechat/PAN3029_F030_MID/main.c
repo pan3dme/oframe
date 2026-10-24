@@ -69,9 +69,96 @@ void app_set_synced_time(uint32_t ts) {
 
 /* ========================== 收发缓冲区定义 ========================== */
 #define RX_LEN 64              /* 接收缓冲区长度（字节） */
-#define LORA_TX_DELAY_MS 1500  /* LoRa 接收后延时下发时间（ms） */
+
+/* 收到子设备上报后，延时多久再用 LoRa 回复（ms）
+ * 共同前提：子设备发完 LoRa 需要从 TX 切回 RX，回复必须落在它的接收窗口内，
+ * 太早下发子设备还在 TX 状态会漏收。
+ * 两类回复的延时不同，按子设备侧实测的接收窗口取值；改这两个值
+ * 必须同步确认子设备侧的 TX→RX 切换耗时。
+ *   - 指令类回复（缓存指令 / gpstm 中继）：1000ms
+ *   - 对时回复                          ：1500ms */
+#define LORA_REPLY_DELAY_CMD_MS      1000
+#define LORA_REPLY_DELAY_TIMESYNC_MS 1500
+
+/* 收完 / 发完之后重新进入 LoRa 监听的超时（ms） */
+#define LORA_RX_LISTEN_MS 15000
 
 extern struct RxDoneMsg RxDoneParams; /* 接收完成时的消息结构体（由射频驱动提供） */
+
+/* ============ 延时回复调度：中继的常态是"监听"，不是"死等" ============
+ * 收到子设备上报后不能用 Delay_Ms() 原地干等下发窗口——那段时间射频不在
+ * 监听态，主循环的 dtu_poll() 也被卡住，DTU 下发的指令要等 1~1.5s 才被处理。
+ * 改成：
+ *   1) OnSlave() 只登记"到点该回什么"，然后立刻回监听；
+ *   2) 主循环 lora_reply_process() 发现到点 → 切 TX 发一次 → 发完立刻回监听。
+ * 下发窗口仍是 1000 / 1500ms，只是从"阻塞等待"变成"到点触发"。
+ * ====================================================================== */
+typedef enum {
+  LORA_REPLY_NONE = 0,
+  LORA_REPLY_PENDING_CMD, /* 回复缓存指令：9|dev|cmd|val */
+  LORA_REPLY_UPGPS,       /* 回复 upgps    ：9|dev|upgps|0 */
+  LORA_REPLY_TIME_SYNC    /* 回复对时      ：4|ts|name     */
+} LoraReplyKind_t;
+
+typedef struct {
+  uint8_t         active;  /* 1 = 有待发任务 */
+  LoraReplyKind_t kind;
+  uint32_t        dueTick; /* 到点时刻（HAL_GetTick()） */
+  char            deviceId[32];
+} LoraReplyJob_t;
+
+static LoraReplyJob_t g_replyJob; /* 同一时刻只允许 1 个待发任务 */
+
+/* 登记一条延时回复任务 */
+static void lora_reply_schedule(LoraReplyKind_t kind, const char *deviceId,
+                                uint16_t delayMs) {
+  if (g_replyJob.active) {
+    /* 窗口已被占用：不覆盖，保证先到的设备一定拿到回复；
+     * 后到这台的数据已正常上报 DTU，等它下次上报再排。 */
+    printf("[LoRa] 回复窗口占用中(kind=%d,dev=%s)，本次不排程\r\n",
+           g_replyJob.kind, g_replyJob.deviceId);
+    return;
+  }
+  g_replyJob.kind = kind;
+  g_replyJob.dueTick = HAL_GetTick() + delayMs;
+  strncpy(g_replyJob.deviceId, deviceId, sizeof(g_replyJob.deviceId) - 1);
+  g_replyJob.deviceId[sizeof(g_replyJob.deviceId) - 1] = '\0';
+  g_replyJob.active = 1;
+  printf("[LoRa] 排程回复 kind=%d dev=%s +%ums\r\n", kind, g_replyJob.deviceId,
+         delayMs);
+}
+
+/* 主循环调用：到点就切 TX 下发一次，发完立刻回到监听态 */
+static void lora_reply_process(void) {
+  LoraReplyKind_t kind;
+  char devId[32];
+
+  if (!g_replyJob.active)
+    return;
+  if ((int32_t)(HAL_GetTick() - g_replyJob.dueTick) < 0)
+    return; /* 还没到下发窗口，继续监听 */
+
+  /* 先取副本并清任务：lora_tx_wait() 内部会阻塞，避免期间被重入 */
+  kind = g_replyJob.kind;
+  memcpy(devId, g_replyJob.deviceId, sizeof(devId));
+  g_replyJob.active = 0;
+
+  switch (kind) {
+    case LORA_REPLY_PENDING_CMD:
+      lora_reply_pending_cmd(devId);
+      break;
+    case LORA_REPLY_UPGPS:
+      lora_reply_upgps(devId);
+      break;
+    case LORA_REPLY_TIME_SYNC:
+      lora_reply_time_sync();
+      break;
+    default:
+      break;
+  }
+
+  rf_enter_single_timeout_rx(LORA_RX_LISTEN_MS); /* 发完立刻回到监听态 */
+}
 
 /* =====================================================================
  * @brief  配置系统时钟为 48 MHz
@@ -232,38 +319,48 @@ void OnSlave(void) {
           hasPendingCmd = dtu_check_pending(loraDevId);
         }
 
-        /* 上报 DTU：TIME 消息替换时间字段为当前时间戳 */
-        // if (msgType == MSG_TYPE_TIME) {
-        //   char reportBuf[RX_LEN];
-        //   if (dtu_replace_time_segment((char *)local_buf, reportBuf,
-        //                                sizeof(reportBuf)) == 0)
-        //     dtu_report_lora(reportBuf, local_rssi - 256, local_snr);
-        //   else
-        //     dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
-        // } else {
-    
-        //   dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
-        // }
-
-        dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
-
-        /* 延时后下发（同 CENTEN）：缓存指令 > gpstm 中继 > 对时消息
-         * 无缓存指令且无 gpstm 时，无条件 LoRa 下发对时（未同步时下发开机秒数） */
-        Delay_Ms(LORA_TX_DELAY_MS);
-        if (hasPendingCmd) {
-          dtu_send_pending(loraDevId);
-        } else if (dtu_gpstm_active()) {
-          dtu_send_upgps(loraDevId);
+        /* 上报 DTU：子设备上报的第 3 段（时间字段）有两种可能——
+         *   ① 含日期的完整 Unix 时间戳（>=10 位）→ 原样上报
+         *   ② 只带"当天 00:00 起的秒数"（如 36000 = 10:00:00）→ 用本机
+         *      当天 00:00 补齐成完整时间戳后再上报
+         * 补齐失败（格式不符 / 缓冲区不足）时降级为原样上报，不丢数据。 */
+        if (msgType == MSG_TYPE_TIME) {
+          char reportBuf[RX_LEN];
+          if (dtu_replace_time_segment((char *)local_buf, reportBuf,
+                                       sizeof(reportBuf)) == 0)
+            dtu_report_lora(reportBuf, local_rssi - 256, local_snr);
+          else
+            dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
         } else {
-          dtu_send_time_reply();
+          dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+        }
+
+        /* 这里只排程，不原地等待（优先级同 CENTEN：缓存指令 > gpstm > 对时）
+         * 无缓存指令且无 gpstm 时，无条件回复对时（未同步时下发开机秒数）。
+         * 排程后立刻由本函数末尾的 rf_enter_single_timeout_rx() 回到监听态，
+         * 到点再由主循环 lora_reply_process() 切 TX 下发。 */
+        if (hasPendingCmd) {
+          lora_reply_schedule(LORA_REPLY_PENDING_CMD, loraDevId,
+                              LORA_REPLY_DELAY_CMD_MS);
+        } else if (dtu_gpstm_active()) {
+          lora_reply_schedule(LORA_REPLY_UPGPS, loraDevId,
+                              LORA_REPLY_DELAY_CMD_MS);
+        } else {
+         
+          lora_reply_schedule(LORA_REPLY_TIME_SYNC, loraDevId,
+                              LORA_REPLY_DELAY_TIMESYNC_MS);
         }
       } else if (msgType == MSG_TYPE_CONFIG) {
-        /* 配置消息：原样上报，不对时 */
+        /* 配置消息（类型 6）：只做"透传"——原样经 USART1 上报 DTU，
+         * 不做任何 LoRa 回复（不对时、不下发指令）。
+         * 即子设备发完配置消息后本集中器静默，子设备不应等待回复。 */
         dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
       }
+      /* 其余 msgType（如 8=告警）目前既不上报也不回复，直接丢包 */
     }
 
-    rf_enter_single_timeout_rx(15000); /* 继续进入接收模式，超时 15 秒 */
+    /* 处理完这条上报立刻回到监听态（待发回复由主循环到点再切 TX） */
+    rf_enter_single_timeout_rx(LORA_RX_LISTEN_MS);
   }
 
   /* ---- CRC 标志（CRC 关闭时数据仍可读，照常打印） ---- */
@@ -385,7 +482,10 @@ int main(void) {
     /* DTU 协议轮询：队列发送/帧解析/csq+nettime 周期查询 */
     dtu_poll();
 
-    /* LoRa 接收处理：上报 DTU + 下发响应 */
+    /* LoRa 接收处理：上报 DTU + 排程待发回复 + 回监听 */
     OnSlave();
+
+    /* 到点下发：切 TX 发一次，发完立刻回监听（非阻塞，射频常态保持监听） */
+    lora_reply_process();
   }
 }
