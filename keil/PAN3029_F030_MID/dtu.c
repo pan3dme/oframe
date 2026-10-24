@@ -364,7 +364,11 @@ void dtu_send_time_reply(void) {
 }
 
 /* =====================================================================
- * @brief  替换上报数据中的时间字段（第 3 个 '|' 分隔段）为当前时间戳
+ * @brief  加工并替换上报数据中的时间字段（第 3 个 '|' 分隔段）
+ *         规则：
+ *         - 收到的时间字段为含日期的完整时间戳（>=10 位数字）时，原样保留；
+ *         - 否则视为“当天从 00:00 起的秒数”，用本机当天 00:00 时间戳补全。
+ *         本机日期来源：getCurrentTimestamp()（网络对时后为真实时间）。
  * @retval 0=成功, -1=格式不符或缓冲区不足
  * ===================================================================== */
 int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
@@ -375,12 +379,33 @@ int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
   if (!p2)
     return -1;
 
-  int head = (int)(p2 - src); /* 含第二个 '|' 之前的内容 */
-  const char *p3 = strchr(p2 + 1, '|');
-  const char *tail = p3 ? p3 : (src + strlen(src));
+  const char *pSeg = p2 + 1;   /* 时间字段起点（第二个 '|' 之后） */
+  const char *p3 = strchr(pSeg, '|');
+  const char *tail = p3 ? p3 : (src + strlen(src)); /* 从第 3 个 '|' 起的尾部 */
+  int head = (int)(pSeg - src); /* 含第二个 '|'：即 "<type>|<deviceName>|" */
+
+  /* 取出原始时间字段（原地无 '\0'），拷贝到本地解析 */
+  int segLen = (int)(tail - pSeg);
+  char segBuf[16];
+  if (segLen <= 0 || segLen >= (int)sizeof(segBuf))
+    return -1;
+  memcpy(segBuf, pSeg, segLen);
+  segBuf[segLen] = '\0';
+
+  /* 判断：>=10 位数字视为含日期的完整时间戳，原样使用；
+   * 否则视为“当天从 00:00 起的秒数”，用本机日期补全成完整时间戳 */
+  uint32_t recvVal = (uint32_t)strtoul(segBuf, NULL, 10);
+  uint32_t reportTs;
+  if (recvVal >= 1000000000UL) {
+    reportTs = recvVal;                     /* 已是完整 Unix 时间戳 */
+  } else {
+    uint32_t now = getCurrentTimestamp();   /* 本机当前时间 */
+    uint32_t todayMidnight = now - (now % 86400UL); /* 本机当天 00:00 */
+    reportTs = todayMidnight + recvVal;     /* 补全为当天真实时间戳 */
+  }
 
   char tsStr[12];
-  snprintf(tsStr, sizeof(tsStr), "%lu", (unsigned long)getCurrentTimestamp());
+  snprintf(tsStr, sizeof(tsStr), "%lu", (unsigned long)reportTs);
 
   if (head + (int)strlen(tsStr) + (int)strlen(tail) + 1 > dstSize)
     return -1;

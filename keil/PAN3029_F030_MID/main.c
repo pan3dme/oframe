@@ -233,17 +233,19 @@ void OnSlave(void) {
         }
 
         /* 上报 DTU：TIME 消息替换时间字段为当前时间戳 */
-        if (msgType == MSG_TYPE_TIME) {
-          char reportBuf[RX_LEN];
-          if (dtu_replace_time_segment((char *)local_buf, reportBuf,
-                                       sizeof(reportBuf)) == 0)
-            dtu_report_lora(reportBuf, local_rssi - 256, local_snr);
-          else
-            dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
-        } else {
-          /* MSG_TYPE_GPS: 直接上报原始数据 */
-          dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
-        }
+        // if (msgType == MSG_TYPE_TIME) {
+        //   char reportBuf[RX_LEN];
+        //   if (dtu_replace_time_segment((char *)local_buf, reportBuf,
+        //                                sizeof(reportBuf)) == 0)
+        //     dtu_report_lora(reportBuf, local_rssi - 256, local_snr);
+        //   else
+        //     dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+        // } else {
+    
+        //   dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+        // }
+
+        dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
 
         /* 延时后下发（同 CENTEN）：缓存指令 > gpstm 中继 > 对时消息
          * 无缓存指令且无 gpstm 时，无条件 LoRa 下发对时（未同步时下发开机秒数） */
