@@ -106,6 +106,11 @@ static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0） */
 static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自动清零 */
+static uint8_t  gpsNeedRetry = 0;      /* 上一轮搜星失败(已上报 0.0,0.0)=1
+                                        * → 本轮跳过定时上报，直接重试搜星上报坐标；
+                                        *   成功拿到坐标后自动清零，恢复定时上报
+                                        * @note  RAM 在 deepsleep 期间保持，故跨休眠有效；
+                                        *        但真正掉电重启会丢失(回到0)，这是可接受的 */
 #define TX_COUNT_MAX   999             /* 上报帧计数上限：超过后回绕到 1
                                         * 好处是帧里这一字段恒为 1~3 位数字，
                                         * 帧长稳定，也不用担心 uint32 溢出(约 49 天后) */
@@ -191,6 +196,7 @@ static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
 static void sendCenterMessage(void);
 static void sendGpsPositionMessage(uint8_t hasFix);
+static uint8_t gpsSearchAndReport(void);
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs);
 static uint32_t getConfigIntervalSec(void);
 static uint8_t  getDeviceIndex(void);
@@ -580,6 +586,30 @@ static void sendGpsPositionMessage(uint8_t hasFix)
 
   LedToggle();
   printf("[定位上报] 发送  -> \"%s\"\r\n", tx_msg);
+}
+
+/**
+ * @brief  搜星 + 上报坐标（upgps 指令 与 失败自动重试 共用同一套流程）
+ * @note   搜星期间临时打开 GPS 打印，结束后恢复成进入前的状态
+ * @retval 1=拿到有效坐标并已上报, 0=搜星失败已上报 "0.0,0.0"
+ */
+static uint8_t gpsSearchAndReport(void)
+{
+  uint8_t hasFix;
+
+  /* 搜星：最短 GPS_WAIT_MIN_MS(给中继留准备时间), 上限 GPS_WAIT_TIMEOUT_MS */
+  hasFix = gpsWaitForFix(GPS_WAIT_MIN_MS, GPS_WAIT_TIMEOUT_MS);
+  HAL_Delay(1000);
+
+  /* 无论是否定位成功都上报：失败时坐标段填 "0.0,0.0" */
+  sendGpsPositionMessage(hasFix);
+
+  /* 打印状态恢复成进来之前的样子（默认回到静默） */
+  gpsPrintEn = gpsPrintSaved;
+  printf("[GPS] 上报完毕%s, 恢复GPS打印=%s\r\n",
+         hasFix ? "(已定位)" : "(未定位)", gpsPrintEn ? "ON" : "OFF");
+
+  return hasFix;
 }
 
 /**
@@ -1039,8 +1069,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
             gpsWaitReport = 1;
-            gpsPrintSaved = gpsPrintEn;  /* 记住收指令前的打印状态，事后恢复 */
-            gpsPrintEn = 1;              /* 本次临时打开 GPS 打印，便于观察搜星过程 */
+            /* GPS 打印的开关/恢复统一在 OnMaster() 里做，
+             * 这样"指令触发"和"失败自动重试"两条路径行为一致 */
             printf("[指令] upgps: 已收到, 开始搜星(上限 180 秒)\r\n");
           } else {
             printf("[指令] upgps: 目标=%s != 本机=%s, 跳过\r\n",
@@ -1140,8 +1170,11 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   * @brief  Master（主机/发射端）流程
   * @note   1. 组包并发送时间帧 MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
   *            @warning 这里固定发时间帧，不再按定位状态切换！
-  *                    定位坐标统一由 upgps 指令触发上报（见末段 gpsWaitReport）
+  *                    定位坐标统一由 UPGPS 流程上报（见末段 gpsSearchAndReport）
+  *            例外：若上一轮搜星失败（发了 0.0,0.0），本轮跳过这一帧，
+  *                  直接重试搜星，把这次机会留给拿坐标
   *         2. 发送完成后开启 3 秒接收窗口，解析对时消息
+  *            @note  接收窗口两种周期都开，保证节点始终可被下发指令
   *         3. 计算下次上报时间并保存到 Flash
   */
 static void OnMaster(void)
@@ -1155,32 +1188,37 @@ static void OnMaster(void)
   if (tx_count > TX_COUNT_MAX)
     tx_count = 1;
 
-  /* 组包：2|v0-0|当天秒数|99|计数
-   * 周期上报固定发时间帧，不管有没有定位 —— 定位由 upgps 指令单独触发上报 */
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
-           MSG_TYPE_TIME, deviceName,
-           (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
+  /* 上一轮搜星失败时跳过定时上报，本轮直接重试搜星 */
+  if (gpsNeedRetry) {
+    printf("[调度] 上轮搜星失败(已上报 0.0,0.0), 本轮跳过定时上报, 重试 UPGPS\r\n");
+  } else {
+    /* 组包：2|v0-0|当天秒数|99|计数
+     * 周期上报固定发时间帧，不管有没有定位 —— 定位由 UPGPS 流程单独触发上报 */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
+             MSG_TYPE_TIME, deviceName,
+             (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
 
-  /* 发送前 LED 闪 3 次，每次 200ms */
-  for (uint8_t i = 0; i < 3; i++) {
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-    HAL_Delay(100);
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-    HAL_Delay(100);
+    /* 发送前 LED 闪 3 次，每次 200ms */
+    for (uint8_t i = 0; i < 3; i++) {
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+      HAL_Delay(100);
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+      HAL_Delay(100);
+    }
+
+    /* 发送数据 */
+    if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+    }
+
+    /* 等待发送完成标志 */
+    while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
+      ;
+    rf_set_transmit_flag(RADIO_FLAG_IDLE);
+
+    LedToggle();
+    printf("发送成功 -> \"%s\"\r\n", tx_msg);
   }
-
-  /* 发送数据 */
-  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-  }
-
-  /* 等待发送完成标志 */
-  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-    ;
-  rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
-  LedToggle();
-  printf("发送成功 -> \"%s\"\r\n", tx_msg);
 
   /* ---- 开启 3 秒接收窗口（single 模式，最多只收一条） ---- */
   rf_enter_single_timeout_rx(3000);
@@ -1238,24 +1276,31 @@ static void OnMaster(void)
     centerNeedReport = 0;  /* 标记已上报 */
   }
 
-  /* upgps 指令：先阻塞等到有效定位，拿到后立即上报一次实时坐标。
+  /* UPGPS 流程：搜星并上报一次实时坐标。
+   * 触发来源有二：(1) 本轮收到 upgps 指令；(2) 上轮搜星失败自动重试。
    * 放在 calcNextTxTime() 之前 —— 等待可能耗时几十秒，
-   * 之后必须重新计算下次上报时间，不能用本次 TX 前算出的旧值。 */
-  if (gpsWaitReport) {
+   * 之后必须重新计算下次上报时间，不能用本轮算出的旧值。 */
+  if (gpsWaitReport || gpsNeedRetry) {
     uint8_t hasFix;
 
-    gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每次循环都等 */
+    gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿等 */
 
-    hasFix = gpsWaitForFix(GPS_WAIT_MIN_MS, GPS_WAIT_TIMEOUT_MS);
-    HAL_Delay(1000);
+    /* 搜星期间打开 GPS 打印便于观察，gpsSearchAndReport() 内部负责恢复 */
+    gpsPrintSaved = gpsPrintEn;
+    gpsPrintEn = 1;
 
-    /* 无论是否定位成功都上报：失败时坐标段填 "0.0,0.0" */
-    sendGpsPositionMessage(hasFix);
+    hasFix = gpsSearchAndReport();
 
-    /* 打印状态恢复成收到 upgps 之前的样子（默认回到静默） */
-    gpsPrintEn = gpsPrintSaved;
-    printf("[指令] upgps: 处理完毕%s, 恢复GPS打印=%s, 继续正常循环\r\n",
-           hasFix ? "(已定位)" : "(未定位)", gpsPrintEn ? "ON" : "OFF");
+    /* 记录本轮结果：失败则下轮继续重试(跳过定时上报)，成功则清零恢复正常周期 */
+    gpsNeedRetry = hasFix ? 0U : 1U;
+
+    /* 注意：分支提示不要写成 one-liner 三元 + 中文值，
+     * 中文紧贴闭合引号会被 ARMCC5 按 GBK 吞掉那个引号（missing closing quote），
+     * 故改成 if/else + 以 \r\n 收尾（与文件其它 printf 风格一致） */
+    if (gpsNeedRetry)
+      printf("[调度] 下轮继续重试搜星(跳过定时上报)\r\n");
+    else
+      printf("[调度] 下轮恢复正常定时上报\r\n");
   }
 
   /* 计算下次上报时间（配置更新后间隔可能变化） */
