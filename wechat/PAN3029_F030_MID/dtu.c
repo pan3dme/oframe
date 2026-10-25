@@ -47,10 +47,17 @@ static uint32_t configSendTick = 0;     /* 配置上报延迟计时起点 */
 #define CONFIG_SEND_DELAY_MS 5000       /* 对时上报后延迟 5s 再上报配置 */
 
 /* ========================== Flash 配置存储（F030C8 最后一页 1KB）
- * ========================== */
+ * ==========================
+ * 同一页内分区存放（擦除以页为单位，所以任何一项写入都要整页重写）：
+ *   +0  : CONFIG_MAGIC(4B) + 对时配置字符串(32B)
+ *   +64 : CENTER_MAGIC(4B) + 农场中心坐标字符串(32B)
+ * ===================================================================== */
 #define CONFIG_FLASH_ADDR 0x0800FC00
 #define CONFIG_MAGIC 0xA5A5A5A5
-static char configStr[32] = "2,0M";
+#define CENTER_FLASH_OFF 64 /* 中心坐标区在配置页内的偏移 */
+#define CENTER_MAGIC 0x5A5A5A5A
+static char configStr[32] = "2,0M"; /* 对时上报间隔，如 "2,0M" */
+static char centerStr[32] = "";     /* 农场中心坐标 "lat,lng"，空=未设置 */
 
 /* ========================== 待执行指令缓存 ========================== */
 #define PENDING_CMD_MAX_SLOTS 8
@@ -180,37 +187,88 @@ static void sendConfigToDtu(void) {
 }
 
 /* =====================================================================
- * @brief  从 Flash 加载配置信息
+ * @brief  上报农场中心坐标：1|deviceName|lat,lng|
+ *         （MSG_TYPE_GPS = 1，与终端 GPS 上报类型一致）
+ *         未设置过坐标时第 3 段上报 "0,0"，保证帧结构固定为 3 段，
+ *         云端/小程序解析不会拿到空串
  * ===================================================================== */
-static void loadConfigFromFlash(void) {
-  uint32_t magic = *(volatile uint32_t *)CONFIG_FLASH_ADDR;
-  if (magic == CONFIG_MAGIC) {
-    const char *p = (const char *)(CONFIG_FLASH_ADDR + 4);
-    uint8_t i;
-    for (i = 0; i < sizeof(configStr) - 1 && p[i] != '\0'; i++)
-      configStr[i] = p[i];
-    configStr[i] = '\0';
-    printf("[Flash] 加载配置: %s\r\n", configStr);
-  } else {
-    printf("[Flash] 无有效配置，使用默认: %s\r\n", configStr);
+static void sendCenterToDtu(void) {
+  char dataStr[64];
+  const char *coord = (centerStr[0] != '\0') ? centerStr : "0,0";
+
+  snprintf(dataStr, sizeof(dataStr), "%d|%s|%s|", MSG_TYPE_GPS, DEVICE_NAME,
+           coord);
+  printf("[DTU] 上报中心坐标: %s\r\n", dataStr);
+  dtu_report_lora(dataStr, dtuCsqRssi, 0);
+}
+
+/* =====================================================================
+ * @brief  从 Flash 读出一个以 '\0' 结尾的字符串
+ * ===================================================================== */
+static void flash_read_str(uint32_t addr, char *dst, int dstSize) {
+  const char *p = (const char *)addr;
+  int i;
+  for (i = 0; i < dstSize - 1 && p[i] != '\0'; i++)
+    dst[i] = p[i];
+  dst[i] = '\0';
+}
+
+/* =====================================================================
+ * @brief  把一个字符串（含结尾 '\0'）按半字写入 Flash
+ *         STM32F0 只能半字编程；用 i+1<=len 兜底，
+ *         避免读到源串 '\0' 之后的越界字节
+ * ===================================================================== */
+static void flash_write_str(uint32_t addr, const char *str) {
+  int len = (int)strlen(str);
+  int i;
+  for (i = 0; i <= len; i += 2) {
+    uint16_t halfWord = (uint16_t)str[i];
+    if (i + 1 <= len)
+      halfWord |= ((uint16_t)str[i + 1]) << 8;
+    FLASH_ProgramHalfWord(addr + i, halfWord);
   }
 }
 
 /* =====================================================================
- * @brief  保存配置信息到 Flash
+ * @brief  整页重写：对时配置 + 农场中心坐标
+ *         必须两项一起写：Flash 擦除以页为单位，
+ *         只写其中一项会把同页里的另一项一起擦掉
  * ===================================================================== */
-static void saveConfigToFlash(const char *str) {
-  uint8_t i;
-
+static void flash_save_all(void) {
   FLASH_Unlock();
   FLASH_ErasePage(CONFIG_FLASH_ADDR);
+
   FLASH_ProgramWord(CONFIG_FLASH_ADDR, CONFIG_MAGIC);
-  for (i = 0; i < strlen(str) + 1; i += 2) {
-    uint16_t halfWord = str[i] | (str[i + 1] << 8);
-    FLASH_ProgramHalfWord(CONFIG_FLASH_ADDR + 4 + i, halfWord);
-  }
+  flash_write_str(CONFIG_FLASH_ADDR + 4, configStr);
+
+  FLASH_ProgramWord(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF, CENTER_MAGIC);
+  flash_write_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4, centerStr);
+
   FLASH_Lock();
-  printf("[Flash] Config saved: %s\r\n", str);
+}
+
+/* =====================================================================
+ * @brief  启动时从 Flash 加载对时配置 + 农场中心坐标
+ * ===================================================================== */
+static void loadConfigFromFlash(void) {
+  /* 对时配置 */
+  if (*(volatile uint32_t *)CONFIG_FLASH_ADDR == CONFIG_MAGIC) {
+    flash_read_str(CONFIG_FLASH_ADDR + 4, configStr, sizeof(configStr));
+    printf("[Flash] 加载配置: %s\r\n", configStr);
+  } else {
+    printf("[Flash] 无有效配置，使用默认: %s\r\n", configStr);
+  }
+
+  /* 农场中心坐标 */
+  if (*(volatile uint32_t *)(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF) ==
+      CENTER_MAGIC) {
+    flash_read_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4, centerStr,
+                   sizeof(centerStr));
+    printf("[Flash] 加载中心坐标: %s\r\n", centerStr);
+  } else {
+    centerStr[0] = '\0';
+    printf("[Flash] 无中心坐标（未设置）\r\n");
+  }
 }
 
 /* =====================================================================
@@ -427,6 +485,18 @@ int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
 }
 
 /* =====================================================================
+ * @brief  校验经纬度是否在合法地理范围内
+ * @retval 1=合法, 0=非法
+ * ===================================================================== */
+static int center_coord_valid(double lat, double lng) {
+  if (lat < -90.0 || lat > 90.0)
+    return 0;
+  if (lng < -180.0 || lng > 180.0)
+    return 0;
+  return 1;
+}
+
+/* =====================================================================
  * @brief  JSON 解析 DTU 下发的指令
  *         外层提取 cominfo 字段，反转义后解析 {"cmd","value","deviceId"}
  * ===================================================================== */
@@ -512,6 +582,26 @@ static void parseDtuCommand(char *buf) {
     printf("[DTU CMD] 执行设备重启...\r\n");
     Delay_Ms(500);
     NVIC_SystemReset();
+  } else if (strcmp(cmd, "mapcenter") == 0) {
+    /* 设置农场中心坐标：先验格式和地理范围，只有合法才写内存 + Flash。
+     * 用 double 解析，避免 109.39087 这类 8 位有效数字被 float 截断。 */
+    double la = 0.0, lo = 0.0;
+
+    if (sscanf(val, "%lf,%lf", &la, &lo) == 2 && center_coord_valid(la, lo)) {
+      /* 归一化成 5 位小数存储：帧长固定，且天然不含 " \ | 等会破坏
+       * JSON 拼接的字符 */
+      snprintf(centerStr, sizeof(centerStr), "%.5f,%.5f", la, lo);
+      flash_save_all();
+      printf("[DTU CMD] 中心坐标已永久保存: %s\r\n", centerStr);
+    } else {
+      /* 非法：不写内存、不写 Flash，保持上一次的合法值 */
+      printf("[DTU CMD] mapcenter: 坐标非法已拒绝(原值=%s 保持): %s\r\n",
+             centerStr, val);
+    }
+    /* 无论本次是否合法，都上报当前内存中的坐标：
+     * 合法  -> 回新坐标；非法 -> 回上一个合法值（未设过则 "0,0"）
+     * 格式: 1|deviceName|lat,lng| */
+    sendCenterToDtu();
   } else if (strcmp(cmd, "debug") == 0) {
     /* MID 板无 DTU 复位引脚，仅记录 */
     printf("[DTU CMD] debug: value=%s\r\n", val);
@@ -519,7 +609,7 @@ static void parseDtuCommand(char *buf) {
     if (val[0] != '\0') {
       strncpy(configStr, val, sizeof(configStr) - 1);
       configStr[sizeof(configStr) - 1] = '\0';
-      saveConfigToFlash(configStr);
+      flash_save_all();
       printf("[DTU CMD] Config updated: %s\r\n", configStr);
       Delay_Ms(1000);
       sendConfigToDtu();
