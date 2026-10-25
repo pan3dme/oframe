@@ -102,6 +102,11 @@ static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
 static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
 static uint8_t  timeSynced = 0;       /* 是否已同步时间 */
 static uint32_t anchorTick = 0;       /* 首次对时的 tick 基准（用于晶振偏差计算） */
+static uint16_t gpsContTotalMin = 0;   /* upgps 指令带的分钟数参数：
+                                        *   0   = 单次搜星上报（现有逻辑）
+                                        * 1~60  = 连续定位模式：这么长时间内不休眠，
+                                        *         每 GPS_CONT_INTERVAL_SEC 秒上报一次坐标
+                                        * 用完即清零，故失败重试时只会走单次逻辑 */
 static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0） */
@@ -134,6 +139,8 @@ static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前
 #define GPS_WAIT_MIN_MS     10000  /* upgps 最短搜星时间 = 10 秒
                                     * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收，
                                     *       发太快大概率丢帧。即使立刻就有坐标，也要至少等够这 10 秒 */
+#define GPS_CONT_INTERVAL_SEC 180  /* 连续定位模式的上报轮次间隔 = 3 分钟 */
+#define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
 
 typedef struct {
   uint8_t  valid;  /* 已定位 */
@@ -154,7 +161,7 @@ static uint8_t      gpsPrintEn = 0;    /* GPS 打印总开关（1=打印, 0=静�
                                         * 收到 upgps 后临时置 1，处理完自动恢复原值；
                                         * 也可用 sendmode 指令手动开（调试用）
                                         * @note  只影响打印，不影响接收/解析/上报 */
-static uint8_t      gpsPrintSaved = 0; /* upgps 处理前的打印状态，用于事后恢复 */
+
 
 static volatile uint8_t  gpsRing[GPS_RING_LEN];
 static volatile uint16_t gpsWr = 0;    /* 写指针（ISR 更新） */
@@ -197,6 +204,7 @@ static void sendConfigMessage(void);
 static void sendCenterMessage(void);
 static void sendGpsPositionMessage(uint8_t hasFix);
 static uint8_t gpsSearchAndReport(void);
+static uint8_t gpsRunContinuous(uint16_t totalMin);
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs);
 static uint32_t getConfigIntervalSec(void);
 static uint8_t  getDeviceIndex(void);
@@ -596,6 +604,9 @@ static void sendGpsPositionMessage(uint8_t hasFix)
 static uint8_t gpsSearchAndReport(void)
 {
   uint8_t hasFix;
+  uint8_t savedPrint = gpsPrintEn;   /* 用局部变量保存，连续模式下每轮都能独立开关 */
+
+  gpsPrintEn = 1;                    /* 搜星期间打开 GPS 打印 */
 
   /* 搜星：最短 GPS_WAIT_MIN_MS(给中继留准备时间), 上限 GPS_WAIT_TIMEOUT_MS */
   hasFix = gpsWaitForFix(GPS_WAIT_MIN_MS, GPS_WAIT_TIMEOUT_MS);
@@ -604,12 +615,66 @@ static uint8_t gpsSearchAndReport(void)
   /* 无论是否定位成功都上报：失败时坐标段填 "0.0,0.0" */
   sendGpsPositionMessage(hasFix);
 
-  /* 打印状态恢复成进来之前的样子（默认回到静默） */
-  gpsPrintEn = gpsPrintSaved;
+  /* 打印状态恢复成本轮进来看之前的样子（默认回到静默） */
+  gpsPrintEn = savedPrint;
   printf("[GPS] 上报完毕%s, 恢复GPS打印=%s\r\n",
          hasFix ? "(已定位)" : "(未定位)", gpsPrintEn ? "ON" : "OFF");
 
   return hasFix;
+}
+
+/**
+ * @brief  连续定位上报：totalMin 分钟内不休眠，每隔 GPS_CONT_INTERVAL_SEC 秒上报一次坐标
+ * @note   每轮固定占 3 分钟，结构为：
+ *           1) gpsSearchAndReport() —— 最短 10 秒、最长 3 分钟搜星后发一帧坐标
+ *           2) 本轮剩余时间里继续跑 gpsTask() 排空环形缓冲，但**不进入休眠**
+ *         总计 ceil(totalMin/3) 轮，用完额度才回到正常的休眠调度
+ * @warning MCU 与射频全程全速工作，分钟数直接线性影响耗电
+ * @retval 1=期间至少有一轮拿到有效坐标, 0=全程都没有有效坐标
+ */
+static uint8_t gpsRunContinuous(uint16_t totalMin)
+{
+  uint32_t totalSec  = (uint32_t)totalMin * 60u;
+  uint32_t startSec  = getCurrentTimestamp();
+  uint32_t rounds    = 0;
+  uint8_t  everFixed = 0;
+
+  printf("[连续定位] 开始: 时长=%u 分钟, 每 %u 秒上报一次(期间不休眠)\r\n",
+         (unsigned int)totalMin, (unsigned int)GPS_CONT_INTERVAL_SEC);
+
+  while ((uint32_t)(getCurrentTimestamp() - startSec) < totalSec) {
+    uint32_t slotStart = getCurrentTimestamp();
+    uint8_t  hasFix;
+
+    rounds++;
+    hasFix = gpsSearchAndReport();
+    if (hasFix)
+      everFixed = 1;
+
+    if (hasFix)
+      printf("[连续定位] 第 %lu 轮已上报真实坐标, 等待下一轮\r\n",
+             (unsigned long)rounds);
+    else
+      printf("[连续定位] 第 %lu 轮无坐标已上报 0.0,0.0, 等待下一轮\r\n",
+             (unsigned long)rounds);
+
+    /* 本轮剩余时间：不休眠，但必须持续跑 gpsTask()，
+     * 否则 GPS 字节会把 512 字节环形缓冲堆满丢句 */
+    while ((uint32_t)(getCurrentTimestamp() - slotStart) <
+           (uint32_t)GPS_CONT_INTERVAL_SEC) {
+      gpsTask();
+      HAL_Delay(100);
+    }
+  }
+
+  if (everFixed)
+    printf("[连续定位] 结束: 共 %lu 轮, 期间有拿到过有效坐标\r\n",
+           (unsigned long)rounds);
+  else
+    printf("[连续定位] 结束: 共 %lu 轮, 期间始终没有有效坐标\r\n",
+           (unsigned long)rounds);
+
+  return everFixed;
 }
 
 /**
@@ -1068,10 +1133,24 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          *        不能在中断/解析上下文里长时间等待，否则会堵死整个流程 */
         else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
+            int mins = atoi(fields[3]);        /* atoi 自动跳过前导空格 */
+
+            if (mins < 0)
+              mins = 0;
+            if ((unsigned int)mins > (unsigned int)GPS_CONT_MAX_MIN) {
+              mins = GPS_CONT_MAX_MIN;
+              printf("[指令] upgps: 分钟数超限, 按上限 %d 处理\r\n",
+                     GPS_CONT_MAX_MIN);
+            }
+
+            gpsContTotalMin = (uint16_t)mins;
             gpsWaitReport = 1;
-            /* GPS 打印的开关/恢复统一在 OnMaster() 里做，
-             * 这样"指令触发"和"失败自动重试"两条路径行为一致 */
-            printf("[指令] upgps: 已收到, 开始搜星(上限 180 秒)\r\n");
+
+            if (mins > 0)
+              printf("[指令] upgps: 连续定位 %d 分钟, 每 3 分钟上报一次(期间不休眠)\r\n",
+                     mins);
+            else
+              printf("[指令] upgps: 单次搜星上报(上限 180 秒)\r\n");
           } else {
             printf("[指令] upgps: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
@@ -1285,14 +1364,18 @@ static void OnMaster(void)
 
     gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿等 */
 
-    /* 搜星期间打开 GPS 打印便于观察，gpsSearchAndReport() 内部负责恢复 */
-    gpsPrintSaved = gpsPrintEn;
-    gpsPrintEn = 1;
-
-    hasFix = gpsSearchAndReport();
-
-    /* 记录本轮结果：失败则下轮继续重试(跳过定时上报)，成功则清零恢复正常周期 */
-    gpsNeedRetry = hasFix ? 0U : 1U;
+    /* GPS 打印的开关与恢复由 gpsSearchAndReport() 内部逐轮处理 */
+    if (gpsContTotalMin > 0) {
+      /* 连续定位模式：时长内不休眠，每 3 分钟上报一次坐标。
+       * 全程无坐标 → 返回 0 → gpsNeedRetry 置 1，下轮继续重试 UPGPS；
+       * 但 gpsContTotalMin 已清零，所以下轮只是单次搜星（不再拉长） */
+      gpsNeedRetry = gpsRunContinuous(gpsContTotalMin) ? 0U : 1U;
+      gpsContTotalMin = 0;
+    } else {
+      /* 单次搜星上报（参数为 0 的 upgps 指令，或失败后的自动重试） */
+      hasFix = gpsSearchAndReport();
+      gpsNeedRetry = hasFix ? 0U : 1U;
+    }
 
     /* 注意：分支提示不要写成 one-liner 三元 + 中文值，
      * 中文紧贴闭合引号会被 ARMCC5 按 GBK 吞掉那个引号（missing closing quote），
