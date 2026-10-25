@@ -226,4 +226,20 @@ void EXTI2_IRQHandler(void)
 
 /* USER CODE BEGIN 1 */
 
+extern UART_HandleTypeDef huart3;  /* GPS 模块 USART3 (PB11 RX, 9600) */
+
+/**
+  * @brief This function handles USART3 global interrupt (GPS 串口接收).
+  */
+void USART3_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART3_IRQn 0 */
+
+  /* USER CODE END USART3_IRQn 0 */
+  HAL_UART_IRQHandler(&huart3);
+  /* USER CODE BEGIN USART3_IRQn 1 */
+
+  /* USER CODE END USART3_IRQn 1 */
+}
+
 /* USER CODE END 1 */

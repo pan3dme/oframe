@@ -5,7 +5,9 @@
   * @brief          : PAN3029 LoRa 定时上报节点 - STM32F103C8T6
   *                   移植自 PAN3029_F030 上报逻辑
   * @note           功能说明：
-  *                 1. TX 模式：每隔 3 分钟上报一帧（MSG_TYPE_TIME|设备名|当天秒数|电量|计数）
+  *                 1. TX 模式：每隔一段时间上报一帧
+                       有有效定位时: MSG_TYPE_GPS|设备名|纬度,经度|
+                       无有效定位时: MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
   *                 2. 发送后开启 3 秒 RX 窗口，解析对时消息（MSG_TYPE_SYN_TIME）
   *                 3. LED1 指示：发送/接收时闪烁
   *                 4. 调试输出：通过 USART1 输出系统状态
@@ -67,13 +69,18 @@ char deviceName[32] = DEFAULT_DEVICE_NAME;  /* 可变设备名，从 Flash 加�
 #define DEFAULT_CONFIG_STR  "1,0M,3t,6"
 char configStr[64] = DEFAULT_CONFIG_STR;
 
-/* Flash 存储地址（STM32F103C8T6 64KB） */
+/* 农场中心坐标（"lat,lng"，空=未设置，由 C 指令下发并持久化） */
+char centerStr[64] = "";
+
+/* Flash 存储地址（STM32F103C8T6 64KB，每项独占一页，擦除互不干扰） */
 #define DEVNAME_FLASH_ADDR  0x0800F800  /* 设备名存储（倒数第二页） */
 #define DEVNAME_MAGIC       0xA5A55A5B  /* 修改魔术字使旧 Flash 数据失效 */
 #define CONFIG_FLASH_ADDR   0x0800F400  /* 配置字符串存储（倒数第三页） */
 #define CONFIG_MAGIC        0x5A5AA5A6  /* 修改魔术字使旧 Flash 数据失效 */
 #define TXPWR_FLASH_ADDR    0x0800F000  /* 发射功率存储（倒数第四页） */
 #define TXPWR_MAGIC         0xA5A55A5C  /* 功率魔术字 */
+#define CENTER_FLASH_ADDR   0x0800EC00  /* 农场中心坐标存储（倒数第五页） */
+#define CENTER_MAGIC        0xA5A55A5D  /* 中心坐标魔术字 */
 
 /* 上报间隔：由 configStr 第一个字段决定（分钟），如 "30,0M,3t,6" = 30 分钟 */
 /* USER CODE END PD */
@@ -86,6 +93,7 @@ char configStr[64] = DEFAULT_CONFIG_STR;
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart3;  /* GPS 模块 USART3 (PB11 RX, 9600, 仅接收) */
 I2C_HandleTypeDef hi2c1;  /* OLED 模块需要 */
 
 /* USER CODE BEGIN PV */
@@ -97,9 +105,43 @@ static uint8_t  timeSynced = 0;       /* 是否已同步时间 */
 static uint32_t anchorTick = 0;       /* 首次对时的 tick 基准（用于晶振偏差计算） */
 static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
+static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0） */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
+
+/* --- GPS 模块（USART3, PB11 RX, 9600）---
+ * @note  本版本不做 GPS 电源三级管/复位控制，模块常供电，直接接收 NMEA
+ *        设计要点：中断里只做"塞入环形缓冲"这个最轻的动作，
+ *        解析和打印全部放在主循环，避免在 ISR 里跑串处理和 printf
+ */
+#define GPS_RING_LEN   512   /* 环形缓冲：主循环被 LoRa 收发阻塞时先攒着 */
+#define GPS_LINE_LEN   128   /* 单条 NMEA 语句上限 */
+#define GPS_FIX_TTL_MS 60000 /* 定位有效期(ms)：超过这么久没刷新就算失锁 */
+
+typedef struct {
+  uint8_t  valid;  /* 已定位 */
+  double   lat;    /* 纬度（北纬为正） */
+  double   lng;    /* 经度（东经为正） */
+  float    alt;    /* 海拔 (m) */
+  float    speed;  /* 地面速度 (km/h) */
+  uint8_t  sats;   /* 参与定位的卫星数 */
+} GpsFix_t;
+
+static GpsFix_t     gpsFix;
+static uint8_t      gpsFixValid = 0;   /* 最近一帧 GGA 是否有效定位 */
+static uint32_t     gpsRxCount = 0;    /* 收到的字节数（诊断用） */
+static uint32_t     gpsLastHint = 0;   /* 未定位提示的节流时间戳 */
+static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时刻（HAL_GetTick） */
+static uint8_t      gpsEchoRaw = 0;    /* GPS 原始 NMEA 语句打印开关（1=打印, 0=不打印）
+                                        * 由 sendmode 指令控制：9|设备名|sendmode|1 */
+
+static volatile uint8_t  gpsRing[GPS_RING_LEN];
+static volatile uint16_t gpsWr = 0;    /* 写指针（ISR 更新） */
+static volatile uint16_t gpsRd = 0;    /* 读指针（主循环更新） */
+static volatile uint8_t  gpsByte = 0;  /* HAL_UART_Receive_IT 的单字节缓冲 */
+static char     gpsLine[GPS_LINE_LEN];
+static uint16_t gpsLineLen = 0;
 
 extern struct RxDoneMsg RxDoneParams;
 
@@ -127,12 +169,23 @@ static void loadConfigFromFlash(void);
 static void saveConfigToFlash(const char *str);
 static void loadTxPowerFromFlash(void);
 static void saveTxPowerToFlash(uint8_t power);
+static void loadCenterFromFlash(void);
+static void saveCenterToFlash(const char *str);
+static uint8_t centerCoordValid(double lat, double lng);
 static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
+static void sendCenterMessage(void);
 static uint32_t getConfigIntervalSec(void);
 static uint8_t  getDeviceIndex(void);
 static uint32_t getSlotOffsetSec(void);
 static void calcNextTxTime(void);
+static void MX_USART3_UART_Init(void);
+static void gpsTask(void);
+static void parseNmeaLine(char *line);
+static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen);
+static double nmeaToDeg(const char *v, char dir);
+static uint8_t gpsFixFresh(void);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -307,6 +360,87 @@ static void saveTxPowerToFlash(uint8_t power)
 }
 
 /**
+ * @brief  从 Flash 读出一个以 '\0' 结尾的字符串
+ */
+static void flashReadString(uint32_t addr, char *dst, int dstSize)
+{
+  const char *p = (const char *)addr;
+  int i;
+  for (i = 0; i < dstSize - 1 && p[i] != '\0'; i++)
+    dst[i] = p[i];
+  dst[i] = '\0';
+}
+
+/**
+ * @brief  把一个字符串（含结尾 '\0'）按半字写入 Flash
+ * @note   STM32F1 只能半字编程；用 i+1<=len 兜底，
+ *         避免读到源串 '\0' 之后的越界字节
+ */
+static void flashWriteString(uint32_t addr, const char *str)
+{
+  int len = (int)strlen(str);
+  int i;
+  for (i = 0; i <= len; i += 2) {
+    uint16_t halfWord = (uint16_t)str[i];
+    if (i + 1 <= len)
+      halfWord |= ((uint16_t)str[i + 1]) << 8;
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, addr + i, halfWord);
+  }
+}
+
+/**
+ * @brief  从 Flash 加载农场中心坐标
+ * @note   如果 Flash 中有有效魔术字则加载，否则保持为空（未设置）
+ */
+static void loadCenterFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)CENTER_FLASH_ADDR;
+  if (magic == CENTER_MAGIC) {
+    flashReadString(CENTER_FLASH_ADDR + 4, centerStr, sizeof(centerStr));
+    printf("[Flash] 中心坐标已加载: %s\r\n", centerStr);
+  } else {
+    centerStr[0] = '\0';
+    printf("[Flash] 无保存中心坐标\r\n");
+  }
+}
+
+/**
+ * @brief  保存农场中心坐标到 Flash（独立页，与其它配置项互不影响）
+ * @param  str: 归一化后的坐标字符串，格式 "lat,lng"
+ */
+static void saveCenterToFlash(const char *str)
+{
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+
+  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = CENTER_FLASH_ADDR;
+  eraseInit.NbPages = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CENTER_FLASH_ADDR, CENTER_MAGIC);
+  flashWriteString(CENTER_FLASH_ADDR + 4, str);
+
+  HAL_FLASH_Lock();
+  printf("[Flash] 中心坐标已保存: %s\r\n", str);
+}
+
+/**
+ * @brief  校验经纬度是否在合法地理范围内
+ * @retval 1=合法, 0=非法
+ */
+static uint8_t centerCoordValid(double lat, double lng)
+{
+  if (lat < -90.0 || lat > 90.0)
+    return 0;
+  if (lng < -180.0 || lng > 180.0)
+    return 0;
+  return 1;
+}
+
+/**
   * @brief  首次初始化 LoRa 模块（从关机状态启动）
   * @note   仅在第一次 TX 前或从 deepsleep 唤醒后调用
   */
@@ -365,6 +499,33 @@ static void sendConfigMessage(void)
 
   LedToggle();
   printf("[配置] 发送  -> \"%s\"\r\n", tx_msg);
+}
+
+/**
+ * @brief  发送农场中心坐标消息（1|deviceName|lat,lng|）
+ * @note   本项目无 DTU，回复上报走 LoRa 回到集中器，由集中器转发云端
+ *         未设置过坐标时第 3 段发 "0,0"，保证帧结构固定为 3 段，
+ *         云端/小程序 split('|') 不会拿到空串
+ */
+static void sendCenterMessage(void)
+{
+  char tx_msg[TX_LEN];
+  uint32_t tx_time = 1000;
+  const char *coord = (centerStr[0] != '\0') ? centerStr : "0,0";
+
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|",
+           MSG_TYPE_GPS, deviceName, coord);
+
+  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+  }
+
+  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
+    ;
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+
+  LedToggle();
+  printf("[中心坐标] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -535,6 +696,159 @@ static void LedToggle(void)
 }
 
 /**
+ * @brief  NMEA 坐标 ddmm.mmmm / dddmm.mmmm → 十进制度
+ * @param  v:   原始字段，如 "2629.5800"
+ * @param  dir: 'N'/'S'/'E'/'W'，南纬和西经取负
+ * @retval 十进制度
+ */
+static double nmeaToDeg(const char *v, char dir)
+{
+  double val = atof(v);
+  int    deg = (int)(val / 100.0);
+  double min = val - (double)deg * 100.0;
+  double d   = (double)deg + min / 60.0;
+
+  if (dir == 'S' || dir == 'W')
+    d = -d;
+  return d;
+}
+
+/**
+ * @brief  取 NMEA 语句里第 n 个逗号分隔字段（n 从 1 开始，即第 1 个逗号之后）
+ * @note   字段尾遇到 ',' 或 '*'（校验和起始）即结束
+ * @retval 1=取到非空字段, 0=字段不存在或为空（dst 置空串）
+ */
+static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
+{
+  const char *p = line;
+  uint8_t i = 0;
+
+  dst[0] = '\0';
+  while (n > 0) {
+    p = strchr(p, ',');
+    if (p == NULL)
+      return 0;
+    p++;
+    n--;
+  }
+  while (*p != '\0' && *p != ',' && *p != '*' && i < dstLen - 1)
+    dst[i++] = *p++;
+  dst[i] = '\0';
+
+  return (i > 0);
+}
+
+/**
+ * @brief  解析一条 NMEA 语句并打印
+ * @note   支持 GGA（定位质量/经纬度/海拔/卫星数）与 RMC（日期/速度）
+ *         $GPxxx / $GNxxx / $GBxxx 三种前缀都认，兼容 GPS/北斗/多模合一模块
+ */
+static void parseNmeaLine(char *line)
+{
+  /* 原始语句的转发由 sendmode 运行时控制，默认开 */
+  if (gpsEchoRaw) {
+    printf("[GPS] %s\r\n", line);
+  }
+
+  /* ---- GGA: 时间、定位质量、经纬度、海拔、卫星数 ---- */
+  if (!strncmp(line, "$GPGGA", 6) || !strncmp(line, "$GNGGA", 6) ||
+      !strncmp(line, "$GBGGA", 6)) {
+    char utc[12], lat[16], latDir[4], lng[16], lngDir[4];
+    char qual[4], sats[4], alt[12];
+
+    nmeaField(line, 1, utc, sizeof(utc));
+    nmeaField(line, 2, lat, sizeof(lat));
+    nmeaField(line, 3, latDir, sizeof(latDir));
+    nmeaField(line, 4, lng, sizeof(lng));
+    nmeaField(line, 5, lngDir, sizeof(lngDir));
+    nmeaField(line, 6, qual, sizeof(qual));
+    nmeaField(line, 7, sats, sizeof(sats));
+    nmeaField(line, 9, alt, sizeof(alt));
+
+    /* qual: 0=无效, 1=单点定位, 2=差分, 4=RTK固定, 5=RTK浮点 */
+    if (atoi(qual) > 0 && lat[0] != '\0' && lng[0] != '\0') {
+      gpsFix.valid = 1;
+      gpsFix.lat   = nmeaToDeg(lat, latDir[0]);
+      gpsFix.lng   = nmeaToDeg(lng, lngDir[0]);
+      gpsFix.sats  = (uint8_t)atoi(sats);
+      gpsFix.alt   = (float)atof(alt);
+      gpsFixValid  = 1;
+      gpsFixTick   = HAL_GetTick();   /* 刷新定位时间戳，供新鲜度判断 */
+
+      printf("[GPS定位] lat=%.6f lng=%.6f alt=%.1f sats=%d UTC=%s\r\n",
+             gpsFix.lat, gpsFix.lng, (double)gpsFix.alt, (int)gpsFix.sats, utc);
+    } else {
+      gpsFix.valid = 0;
+      gpsFixValid  = 0;
+      //printf("[GPS] 未定位 (quality=%s sat=%s)\r\n", qual, sats);
+    }
+  }
+  /* ---- RMC: 日期、地面速度（GGA 里没有） ---- */
+  else if (!strncmp(line, "$GPRMC", 6) || !strncmp(line, "$GNRMC", 6)) {
+    char status[4], spd[12], date[8];
+
+    nmeaField(line, 2, status, sizeof(status));
+    nmeaField(line, 7, spd, sizeof(spd));
+    nmeaField(line, 9, date, sizeof(date));
+
+    if (status[0] == 'A') {
+      gpsFix.speed = (float)(atof(spd) * 1.852);  /* 节 → km/h */
+      printf("[GPS信息] 日期=%s 速度=%.1f km/h\r\n",
+             date, (double)gpsFix.speed);
+    }
+  }
+}
+
+/**
+ * @brief  当前是否持有"新鲜"的有效定位（供周期上报判断）
+ * @note   光有 gpsFixValid 不够：若模块掉电或天线被遮挡导致不再输出 NMEA，
+ *         gpsFixValid 会一直停在 1，从而反复上报过期坐标。
+ *         故要求最近 GPS_FIX_TTL_MS 内刷新过一次。
+ * @retval 1=可上报定位, 0=应回退到原时间帧
+ */
+static uint8_t gpsFixFresh(void)
+{
+  if (!gpsFixValid)
+    return 0;
+  if (HAL_GetTick() - gpsFixTick > GPS_FIX_TTL_MS)
+    return 0;
+  return 1;
+}
+
+/**
+ * @brief  GPS 任务：把环形缓冲里的字节拼成完整语句后解析
+ * @note   在主循环里调用；ISR 只负责往环形缓冲塞字节。
+ *         语句以 '\n' 结尾，遇到 '\r' 直接丢弃（NMEA 的 CRLF）。
+ *         若语句超过 GPS_LINE_LEN 视为异常，丢弃并等待下一个 '\n' 重新同步。
+ */
+static void gpsTask(void)
+{
+  while (gpsRd != gpsWr) {
+    uint8_t b = gpsRing[gpsRd];
+    gpsRd = (gpsRd + 1u) % GPS_RING_LEN;
+
+    if (b == '\n') {
+      if (gpsLineLen > 0) {
+        gpsLine[gpsLineLen] = '\0';
+        parseNmeaLine(gpsLine);
+        gpsLineLen = 0;
+      }
+    } else if (b != '\r') {
+      if (gpsLineLen < GPS_LINE_LEN - 1)
+        gpsLine[gpsLineLen++] = (char)b;
+      else
+        gpsLineLen = 0;  /* 超长异常，丢弃重来 */
+    }
+  }
+
+  /* 长期未定位时给个心跳提示，避免"完全没输出"被误判成串口没收到数据 */
+  if (!gpsFixValid && (HAL_GetTick() - gpsLastHint > 10000)) {
+    gpsLastHint = HAL_GetTick();
+    printf("[GPS] 等待定位... (已收 %lu 字节)\r\n", (unsigned long)gpsRxCount);
+  }
+}
+
+/**
   * @brief  解析接收到的消息（按 '|' 分割字段）
   * @note   格式：MSG_TYPE|字段1|字段2|...|
   */
@@ -615,6 +929,27 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
+        /* sendmode: 9|v0-0|sendmode|1  →  GPS 原始 NMEA 语句打印开关
+         *   value=1 : 打印（默认）
+         *   value=0 : 不打印
+         *   @note  只控制"原始语句转发"这一项；
+         *          解析后的 [GPS定位]/[GPS信息] 与未定位心跳仍会打印 */
+        else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            int mode = atoi(fields[3]);        /* atoi 会自动跳过前导空格 */
+            gpsEchoRaw = (mode != 0) ? 1 : 0;  /* 非 0 一律当作开 */
+            /* 注意：这里不能用 "开"/"关" 等中文做值。
+             * 本文件是无 BOM 的 UTF-8，而 ARMCC5 会按 GBK 去解析多字节：
+             * 例如 "关" = E5 85 B3，末尾 B3 落在 GBK 首字节范围 0x81~0xFE，
+             * 编译器会把紧随其后的字节当尾字节吞掉 —— 若那正好是闭合引号，
+             * 就会报 missing closing quote。故此处刻意用 ASCII。 */
+            printf("[指令] GPS原句打印: %s (下发值=%s)\r\n",
+                   gpsEchoRaw ? "ON" : "OFF", fields[3]);
+          } else {
+            printf("[指令] sendmode: 目标=%s != 本机=%s, 跳过\r\n",
+                   fields[1], deviceName);
+          }
+        }
         /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率 */
         else if (strcmp(fields[2], "txpower") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
@@ -625,6 +960,31 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             printf("[指令] 发射功率已设置: %d dBm\r\n", newPwr);
           } else {
             printf("[指令] 功率: 目标=%s != 本机=%s, 跳过\r\n",
+                   fields[1], deviceName);
+          }
+        }
+        /* C: 9|v0-0|C|26.52958,109.39087  →  设置农场中心坐标并持久化 */
+        else if (strcmp(fields[2], "C") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            double la = 0.0, lo = 0.0;
+            /* 用 double 解析，避免 109.39087 这类 8 位有效数字被 float 截断；
+             * %lf 会自动跳过 fields[3] 的前导空格（下发值形如 " 26.52,109.39"） */
+            if (sscanf(fields[3], "%lf,%lf", &la, &lo) == 2 &&
+                centerCoordValid(la, lo)) {
+              /* 归一化成 5 位小数存储：帧长固定，且天然不含会破坏帧结构的 '|' */
+              snprintf(centerStr, sizeof(centerStr), "%.5f,%.5f", la, lo);
+              saveCenterToFlash(centerStr);
+              printf("[指令] 中心坐标已保存: %s\r\n", centerStr);
+            } else {
+              /* 非法：不写内存、不写 Flash，保留上一次的合法值 */
+              printf("[指令] C: 坐标非法已拒绝(原值=%s 保持): %s\r\n",
+                     (centerStr[0] != '\0') ? centerStr : "(未设置)", fields[3]);
+            }
+            /* 无论本次是否合法都上报当前坐标：
+             * 合法→回新坐标；非法→回上一个合法值（未设过则 "0,0"） */
+            centerNeedReport = 1;
+          } else {
+            printf("[指令] C: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
           }
         }
@@ -660,7 +1020,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
 /**
   * @brief  Master（主机/发射端）流程
-  * @note   1. 组包并发送（MSG_TYPE_TIME|设备名|当天秒数|电量|计数）
+  * @note   1. 组包并发送：有新鲜有效定位时发定位帧 1|设备名|纬度,经度|，
+  *            否则回退发原时间帧 2|设备名|当天秒数|电量|计数|
   *         2. 发送完成后开启 3 秒接收窗口，解析对时消息
   *         3. 计算下次上报时间并保存到 Flash
   */
@@ -673,10 +1034,17 @@ static void OnMaster(void)
 
   tx_count++;
 
-  /* 组包：2|v4-18|当天秒数|100|计数 */
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
-           MSG_TYPE_TIME, deviceName,
-           (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
+  /* 组包：优先上报定位，无有效定位时回退到原时间帧 */
+  if (gpsFixFresh()) {
+    /* 1|v0-0|26.493000,109.390867|  —— 有效定位时的周期上报 */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%.6f,%.6f|",
+             MSG_TYPE_GPS, deviceName, gpsFix.lat, gpsFix.lng);
+  } else {
+    /* 2|v0-0|当天秒数|99|计数  —— 未定位/定位过期时的兜底上报 */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
+             MSG_TYPE_TIME, deviceName,
+             (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
+  }
 
   /* 发送前 LED 闪 3 次，每次 200ms */
   for (uint8_t i = 0; i < 3; i++) {
@@ -748,6 +1116,13 @@ static void OnMaster(void)
     configNeedReport = 0;  /* 标记已上报 */
   }
 
+  /* 收到 C 指令后，延迟 1 秒上报农场中心坐标 1|deviceName|lat,lng| */
+  if (centerNeedReport) {
+    HAL_Delay(1000);
+    sendCenterMessage();
+    centerNeedReport = 0;  /* 标记已上报 */
+  }
+
   /* 计算下次上报时间（配置更新后间隔可能变化） */
   calcNextTxTime();
 
@@ -789,14 +1164,16 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   MX_NVIC_Init();
 
   /* USER CODE BEGIN 2 */
 
-  /* 从 Flash 加载设备名、配置和发射功率 */
+  /* 从 Flash 加载设备名、配置、发射功率和农场中心坐标 */
   loadDeviceNameFromFlash();
   loadConfigFromFlash();
   loadTxPowerFromFlash();
+  loadCenterFromFlash();
 
   /* 打印启动信息 */
   printf("\r\n===== LoRa 仅发送模式启动 =====\r\n");
@@ -842,6 +1219,9 @@ int main(void)
         }
       }
     }
+
+    /* GPS: 取出环形缓冲里的 NMEA 语句并打印/解析 */
+    gpsTask();
 
     HAL_Delay(100);
 
@@ -910,6 +1290,43 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+}
+
+/**
+  * @brief USART3 Initialization Function (GPS 模块 9600, 仅接收)
+  * @note  PB11 = USART3_RX（PB10/TX 由 HAL_UART_MspInit 一并配置，但本模式不用）
+  *        中断优先级设为 2，低于 LoRa(EXTI2=0)，避免影响射频时序
+  */
+static void MX_USART3_UART_Init(void)
+{
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 9600;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  HAL_NVIC_SetPriority(USART3_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
+
+  /* 开启 GPS 逐字节中断接收 */
+  HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
+
+  /* USER CODE END USART3_Init 2 */
 }
 
 /**
@@ -1020,6 +1437,29 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     {
         rf_irq_process();
     }
+}
+
+/**
+ * @brief  USART3 接收完成回调（GPS 逐字节接收）
+ * @note   只做两件最轻的动作：入环形缓冲 + 重新开启下一字节接收。
+ *         绝不在 ISR 里做字符串解析或 printf —— 那样会长时间占用中断。
+ *         缓冲满时丢弃本次字节，下一条语句的 '\n' 会自动重新同步。
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3)
+  {
+    uint16_t next = (gpsWr + 1u) % GPS_RING_LEN;
+
+    if (next != gpsRd)          /* 环形缓冲未满 */
+    {
+      gpsRing[gpsWr] = gpsByte;
+      gpsWr = next;
+      gpsRxCount++;
+    }
+
+    HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
+  }
 }
 
 /* USER CODE END 4 */
