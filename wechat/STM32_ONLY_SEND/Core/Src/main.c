@@ -5,9 +5,8 @@
   * @brief          : PAN3029 LoRa 定时上报节点 - STM32F103C8T6
   *                   移植自 PAN3029_F030 上报逻辑
   * @note           功能说明：
-  *                 1. TX 模式：每隔一段时间上报一帧
-                       有有效定位时: MSG_TYPE_GPS|设备名|纬度,经度|
-                       无有效定位时: MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
+  *                 1. TX 模式：每隔一段时间上报一帧 MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
+                       （固定发时间帧；GPS 坐标由 upgps 指令单独触发上报）
   *                 2. 发送后开启 3 秒 RX 窗口，解析对时消息（MSG_TYPE_SYN_TIME）
   *                 3. LED1 指示：发送/接收时闪烁
   *                 4. 调试输出：通过 USART1 输出系统状态
@@ -106,6 +105,14 @@ static uint32_t anchorTick = 0;       /* 首次对时的 tick 基准（用于晶
 static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0） */
+static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自动清零 */
+#define TX_COUNT_MAX   999             /* 上报帧计数上限：超过后回绕到 1
+                                        * 好处是帧里这一字段恒为 1~3 位数字，
+                                        * 帧长稳定，也不用担心 uint32 溢出(约 49 天后) */
+
+static uint32_t tx_count = 0;          /* 上报帧计数（所有帧类型共用，每周期自增一次）
+                                        * 放在文件作用域：配置帧/中心坐标帧/定位帧
+                                        * 也都要带这个计数，便于云端判重和算丢包 */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
@@ -118,6 +125,10 @@ static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前
 #define GPS_RING_LEN   512   /* 环形缓冲：主循环被 LoRa 收发阻塞时先攒着 */
 #define GPS_LINE_LEN   128   /* 单条 NMEA 语句上限 */
 #define GPS_FIX_TTL_MS 60000 /* 定位有效期(ms)：超过这么久没刷新就算失锁 */
+#define GPS_WAIT_TIMEOUT_MS 180000 /* upgps 搜星上限 = 3 分钟；超时则上报 0.0,0.0 */
+#define GPS_WAIT_MIN_MS     10000  /* upgps 最短搜星时间 = 10 秒
+                                    * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收，
+                                    *       发太快大概率丢帧。即使立刻就有坐标，也要至少等够这 10 秒 */
 
 typedef struct {
   uint8_t  valid;  /* 已定位 */
@@ -133,8 +144,12 @@ static uint8_t      gpsFixValid = 0;   /* 最近一帧 GGA 是否有效定位 */
 static uint32_t     gpsRxCount = 0;    /* 收到的字节数（诊断用） */
 static uint32_t     gpsLastHint = 0;   /* 未定位提示的节流时间戳 */
 static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时刻（HAL_GetTick） */
-static uint8_t      gpsEchoRaw = 0;    /* GPS 原始 NMEA 语句打印开关（1=打印, 0=不打印）
-                                        * 由 sendmode 指令控制：9|设备名|sendmode|1 */
+static uint8_t      gpsPrintEn = 0;    /* GPS 打印总开关（1=打印, 0=静默）
+                                        * 默认 0：正常启动/运行不打任何 GPS 日志；
+                                        * 收到 upgps 后临时置 1，处理完自动恢复原值；
+                                        * 也可用 sendmode 指令手动开（调试用）
+                                        * @note  只影响打印，不影响接收/解析/上报 */
+static uint8_t      gpsPrintSaved = 0; /* upgps 处理前的打印状态，用于事后恢复 */
 
 static volatile uint8_t  gpsRing[GPS_RING_LEN];
 static volatile uint16_t gpsWr = 0;    /* 写指针（ISR 更新） */
@@ -175,6 +190,8 @@ static uint8_t centerCoordValid(double lat, double lng);
 static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
 static void sendCenterMessage(void);
+static void sendGpsPositionMessage(uint8_t hasFix);
+static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs);
 static uint32_t getConfigIntervalSec(void);
 static uint8_t  getDeviceIndex(void);
 static uint32_t getSlotOffsetSec(void);
@@ -479,15 +496,15 @@ static void loraInitFirstTime(void)
 
 /**
   * @brief  发送配置消息（重启后只发一次）
-  * @note   格式: MSG_TYPE_CONFIG|deviceName|config_str
+  * @note   格式: MSG_TYPE_CONFIG|deviceName|config_str|计数|
   */
-static void sendConfigMessage(void)
-{
-  char tx_msg[TX_LEN];
-  uint32_t tx_time = 1000;
+  static void sendConfigMessage(void)
+  {
+   char tx_msg[TX_LEN];
+   uint32_t tx_time = 1000;
 
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|",
-           MSG_TYPE_CONFIG, deviceName, configStr);
+   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
+            MSG_TYPE_CONFIG, deviceName, configStr, (unsigned long)tx_count);
 
   if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
@@ -502,9 +519,9 @@ static void sendConfigMessage(void)
 }
 
 /**
- * @brief  发送农场中心坐标消息（1|deviceName|lat,lng|）
+ * @brief  发送农场中心坐标消息（1|deviceName|lat,lng|计数|）
  * @note   本项目无 DTU，回复上报走 LoRa 回到集中器，由集中器转发云端
- *         未设置过坐标时第 3 段发 "0,0"，保证帧结构固定为 3 段，
+ *         未设置过坐标时第 3 段发 "0,0"，保证帧结构固定，
  *         云端/小程序 split('|') 不会拿到空串
  */
 static void sendCenterMessage(void)
@@ -513,8 +530,8 @@ static void sendCenterMessage(void)
   uint32_t tx_time = 1000;
   const char *coord = (centerStr[0] != '\0') ? centerStr : "0,0";
 
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|",
-           MSG_TYPE_GPS, deviceName, coord);
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
+           MSG_TYPE_GPS, deviceName, coord, (unsigned long)tx_count);
 
   if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
@@ -526,6 +543,43 @@ static void sendCenterMessage(void)
 
   LedToggle();
   printf("[中心坐标] 发送  -> \"%s\"\r\n", tx_msg);
+}
+
+/**
+ * @brief  发送当前 GPS 实时定位坐标帧（5|deviceName|lat,lng|）
+ * @param  hasFix: 1=有有效定位（发实测坐标）, 0=搜星失败（发 "0.0,0.0"）
+ * @note   用 MSG_TYPE_UP_GPS(5) 而不是 MSG_TYPE_GPS(1)：
+ *         1 已被 C 指令的"农场中心坐标回显"占用，两者含义完全不同：
+ *           5 = 本节点自身的实时位置（动态，牛走到哪变到哪）
+ *           1 = 农场中心点（静态配置，存在 Flash 里）
+ *         搜星失败时也必须发帧，第 3 段填 "0.0,0.0"，
+ *         保证云端 split('|') 拿到的段数固定，可直接判定为"无坐标"
+ */
+static void sendGpsPositionMessage(uint8_t hasFix)
+{
+  char tx_msg[TX_LEN];
+  uint32_t tx_time = 1000;
+
+  if (hasFix) {
+    /* 小数后 5 位：精度约 1.1m，够用且帧长更短 */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%.5f,%.5f|%lu|",
+             MSG_TYPE_UP_GPS, deviceName, gpsFix.lat, gpsFix.lng,
+             (unsigned long)tx_count);
+  } else {
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
+             MSG_TYPE_UP_GPS, deviceName, "0.0,0.0", (unsigned long)tx_count);
+  }
+
+  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+  }
+
+  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
+    ;
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+
+  LedToggle();
+  printf("[定位上报] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -745,8 +799,8 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
  */
 static void parseNmeaLine(char *line)
 {
-  /* 原始语句的转发由 sendmode 运行时控制，默认开 */
-  if (gpsEchoRaw) {
+  /* 正常运行时完全静默；只有收到 upgps（或手动 sendmode 打开）才打印 */
+  if (gpsPrintEn) {
     printf("[GPS] %s\r\n", line);
   }
 
@@ -775,8 +829,10 @@ static void parseNmeaLine(char *line)
       gpsFixValid  = 1;
       gpsFixTick   = HAL_GetTick();   /* 刷新定位时间戳，供新鲜度判断 */
 
-      printf("[GPS定位] lat=%.6f lng=%.6f alt=%.1f sats=%d UTC=%s\r\n",
-             gpsFix.lat, gpsFix.lng, (double)gpsFix.alt, (int)gpsFix.sats, utc);
+      if (gpsPrintEn) {
+        printf("[GPS定位] lat=%.6f lng=%.6f alt=%.1f sats=%d UTC=%s\r\n",
+               gpsFix.lat, gpsFix.lng, (double)gpsFix.alt, (int)gpsFix.sats, utc);
+      }
     } else {
       gpsFix.valid = 0;
       gpsFixValid  = 0;
@@ -793,8 +849,10 @@ static void parseNmeaLine(char *line)
 
     if (status[0] == 'A') {
       gpsFix.speed = (float)(atof(spd) * 1.852);  /* 节 → km/h */
-      printf("[GPS信息] 日期=%s 速度=%.1f km/h\r\n",
-             date, (double)gpsFix.speed);
+      if (gpsPrintEn) {
+        printf("[GPS信息] 日期=%s 速度=%.1f km/h\r\n",
+               date, (double)gpsFix.speed);
+      }
     }
   }
 }
@@ -842,10 +900,52 @@ static void gpsTask(void)
   }
 
   /* 长期未定位时给个心跳提示，避免"完全没输出"被误判成串口没收到数据 */
-  if (!gpsFixValid && (HAL_GetTick() - gpsLastHint > 10000)) {
+  if (gpsPrintEn && !gpsFixValid && (HAL_GetTick() - gpsLastHint > 10000)) {
     gpsLastHint = HAL_GetTick();
     printf("[GPS] 等待定位... (已收 %lu 字节)\r\n", (unsigned long)gpsRxCount);
   }
+}
+
+/**
+ * @brief  阻塞等待"新鲜的有效定位"（用于 upgps 指令）
+ * @note   此函数运行期间主循环不跑，必须自己反复调用 gpsTask() 排空环形缓冲，
+ *         否则永远拿不到新解析结果 —— 这是本函数的核心，不能省
+ * @param  minMs:     最短等待时间；即使一进来就有坐标也必须等够这么久
+ *                    （给中继留够准备接收的时间，避免发太快丢帧）
+ * @param  timeoutMs: 最长等待时间；HAL_GetTick 差值用无符号运算，
+ *                    49 天回绕也能正确计算
+ * @retval 1=拿到有效定位, 0=超时仍未定位
+ */
+static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
+{
+  uint32_t startTick = HAL_GetTick();
+  uint32_t elapsed;
+
+  printf("[GPS] 开始搜星: 至少 %lu 秒, 上限 %lu 秒...\r\n",
+         (unsigned long)(minMs / 1000), (unsigned long)(timeoutMs / 1000));
+
+  while (1) {
+    gpsTask();                    /* 排空环形缓冲并解析 NMEA */
+
+    elapsed = HAL_GetTick() - startTick;
+
+    /* 先判"是否已满足上报条件"，再判超时 ——
+     * 否则最后一刻刚好定上位，会被超时分支覆盖成失败 */
+    if (elapsed >= minMs && gpsFixFresh()) {
+      printf("[GPS] 已定位(第 %lu 秒), 已满足最短等待 %lu 秒, 准备上报\r\n",
+             (unsigned long)(elapsed / 1000), (unsigned long)(minMs / 1000));
+      return 1;
+    }
+
+    if (elapsed >= timeoutMs)
+      break;
+
+    HAL_Delay(100);
+  }
+
+  printf("[GPS] 搜星超时(%lu 秒), 未获得有效定位\r\n",
+         (unsigned long)(timeoutMs / 1000));
+  return 0;
 }
 
 /**
@@ -929,6 +1029,24 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
+        /* upgps: 9|v0-0|upgps|1  →  等待有效定位后上报一次 GPS 坐标
+         * @note  这里只置标志，真正的等待/上报在 OnMaster() 末尾执行：
+         *        1) 阻塞搜星：最短 GPS_WAIT_MIN_MS(10秒, 给中继留准备时间),
+         *                    上限 GPS_WAIT_TIMEOUT_MS(3分钟)
+         *        2) 发 5|deviceName|lat,lng|（MSG_TYPE_UP_GPS，定位失败发 "0.0,0.0"）
+         *        3) calcNextTxTime() 重新算下次时间 → 再进深度休眠
+         *        不能在中断/解析上下文里长时间等待，否则会堵死整个流程 */
+        else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            gpsWaitReport = 1;
+            gpsPrintSaved = gpsPrintEn;  /* 记住收指令前的打印状态，事后恢复 */
+            gpsPrintEn = 1;              /* 本次临时打开 GPS 打印，便于观察搜星过程 */
+            printf("[指令] upgps: 已收到, 开始搜星(上限 180 秒)\r\n");
+          } else {
+            printf("[指令] upgps: 目标=%s != 本机=%s, 跳过\r\n",
+                   fields[1], deviceName);
+          }
+        }
         /* sendmode: 9|v0-0|sendmode|1  →  GPS 原始 NMEA 语句打印开关
          *   value=1 : 打印（默认）
          *   value=0 : 不打印
@@ -937,14 +1055,14 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
             int mode = atoi(fields[3]);        /* atoi 会自动跳过前导空格 */
-            gpsEchoRaw = (mode != 0) ? 1 : 0;  /* 非 0 一律当作开 */
+            gpsPrintEn = (mode != 0) ? 1 : 0;  /* 非 0 一律当作开 */
             /* 注意：这里不能用 "开"/"关" 等中文做值。
              * 本文件是无 BOM 的 UTF-8，而 ARMCC5 会按 GBK 去解析多字节：
              * 例如 "关" = E5 85 B3，末尾 B3 落在 GBK 首字节范围 0x81~0xFE，
              * 编译器会把紧随其后的字节当尾字节吞掉 —— 若那正好是闭合引号，
              * 就会报 missing closing quote。故此处刻意用 ASCII。 */
             printf("[指令] GPS原句打印: %s (下发值=%s)\r\n",
-                   gpsEchoRaw ? "ON" : "OFF", fields[3]);
+                   gpsPrintEn ? "ON" : "OFF", fields[3]);
           } else {
             printf("[指令] sendmode: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
@@ -1020,31 +1138,28 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
 /**
   * @brief  Master（主机/发射端）流程
-  * @note   1. 组包并发送：有新鲜有效定位时发定位帧 1|设备名|纬度,经度|，
-  *            否则回退发原时间帧 2|设备名|当天秒数|电量|计数|
+  * @note   1. 组包并发送时间帧 MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
+  *            @warning 这里固定发时间帧，不再按定位状态切换！
+  *                    定位坐标统一由 upgps 指令触发上报（见末段 gpsWaitReport）
   *         2. 发送完成后开启 3 秒接收窗口，解析对时消息
   *         3. 计算下次上报时间并保存到 Flash
   */
 static void OnMaster(void)
 {
-  static uint32_t tx_count = 0;
   char tx_msg[TX_LEN];
   uint32_t today_sec = getTodaySecond();
   uint32_t tx_time = 1000;
 
+  /* 计数自增并回绕，取值恒为 1 ~ TX_COUNT_MAX(999)，绝不会出现 0 或 1000 */
   tx_count++;
+  if (tx_count > TX_COUNT_MAX)
+    tx_count = 1;
 
-  /* 组包：优先上报定位，无有效定位时回退到原时间帧 */
-  if (gpsFixFresh()) {
-    /* 1|v0-0|26.493000,109.390867|  —— 有效定位时的周期上报 */
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%.6f,%.6f|",
-             MSG_TYPE_GPS, deviceName, gpsFix.lat, gpsFix.lng);
-  } else {
-    /* 2|v0-0|当天秒数|99|计数  —— 未定位/定位过期时的兜底上报 */
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
-             MSG_TYPE_TIME, deviceName,
-             (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
-  }
+  /* 组包：2|v0-0|当天秒数|99|计数
+   * 周期上报固定发时间帧，不管有没有定位 —— 定位由 upgps 指令单独触发上报 */
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
+           MSG_TYPE_TIME, deviceName,
+           (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
 
   /* 发送前 LED 闪 3 次，每次 200ms */
   for (uint8_t i = 0; i < 3; i++) {
@@ -1121,6 +1236,26 @@ static void OnMaster(void)
     HAL_Delay(1000);
     sendCenterMessage();
     centerNeedReport = 0;  /* 标记已上报 */
+  }
+
+  /* upgps 指令：先阻塞等到有效定位，拿到后立即上报一次实时坐标。
+   * 放在 calcNextTxTime() 之前 —— 等待可能耗时几十秒，
+   * 之后必须重新计算下次上报时间，不能用本次 TX 前算出的旧值。 */
+  if (gpsWaitReport) {
+    uint8_t hasFix;
+
+    gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每次循环都等 */
+
+    hasFix = gpsWaitForFix(GPS_WAIT_MIN_MS, GPS_WAIT_TIMEOUT_MS);
+    HAL_Delay(1000);
+
+    /* 无论是否定位成功都上报：失败时坐标段填 "0.0,0.0" */
+    sendGpsPositionMessage(hasFix);
+
+    /* 打印状态恢复成收到 upgps 之前的样子（默认回到静默） */
+    gpsPrintEn = gpsPrintSaved;
+    printf("[指令] upgps: 处理完毕%s, 恢复GPS打印=%s, 继续正常循环\r\n",
+           hasFix ? "(已定位)" : "(未定位)", gpsPrintEn ? "ON" : "OFF");
   }
 
   /* 计算下次上报时间（配置更新后间隔可能变化） */

@@ -339,7 +339,7 @@ static void OnSlave(void) {
     int msgType = atoi((char *)local_buf);
     printf("[LoRa] MsgType: %d\r\n", msgType);
 
-    if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
+    if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_UP_GPS|| msgType == MSG_TYPE_TIME) {
       /* 从 LoRa 数据中提取 deviceId（第二个 |
        * 分隔字段），检查是否有缓存的待执行指令 */
       uint8_t hasPendingCmd = 0;
@@ -373,50 +373,52 @@ static void OnSlave(void) {
         // MSG_TYPE_GPS: 直接上报原始数据
         sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
       }
+		  if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
 
-      /* 统一延时后下发：有缓存指令则下发指令，否则检查 gpstm 中继或对时 */
-      HAL_Delay(LORA_TX_DELAY_MS);
+				/* 统一延时后下发：有缓存指令则下发指令，否则检查 gpstm 中继或对时 */
+				HAL_Delay(LORA_TX_DELAY_MS);
 
-      if (hasPendingCmd) {
-        sendPendingCommand(loraDevId);
-      } else if (gpstmActive && (HAL_GetTick() - gpstmRecvTick) <
-                                    gpstmTimeoutMin * 60 * 1000) {
-        /* gpstm 中继有效：在有效期内，任意设备上报时下发 upgps 指令 */
-        char txData[64];
-        int txLen = snprintf(txData, sizeof(txData), "%d|%s|upgps|0",
-                             MSG_TYPE_COM, loraDevId);
-        uint32_t tx_time = 0;
-        rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-        printf("[LoRa gpstm 中继] %s\r\n", txData);
+				if (hasPendingCmd) {
+					sendPendingCommand(loraDevId);
+				} else if (gpstmActive && (HAL_GetTick() - gpstmRecvTick) <
+																			gpstmTimeoutMin * 60 * 1000) {
+					/* gpstm 中继有效：在有效期内，任意设备上报时下发 upgps 指令 */
+					char txData[64];
+					int txLen = snprintf(txData, sizeof(txData), "%d|%s|upgps|0",
+															 MSG_TYPE_COM, loraDevId);
+					uint32_t tx_time = 0;
+					rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
+					printf("[LoRa gpstm 中继] %s\r\n", txData);
 
-        /* 等待发送完成 */
-        uint32_t waitStart = HAL_GetTick();
-        while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
-          if (HAL_GetTick() - waitStart > 3000)
-            break;
-        }
-        rf_set_transmit_flag(RADIO_FLAG_IDLE);
-      } else {
-        // 构造下发数据: 4|deviceName|timestamp| （使用 STM32 实时时间戳）
-        char txData[64];
-        int txLen =
-            snprintf(txData, sizeof(txData), "%d|%lu|%s", MSG_TYPE_SYN_TIME,
-                     (unsigned long)getCurrentTimestamp(), deviceName);
+					/* 等待发送完成 */
+					uint32_t waitStart = HAL_GetTick();
+					while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
+						if (HAL_GetTick() - waitStart > 3000)
+							break;
+					}
+					rf_set_transmit_flag(RADIO_FLAG_IDLE);
+				} else {
+					// 构造下发数据: 4|deviceName|timestamp| （使用 STM32 实时时间戳）
+					char txData[64];
+					int txLen =
+							snprintf(txData, sizeof(txData), "%d|%lu|%s", MSG_TYPE_SYN_TIME,
+											 (unsigned long)getCurrentTimestamp(), deviceName);
 
-        // 发送 LoRa 数据
-        uint32_t tx_time = 0;
-        rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-        printf("[LoRa 下发对时] %s\r\n", txData);
+					// 发送 LoRa 数据
+					uint32_t tx_time = 0;
+					rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
+					printf("[LoRa 下发对时] %s\r\n", txData);
 
-        // 等待发送完成
-        uint32_t waitStart = HAL_GetTick();
-        while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
-          if (HAL_GetTick() - waitStart > 3000)
-            break; // 3秒超时保护
-        }
-        rf_set_transmit_flag(RADIO_FLAG_IDLE);
-      }
-    }
+					// 等待发送完成
+					uint32_t waitStart = HAL_GetTick();
+					while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
+						if (HAL_GetTick() - waitStart > 3000)
+							break; // 3秒超时保护
+					}
+					rf_set_transmit_flag(RADIO_FLAG_IDLE);
+				}
+			}
+		}
 
     /* MSG_TYPE_CONFIG: 直接上报原始数据，不对时 */
     if (msgType == MSG_TYPE_CONFIG) {
