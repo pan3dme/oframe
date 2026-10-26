@@ -387,7 +387,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
 
 /**
 * @brief SPI MSP Initialization
-*        ä½¿èƒ½ SPI1 æ—¶é’Ÿï¼Œé…ç½® PA5(SCK)/PA6(MISO)/PA7(MOSI) ä¸ºå¤ç”¨æŽ¨æŒ½è¾“å‡º
+*        Ê¹ÄÜ SPI1 Ê±ÖÓ£¬ÅäÖÃ PA5(SCK)/PA6(MISO)/PA7(MOSI) Îª¸´ÓÃÍÆÍìÊä³ö
 */
 void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 {
@@ -395,13 +395,13 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 
   if(hspi->Instance == SPI1)
   {
-    /* ä½¿èƒ½ SPI1 å¤–è®¾æ—¶é’Ÿ */
+    /* Ê¹ÄÜ SPI1 ÍâÉèÊ±ÖÓ */
     __HAL_RCC_SPI1_CLK_ENABLE();
 
-    /* ä½¿èƒ½ GPIOA æ—¶é’Ÿ */
+    /* Ê¹ÄÜ GPIOA Ê±ÖÓ */
     __HAL_RCC_GPIOA_CLK_ENABLE();
 
-    /* PA5(SCK), PA6(MISO), PA7(MOSI) å¤ç”¨æŽ¨æŒ½è¾“å‡º */
+    /* PA5(SCK), PA6(MISO), PA7(MOSI) ¸´ÓÃÍÆÍìÊä³ö */
     GPIO_InitStruct.Pin   = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
     GPIO_InitStruct.Mode  = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull  = GPIO_NOPULL;

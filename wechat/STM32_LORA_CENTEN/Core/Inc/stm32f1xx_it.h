@@ -56,10 +56,10 @@ void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
 void RCC_IRQHandler(void);
-void EXTI4_IRQHandler(void);
+/* EXTI4/EXTI9_5 的 ISR 声明已随按键 K1(PB4)/K2(PB5) 一并删除，
+ * 无强定义时由启动文件的弱符号 Default_Handler 兜底 */
 void USB_HP_CAN1_TX_IRQHandler(void);
 void USB_LP_CAN1_RX0_IRQHandler(void);
-void EXTI9_5_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 /* USER CODE END EFP */
 

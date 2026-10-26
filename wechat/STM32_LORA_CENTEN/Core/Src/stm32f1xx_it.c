@@ -226,19 +226,10 @@ void EXTI2_IRQHandler(void)
   /* USER CODE END EXTI2_IRQn 1 */
 }
 
-/**
-  * @brief This function handles EXTI line4 interrupt.
-  */
-void EXTI4_IRQHandler(void)
-{
-  /* USER CODE BEGIN EXTI4_IRQn 0 */
-
-  /* USER CODE END EXTI4_IRQn 0 */
-  HAL_GPIO_EXTI_IRQHandler(K1_Pin);
-  /* USER CODE BEGIN EXTI4_IRQn 1 */
-
-  /* USER CODE END EXTI4_IRQn 1 */
-}
+/* EXTI4_IRQHandler 已删除：原为按键 K1(PB4)，该引脚本板已不存在
+ * 注意是整体删除而非留空函数 —— 留空的话一旦触发不会清除 EXTI 挂起位，
+ * 会导致中断反复重入。删除后由启动文件的弱定义 Default_Handler 兜底，
+ * 而该中断线已无任何引脚使用，不会触发 */
 
 /**
   * @brief This function handles USB high priority or CAN TX interrupts.
@@ -268,19 +259,10 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
   /* USER CODE END USB_LP_CAN1_RX0_IRQn 1 */
 }
 
-/**
-  * @brief This function handles EXTI line[9:5] interrupts.
-  */
-void EXTI9_5_IRQHandler(void)
-{
-  /* USER CODE BEGIN EXTI9_5_IRQn 0 */
-
-  /* USER CODE END EXTI9_5_IRQn 0 */
-  HAL_GPIO_EXTI_IRQHandler(K2_Pin);
-  /* USER CODE BEGIN EXTI9_5_IRQn 1 */
-
-  /* USER CODE END EXTI9_5_IRQn 1 */
-}
+/* EXTI9_5_IRQHandler 已删除：原为按键 K2(PB5)，该引脚本板已不存在
+ * 删除理由同 EXTI4（留空会漏清挂起位导致中断风暴）
+ * EXTI5~9 范围内当前无任何引脚使用（PA5/6/7 是 SPI 复用，非 EXTI），
+ * 故该中断线无来源，删除安全 */
 
 /* USER CODE BEGIN 1 */
 

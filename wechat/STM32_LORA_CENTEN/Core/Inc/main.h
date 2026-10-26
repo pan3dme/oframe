@@ -61,19 +61,12 @@ void Error_Handler(void);
 #define TNOW_GPIO_Port GPIOA
 #define LED1_Pin GPIO_PIN_15
 #define LED1_GPIO_Port GPIOB
-#define LED2_Pin GPIO_PIN_13
-#define LED2_GPIO_Port GPIOB
-#define LED3_Pin GPIO_PIN_14
-#define LED3_GPIO_Port GPIOB
-#define K1_Pin GPIO_PIN_4
-#define K1_GPIO_Port GPIOB
-#define K1_EXTI_IRQn EXTI4_IRQn
-#define K2_Pin GPIO_PIN_5
-#define K2_GPIO_Port GPIOB
-#define K2_EXTI_IRQn EXTI9_5_IRQn
+/* 本板仅 PB15 一个 LED：LED2(PB13)/LED3(PB14) 已无此硬件，定义一并删除
+ * LED4(PA0) 原本只存在于注释中，从未有实际定义 */
+/* K1(PB4)/K2(PB5) 已从本板移除，引脚定义与中断配置一并删除 */
 
 /* USER CODE BEGIN Private defines */
-/* --- LoRa (PAN3029) 杞欢 SPI 寮曡剼 --- */
+/* --- LoRa (PAN3029) 软件 SPI 引脚 --- */
 #define LORA_SCK_Pin      GPIO_PIN_5
 #define LORA_SCK_GPIO_Port GPIOA
 #define LORA_MISO_Pin     GPIO_PIN_6
@@ -85,7 +78,7 @@ void Error_Handler(void);
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
 
-/* --- DTU 澶嶄綅寮曡剼 (PA3) --- */
+/* --- DTU 复位引脚 (PA3) --- */
 #define DTU_RST_Pin       GPIO_PIN_3
 #define DTU_RST_GPIO_Port GPIOA
 /* USER CODE END Private defines */
