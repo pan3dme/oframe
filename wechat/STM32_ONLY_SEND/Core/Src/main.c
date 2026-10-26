@@ -159,8 +159,10 @@ static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时�
 static uint8_t      gpsPrintEn = 0;    /* GPS 打印总开关（1=打印, 0=静默）
                                         * 默认 0：正常启动/运行不打任何 GPS 日志；
                                         * 收到 upgps 后临时置 1，处理完自动恢复原值；
-                                        * 也可用 sendmode 指令手动开（调试用）
                                         * @note  只影响打印，不影响接收/解析/上报 */
+static uint8_t      gpsPowerSave = 0;  /* GPS 是否已进入省电模式 PSM（1=休眠中）
+                                        * 仅用于避免重复下发同一条 UBX 指令；
+                                        * 模块重新上电会自动回到连续模式，故该标记需同步重置 */
 
 
 static volatile uint8_t  gpsRing[GPS_RING_LEN];
@@ -217,6 +219,7 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
 static double nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+static void gpsSetPowerSave(uint8_t enable); /* 向 GPS 下发 CFG-RXM 切换 PSM */
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -894,7 +897,7 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
  */
 static void parseNmeaLine(char *line)
 {
-  /* 正常运行时完全静默；只有收到 upgps（或手动 sendmode 打开）才打印 */
+  /* 正常运行时完全静默；只有搜星期间才打印 */
   if (gpsPrintEn) {
     printf("[GPS] %s\r\n", line);
   }
@@ -1156,22 +1159,30 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
-        /* sendmode: 9|v0-0|sendmode|1  →  GPS 原始 NMEA 语句打印开关
-         *   value=1 : 打印（默认）
-         *   value=0 : 不打印
-         *   @note  只控制"原始语句转发"这一项；
-         *          解析后的 [GPS定位]/[GPS信息] 与未定位心跳仍会打印 */
+        /* sendmode: 9|v0-0|sendmode|1  →  GPS 省电模式控制
+         *   value=0 : GPS 进入省电模式 PSM（下发 UBX-CFG-RXM lpMode=1）
+         *   value=1 : GPS 退出省电模式，恢复连续定位（下发 lpMode=0）
+         * @note  当前实现只认 0/1，其余值忽略；且只在状态发生变化时才真正
+         *        下发 UBX（由 gpsPowerSave 记住当前状态，避免重复打扰） */
         else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
-            int mode = atoi(fields[3]);        /* atoi 会自动跳过前导空格 */
-            gpsPrintEn = (mode != 0) ? 1 : 0;  /* 非 0 一律当作开 */
-            /* 注意：这里不能用 "开"/"关" 等中文做值。
-             * 本文件是无 BOM 的 UTF-8，而 ARMCC5 会按 GBK 去解析多字节：
-             * 例如 "关" = E5 85 B3，末尾 B3 落在 GBK 首字节范围 0x81~0xFE，
-             * 编译器会把紧随其后的字节当尾字节吞掉 —— 若那正好是闭合引号，
-             * 就会报 missing closing quote。故此处刻意用 ASCII。 */
-            printf("[指令] GPS原句打印: %s (下发值=%s)\r\n",
-                   gpsPrintEn ? "ON" : "OFF", fields[3]);
+            int mode = atoi(fields[3]); /* atoi 会自动跳过前导空格 */
+
+            if (mode == 0) {
+              /* GPS 进入省电模式（仅在状态变化时下发，避免重复打扰） */
+              if (!gpsPowerSave) {
+                gpsSetPowerSave(1);
+                gpsPowerSave = 1;
+              }
+              printf("[指令] GPS 省电模式: ON (PSM)\r\n");
+            } else if (mode == 1) {
+              /* GPS 恢复连续定位 */
+              if (gpsPowerSave) {
+                gpsSetPowerSave(0);
+                gpsPowerSave = 0;
+              }
+              printf("[指令] GPS 省电模式: OFF (连续定位)\r\n");
+            }  
           } else {
             printf("[指令] sendmode: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
@@ -1723,6 +1734,47 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
     HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
   }
+}
+
+/* =====================================================================
+ * @brief  切换 GPS 工作模式：连续定位 <-> 省电模式 PSM（u-blox 系列）
+ * @param  enable: 1=进入省电模式 PSM, 0=恢复连续定位
+ * @note   本模块是 u-blox M7/M8 内核（不是 MTK），进/出省电
+ *         必须用 UBX 二进制协议 —— MTK 的 $PMTK161 之类指令对它完全无效。
+ *         实际发出的两帧等价于下面两组常量，此处改为运行时算校验和，
+ *         避免手写魔数写错：
+ *           进入 PSM : B5 62 06 11 01 00 01 19 66
+ *           退出 PSM : B5 62 06 11 01 00 00 18 65
+ * @warning 刻意不用备份模式(UBX-RXM-PMREQ)：本模块只有 VCC/GND/TXD/RXD/PPS，
+ *          没有 EXTINT 引脚，而 u-blox 7 的 PMREQ 不带 wakeupSources 字段，
+ *          进去以后只能靠断电才能醒，等于把 GPS 睡死。
+ *          PSM 虽只降到约 2~3mA，但 UART 始终在线，随时可被本函数唤醒。
+ * @note    发送路径是 PB10(USART3_TX)，故 huart3 必须是 UART_MODE_TX_RX。
+ *          阻塞式发送不开 TXEIE 中断，与逐字节 Receive_IT 接收互不干扰。
+ * ===================================================================== */
+static void gpsSetPowerSave(uint8_t enable)
+{
+  /* UBX 帧：同步字 + Class + ID + Length + Payload + CK_A + CK_B */
+  uint8_t pkt[9] = {
+      0xB5, 0x62, /* 同步字 */
+      0x06, 0x11, /* Class=0x06(CFG), ID=0x11(RXM) */
+      0x01, 0x00, /* Length=1（小端） */
+      0x00,       /* Payload[0] = lpMode，下面赋值 */
+      0x00, 0x00  /* CK_A, CK_B，下面计算 */
+  };
+  uint8_t i, ckA = 0, ckB = 0;
+
+  pkt[6] = enable ? 0x01u : 0x00u; /* lpMode: 1=省电模式, 0=连续模式 */
+
+  /* 8 位 Fletcher 校验，覆盖 Class/ID/Length/Payload，即 pkt[2..6] */
+  for (i = 2; i < 7; i++) {
+    ckA = (uint8_t)(ckA + pkt[i]);
+    ckB = (uint8_t)(ckB + ckA);
+  }
+  pkt[7] = ckA;
+  pkt[8] = ckB;
+
+  HAL_UART_Transmit(&huart3, pkt, sizeof(pkt), 200);
 }
 
 /* USER CODE END 4 */
