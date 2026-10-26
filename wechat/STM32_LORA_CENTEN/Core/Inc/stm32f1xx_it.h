@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+ï»¿/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file    stm32f1xx_it.h
@@ -56,11 +56,11 @@ void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
 void RCC_IRQHandler(void);
-/* EXTI4/EXTI9_5 µÄ ISR ÉùÃ÷ÒÑËæ°´¼ü K1(PB4)/K2(PB5) Ò»²¢É¾³ı£¬
- * ÎŞÇ¿¶¨ÒåÊ±ÓÉÆô¶¯ÎÄ¼şµÄÈõ·ûºÅ Default_Handler ¶µµ× */
-/* CAN µÄÁ½¸ö ISR ÉùÃ÷ÒÑÉ¾³ı£º
+/* EXTI4/EXTI9_5 çš„ ISR å£°æ˜å·²éšæŒ‰é”® K1(PB4)/K2(PB5) ä¸€å¹¶åˆ é™¤ï¼Œ
+ * æ— å¼ºå®šä¹‰æ—¶ç”±å¯åŠ¨æ–‡ä»¶çš„å¼±ç¬¦å· Default_Handler å…œåº• */
+/* CAN çš„ä¸¤ä¸ª ISR å£°æ˜å·²åˆ é™¤ï¼š
  *   USB_HP_CAN1_TX_IRQHandler / USB_LP_CAN1_RX0_IRQHandler
- * ÎŞÇ¿¶¨ÒåÊ±ÓÉÆô¶¯ÎÄ¼şµÄÈõ·ûºÅ Default_Handler ¶µµ× */
+ * æ— å¼ºå®šä¹‰æ—¶ç”±å¯åŠ¨æ–‡ä»¶çš„å¼±ç¬¦å· Default_Handler å…œåº• */
 /* USER CODE BEGIN EFP */
 /* USER CODE END EFP */
 

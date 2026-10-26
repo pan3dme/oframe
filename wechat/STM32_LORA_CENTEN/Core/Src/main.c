@@ -1,13 +1,13 @@
-/* USER CODE BEGIN Header */
+ï»¿/* USER CODE BEGIN Header */
 /**
  ******************************************************************************
  * @file           : main.c
- * @brief          : PAN3029 LoRa ÊÕ·¢Æ÷Ö÷³ÌĞò - STM32F103C8T6
- *                   Óë CenterReceiveBLE_v4 LoRa ÅäÖÃÆ¥Åä
- * @note           ¹¦ÄÜËµÃ÷£º
- *                 1. LoRa Í¨ĞÅ£ºÖ§³Ö½ÓÊÕºÍ·¢ËÍÁ½ÖÖÄ£Ê½£¬¿ÉÍ¨¹ı°´¼ü K1/K2 ÇĞ»»
- *                 2. LED Ö¸Ê¾£ºLED1 ½ÓÊÕ×´Ì¬Ö¸Ê¾£¨ÊÕµ½Êı¾İÁÁ500ms£©
- *                 3. µ÷ÊÔÊä³ö£ºÍ¨¹ı USART1 Êä³öÏµÍ³×´Ì¬
+ * @brief          : PAN3029 LoRa æ”¶å‘å™¨ä¸»ç¨‹åº - STM32F103C8T6
+ *                   ä¸ CenterReceiveBLE_v4 LoRa é…ç½®åŒ¹é…
+ * @note           åŠŸèƒ½è¯´æ˜ï¼š
+ *                 1. LoRa é€šä¿¡ï¼šæ”¯æŒæ¥æ”¶å’Œå‘é€ä¸¤ç§æ¨¡å¼ï¼Œå¯é€šè¿‡æŒ‰é”® K1/K2 åˆ‡æ¢
+ *                 2. LED æŒ‡ç¤ºï¼šLED1 æ¥æ”¶çŠ¶æ€æŒ‡ç¤ºï¼ˆæ”¶åˆ°æ•°æ®äº®500msï¼‰
+ *                 3. è°ƒè¯•è¾“å‡ºï¼šé€šè¿‡ USART1 è¾“å‡ºç³»ç»ŸçŠ¶æ€
  ******************************************************************************
  * @attention
  *
@@ -22,50 +22,50 @@
  */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-// STM32 HAL ¿âÖ÷Í·ÎÄ¼ş£¬°üº¬ËùÓĞ HAL Çı¶¯½Ó¿Ú
+// STM32 HAL åº“ä¸»å¤´æ–‡ä»¶ï¼ŒåŒ…å«æ‰€æœ‰ HAL é©±åŠ¨æ¥å£
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "common_test.h"  // ¹«¹²²âÊÔÄ£¿é£¨Common Ä¿Â¼¹²Ïí£©
-#include "pan3029_port.h" // PAN3029 Ó²¼ş¶Ë¿ÚÊÊÅä²ãÍ·ÎÄ¼ş
-#include "pan3029_rf.h"   // PAN3029 LoRa ÉäÆµÇı¶¯Í·ÎÄ¼ş
-#include "radio.h"        // LoRa ÉäÆµ²ÎÊıÅäÖÃ (DEFAULT_FREQ/DEFAULT_SF µÈ)
-#include "stdio.h"        // ±ê×¼ÊäÈëÊä³ö¿â£¬ÓÃÓÚ printf µ÷ÊÔÊä³ö
-#include "stdlib.h"       // ±ê×¼¿âº¯Êı£¬Ìá¹© atoi() µÈ¹¤¾ßº¯Êı
-#include "string.h"       // ×Ö·û´®´¦Àí¿â£¬Ìá¹© memcpy/strncmp/memset µÈº¯Êı
+#include "common_test.h"  // å…¬å…±æµ‹è¯•æ¨¡å—ï¼ˆCommon ç›®å½•å…±äº«ï¼‰
+#include "pan3029_port.h" // PAN3029 ç¡¬ä»¶ç«¯å£é€‚é…å±‚å¤´æ–‡ä»¶
+#include "pan3029_rf.h"   // PAN3029 LoRa å°„é¢‘é©±åŠ¨å¤´æ–‡ä»¶
+#include "radio.h"        // LoRa å°„é¢‘å‚æ•°é…ç½® (DEFAULT_FREQ/DEFAULT_SF ç­‰)
+#include "stdio.h"        // æ ‡å‡†è¾“å…¥è¾“å‡ºåº“ï¼Œç”¨äº printf è°ƒè¯•è¾“å‡º
+#include "stdlib.h"       // æ ‡å‡†åº“å‡½æ•°ï¼Œæä¾› atoi() ç­‰å·¥å…·å‡½æ•°
+#include "string.h"       // å­—ç¬¦ä¸²å¤„ç†åº“ï¼Œæä¾› memcpy/strncmp/memset ç­‰å‡½æ•°
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-/* DTU ·¢ËÍ¶ÓÁĞ£º»·ĞÎ»º³åÇø£¬Ã¿ÌõÏûÏ¢×î´ó 256 ×Ö½Ú£¬×î¶à 5 Ìõ */
+/* DTU å‘é€é˜Ÿåˆ—ï¼šç¯å½¢ç¼“å†²åŒºï¼Œæ¯æ¡æ¶ˆæ¯æœ€å¤§ 256 å­—èŠ‚ï¼Œæœ€å¤š 5 æ¡ */
 #define DTU_QUEUE_SIZE 5
 #define DTU_MSG_MAX_LEN 256
 
 typedef struct {
-  char buf[DTU_MSG_MAX_LEN]; // ÏûÏ¢ÄÚÈİ
-  uint16_t len;              // ÏûÏ¢³¤¶È
+  char buf[DTU_MSG_MAX_LEN]; // æ¶ˆæ¯å†…å®¹
+  uint16_t len;              // æ¶ˆæ¯é•¿åº¦
 } DtuQueueItem_t;
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define EXAMPLE_NAME "LY-020 LoRa Gps" // ¹¤³ÌÃû³Æ
-#define DEMO_VER "V1.0"                // ÑİÊ¾°æ±¾ºÅ
-#define EXAMPLE_DATE "2026/10/04"      // ¹¤³ÌÈÕÆÚ
+#define EXAMPLE_NAME "LY-020 LoRa Gps" // å·¥ç¨‹åç§°
+#define DEMO_VER "V1.0"                // æ¼”ç¤ºç‰ˆæœ¬å·
+#define EXAMPLE_DATE "2026/10/04"      // å·¥ç¨‹æ—¥æœŸ
 
-#define RX_LEN 36             // LoRa ½ÓÊÕ»º³åÇø×î´ó³¤¶È£¨×Ö½Ú£©
-#define LORA_TX_DELAY_MS 1500 // LoRa ½ÓÊÕºóÑÓÊ±·¢ËÍÊ±¼ä£¨ms£©
+#define RX_LEN 36             // LoRa æ¥æ”¶ç¼“å†²åŒºæœ€å¤§é•¿åº¦ï¼ˆå­—èŠ‚ï¼‰
+#define LORA_TX_DELAY_MS 1500 // LoRa æ¥æ”¶åå»¶æ—¶å‘é€æ—¶é—´ï¼ˆmsï¼‰
 
-/* Work mode - ¹¤×÷Ä£Ê½¶¨Òå */
-#define MODE_IDLE 0 // ¿ÕÏĞÄ£Ê½
-#define MODE_RX 1   // ½ÓÊÕÄ£Ê½
-/* MODE_TX ÒÑÉ¾³ı£º½øÈë¸ÃÄ£Ê½µÄÎ¨Ò»Í¾¾¶ÊÇ°´¼ü K2£¬K2 ÒÆ³ıºóÎŞ´¥·¢Ô´£¬
- * Á¬Í¬ do_tx_send() / txMsg / lastTxTick Ò»²¢ÒÆ³ı¡£
- * »Ö¸´¶¨Ê±·¢ÉäÊ±°Ñ #define MODE_TX 2 ²¹»Ø¼´¿É */
+/* Work mode - å·¥ä½œæ¨¡å¼å®šä¹‰ */
+#define MODE_IDLE 0 // ç©ºé—²æ¨¡å¼
+#define MODE_RX 1   // æ¥æ”¶æ¨¡å¼
+/* MODE_TX å·²åˆ é™¤ï¼šè¿›å…¥è¯¥æ¨¡å¼çš„å”¯ä¸€é€”å¾„æ˜¯æŒ‰é”® K2ï¼ŒK2 ç§»é™¤åæ— è§¦å‘æºï¼Œ
+ * è¿åŒ do_tx_send() / txMsg / lastTxTick ä¸€å¹¶ç§»é™¤ã€‚
+ * æ¢å¤å®šæ—¶å‘å°„æ—¶æŠŠ #define MODE_TX 2 è¡¥å›å³å¯ */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,180 +74,180 @@ typedef struct {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-/* hcan(CAN) / hi2c1(I2C) ÒÑÉ¾³ı£º
- * Á½ÕßµÄ MX_xxx_Init() ÔÚÕû¸ö¹¤³ÌÀï´ÓÎ´¶¨ÒåÒ²´ÓÎ´µ÷ÓÃ£¬
- * ¼´ CAN / I2C ÍâÉè´ÓÎ´±»³õÊ¼»¯¹ı£¬ÊôÓÚËÀ´úÂë£¬
- * Á¬Í¬ MSP ³õÊ¼»¯º¯Êı¡¢CAN µÄÁ½¸ö ISR¡¢HAL Çı¶¯Óë .ioc Òı½ÅÒ»²¢ÒÆ³ı */
-SPI_HandleTypeDef hspi1; // SPI1 ÓÃÓÚ LoRa PAN3029£¨Ó²¼ş SPI£©
+/* hcan(CAN) / hi2c1(I2C) å·²åˆ é™¤ï¼š
+ * ä¸¤è€…çš„ MX_xxx_Init() åœ¨æ•´ä¸ªå·¥ç¨‹é‡Œä»æœªå®šä¹‰ä¹Ÿä»æœªè°ƒç”¨ï¼Œ
+ * å³ CAN / I2C å¤–è®¾ä»æœªè¢«åˆå§‹åŒ–è¿‡ï¼Œå±äºæ­»ä»£ç ï¼Œ
+ * è¿åŒ MSP åˆå§‹åŒ–å‡½æ•°ã€CAN çš„ä¸¤ä¸ª ISRã€HAL é©±åŠ¨ä¸ .ioc å¼•è„šä¸€å¹¶ç§»é™¤ */
+SPI_HandleTypeDef hspi1; // SPI1 ç”¨äº LoRa PAN3029ï¼ˆç¡¬ä»¶ SPIï¼‰
 UART_HandleTypeDef huart1;
-UART_HandleTypeDef huart3; // USART3 ÓÃÓÚ DTU Í¨ĞÅ
+UART_HandleTypeDef huart3; // USART3 ç”¨äº DTU é€šä¿¡
 
-static char deviceName[16] = "vv-xx"; // Éè±¸Ãû³Æ£¨¸ù¾İ UID ¶¯Ì¬Éú³É£©
+static char deviceName[16] = "vv-xx"; // è®¾å¤‡åç§°ï¼ˆæ ¹æ® UID åŠ¨æ€ç”Ÿæˆï¼‰
  
-  // {0x67151723, 0x48825550, 0x0669FF49}, // ÕâÊÇ²å°å±àºÅ
+  // {0x67151723, 0x48825550, 0x0669FF49}, // è¿™æ˜¯æ’æ¿ç¼–å·
 //   0 -> Chip UID    : 67151723-48825550-0669FF49
 /* USER CODE BEGIN PV */
-/* Éè±¸ UID ÁĞ±í£¨10 Ì¨Éè±¸£©£¬ÓÃÓÚ¸ù¾İĞ¾Æ¬ UID È·¶¨Éè±¸±àºÅ */
+/* è®¾å¤‡ UID åˆ—è¡¨ï¼ˆ10 å°è®¾å¤‡ï¼‰ï¼Œç”¨äºæ ¹æ®èŠ¯ç‰‡ UID ç¡®å®šè®¾å¤‡ç¼–å· */
 static const uint32_t deviceUidList[10][3] = {
-    {0x003A002E, 0x46343030, 0x35343138}, // Éè±¸ 0
-    {0x003A002E, 0x46343030, 0x35343139}, // Éè±¸ 1
-    {0x003A002E, 0x46343030, 0x3534313A}, // Éè±¸ 2
-    {0x003A002E, 0x46343030, 0x3534313B}, // Éè±¸ 3
-    {0x003A002E, 0x46343030, 0x3534313C}, // Éè±¸ 4
-    {0x003A002E, 0x46343030, 0x3534313D}, // Éè±¸ 5
-    {0x003A002E, 0x46343030, 0x3534313E}, // Éè±¸ 6
-    {0x67151723, 0x48825550, 0x0669FF49}, // ÕâÊÇ²å°å±àºÅ
-    {0x67184122, 0x49867050, 0x066BFF49}, // Éè±¸ 8
-    {0x67184240, 0x49867050, 0x0669FF49}, // Éè±¸ 9
+    {0x003A002E, 0x46343030, 0x35343138}, // è®¾å¤‡ 0
+    {0x003A002E, 0x46343030, 0x35343139}, // è®¾å¤‡ 1
+    {0x003A002E, 0x46343030, 0x3534313A}, // è®¾å¤‡ 2
+    {0x003A002E, 0x46343030, 0x3534313B}, // è®¾å¤‡ 3
+    {0x003A002E, 0x46343030, 0x3534313C}, // è®¾å¤‡ 4
+    {0x003A002E, 0x46343030, 0x3534313D}, // è®¾å¤‡ 5
+    {0x003A002E, 0x46343030, 0x3534313E}, // è®¾å¤‡ 6
+    {0x67151723, 0x48825550, 0x0669FF49}, // è¿™æ˜¯æ’æ¿ç¼–å·
+    {0x67184122, 0x49867050, 0x066BFF49}, // è®¾å¤‡ 8
+    {0x67184240, 0x49867050, 0x0669FF49}, // è®¾å¤‡ 9
 
 };
 
-// PB15 (LED1) ½ÓÊÕÖ¸Ê¾£ºÊÕµ½LoRaÊı¾İÊ±ÁÁ500ms
-static uint32_t led1OnTick = 0; // LED1 µãÁÁÊ±¼ä´Á
-static uint8_t led1On = 0;      // LED1 µ±Ç°ÊÇ·ñµãÁÁ£¨0=Ãğ, 1=ÁÁ£©
+// PB15 (LED1) æ¥æ”¶æŒ‡ç¤ºï¼šæ”¶åˆ°LoRaæ•°æ®æ—¶äº®500ms
+static uint32_t led1OnTick = 0; // LED1 ç‚¹äº®æ—¶é—´æˆ³
+static uint8_t led1On = 0;      // LED1 å½“å‰æ˜¯å¦ç‚¹äº®ï¼ˆ0=ç­, 1=äº®ï¼‰
 
-// ¹¤×÷Ä£Ê½Ïà¹Ø
+// å·¥ä½œæ¨¡å¼ç›¸å…³
 
-static uint8_t workMode = MODE_RX;     // µ±Ç°¹¤×÷Ä£Ê½£¨RX/TX/IDLE£©
-                                       // £¨txMsg/lastTxTick ÒÑËæ do_tx_send ÒÆ³ı£¬
-                                       //   Ô­°´¼üÏû¶¶Ê±¼ä´ÁÒÑËæ K1/K2 ÒÆ³ı£©
+static uint8_t workMode = MODE_RX;     // å½“å‰å·¥ä½œæ¨¡å¼ï¼ˆRX/TX/IDLEï¼‰
+                                       // ï¼ˆtxMsg/lastTxTick å·²éš do_tx_send ç§»é™¤ï¼Œ
+                                       //   åŸæŒ‰é”®æ¶ˆæŠ–æ—¶é—´æˆ³å·²éš K1/K2 ç§»é™¤ï¼‰
 
-/* LoRa receive buffers - LoRa ½ÓÊÕ»º³åÇø */
+/* LoRa receive buffers - LoRa æ¥æ”¶ç¼“å†²åŒº */
 static uint8_t prev_rx_buf[RX_LEN] = {
-    0};                          // ÉÏ´Î½ÓÊÕµ½µÄÊı¾İ£¨ÓÃÓÚ¶Ô±ÈÊÇ·ñÖØ¸´£©
-static uint8_t prev_rx_size = 0; // ÉÏ´Î½ÓÊÕÊı¾İµÄ³¤¶È
+    0};                          // ä¸Šæ¬¡æ¥æ”¶åˆ°çš„æ•°æ®ï¼ˆç”¨äºå¯¹æ¯”æ˜¯å¦é‡å¤ï¼‰
+static uint8_t prev_rx_size = 0; // ä¸Šæ¬¡æ¥æ”¶æ•°æ®çš„é•¿åº¦
 
 extern struct RxDoneMsg
-    RxDoneParams; // Íâ²¿ÉùÃ÷£º½ÓÊÕÍê³ÉÊ±µÄÏûÏ¢½á¹¹Ìå£¨ÔÚÇı¶¯ÖĞ¶¨Òå£©
+    RxDoneParams; // å¤–éƒ¨å£°æ˜ï¼šæ¥æ”¶å®Œæˆæ—¶çš„æ¶ˆæ¯ç»“æ„ä½“ï¼ˆåœ¨é©±åŠ¨ä¸­å®šä¹‰ï¼‰
 
-/* DTU (USART3) ½ÓÊÕ»º³åÇø */
+/* DTU (USART3) æ¥æ”¶ç¼“å†²åŒº */
 #define DTU_RX_BUF_SIZE 256
-static uint8_t dtuRxBuf[DTU_RX_BUF_SIZE]; // DTU ½ÓÊÕ»º³åÇø
-static uint16_t dtuRxLen = 0;             // µ±Ç°½ÓÊÕµ½µÄÊı¾İ³¤¶È
-static uint32_t dtuLastRxTick = 0;   // ÉÏ´ÎÊÕµ½×Ö½ÚµÄÊ±¼ä´Á£¨ÓÃÓÚ³¬Ê±ÅĞ¶Ï£©
-static uint32_t dtuCsqTick = 0;      // nettime ²éÑ¯¶¨Ê±Æ÷£º¼ÇÂ¼ÉÏ´Î·¢ËÍÊ±¼ä
-static char dtuNetTimeStr[32] = "0"; // DTU ÍøÂçÊ±¼ä´Á£¨Ãë£©£¬ÓÃÓÚÉÏ±¨
-static uint32_t dtuTimestamp = 0;    // DTU ÍøÂçÊ±¼ä Unix Ê±¼ä´Á£¨Ãë£©
-static uint32_t dtuSyncTick = 0;     // ¶ÔÊ±Ê±µÄ HAL_GetTick() Öµ£¬ÓÃÓÚÊµÊ±¼ÆËã
-static uint32_t lastPrintTick = 0;   // [µ÷ÊÔ] Ã¿Ãë´òÓ¡Ê±¼äÓÃ
-static uint8_t dtuTimeValid = 0;     // ÍøÂçÊ±¼äÊÇ·ñÒÑ»ñÈ¡³É¹¦
-static int dtuCsqRssi = 0;           // DTU CSQ ĞÅºÅÇ¿¶ÈÖµ
-static uint8_t dtuNetTimeFailCount = 0;  // DTU ÍøÂçÊ±¼äÁ¬ĞøÊ§°Ü¼ÆÊıÆ÷£¨´ïµ½ 3 ´Î¸´Î» DTU£©
-static uint32_t rtcSendCount = 0;    // ¶ÔÊ±ÉÏ±¨¼ÆÊıÆ÷
-static int batteryValue = 85;        // µç³ØµçÁ¿£¨%£©
-static char configStr[32] = "30,0M"; // ÅäÖÃĞÅÏ¢×Ö·û´®£¨¿ÉÍ¨¹ıDTUĞŞ¸Ä£©
-static char centerStr[32] = "";      // Å©³¡ÖĞĞÄ×ø±ê "lat,lng"£¨¿Õ=Î´ÉèÖÃ£©
-static uint8_t configBootSent = 0;   // ¿ª»úÅäÖÃÊÇ·ñÒÑÉÏ±¨£¨0=Î´ÉÏ±¨, 1=ÒÑÉÏ±¨£©
+static uint8_t dtuRxBuf[DTU_RX_BUF_SIZE]; // DTU æ¥æ”¶ç¼“å†²åŒº
+static uint16_t dtuRxLen = 0;             // å½“å‰æ¥æ”¶åˆ°çš„æ•°æ®é•¿åº¦
+static uint32_t dtuLastRxTick = 0;   // ä¸Šæ¬¡æ”¶åˆ°å­—èŠ‚çš„æ—¶é—´æˆ³ï¼ˆç”¨äºè¶…æ—¶åˆ¤æ–­ï¼‰
+static uint32_t dtuCsqTick = 0;      // nettime æŸ¥è¯¢å®šæ—¶å™¨ï¼šè®°å½•ä¸Šæ¬¡å‘é€æ—¶é—´
+static char dtuNetTimeStr[32] = "0"; // DTU ç½‘ç»œæ—¶é—´æˆ³ï¼ˆç§’ï¼‰ï¼Œç”¨äºä¸ŠæŠ¥
+static uint32_t dtuTimestamp = 0;    // DTU ç½‘ç»œæ—¶é—´ Unix æ—¶é—´æˆ³ï¼ˆç§’ï¼‰
+static uint32_t dtuSyncTick = 0;     // å¯¹æ—¶æ—¶çš„ HAL_GetTick() å€¼ï¼Œç”¨äºå®æ—¶è®¡ç®—
+static uint32_t lastPrintTick = 0;   // [è°ƒè¯•] æ¯ç§’æ‰“å°æ—¶é—´ç”¨
+static uint8_t dtuTimeValid = 0;     // ç½‘ç»œæ—¶é—´æ˜¯å¦å·²è·å–æˆåŠŸ
+static int dtuCsqRssi = 0;           // DTU CSQ ä¿¡å·å¼ºåº¦å€¼
+static uint8_t dtuNetTimeFailCount = 0;  // DTU ç½‘ç»œæ—¶é—´è¿ç»­å¤±è´¥è®¡æ•°å™¨ï¼ˆè¾¾åˆ° 3 æ¬¡å¤ä½ DTUï¼‰
+static uint32_t rtcSendCount = 0;    // å¯¹æ—¶ä¸ŠæŠ¥è®¡æ•°å™¨
+static int batteryValue = 85;        // ç”µæ± ç”µé‡ï¼ˆ%ï¼‰
+static char configStr[32] = "30,0M"; // é…ç½®ä¿¡æ¯å­—ç¬¦ä¸²ï¼ˆå¯é€šè¿‡DTUä¿®æ”¹ï¼‰
+static char centerStr[32] = "";      // å†œåœºä¸­å¿ƒåæ ‡ "lat,lng"ï¼ˆç©º=æœªè®¾ç½®ï¼‰
+static uint8_t configBootSent = 0;   // å¼€æœºé…ç½®æ˜¯å¦å·²ä¸ŠæŠ¥ï¼ˆ0=æœªä¸ŠæŠ¥, 1=å·²ä¸ŠæŠ¥ï¼‰
 
-/* DTU ·¢ËÍ¶ÓÁĞ±äÁ¿ */
+/* DTU å‘é€é˜Ÿåˆ—å˜é‡ */
 static DtuQueueItem_t dtuQueue[DTU_QUEUE_SIZE];
-static uint8_t dtuQueueHead = 0;     // ³ö¶ÓË÷Òı
-static uint8_t dtuQueueTail = 0;     // Èë¶ÓË÷Òı
-static uint8_t dtuQueueCount = 0;    // µ±Ç°¶ÓÁĞÖĞµÄÏûÏ¢ÊıÁ¿
-static uint32_t dtuLastSendTick = 0; // ÉÏ´Î·¢ËÍÊ±¼ä´Á£¨ÓÃÓÚ 100ms ¼ä¸ô¿ØÖÆ£©
+static uint8_t dtuQueueHead = 0;     // å‡ºé˜Ÿç´¢å¼•
+static uint8_t dtuQueueTail = 0;     // å…¥é˜Ÿç´¢å¼•
+static uint8_t dtuQueueCount = 0;    // å½“å‰é˜Ÿåˆ—ä¸­çš„æ¶ˆæ¯æ•°é‡
+static uint32_t dtuLastSendTick = 0; // ä¸Šæ¬¡å‘é€æ—¶é—´æˆ³ï¼ˆç”¨äº 100ms é—´éš”æ§åˆ¶ï¼‰
 
-/* Flash ÅäÖÃ´æ´¢
- * Í¬Ò»Ò³ÄÚ·ÖÇø´æ·Å£¨Flash ²Á³ıÒÔÒ³Îªµ¥Î»£¬ÈÎºÎÒ»ÏîĞ´Èë¶¼ÒªÕûÒ³ÖØĞ´£©£º
- *   +0  : CONFIG_MAGIC(4B) + ¶ÔÊ±ÅäÖÃ×Ö·û´®(32B)
- *   +64 : CENTER_MAGIC(4B) + Å©³¡ÖĞĞÄ×ø±ê×Ö·û´®(32B) */
-#define CONFIG_FLASH_ADDR 0x0800FC00 // Flash ×îºóÒ»Ò³£¨STM32F103C8T6 64KB£©
-#define CONFIG_MAGIC 0xA5A5A5A5      // ÓĞĞ§Êı¾İ±êÖ¾
-#define CENTER_FLASH_OFF 64          // Å©³¡ÖĞĞÄ×ø±êÇøÔÚÅäÖÃÒ³ÄÚµÄÆ«ÒÆ
-#define CENTER_MAGIC 0x5A5A5A5A      // ÖĞĞÄ×ø±êÓĞĞ§Êı¾İ±êÖ¾
+/* Flash é…ç½®å­˜å‚¨
+ * åŒä¸€é¡µå†…åˆ†åŒºå­˜æ”¾ï¼ˆFlash æ“¦é™¤ä»¥é¡µä¸ºå•ä½ï¼Œä»»ä½•ä¸€é¡¹å†™å…¥éƒ½è¦æ•´é¡µé‡å†™ï¼‰ï¼š
+ *   +0  : CONFIG_MAGIC(4B) + å¯¹æ—¶é…ç½®å­—ç¬¦ä¸²(32B)
+ *   +64 : CENTER_MAGIC(4B) + å†œåœºä¸­å¿ƒåæ ‡å­—ç¬¦ä¸²(32B) */
+#define CONFIG_FLASH_ADDR 0x0800FC00 // Flash æœ€åä¸€é¡µï¼ˆSTM32F103C8T6 64KBï¼‰
+#define CONFIG_MAGIC 0xA5A5A5A5      // æœ‰æ•ˆæ•°æ®æ ‡å¿—
+#define CENTER_FLASH_OFF 64          // å†œåœºä¸­å¿ƒåæ ‡åŒºåœ¨é…ç½®é¡µå†…çš„åç§»
+#define CENTER_MAGIC 0x5A5A5A5A      // ä¸­å¿ƒåæ ‡æœ‰æ•ˆæ•°æ®æ ‡å¿—
 
-/* ¹¤×÷Ê±¼ä 62 ½øÖÆ×Öµä
- * ÅäÖÃ´®¸ñÊ½: "<ÖÜÆÚ·ÖÖÓ>,<¹¤×÷Ê±¼ä2×Ö·û>"£¬Èç "30,0M"
- * @note Ë³Ğò±ØĞëÑÏ¸ñÎª: Êı×Ö + ´óĞ´×ÖÄ¸ + Ğ¡Ğ´×ÖÄ¸£¨¹² 62 ¸ö£©
- *       ÒÑÓÃÊµÅäÖµºË¶Ô: "00"=00:00~01:00, "0G"=00:00~17:00, "38"=10:00~20:00
- *       ÆäÖĞ "0G" ÊÇÎ¨Ò»ÄÜÇø·Ö´óĞ¡Ğ´¿éË³ĞòµÄÅĞÀı£¬Ò»µ©¶Ôµ÷½á¹û¾Í±ä³É 01:00~21:00
- * @warning Ë³ĞòÈôÓëÔÆ¶Ë²»Ò»ÖÂ£¬½âÂëÖµ»áÕûÌåÆ«ÒÆ£¬Îñ±Ø±£³ÖÈı¿é´ÎĞò²»±ä */
+/* å·¥ä½œæ—¶é—´ 62 è¿›åˆ¶å­—å…¸
+ * é…ç½®ä¸²æ ¼å¼: "<å‘¨æœŸåˆ†é’Ÿ>,<å·¥ä½œæ—¶é—´2å­—ç¬¦>"ï¼Œå¦‚ "30,0M"
+ * @note é¡ºåºå¿…é¡»ä¸¥æ ¼ä¸º: æ•°å­— + å¤§å†™å­—æ¯ + å°å†™å­—æ¯ï¼ˆå…± 62 ä¸ªï¼‰
+ *       å·²ç”¨å®é…å€¼æ ¸å¯¹: "00"=00:00~01:00, "0G"=00:00~17:00, "38"=10:00~20:00
+ *       å…¶ä¸­ "0G" æ˜¯å”¯ä¸€èƒ½åŒºåˆ†å¤§å°å†™å—é¡ºåºçš„åˆ¤ä¾‹ï¼Œä¸€æ—¦å¯¹è°ƒç»“æœå°±å˜æˆ 01:00~21:00
+ * @warning é¡ºåºè‹¥ä¸äº‘ç«¯ä¸ä¸€è‡´ï¼Œè§£ç å€¼ä¼šæ•´ä½“åç§»ï¼ŒåŠ¡å¿…ä¿æŒä¸‰å—æ¬¡åºä¸å˜ */
 #define TIME_DICT "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-/* ´ıÖ´ĞĞÖ¸Áî»º´æ£ºÃ¿¸öÉè±¸×î¶à»º´æÒ»Ìõ DTU ÏÂ·¢µÄÖ¸Áî */
-#define PENDING_CMD_MAX_SLOTS 8 // ×î¶à»º´æ 8 ¸öÉè±¸µÄ´ıÖ´ĞĞÖ¸Áî
+/* å¾…æ‰§è¡ŒæŒ‡ä»¤ç¼“å­˜ï¼šæ¯ä¸ªè®¾å¤‡æœ€å¤šç¼“å­˜ä¸€æ¡ DTU ä¸‹å‘çš„æŒ‡ä»¤ */
+#define PENDING_CMD_MAX_SLOTS 8 // æœ€å¤šç¼“å­˜ 8 ä¸ªè®¾å¤‡çš„å¾…æ‰§è¡ŒæŒ‡ä»¤
 
 typedef struct {
-  uint8_t used;      // ¸Ã²ÛÎ»ÊÇ·ñ±»Õ¼ÓÃ
-  char deviceId[32]; // Ä¿±êÉè±¸ ID
-  char cmd[32];      // Ö¸ÁîÄÚÈİ
-  char val[32];      // Ö¸Áî²ÎÊı
+  uint8_t used;      // è¯¥æ§½ä½æ˜¯å¦è¢«å ç”¨
+  char deviceId[32]; // ç›®æ ‡è®¾å¤‡ ID
+  char cmd[32];      // æŒ‡ä»¤å†…å®¹
+  char val[32];      // æŒ‡ä»¤å‚æ•°
 } PendingCmd_t;
 
 static PendingCmd_t pendingCmdCache[PENDING_CMD_MAX_SLOTS];
 
-/* gpstm ÖĞ¼ÌÖ¸Áî×´Ì¬£ºÊÕµ½ gpstm ºóÔÚÓĞĞ§ÆÚÄÚÏÂ·¢ upgps Ö¸Áî */
-static uint8_t gpstmActive = 0;      // gpstm ÖĞ¼ÌÊÇ·ñ¼¤»î£¨0=Î´¼¤»î, 1=¼¤»î£©
-static uint32_t gpstmRecvTick = 0;   // ÊÕµ½ gpstm Ê±µÄ HAL_GetTick() Öµ
-static uint32_t gpstmTimeoutMin = 0; // gpstm ÓĞĞ§Ê±³¤£¨·ÖÖÓ£©£¬À´×Ô value ×Ö¶Î
+/* gpstm ä¸­ç»§æŒ‡ä»¤çŠ¶æ€ï¼šæ”¶åˆ° gpstm ååœ¨æœ‰æ•ˆæœŸå†…ä¸‹å‘ upgps æŒ‡ä»¤ */
+static uint8_t gpstmActive = 0;      // gpstm ä¸­ç»§æ˜¯å¦æ¿€æ´»ï¼ˆ0=æœªæ¿€æ´», 1=æ¿€æ´»ï¼‰
+static uint32_t gpstmRecvTick = 0;   // æ”¶åˆ° gpstm æ—¶çš„ HAL_GetTick() å€¼
+static uint32_t gpstmTimeoutMin = 0; // gpstm æœ‰æ•ˆæ—¶é•¿ï¼ˆåˆ†é’Ÿï¼‰ï¼Œæ¥è‡ª value å­—æ®µ
 
-/* lorasw Ö¸Áî×´Ì¬£ºLoRa ÉäÆµ¿ª¹Ø
- *   1 = ÉäÆµ¹¤×÷£¬Õı³£ÊÕ·¢
- *   0 = ÉäÆµÉî¶ÈĞİÃß£¨rf_deepsleep£©£¬²»ÔÙÊÕ·¢
- * @note ĞİÃßÖ»¹Ø LoRa Ğ¾Æ¬£¬MCU Óë 4G/DTU ¼ÌĞøÔËĞĞ£¬
- *       ËùÒÔÔÆ¶ËÈÔ¿É¾­ 4G ÏÂ·¢ lorasw|1 Ô¶³Ì»½ĞÑ
- * @warning ¸Ã×´Ì¬Ö»´æ RAM£¬¿ÌÒâ²»ÂäÅÌ£ºÄ¬ÈÏºÍÖØÆôºó¶¼ÊÇ"¿ÉÊÕ·¢"£¬
- *          µôµç»ò¸´Î»¼´×Ô¶¯»Ö¸´ÊÕ·¢£¬²»»á³öÏÖ"¹ØµôºóĞÑ²»¹ıÀ´"µÄËÀ×´Ì¬
- *          ÈôÒªÈÃ lorasw|0 ¿çÖØÆô±£³Ö£¬±ØĞëÂäÅÌ£¬µ«ÄÇ»áÒıÈëÉÏÊö·çÏÕ */
-static uint8_t loraSwOn = 1;         // LoRa ÉäÆµ¿ª¹Ø£¨1=¿ª, 0=¹Ø£©
+/* lorasw æŒ‡ä»¤çŠ¶æ€ï¼šLoRa å°„é¢‘å¼€å…³
+ *   1 = å°„é¢‘å·¥ä½œï¼Œæ­£å¸¸æ”¶å‘
+ *   0 = å°„é¢‘æ·±åº¦ä¼‘çœ ï¼ˆrf_deepsleepï¼‰ï¼Œä¸å†æ”¶å‘
+ * @note ä¼‘çœ åªå…³ LoRa èŠ¯ç‰‡ï¼ŒMCU ä¸ 4G/DTU ç»§ç»­è¿è¡Œï¼Œ
+ *       æ‰€ä»¥äº‘ç«¯ä»å¯ç» 4G ä¸‹å‘ lorasw|1 è¿œç¨‹å”¤é†’
+ * @warning è¯¥çŠ¶æ€åªå­˜ RAMï¼Œåˆ»æ„ä¸è½ç›˜ï¼šé»˜è®¤å’Œé‡å¯åéƒ½æ˜¯"å¯æ”¶å‘"ï¼Œ
+ *          æ‰ç”µæˆ–å¤ä½å³è‡ªåŠ¨æ¢å¤æ”¶å‘ï¼Œä¸ä¼šå‡ºç°"å…³æ‰åé†’ä¸è¿‡æ¥"çš„æ­»çŠ¶æ€
+ *          è‹¥è¦è®© lorasw|0 è·¨é‡å¯ä¿æŒï¼Œå¿…é¡»è½ç›˜ï¼Œä½†é‚£ä¼šå¼•å…¥ä¸Šè¿°é£é™© */
+static uint8_t loraSwOn = 1;         // LoRa å°„é¢‘å¼€å…³ï¼ˆ1=å¼€, 0=å…³ï¼‰
 
-/* ¹¤×÷Çø¼ä×Ô¶¯¿ØÖÆ×´Ì¬
- * @note ±ßÑØ´¥·¢£ºÖ»ÔÚ"½ø³ö¹¤×÷Çø¼ä"µÄÄÇÒ»¿Ì×Ô¶¯¿ª¹ØÉäÆµ£¬
- *       Çø¼äÄÚ²¿²»Ç¿ÖÆ£¬ÕâÑùÇø¼äÄÚÊÖ¶¯ lorasw|0 ¹Øµôºó»áÒ»Ö±±£³Ö¹Ø±Õ£¬
- *       Ö±µ½Çø¼ä½áÊøÔÙ½øÈë²Å×Ô¶¯ÖØ¿ª ¡ª¡ª ÊÖ¶¯¹ØÔÚÇø¼äÄÚ²ÅÓĞĞ§
- * @warning ¹¤×÷Çø¼äÓÅÏÈ¼¶¸ßÓÚ lorasw Ö¸Áî£º
- *          Çø¼äÍâÒ»ÂÉĞİÃß£¬ÇÒ¾Ü¾ø lorasw|1 ¿ªÆô */
-static uint8_t prevInWorkWindow = 1;   // ÉÏ´ÎÊÇ·ñÔÚ¹¤×÷Çø¼äÄÚ£¨±ßÑØ¼ì²â£©
-static uint32_t workWinCheckTick = 0;  // ¹¤×÷Çø¼ä¼ì²â½ÚÁ÷Ê±¼ä´Á
+/* å·¥ä½œåŒºé—´è‡ªåŠ¨æ§åˆ¶çŠ¶æ€
+ * @note è¾¹æ²¿è§¦å‘ï¼šåªåœ¨"è¿›å‡ºå·¥ä½œåŒºé—´"çš„é‚£ä¸€åˆ»è‡ªåŠ¨å¼€å…³å°„é¢‘ï¼Œ
+ *       åŒºé—´å†…éƒ¨ä¸å¼ºåˆ¶ï¼Œè¿™æ ·åŒºé—´å†…æ‰‹åŠ¨ lorasw|0 å…³æ‰åä¼šä¸€ç›´ä¿æŒå…³é—­ï¼Œ
+ *       ç›´åˆ°åŒºé—´ç»“æŸå†è¿›å…¥æ‰è‡ªåŠ¨é‡å¼€ â€”â€” æ‰‹åŠ¨å…³åœ¨åŒºé—´å†…æ‰æœ‰æ•ˆ
+ * @warning å·¥ä½œåŒºé—´ä¼˜å…ˆçº§é«˜äº lorasw æŒ‡ä»¤ï¼š
+ *          åŒºé—´å¤–ä¸€å¾‹ä¼‘çœ ï¼Œä¸”æ‹’ç» lorasw|1 å¼€å¯ */
+static uint8_t prevInWorkWindow = 1;   // ä¸Šæ¬¡æ˜¯å¦åœ¨å·¥ä½œåŒºé—´å†…ï¼ˆè¾¹æ²¿æ£€æµ‹ï¼‰
+static uint32_t workWinCheckTick = 0;  // å·¥ä½œåŒºé—´æ£€æµ‹èŠ‚æµæ—¶é—´æˆ³
 
-/* °´¼ü K1/K2 Ïà¹Ø´úÂëÒÑÕûÌåÒÆ³ı£º±¾°åÎ´º¸½Ó K1/K2£¬Ö»±£Áô¸´Î»¼ü
- * ÒÆ³ıÔ­Òò¼û MX_GPIO_Init ÖĞ K1/K2 Òı½ÅÅäÖÃ´¦µÄËµÃ÷£¨Ğü¿Õ»áÎ±ÔìÖĞ¶Ï£© */
+/* æŒ‰é”® K1/K2 ç›¸å…³ä»£ç å·²æ•´ä½“ç§»é™¤ï¼šæœ¬æ¿æœªç„Šæ¥ K1/K2ï¼Œåªä¿ç•™å¤ä½é”®
+ * ç§»é™¤åŸå› è§ MX_GPIO_Init ä¸­ K1/K2 å¼•è„šé…ç½®å¤„çš„è¯´æ˜ï¼ˆæ‚¬ç©ºä¼šä¼ªé€ ä¸­æ–­ï¼‰ */
 
 /* USER CODE END PV */
 /* Private function prototypes -----------------------------------------------*/
-// ÏµÍ³º¯ÊıÉùÃ÷
-void SystemClock_Config(void);         // ÏµÍ³Ê±ÖÓÅäÖÃº¯Êı
-static void MX_GPIO_Init(void);        // GPIO ³õÊ¼»¯º¯Êı
-static void MX_SPI1_Init(void);        // SPI1 ³õÊ¼»¯£¨LoRa Ó²¼ş SPI£©
-static void MX_USART1_UART_Init(void); // USART1 ³õÊ¼»¯£¨µ÷ÊÔ´®¿Ú£©
-static void MX_USART3_UART_Init(void); // USART3 ³õÊ¼»¯£¨DTU Í¨ĞÅ£©
-static void MX_NVIC_Init(void);        // NVIC ÖĞ¶Ï¿ØÖÆÆ÷³õÊ¼»¯
+// ç³»ç»Ÿå‡½æ•°å£°æ˜
+void SystemClock_Config(void);         // ç³»ç»Ÿæ—¶é’Ÿé…ç½®å‡½æ•°
+static void MX_GPIO_Init(void);        // GPIO åˆå§‹åŒ–å‡½æ•°
+static void MX_SPI1_Init(void);        // SPI1 åˆå§‹åŒ–ï¼ˆLoRa ç¡¬ä»¶ SPIï¼‰
+static void MX_USART1_UART_Init(void); // USART1 åˆå§‹åŒ–ï¼ˆè°ƒè¯•ä¸²å£ï¼‰
+static void MX_USART3_UART_Init(void); // USART3 åˆå§‹åŒ–ï¼ˆDTU é€šä¿¡ï¼‰
+static void MX_NVIC_Init(void);        // NVIC ä¸­æ–­æ§åˆ¶å™¨åˆå§‹åŒ–
 
 /* USER CODE BEGIN PFP */
-// ÓÃ»§×Ô¶¨Òåº¯ÊıÉùÃ÷
-static void printf_logo(void);   // ´òÓ¡¹¤³ÌĞÅÏ¢ Logo
-static int getDeviceIndex(void); // ¸ù¾İĞ¾Æ¬ UID »ñÈ¡Éè±¸±àºÅ
-static void OnSlave(void);       // LoRa ´Ó»ú½ÓÊÕ´¦Àíº¯Êı
-static void enter_rx_mode(void);   // ÇĞ»»µ½½ÓÊÕÄ£Ê½
-static void lora_rf_sleep(void);   // ¹Ø±Õ LoRa ÉäÆµ£¨Éî¶ÈĞİÃß£©
-static uint8_t lora_rf_wake(void); // »½ĞÑ LoRa ÉäÆµ²¢»Ö¸´½ÓÊÕ
-/* do_tx_send() ÒÑËæ MODE_TX Ò»²¢É¾³ı£¨ÎŞ´¥·¢Ô´£© */
+// ç”¨æˆ·è‡ªå®šä¹‰å‡½æ•°å£°æ˜
+static void printf_logo(void);   // æ‰“å°å·¥ç¨‹ä¿¡æ¯ Logo
+static int getDeviceIndex(void); // æ ¹æ®èŠ¯ç‰‡ UID è·å–è®¾å¤‡ç¼–å·
+static void OnSlave(void);       // LoRa ä»æœºæ¥æ”¶å¤„ç†å‡½æ•°
+static void enter_rx_mode(void);   // åˆ‡æ¢åˆ°æ¥æ”¶æ¨¡å¼
+static void lora_rf_sleep(void);   // å…³é—­ LoRa å°„é¢‘ï¼ˆæ·±åº¦ä¼‘çœ ï¼‰
+static uint8_t lora_rf_wake(void); // å”¤é†’ LoRa å°„é¢‘å¹¶æ¢å¤æ¥æ”¶
+/* do_tx_send() å·²éš MODE_TX ä¸€å¹¶åˆ é™¤ï¼ˆæ— è§¦å‘æºï¼‰ */
 static void sendToDtu(const char *loraStr, int rssi,
-                      int snr); // Í³Ò»ÉÏ±¨DTU£¨JSON¸ñÊ½£¬Èë¶Ó£©
-static void enqueueDtuMsg(const char *msg, int len); // ½«ÏûÏ¢¼ÓÈë DTU ·¢ËÍ¶ÓÁĞ
-static void processDtuQueue(void);     // ´¦Àí DTU ·¢ËÍ¶ÓÁĞ£¨Ã¿Ãë·¢Ò»Ìõ£©
-static void loadConfigFromFlash(void); // ´Ó Flash ¼ÓÔØÅäÖÃ + Å©³¡ÖĞĞÄ×ø±ê
-static void flash_save_all(void);   // ÕûÒ³ÖØĞ´£º¶ÔÊ±ÅäÖÃ + Å©³¡ÖĞĞÄ×ø±ê
-static void sendCenterToDtu(void);  // ÉÏ±¨Å©³¡ÖĞĞÄ×ø±ê 1|name|lat,lng|
-static int center_coord_valid(double lat, double lng); // ¾­Î³¶ÈºÏ·¨ĞÔĞ£Ñé
-static void parseDtuCommand(char *buf);         // JSON ½âÎö DTU ÏÂ·¢Ö¸Áî
-static uint32_t getCurrentTimestamp(void);      // »ñÈ¡µ±Ç°ÊµÊ±Ê±¼ä´Á
+                      int snr); // ç»Ÿä¸€ä¸ŠæŠ¥DTUï¼ˆJSONæ ¼å¼ï¼Œå…¥é˜Ÿï¼‰
+static void enqueueDtuMsg(const char *msg, int len); // å°†æ¶ˆæ¯åŠ å…¥ DTU å‘é€é˜Ÿåˆ—
+static void processDtuQueue(void);     // å¤„ç† DTU å‘é€é˜Ÿåˆ—ï¼ˆæ¯ç§’å‘ä¸€æ¡ï¼‰
+static void loadConfigFromFlash(void); // ä» Flash åŠ è½½é…ç½® + å†œåœºä¸­å¿ƒåæ ‡
+static void flash_save_all(void);   // æ•´é¡µé‡å†™ï¼šå¯¹æ—¶é…ç½® + å†œåœºä¸­å¿ƒåæ ‡
+static void sendCenterToDtu(void);  // ä¸ŠæŠ¥å†œåœºä¸­å¿ƒåæ ‡ 1|name|lat,lng|
+static int center_coord_valid(double lat, double lng); // ç»çº¬åº¦åˆæ³•æ€§æ ¡éªŒ
+static void parseDtuCommand(char *buf);         // JSON è§£æ DTU ä¸‹å‘æŒ‡ä»¤
+static uint32_t getCurrentTimestamp(void);      // è·å–å½“å‰å®æ—¶æ—¶é—´æˆ³
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour,
-                                    int min, int sec); // ÈÕÆÚ×ªUnixÊ±¼ä´Á
-static uint32_t getConfigIntervalMs(void); // ´Ó configStr ½âÎö¶ÔÊ±¼ä¸ô£¨ºÁÃë£©
-static int twoCharToIndex(const char *str); // 2 ×Ö·û°´ TIME_DICT ½â³É 62 ½øÖÆÖµ
-static int getWorkTimeFromConfig(void);    // È¡ÅäÖÃÀïÖÜÆÚºóµÄ¹¤×÷Ê±¼ä×Ö¶Î²¢½âÂë
+                                    int min, int sec); // æ—¥æœŸè½¬Unixæ—¶é—´æˆ³
+static uint32_t getConfigIntervalMs(void); // ä» configStr è§£æå¯¹æ—¶é—´éš”ï¼ˆæ¯«ç§’ï¼‰
+static int twoCharToIndex(const char *str); // 2 å­—ç¬¦æŒ‰ TIME_DICT è§£æˆ 62 è¿›åˆ¶å€¼
+static int getWorkTimeFromConfig(void);    // å–é…ç½®é‡Œå‘¨æœŸåçš„å·¥ä½œæ—¶é—´å­—æ®µå¹¶è§£ç 
 static uint8_t indexToTimeWindow(int idx, uint8_t *outStart,
-                                uint8_t *outEnd); // idx ×ª¹¤×÷Ê±¼ä´°¿Ú
-static uint8_t workWindowEndAdj(uint8_t end); // ¹¤×÷´°¿Ú½áÊøĞ¡Ê±ĞŞÕı£¨·½°¸C£©
-static uint8_t getWorkClockHour(void);        // ¹¤×÷Ê±ÖÓ£ºÈ¡µ±ÌìĞ¡Ê±(0~23)
-static uint8_t isInWorkWindow(void);          // µ±Ç°ÊÇ·ñ´¦ÓÚ¹¤×÷Çø¼äÄÚ
-static void printWorkTimeDebug(void);      // ´òÓ¡¹¤×÷Ê±¼ä½âÂë¹ı³Ì£¨µ÷ÊÔÓÃ£©
+                                uint8_t *outEnd); // idx è½¬å·¥ä½œæ—¶é—´çª—å£
+static uint8_t workWindowEndAdj(uint8_t end); // å·¥ä½œçª—å£ç»“æŸå°æ—¶ä¿®æ­£ï¼ˆæ–¹æ¡ˆCï¼‰
+static uint8_t getWorkClockHour(void);        // å·¥ä½œæ—¶é’Ÿï¼šå–å½“å¤©å°æ—¶(0~23)
+static uint8_t isInWorkWindow(void);          // å½“å‰æ˜¯å¦å¤„äºå·¥ä½œåŒºé—´å†…
+static void printWorkTimeDebug(void);      // æ‰“å°å·¥ä½œæ—¶é—´è§£ç è¿‡ç¨‹ï¼ˆè°ƒè¯•ç”¨ï¼‰
 static void cachePendingCommand(const char *deviceId, const char *cmd,
-                                const char *val); // »º´æ´ıÖ´ĞĞÖ¸Áî
+                                const char *val); // ç¼“å­˜å¾…æ‰§è¡ŒæŒ‡ä»¤
 static uint8_t
-checkPendingCommand(const char *deviceId); // ¼ì²éÊÇ·ñÓĞ»º´æÖ¸Áî£¬·µ»Ø1=ÓĞ,0=ÎŞ
+checkPendingCommand(const char *deviceId); // æ£€æŸ¥æ˜¯å¦æœ‰ç¼“å­˜æŒ‡ä»¤ï¼Œè¿”å›1=æœ‰,0=æ— 
 static uint8_t sendPendingCommand(
-    const char *deviceId); // ·¢ËÍ»º´æÖ¸Áî²¢Çå³ı£¬·µ»Ø1=ÒÑ·¢ËÍ,0=ÎŞ
+    const char *deviceId); // å‘é€ç¼“å­˜æŒ‡ä»¤å¹¶æ¸…é™¤ï¼Œè¿”å›1=å·²å‘é€,0=æ— 
 
 /* USER CODE END PFP */
 
@@ -255,9 +255,9 @@ static uint8_t sendPendingCommand(
 /* USER CODE BEGIN 0 */
 
 /**
- * @brief  ¸ù¾İĞ¾Æ¬ UID »ñÈ¡Éè±¸±àºÅ
- * @note   ¶ÁÈ¡Ğ¾Æ¬ 96 Î» UID£¬ÔÚ deviceUidList ÖĞ²éÕÒÆ¥ÅäÏî
- * @retval Éè±¸±àºÅ (0-9)£¬Î´ÕÒµ½·µ»Ø -1
+ * @brief  æ ¹æ®èŠ¯ç‰‡ UID è·å–è®¾å¤‡ç¼–å·
+ * @note   è¯»å–èŠ¯ç‰‡ 96 ä½ UIDï¼Œåœ¨ deviceUidList ä¸­æŸ¥æ‰¾åŒ¹é…é¡¹
+ * @retval è®¾å¤‡ç¼–å· (0-9)ï¼Œæœªæ‰¾åˆ°è¿”å› -1
  */
 static int getDeviceIndex(void) {
   uint32_t uid0 = *(volatile uint32_t *)0x1FFFF7E8;
@@ -270,127 +270,127 @@ static int getDeviceIndex(void) {
       return i;
     }
   }
-  return -1; // Î´ÕÒµ½Æ¥ÅäµÄÉè±¸
+  return -1; // æœªæ‰¾åˆ°åŒ¹é…çš„è®¾å¤‡
 }
 
 #ifdef __GNUC__
-// GCC ±àÒëÆ÷Ê¹ÓÃ __io_putchar ÊµÏÖ printf ÖØ¶¨Ïò
+// GCC ç¼–è¯‘å™¨ä½¿ç”¨ __io_putchar å®ç° printf é‡å®šå‘
 #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 #else
-// Keil ARMCC ±àÒëÆ÷Ê¹ÓÃ fputc ÊµÏÖ printf ÖØ¶¨Ïò
+// Keil ARMCC ç¼–è¯‘å™¨ä½¿ç”¨ fputc å®ç° printf é‡å®šå‘
 #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
 #endif
 
 /**
- * @brief  printf µ×²ãÊä³öº¯ÊıÖØ¶¨Ïò
- * @note   ½« printf Êä³öµÄÃ¿¸ö×Ö·ûÍ¨¹ı USART1 ·¢ËÍ³öÈ¥
- * @param  ch: ÒªÊä³öµÄ×Ö·û
- * @retval ·µ»ØÊä³öµÄ×Ö·û
+ * @brief  printf åº•å±‚è¾“å‡ºå‡½æ•°é‡å®šå‘
+ * @note   å°† printf è¾“å‡ºçš„æ¯ä¸ªå­—ç¬¦é€šè¿‡ USART1 å‘é€å‡ºå»
+ * @param  ch: è¦è¾“å‡ºçš„å­—ç¬¦
+ * @retval è¿”å›è¾“å‡ºçš„å­—ç¬¦
  */
 PUTCHAR_PROTOTYPE {
-  // Í¨¹ı USART1 ·¢ËÍµ¥¸ö×Ö·û£¬³¬Ê±Ê±¼ä 0xFFFF
+  // é€šè¿‡ USART1 å‘é€å•ä¸ªå­—ç¬¦ï¼Œè¶…æ—¶æ—¶é—´ 0xFFFF
   HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
   return ch;
 }
 
 /**
- * @brief  ´òÓ¡¹¤³ÌĞÅÏ¢ Logo
- * @note   ÔÚÏµÍ³Æô¶¯Ê±µ÷ÓÃ£¬ÏÔÊ¾¹¤³ÌÃû³Æ¡¢°æ±¾¡¢ÈÕÆÚ¡¢Ó²¼şÅäÖÃµÈĞÅÏ¢
+ * @brief  æ‰“å°å·¥ç¨‹ä¿¡æ¯ Logo
+ * @note   åœ¨ç³»ç»Ÿå¯åŠ¨æ—¶è°ƒç”¨ï¼Œæ˜¾ç¤ºå·¥ç¨‹åç§°ã€ç‰ˆæœ¬ã€æ—¥æœŸã€ç¡¬ä»¶é…ç½®ç­‰ä¿¡æ¯
  */
 static void printf_logo(void) {
   printf("\n\r");
   printf("*************************************************************\r\n");
-  printf("* Project Name  : %s\r\n", EXAMPLE_NAME); // ¹¤³ÌÃû³Æ
-  printf("* Demo Version  : %s\r\n", DEMO_VER);     // °æ±¾ºÅ
-  printf("* Date          : %s\r\n", EXAMPLE_DATE); // ÈÕÆÚ
-  printf("* MCU           : STM32F103C8T6\r\n");    // Ö÷¿ØĞ¾Æ¬
-  printf("* Radio         : PAN3029 (LoRa)\r\n");   // ÉäÆµÄ£¿é
+  printf("* Project Name  : %s\r\n", EXAMPLE_NAME); // å·¥ç¨‹åç§°
+  printf("* Demo Version  : %s\r\n", DEMO_VER);     // ç‰ˆæœ¬å·
+  printf("* Date          : %s\r\n", EXAMPLE_DATE); // æ—¥æœŸ
+  printf("* MCU           : STM32F103C8T6\r\n");    // ä¸»æ§èŠ¯ç‰‡
+  printf("* Radio         : PAN3029 (LoRa)\r\n");   // å°„é¢‘æ¨¡å—
   printf("*************************************************************\r\n");
 }
 
 /**
- * @brief  LoRa ´Ó»ú½ÓÊÕ´¦Àíº¯Êı
- * @note   ¹¦ÄÜËµÃ÷£º
- *         1. ¼ì²é½ÓÊÕÍê³É±êÖ¾£¬ÈôÊÕµ½Êı¾İÔò¶ÁÈ¡ RSSI/SNR/Êı¾İÄÚÈİ
- *         2. ÓëÉÏ´Î½ÓÊÕµÄÊı¾İ¶Ô±È£¬±ê¼ÇÎª [SAME] »ò [DIFF]
- *         3. ´òÓ¡½ÓÊÕĞÅÏ¢£¨ĞÅºÅÇ¿¶È¡¢ĞÅÔë±È¡¢³¤¶È¡¢ÄÚÈİ£©
- *         4. ´¦Àí½ÓÊÕ´íÎó£¨CRC ´íÎó¡¢³¬Ê±£©
- *         5. ÖØĞÂ½øÈëµ¥´Î³¬Ê±½ÓÊÕÄ£Ê½£¨³¬Ê±Ê±¼ä 5-15 Ãë£©
+ * @brief  LoRa ä»æœºæ¥æ”¶å¤„ç†å‡½æ•°
+ * @note   åŠŸèƒ½è¯´æ˜ï¼š
+ *         1. æ£€æŸ¥æ¥æ”¶å®Œæˆæ ‡å¿—ï¼Œè‹¥æ”¶åˆ°æ•°æ®åˆ™è¯»å– RSSI/SNR/æ•°æ®å†…å®¹
+ *         2. ä¸ä¸Šæ¬¡æ¥æ”¶çš„æ•°æ®å¯¹æ¯”ï¼Œæ ‡è®°ä¸º [SAME] æˆ– [DIFF]
+ *         3. æ‰“å°æ¥æ”¶ä¿¡æ¯ï¼ˆä¿¡å·å¼ºåº¦ã€ä¿¡å™ªæ¯”ã€é•¿åº¦ã€å†…å®¹ï¼‰
+ *         4. å¤„ç†æ¥æ”¶é”™è¯¯ï¼ˆCRC é”™è¯¯ã€è¶…æ—¶ï¼‰
+ *         5. é‡æ–°è¿›å…¥å•æ¬¡è¶…æ—¶æ¥æ”¶æ¨¡å¼ï¼ˆè¶…æ—¶æ—¶é—´ 5-15 ç§’ï¼‰
  */
 static void OnSlave(void) {
-  /* LoRa ÉäÆµÒÑ±» lorasw ¹Ø±Õ£º²»´¦ÀíÈÎºÎÉäÆµÊÂ¼ş£¬
-   * ¸ü²»ÄÜÖØĞÂ½øÈë½ÓÊÕ£¨·ñÔò»áÒ»Ö±°ÑË¯ÏÂÈ¥µÄÉäÆµ»½ĞÑ£¬°×ºÄµç£© */
+  /* LoRa å°„é¢‘å·²è¢« lorasw å…³é—­ï¼šä¸å¤„ç†ä»»ä½•å°„é¢‘äº‹ä»¶ï¼Œ
+   * æ›´ä¸èƒ½é‡æ–°è¿›å…¥æ¥æ”¶ï¼ˆå¦åˆ™ä¼šä¸€ç›´æŠŠç¡ä¸‹å»çš„å°„é¢‘å”¤é†’ï¼Œç™½è€—ç”µï¼‰ */
   if (!loraSwOn) {
     return;
   }
 
-  // ¼ì²éÊÇ·ñ½ÓÊÕÍê³É
+  // æ£€æŸ¥æ˜¯å¦æ¥æ”¶å®Œæˆ
   if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) {
-    uint8_t local_buf[RX_LEN]; // ±¾µØ½ÓÊÕ»º³åÇø
-    uint8_t local_size;        // ½ÓÊÕÊı¾İ³¤¶È
-    uint8_t local_rssi;        // ½ÓÊÕĞÅºÅÇ¿¶ÈÖ¸Ê¾ (¼Ä´æÆ÷Ô­Ê¼Öµ£¬Ğè¼õ256µÃdBm)
-    float local_snr;           // ĞÅÔë±È (dB)
-    uint8_t is_same = 0;       // Êı¾İÖØ¸´±êÖ¾
+    uint8_t local_buf[RX_LEN]; // æœ¬åœ°æ¥æ”¶ç¼“å†²åŒº
+    uint8_t local_size;        // æ¥æ”¶æ•°æ®é•¿åº¦
+    uint8_t local_rssi;        // æ¥æ”¶ä¿¡å·å¼ºåº¦æŒ‡ç¤º (å¯„å­˜å™¨åŸå§‹å€¼ï¼Œéœ€å‡256å¾—dBm)
+    float local_snr;           // ä¿¡å™ªæ¯” (dB)
+    uint8_t is_same = 0;       // æ•°æ®é‡å¤æ ‡å¿—
 
-    // ÁÙ½çÇø±£»¤£º¹ØÖĞ¶Ï£¬¿ìËÙ¶ÁÈ¡½ÓÊÕÊı¾İ
+    // ä¸´ç•ŒåŒºä¿æŠ¤ï¼šå…³ä¸­æ–­ï¼Œå¿«é€Ÿè¯»å–æ¥æ”¶æ•°æ®
     __disable_irq();
-    rf_set_recv_flag(RADIO_FLAG_IDLE); // Çå³ı½ÓÊÕÍê³É±êÖ¾
-    local_rssi = RxDoneParams.Rssi;    // ¶ÁÈ¡ RSSI
-    local_snr = RxDoneParams.Snr;      // ¶ÁÈ¡ SNR
-    local_size = RxDoneParams.Size;    // ¶ÁÈ¡Êı¾İ³¤¶È
+    rf_set_recv_flag(RADIO_FLAG_IDLE); // æ¸…é™¤æ¥æ”¶å®Œæˆæ ‡å¿—
+    local_rssi = RxDoneParams.Rssi;    // è¯»å– RSSI
+    local_snr = RxDoneParams.Snr;      // è¯»å– SNR
+    local_size = RxDoneParams.Size;    // è¯»å–æ•°æ®é•¿åº¦
     if (local_size > RX_LEN)
-      local_size = RX_LEN; // ·ÀÖ¹»º³åÇøÒç³ö
+      local_size = RX_LEN; // é˜²æ­¢ç¼“å†²åŒºæº¢å‡º
     for (uint8_t i = 0; i < local_size; i++)
-      local_buf[i] = RxDoneParams.Payload[i]; // ¿½±´Êı¾İµ½±¾µØ»º³åÇø
-    __enable_irq();                           // ¿ªÖĞ¶Ï
+      local_buf[i] = RxDoneParams.Payload[i]; // æ‹·è´æ•°æ®åˆ°æœ¬åœ°ç¼“å†²åŒº
+    __enable_irq();                           // å¼€ä¸­æ–­
 
-    /* ÓëÉÏ´Î½ÓÊÕµÄÊı¾İ¶Ô±È£¬ÅĞ¶ÏÊÇ·ñÖØ¸´ */
+    /* ä¸ä¸Šæ¬¡æ¥æ”¶çš„æ•°æ®å¯¹æ¯”ï¼Œåˆ¤æ–­æ˜¯å¦é‡å¤ */
     if (local_size == prev_rx_size && prev_rx_size > 0) {
-      is_same = 1; // ¼ÙÉèÏàÍ¬
+      is_same = 1; // å‡è®¾ç›¸åŒ
       for (uint8_t i = 0; i < local_size; i++) {
         if (local_buf[i] != prev_rx_buf[i]) {
-          is_same = 0; // ·¢ÏÖ²»Í¬£¬±ê¼ÇÎª²»Í¬
+          is_same = 0; // å‘ç°ä¸åŒï¼Œæ ‡è®°ä¸ºä¸åŒ
           break;
         }
       }
     }
 
-    // ´òÓ¡½ÓÊÕĞÅÏ¢
+    // æ‰“å°æ¥æ”¶ä¿¡æ¯
     printf("Rssi: %d  ",
-           local_rssi - 256);          // RSSI Öµ£¨Ğè¼õÈ¥ 256 µÃµ½Êµ¼Ê dBm£©
-    printf("Snr: %.1f   ", local_snr); // SNR Öµ£¨dB£©
-    printf("Len: %d  ", local_size);   // Êı¾İ³¤¶È
+           local_rssi - 256);          // RSSI å€¼ï¼ˆéœ€å‡å» 256 å¾—åˆ°å®é™… dBmï¼‰
+    printf("Snr: %.1f   ", local_snr); // SNR å€¼ï¼ˆdBï¼‰
+    printf("Len: %d  ", local_size);   // æ•°æ®é•¿åº¦
     printf("Str: ");
     for (uint8_t i = 0; i < local_size; i++) {
       if (local_buf[i] == 0)
-        break;                    // Óöµ½×Ö·û´®½áÊø·ûÍ£Ö¹
-      printf("%c", local_buf[i]); // ´òÓ¡×Ö·û
+        break;                    // é‡åˆ°å­—ç¬¦ä¸²ç»“æŸç¬¦åœæ­¢
+      printf("%c", local_buf[i]); // æ‰“å°å­—ç¬¦
     }
     if (is_same)
-      printf("  [SAME]"); // ±ê¼ÇÎªÖØ¸´Êı¾İ
+      printf("  [SAME]"); // æ ‡è®°ä¸ºé‡å¤æ•°æ®
     else
-      printf("  [DIFF]"); // ±ê¼ÇÎªĞÂÊı¾İ
+      printf("  [DIFF]"); // æ ‡è®°ä¸ºæ–°æ•°æ®
     printf("\r\n");
 
-    /* ±£´æµ±Ç°Êı¾İ×÷ÎªÉÏ´ÎÊı¾İ£¬ÓÃÓÚÏÂ´Î¶Ô±È */
+    /* ä¿å­˜å½“å‰æ•°æ®ä½œä¸ºä¸Šæ¬¡æ•°æ®ï¼Œç”¨äºä¸‹æ¬¡å¯¹æ¯” */
     prev_rx_size = local_size;
     for (uint8_t i = 0; i < local_size; i++)
       prev_rx_buf[i] = local_buf[i];
 
-    /* PB15 (LED1) µãÁÁ£¬Ö¸Ê¾ÊÕµ½LoRaÊı¾İ£¬500msºóÓÉÖ÷Ñ­»·Ï¨Ãğ */
+    /* PB15 (LED1) ç‚¹äº®ï¼ŒæŒ‡ç¤ºæ”¶åˆ°LoRaæ•°æ®ï¼Œ500msåç”±ä¸»å¾ªç¯ç†„ç­ */
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
     led1OnTick = HAL_GetTick();
     led1On = 1;
 
-    /* ½âÎöÏûÏ¢ÀàĞÍ²¢´¦ÀíÉÏ±¨ */
+    /* è§£ææ¶ˆæ¯ç±»å‹å¹¶å¤„ç†ä¸ŠæŠ¥ */
     if (local_size < RX_LEN)
       local_buf[local_size] = '\0';
     int msgType = atoi((char *)local_buf);
     printf("[LoRa] MsgType: %d\r\n", msgType);
 
     if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_UP_GPS|| msgType == MSG_TYPE_TIME) {
-      /* ´Ó LoRa Êı¾İÖĞÌáÈ¡ deviceId£¨µÚ¶ş¸ö |
-       * ·Ö¸ô×Ö¶Î£©£¬¼ì²éÊÇ·ñÓĞ»º´æµÄ´ıÖ´ĞĞÖ¸Áî */
+      /* ä» LoRa æ•°æ®ä¸­æå– deviceIdï¼ˆç¬¬äºŒä¸ª |
+       * åˆ†éš”å­—æ®µï¼‰ï¼Œæ£€æŸ¥æ˜¯å¦æœ‰ç¼“å­˜çš„å¾…æ‰§è¡ŒæŒ‡ä»¤ */
       uint8_t hasPendingCmd = 0;
       char loraDevId[32] = {0};
       const char *p1 = strchr((char *)local_buf, '|');
@@ -408,38 +408,38 @@ static void OnSlave(void) {
       char reportBuf[RX_LEN];
 
       if (msgType == MSG_TYPE_TIME) {
-        // µ÷ÓÃ common º¯ÊıÌæ»»Ê±¼ä×Ö¶Î£¨½öÓÃÓÚÉÏ±¨ DTU£©
+        // è°ƒç”¨ common å‡½æ•°æ›¿æ¢æ—¶é—´å­—æ®µï¼ˆä»…ç”¨äºä¸ŠæŠ¥ DTUï¼‰
         int ret = common_replaceTimeSegment((char *)local_buf, reportBuf,
                                             sizeof(reportBuf),
                                             getCurrentTimestamp(), NULL);
         if (ret == 0) {
-          printf("[LoRa ½ÓÊÕ] : %s\r\n", reportBuf);
+          printf("[LoRa æ¥æ”¶] : %s\r\n", reportBuf);
           sendToDtu(reportBuf, local_rssi - 256, (int)local_snr);
         } else {
           sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
         }
       } else {
-        // MSG_TYPE_GPS: Ö±½ÓÉÏ±¨Ô­Ê¼Êı¾İ
+        // MSG_TYPE_GPS: ç›´æ¥ä¸ŠæŠ¥åŸå§‹æ•°æ®
         sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
       }
 		  if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
 
-				/* Í³Ò»ÑÓÊ±ºóÏÂ·¢£ºÓĞ»º´æÖ¸ÁîÔòÏÂ·¢Ö¸Áî£¬·ñÔò¼ì²é gpstm ÖĞ¼Ì»ò¶ÔÊ± */
+				/* ç»Ÿä¸€å»¶æ—¶åä¸‹å‘ï¼šæœ‰ç¼“å­˜æŒ‡ä»¤åˆ™ä¸‹å‘æŒ‡ä»¤ï¼Œå¦åˆ™æ£€æŸ¥ gpstm ä¸­ç»§æˆ–å¯¹æ—¶ */
 				HAL_Delay(LORA_TX_DELAY_MS);
 
 				if (hasPendingCmd) {
 					sendPendingCommand(loraDevId);
 				} else if (gpstmActive && (HAL_GetTick() - gpstmRecvTick) <
 																			gpstmTimeoutMin * 60 * 1000) {
-					/* gpstm ÖĞ¼ÌÓĞĞ§£ºÔÚÓĞĞ§ÆÚÄÚ£¬ÈÎÒâÉè±¸ÉÏ±¨Ê±ÏÂ·¢ upgps Ö¸Áî */
+					/* gpstm ä¸­ç»§æœ‰æ•ˆï¼šåœ¨æœ‰æ•ˆæœŸå†…ï¼Œä»»æ„è®¾å¤‡ä¸ŠæŠ¥æ—¶ä¸‹å‘ upgps æŒ‡ä»¤ */
 					char txData[64];
 					int txLen = snprintf(txData, sizeof(txData), "%d|%s|upgps|0",
 															 MSG_TYPE_COM, loraDevId);
 					uint32_t tx_time = 0;
 					rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-					printf("[LoRa gpstm ÖĞ¼Ì] %s\r\n", txData);
+					printf("[LoRa gpstm ä¸­ç»§] %s\r\n", txData);
 
-					/* µÈ´ı·¢ËÍÍê³É */
+					/* ç­‰å¾…å‘é€å®Œæˆ */
 					uint32_t waitStart = HAL_GetTick();
 					while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
 						if (HAL_GetTick() - waitStart > 3000)
@@ -447,128 +447,128 @@ static void OnSlave(void) {
 					}
 					rf_set_transmit_flag(RADIO_FLAG_IDLE);
 				} else {
-					// ¹¹ÔìÏÂ·¢Êı¾İ: 4|deviceName|timestamp| £¨Ê¹ÓÃ STM32 ÊµÊ±Ê±¼ä´Á£©
+					// æ„é€ ä¸‹å‘æ•°æ®: 4|deviceName|timestamp| ï¼ˆä½¿ç”¨ STM32 å®æ—¶æ—¶é—´æˆ³ï¼‰
 					char txData[64];
 					int txLen =
 							snprintf(txData, sizeof(txData), "%d|%lu|%s", MSG_TYPE_SYN_TIME,
 											 (unsigned long)getCurrentTimestamp(), deviceName);
 
-					// ·¢ËÍ LoRa Êı¾İ
+					// å‘é€ LoRa æ•°æ®
 					uint32_t tx_time = 0;
 					rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-					printf("[LoRa ÏÂ·¢¶ÔÊ±] %s\r\n", txData);
+					printf("[LoRa ä¸‹å‘å¯¹æ—¶] %s\r\n", txData);
 
-					// µÈ´ı·¢ËÍÍê³É
+					// ç­‰å¾…å‘é€å®Œæˆ
 					uint32_t waitStart = HAL_GetTick();
 					while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
 						if (HAL_GetTick() - waitStart > 3000)
-							break; // 3Ãë³¬Ê±±£»¤
+							break; // 3ç§’è¶…æ—¶ä¿æŠ¤
 					}
 					rf_set_transmit_flag(RADIO_FLAG_IDLE);
 				}
 			}
 		}
 
-    /* MSG_TYPE_CONFIG: Ö±½ÓÉÏ±¨Ô­Ê¼Êı¾İ£¬²»¶ÔÊ± */
+    /* MSG_TYPE_CONFIG: ç›´æ¥ä¸ŠæŠ¥åŸå§‹æ•°æ®ï¼Œä¸å¯¹æ—¶ */
     if (msgType == MSG_TYPE_CONFIG) {
       sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
     }
 
-    rf_enter_single_timeout_rx(15000); // ÖØĞÂ½øÈë½ÓÊÕÄ£Ê½£¬³¬Ê± 15 Ãë
+    rf_enter_single_timeout_rx(15000); // é‡æ–°è¿›å…¥æ¥æ”¶æ¨¡å¼ï¼Œè¶…æ—¶ 15 ç§’
   }
 
-  // ´¦Àí CRC Ğ£Ñé´íÎó
+  // å¤„ç† CRC æ ¡éªŒé”™è¯¯
   if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
     printf("crc error\r\n");
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    rf_enter_single_timeout_rx(5000); // ÖØĞÂ½øÈë½ÓÊÕÄ£Ê½£¬³¬Ê± 5 Ãë
+    rf_enter_single_timeout_rx(5000); // é‡æ–°è¿›å…¥æ¥æ”¶æ¨¡å¼ï¼Œè¶…æ—¶ 5 ç§’
   }
 
-  // ´¦Àí½ÓÊÕ³¬Ê±
+  // å¤„ç†æ¥æ”¶è¶…æ—¶
   if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
     printf(".");
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    rf_enter_single_timeout_rx(5000); // ÖØĞÂ½øÈë½ÓÊÕÄ£Ê½£¬³¬Ê± 5 Ãë
+    rf_enter_single_timeout_rx(5000); // é‡æ–°è¿›å…¥æ¥æ”¶æ¨¡å¼ï¼Œè¶…æ—¶ 5 ç§’
   }
 }
 
 /**
- * @brief  ÇĞ»»µ½½ÓÊÕÄ£Ê½
- * @note   ¹¦ÄÜËµÃ÷£º
- *         1. ÉèÖÃ¹¤×÷Ä£Ê½Îª MODE_RX
- *         2. ¹Ø±Õ LED1£¨½ÓÊÕÄ£Ê½ÏÂ LED1 ÒÔ 500ms ¼ä¸ôÉÁË¸£©
- *         3. ´òÓ¡Ä£Ê½ÇĞ»»ĞÅÏ¢
- *         4. ½øÈëµ¥´Î³¬Ê±½ÓÊÕÄ£Ê½£¬³¬Ê±Ê±¼ä 5 Ãë
+ * @brief  åˆ‡æ¢åˆ°æ¥æ”¶æ¨¡å¼
+ * @note   åŠŸèƒ½è¯´æ˜ï¼š
+ *         1. è®¾ç½®å·¥ä½œæ¨¡å¼ä¸º MODE_RX
+ *         2. å…³é—­ LED1ï¼ˆæ¥æ”¶æ¨¡å¼ä¸‹ LED1 ä»¥ 500ms é—´éš”é—ªçƒï¼‰
+ *         3. æ‰“å°æ¨¡å¼åˆ‡æ¢ä¿¡æ¯
+ *         4. è¿›å…¥å•æ¬¡è¶…æ—¶æ¥æ”¶æ¨¡å¼ï¼Œè¶…æ—¶æ—¶é—´ 5 ç§’
  */
 static void enter_rx_mode(void) {
-  workMode = MODE_RX; // ÉèÖÃ¹¤×÷Ä£Ê½Îª½ÓÊÕ
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // ¹Ø±Õ LED1
-  led1On = 0; // Í¬²½ LED1 ×´Ì¬±äÁ¿
+  workMode = MODE_RX; // è®¾ç½®å·¥ä½œæ¨¡å¼ä¸ºæ¥æ”¶
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // å…³é—­ LED1
+  led1On = 0; // åŒæ­¥ LED1 çŠ¶æ€å˜é‡
   printf("\r\n>> Switch to RX mode\r\n");
-  rf_enter_single_timeout_rx(5000); // ½øÈë½ÓÊÕÄ£Ê½£¬³¬Ê± 5 Ãë
+  rf_enter_single_timeout_rx(5000); // è¿›å…¥æ¥æ”¶æ¨¡å¼ï¼Œè¶…æ—¶ 5 ç§’
 }
 
 /* =====================================================================
- * @brief  ¹Ø±Õ LoRa ÉäÆµ£¬½øÈëÉî¶ÈĞİÃß
- * @note   Ö»¹Ø LoRa Ğ¾Æ¬£¬MCU Óë 4G/DTU ¼ÌĞøÔËĞĞ£¬
- *         Òò´ËÔÆ¶ËÈÔ¿É¾­ 4G ÏÂ·¢ lorasw|1 Ô¶³Ì»½ĞÑ
- * @warning 4G/DTU ±ØĞëÊ¼ÖÕ±£³Ö¹¤×÷£¬²»µÃÔÚ´Ë¼ÓÈëÈÎºÎ 4G ĞİÃß/¶Ïµç¶¯×÷£¡
- *          ·ñÔòÖĞ¼ÌÒ»µ©±» lorasw|0 ¹Øµô£¬¾ÍÔÙÒ²ÊÕ²»µ½»½ĞÑÖ¸Áî£¬Ö»ÄÜÏÖ³¡¶Ïµç
- *          4G µÄÖÜÆÚÈÎÎñ£¨CSQ/nettime ²éÑ¯¡¢processDtuQueue¡¢parseDtuCommand£©
- *          ¶¼ÅÜÔÚÖ÷Ñ­»·Àï£¬²»ÔÚ±»ÃÅ½ûµ²×¡µÄ OnSlave() ÄÚ£¬ĞİÃßÆÚ¼äÕÕ³£ÔËĞĞ
+ * @brief  å…³é—­ LoRa å°„é¢‘ï¼Œè¿›å…¥æ·±åº¦ä¼‘çœ 
+ * @note   åªå…³ LoRa èŠ¯ç‰‡ï¼ŒMCU ä¸ 4G/DTU ç»§ç»­è¿è¡Œï¼Œ
+ *         å› æ­¤äº‘ç«¯ä»å¯ç» 4G ä¸‹å‘ lorasw|1 è¿œç¨‹å”¤é†’
+ * @warning 4G/DTU å¿…é¡»å§‹ç»ˆä¿æŒå·¥ä½œï¼Œä¸å¾—åœ¨æ­¤åŠ å…¥ä»»ä½• 4G ä¼‘çœ /æ–­ç”µåŠ¨ä½œï¼
+ *          å¦åˆ™ä¸­ç»§ä¸€æ—¦è¢« lorasw|0 å…³æ‰ï¼Œå°±å†ä¹Ÿæ”¶ä¸åˆ°å”¤é†’æŒ‡ä»¤ï¼Œåªèƒ½ç°åœºæ–­ç”µ
+ *          4G çš„å‘¨æœŸä»»åŠ¡ï¼ˆCSQ/nettime æŸ¥è¯¢ã€processDtuQueueã€parseDtuCommandï¼‰
+ *          éƒ½è·‘åœ¨ä¸»å¾ªç¯é‡Œï¼Œä¸åœ¨è¢«é—¨ç¦æŒ¡ä½çš„ OnSlave() å†…ï¼Œä¼‘çœ æœŸé—´ç…§å¸¸è¿è¡Œ
  * ===================================================================== */
 static void lora_rf_sleep(void) {
   rf_deepsleep();
   loraSwOn = 0;
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // ¹Ø±Õ LED1
+  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // å…³é—­ LED1
   led1On = 0;
-  printf("[LoRa¿ª¹Ø] ÉäÆµÒÑ¹Ø±Õ(Éî¶ÈĞİÃß), MCUÓë4GÈÔ¹¤×÷\r\n");
+  printf("[LoRaå¼€å…³] å°„é¢‘å·²å…³é—­(æ·±åº¦ä¼‘çœ ), MCUä¸4Gä»å·¥ä½œ\r\n");
 }
 
 /* =====================================================================
- * @brief  »½ĞÑ LoRa ÉäÆµ£¬»Ö¸´½ÓÊÕ
- * @note   PAN3029 Éî¶ÈĞİÃßºó¼Ä´æÆ÷µôµç£¬±ØĞëÖØĞÂ rf_init + »Ö¸´²ÎÊı£¬
- *         ²»ÄÜÖ±½Ó rf_enter_single_timeout_rx
- * @retval 1=»½ĞÑ³É¹¦, 0=»½ĞÑÊ§°Ü
+ * @brief  å”¤é†’ LoRa å°„é¢‘ï¼Œæ¢å¤æ¥æ”¶
+ * @note   PAN3029 æ·±åº¦ä¼‘çœ åå¯„å­˜å™¨æ‰ç”µï¼Œå¿…é¡»é‡æ–° rf_init + æ¢å¤å‚æ•°ï¼Œ
+ *         ä¸èƒ½ç›´æ¥ rf_enter_single_timeout_rx
+ * @retval 1=å”¤é†’æˆåŠŸ, 0=å”¤é†’å¤±è´¥
  * ===================================================================== */
 static uint8_t lora_rf_wake(void) {
   int retry = 0;
 
-  /* Óë¿ª»ú³õÊ¼»¯Ò»ÖÂ£ºÏÈÈ·±£ RST Îª¸ß£¬Ê§°ÜÔò¸´Î»ºóÖØÊÔÒ»´Î */
+  /* ä¸å¼€æœºåˆå§‹åŒ–ä¸€è‡´ï¼šå…ˆç¡®ä¿ RST ä¸ºé«˜ï¼Œå¤±è´¥åˆ™å¤ä½åé‡è¯•ä¸€æ¬¡ */
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
   HAL_Delay(100);
 
   while (rf_init() != RF_OK) {
     if (retry >= 2) {
-      printf("[LoRa¿ª¹Ø] ÉäÆµ»½ĞÑÊ§°Ü, Çë¼ì²é½ÓÏß\r\n");
+      printf("[LoRaå¼€å…³] å°„é¢‘å”¤é†’å¤±è´¥, è¯·æ£€æŸ¥æ¥çº¿\r\n");
       return 0;
     }
     retry++;
-    printf("[LoRa¿ª¹Ø] ³õÊ¼»¯Ê§°Ü, RST¸´Î»ºóÖØÊÔ(%d)\r\n", retry);
+    printf("[LoRaå¼€å…³] åˆå§‹åŒ–å¤±è´¥, RSTå¤ä½åé‡è¯•(%d)\r\n", retry);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
     HAL_Delay(100);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
     HAL_Delay(100);
   }
 
-  rf_set_default_para();          // »Ö¸´ÆµÂÊ/SF/BW/¹¦ÂÊµÈ²ÎÊı
-  rf_enter_single_timeout_rx(5000); // Á¢¼´½øÈë½ÓÊÕ
+  rf_set_default_para();          // æ¢å¤é¢‘ç‡/SF/BW/åŠŸç‡ç­‰å‚æ•°
+  rf_enter_single_timeout_rx(5000); // ç«‹å³è¿›å…¥æ¥æ”¶
   loraSwOn = 1;
-  printf("[LoRa¿ª¹Ø] ÉäÆµÒÑ¿ªÆô, »Ö¸´½ÓÊÕ\r\n");
+  printf("[LoRaå¼€å…³] å°„é¢‘å·²å¼€å¯, æ¢å¤æ¥æ”¶\r\n");
   return 1;
 }
 
-/* do_tx_send()£¨Ã¿ 3 Ãë·¢ "I LOVE YOU" µÄ²âÊÔ·¢Éä£©ÒÑÉ¾³ı
- * Ô­Òò£ºËüÖ»ÓÉ MODE_TX ´¥·¢£¬¶ø½øÈë MODE_TX µÄÎ¨Ò»Í¾¾¶ÊÇ°´¼ü K2£¬
- *       K2 ÒÆ³ıºó¸ÃÄ£Ê½ÔÙÎŞÈÎºÎÈë¿Ú£¬Õû¸öº¯ÊıÓë txMsg / lastTxTick /
- *       MODE_TX ¾ù³ÉËÀ´úÂë£¬Ò»²¢ÒÆ³ı
- * »Ö¸´·½·¨£º²¹»Ø±¾º¯ÊıÓë txMsg / lastTxTick£¬ÔÚÖ÷Ñ­»· switch Àï²¹
- *       case MODE_TX£¬²¢Áí¸øÒ»¸öÇĞ»»µ½ MODE_TX µÄ´¥·¢Ô´ */
+/* do_tx_send()ï¼ˆæ¯ 3 ç§’å‘ "I LOVE YOU" çš„æµ‹è¯•å‘å°„ï¼‰å·²åˆ é™¤
+ * åŸå› ï¼šå®ƒåªç”± MODE_TX è§¦å‘ï¼Œè€Œè¿›å…¥ MODE_TX çš„å”¯ä¸€é€”å¾„æ˜¯æŒ‰é”® K2ï¼Œ
+ *       K2 ç§»é™¤åè¯¥æ¨¡å¼å†æ— ä»»ä½•å…¥å£ï¼Œæ•´ä¸ªå‡½æ•°ä¸ txMsg / lastTxTick /
+ *       MODE_TX å‡æˆæ­»ä»£ç ï¼Œä¸€å¹¶ç§»é™¤
+ * æ¢å¤æ–¹æ³•ï¼šè¡¥å›æœ¬å‡½æ•°ä¸ txMsg / lastTxTickï¼Œåœ¨ä¸»å¾ªç¯ switch é‡Œè¡¥
+ *       case MODE_TXï¼Œå¹¶å¦ç»™ä¸€ä¸ªåˆ‡æ¢åˆ° MODE_TX çš„è§¦å‘æº */
 
 /**
- * @brief  ½«ÈÕÆÚÊ±¼ä×ª»»Îª Unix Ê±¼ä´Á£¨Ãë£©
- * @note   »ùÓÚ 1970-01-01 00:00:00 UTC£¬²»¿¼ÂÇÊ±Çø
+ * @brief  å°†æ—¥æœŸæ—¶é—´è½¬æ¢ä¸º Unix æ—¶é—´æˆ³ï¼ˆç§’ï¼‰
+ * @note   åŸºäº 1970-01-01 00:00:00 UTCï¼Œä¸è€ƒè™‘æ—¶åŒº
  */
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour,
                                     int min, int sec) {
@@ -577,7 +577,7 @@ static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour,
   uint32_t days, timestamp;
   int y;
 
-  // ¼ÆËã´Ó 1970-01-01 µ½Ö¸¶¨ÈÕÆÚµÄÌìÊı
+  // è®¡ç®—ä» 1970-01-01 åˆ°æŒ‡å®šæ—¥æœŸçš„å¤©æ•°
   y = year - 1;
   days = (uint32_t)(year - 1970) * 365 + (y / 4 - y / 100 + y / 400) -
          (1969 / 4 - 1969 / 100 + 1969 / 400) + daysBeforeMonth[month] + day -
@@ -590,10 +590,10 @@ static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour,
 }
 
 /**
- * @brief  ´Ó configStr ½âÎö¶ÔÊ±¼ä¸ô£¨ºÁÃë£©
- * @note   configStr ¸ñÊ½Èç "30,0M"£¬È¡¶ººÅÇ°µÄÊı×Ö×÷Îª·ÖÖÓÊı
- *         ÏŞÖÆ·¶Î§£º5~60 ·ÖÖÓ£¬³¬³öÔò°´±ß½çÖµ´¦Àí
- * @retval ¼ä¸ôÊ±¼ä£¨ºÁÃë£©
+ * @brief  ä» configStr è§£æå¯¹æ—¶é—´éš”ï¼ˆæ¯«ç§’ï¼‰
+ * @note   configStr æ ¼å¼å¦‚ "30,0M"ï¼Œå–é€—å·å‰çš„æ•°å­—ä½œä¸ºåˆ†é’Ÿæ•°
+ *         é™åˆ¶èŒƒå›´ï¼š5~60 åˆ†é’Ÿï¼Œè¶…å‡ºåˆ™æŒ‰è¾¹ç•Œå€¼å¤„ç†
+ * @retval é—´éš”æ—¶é—´ï¼ˆæ¯«ç§’ï¼‰
  */
 static uint32_t getConfigIntervalMs(void) {
   int minutes = atoi(configStr);
@@ -605,10 +605,10 @@ static uint32_t getConfigIntervalMs(void) {
 }
 
 /* =====================================================================
- * @brief  °Ñ 2 ¸ö×Ö·û°´ TIME_DICT ½â³É 62 ½øÖÆÊıÖµ
- * @note   ÓëÔÆ¶Ë twoCharToIndex() Ëã·¨Ò»ÖÂ£º¸ßÎ» * 62 + µÍÎ»
- * @param  str: Ç¡ºÃ 2 ¸ö×Ö·ûµÄ×Ö·û´®£¨³¤¶È²»ÊÇ 2 Ö±½Ó·µ»Ø -1£©
- * @retval 0 ~ 3843 = ½âÂë½á¹û, -1 = ²ÎÊı·Ç·¨»ò×Ö·û²»ÔÚ×ÖµäÄÚ
+ * @brief  æŠŠ 2 ä¸ªå­—ç¬¦æŒ‰ TIME_DICT è§£æˆ 62 è¿›åˆ¶æ•°å€¼
+ * @note   ä¸äº‘ç«¯ twoCharToIndex() ç®—æ³•ä¸€è‡´ï¼šé«˜ä½ * 62 + ä½ä½
+ * @param  str: æ°å¥½ 2 ä¸ªå­—ç¬¦çš„å­—ç¬¦ä¸²ï¼ˆé•¿åº¦ä¸æ˜¯ 2 ç›´æ¥è¿”å› -1ï¼‰
+ * @retval 0 ~ 3843 = è§£ç ç»“æœ, -1 = å‚æ•°éæ³•æˆ–å­—ç¬¦ä¸åœ¨å­—å…¸å†…
  * ===================================================================== */
 static int twoCharToIndex(const char *str) {
   const char *p0;
@@ -629,15 +629,15 @@ static int twoCharToIndex(const char *str) {
 }
 
 /* =====================================================================
- * @brief  °Ñ idx »»Ëã³ÉÒ»ÌìÀïµÄ¹¤×÷Ê±¼ä´°¿Ú£¨Ğ¡Ê±¼¶£¬×îĞ¡¼ä¸ô 1 Ğ¡Ê±£©
- * @note   Ã¶¾Ù¹æÔò£ºÆğÊ¼Ğ¡Ê± s = 0~22£¬Ã¿¸ö s ¶ÔÓ¦ (23-s) ¸ö´°¿Ú£¬
- *         ×Ü¼Æ 23+22+...+1 = 276 ¸ö£¬¹Ê idx ºÏ·¨·¶Î§½ö 0~275
- *         Ó³Éä: outStart = s, outEnd = s + 1 + (idx - ¸Ã s Ö®Ç°µÄÀÛ¼Æ)
- * @warning ²»Ö§³Ö¿çÁãµã£¨Èç 22:00~06:00£©£¬ÒòÎªËã·¨±£Ö¤ outEnd > outStart
+ * @brief  æŠŠ idx æ¢ç®—æˆä¸€å¤©é‡Œçš„å·¥ä½œæ—¶é—´çª—å£ï¼ˆå°æ—¶çº§ï¼Œæœ€å°é—´éš” 1 å°æ—¶ï¼‰
+ * @note   æšä¸¾è§„åˆ™ï¼šèµ·å§‹å°æ—¶ s = 0~22ï¼Œæ¯ä¸ª s å¯¹åº” (23-s) ä¸ªçª—å£ï¼Œ
+ *         æ€»è®¡ 23+22+...+1 = 276 ä¸ªï¼Œæ•… idx åˆæ³•èŒƒå›´ä»… 0~275
+ *         æ˜ å°„: outStart = s, outEnd = s + 1 + (idx - è¯¥ s ä¹‹å‰çš„ç´¯è®¡)
+ * @warning ä¸æ”¯æŒè·¨é›¶ç‚¹ï¼ˆå¦‚ 22:00~06:00ï¼‰ï¼Œå› ä¸ºç®—æ³•ä¿è¯ outEnd > outStart
  * @param  idx:      0~275
- * @param  outStart: ´«³öÆğÊ¼Ğ¡Ê± 0~22
- * @param  outEnd:   ´«³ö½áÊøĞ¡Ê± 1~23£¨Çø¼äÎª [start, end) £©
- * @retval 1=»»Ëã³É¹¦, 0=idx ·Ç·¨£¨<0 »ò >275£©
+ * @param  outStart: ä¼ å‡ºèµ·å§‹å°æ—¶ 0~22
+ * @param  outEnd:   ä¼ å‡ºç»“æŸå°æ—¶ 1~23ï¼ˆåŒºé—´ä¸º [start, end) ï¼‰
+ * @retval 1=æ¢ç®—æˆåŠŸ, 0=idx éæ³•ï¼ˆ<0 æˆ– >275ï¼‰
  * ===================================================================== */
 static uint8_t indexToTimeWindow(int idx, uint8_t *outStart, uint8_t *outEnd) {
   int sum = 0;
@@ -664,27 +664,27 @@ static uint8_t indexToTimeWindow(int idx, uint8_t *outStart, uint8_t *outEnd) {
 }
 
 /* =====================================================================
- * @brief  ¹¤×÷´°¿Ú½áÊøĞ¡Ê±µÄĞŞÕı£¨·½°¸ C£©
- * @note   ´°¿ÚÍ³Ò»°´×ó±ÕÓÒ¿ª [start, end) Àí½â£¬
- *         µ«±àÂëÄÜ±í´ïµÄ×î´ó end Ö»ÓĞ 23£¬ÄÇÑù [0,23] Ö»¸²¸Çµ½ 22:59¡£
- *         ¹ÊÌØÀı£ºend==23 Ê±°´ 24 Ëã£¬Ê¹ [0,23] ±íÊ¾ÕûÌì 00:00~23:59
- *         ÆäÓà´°¿Ú²»ÊÜÓ°Ïì£¬[0,17] ÈÔÊÇ 00:00~17:00
- * @warning ÏÔÊ¾Óë"½«À´ÅĞ¶ÏÊÇ·ñ¹¤×÷"±ØĞë¹²ÓÃÕâÒ»¸öº¯Êı£¬
- *          ·ñÔò´®¿Ú¿´µ½µÄºÍÊµ¼ÊĞĞÎª»á¶Ô²»ÉÏ
+ * @brief  å·¥ä½œçª—å£ç»“æŸå°æ—¶çš„ä¿®æ­£ï¼ˆæ–¹æ¡ˆ Cï¼‰
+ * @note   çª—å£ç»Ÿä¸€æŒ‰å·¦é—­å³å¼€ [start, end) ç†è§£ï¼Œ
+ *         ä½†ç¼–ç èƒ½è¡¨è¾¾çš„æœ€å¤§ end åªæœ‰ 23ï¼Œé‚£æ · [0,23] åªè¦†ç›–åˆ° 22:59ã€‚
+ *         æ•…ç‰¹ä¾‹ï¼šend==23 æ—¶æŒ‰ 24 ç®—ï¼Œä½¿ [0,23] è¡¨ç¤ºæ•´å¤© 00:00~23:59
+ *         å…¶ä½™çª—å£ä¸å—å½±å“ï¼Œ[0,17] ä»æ˜¯ 00:00~17:00
+ * @warning æ˜¾ç¤ºä¸"å°†æ¥åˆ¤æ–­æ˜¯å¦å·¥ä½œ"å¿…é¡»å…±ç”¨è¿™ä¸€ä¸ªå‡½æ•°ï¼Œ
+ *          å¦åˆ™ä¸²å£çœ‹åˆ°çš„å’Œå®é™…è¡Œä¸ºä¼šå¯¹ä¸ä¸Š
  * ===================================================================== */
 static uint8_t workWindowEndAdj(uint8_t end) {
   return (end == 23) ? 24u : end;
 }
 
 /* =====================================================================
- * @brief  ¹¤×÷Ê±ÖÓ£ºÈ¡µ±ÌìĞ¡Ê±£¨0~23£©
- * @note   ÓëÈÕÆÚÎŞ¹Ø ¡ª¡ª timestamp % 86400 / 3600£¬1970 / 2026 ¶¼ÄÜËã
- * @warning ¿ÌÒâ²»Ğ£Ñé dtuTimeValid£º
- *          Î´¶ÔÉÏÊ± dtuTimestamp Óë dtuSyncTick ³õÖµ¾ùÎª 0£¬
- *          ±¾Ê½ÍË»¯Îª"¿ª»ú¾­¹ıµÄÃëÊı"£¬¼´ÒÔ 1970-01-01 00:00 ÎªÆğµãµİÔö£»
- *          ¶ÔÉÏ 4G ºó×Ô¶¯ÇĞµ½ÕæÊµÊ±¼ä
- *          µ¥¶ÀĞ´Ò»·İÊÇÎªÁË²»ÎÛÈ¾ getCurrentTimestamp()£¨ËüÈÔ·µ»Ø 0£¬
- *          ±ÜÃâÎ´¶ÔÉÏÊ±°Ñ¼Ù 1970 Ê±¼ä´ÁÉÏ±¨¸øÔÆ¶Ë£©
+ * @brief  å·¥ä½œæ—¶é’Ÿï¼šå–å½“å¤©å°æ—¶ï¼ˆ0~23ï¼‰
+ * @note   ä¸æ—¥æœŸæ— å…³ â€”â€” timestamp % 86400 / 3600ï¼Œ1970 / 2026 éƒ½èƒ½ç®—
+ * @warning åˆ»æ„ä¸æ ¡éªŒ dtuTimeValidï¼š
+ *          æœªå¯¹ä¸Šæ—¶ dtuTimestamp ä¸ dtuSyncTick åˆå€¼å‡ä¸º 0ï¼Œ
+ *          æœ¬å¼é€€åŒ–ä¸º"å¼€æœºç»è¿‡çš„ç§’æ•°"ï¼Œå³ä»¥ 1970-01-01 00:00 ä¸ºèµ·ç‚¹é€’å¢ï¼›
+ *          å¯¹ä¸Š 4G åè‡ªåŠ¨åˆ‡åˆ°çœŸå®æ—¶é—´
+ *          å•ç‹¬å†™ä¸€ä»½æ˜¯ä¸ºäº†ä¸æ±¡æŸ“ getCurrentTimestamp()ï¼ˆå®ƒä»è¿”å› 0ï¼Œ
+ *          é¿å…æœªå¯¹ä¸Šæ—¶æŠŠå‡ 1970 æ—¶é—´æˆ³ä¸ŠæŠ¥ç»™äº‘ç«¯ï¼‰
  * ===================================================================== */
 static uint8_t getWorkClockHour(void) {
   uint32_t ts = dtuTimestamp + (HAL_GetTick() - dtuSyncTick) / 1000;
@@ -692,13 +692,13 @@ static uint8_t getWorkClockHour(void) {
 }
 
 /* =====================================================================
- * @brief  µ±Ç°ÊÇ·ñ´¦ÓÚ¹¤×÷Çø¼äÄÚ
- * @note   ÒÔÏÂÈıÖÖÇé¿öÒ»ÂÉ"ÊÓÎªÔÚÇø¼äÄÚ"£¨ÉäÆµ³£¿ª£©£¬
- *         Ä¿µÄÊÇÈÎºÎÒì³£¶¼²»ÄÜÈÃÖĞ¼ÌË¯ËÀ£¨Äş¿É°×ºÄµçÒ²²»ÄÜ¶ªÊı¾İ£©£º
- *           ¢Ù 4G ÉĞÎ´¶ÔÊ± ¡ª¡ª Ã»ÓĞ¿ÉĞÅÊ±¼ä£¬°´ 1970 »ù×¼ÅĞ¶Ï»áÎóË¯
- *           ¢Ú ÅäÖÃÀï½âÎö²»³ö¹¤×÷Ê±¼ä×Ö¶Î
- *           ¢Û idx Ô½½ç£¨>275£¬ÎŞ¶ÔÓ¦´°¿Ú£©
- * @retval 1=ÔÚÇø¼äÄÚ(¿É¹¤×÷), 0=ÔÚÇø¼äÍâ(Ó¦ĞİÃß)
+ * @brief  å½“å‰æ˜¯å¦å¤„äºå·¥ä½œåŒºé—´å†…
+ * @note   ä»¥ä¸‹ä¸‰ç§æƒ…å†µä¸€å¾‹"è§†ä¸ºåœ¨åŒºé—´å†…"ï¼ˆå°„é¢‘å¸¸å¼€ï¼‰ï¼Œ
+ *         ç›®çš„æ˜¯ä»»ä½•å¼‚å¸¸éƒ½ä¸èƒ½è®©ä¸­ç»§ç¡æ­»ï¼ˆå®å¯ç™½è€—ç”µä¹Ÿä¸èƒ½ä¸¢æ•°æ®ï¼‰ï¼š
+ *           â‘  4G å°šæœªå¯¹æ—¶ â€”â€” æ²¡æœ‰å¯ä¿¡æ—¶é—´ï¼ŒæŒ‰ 1970 åŸºå‡†åˆ¤æ–­ä¼šè¯¯ç¡
+ *           â‘¡ é…ç½®é‡Œè§£æä¸å‡ºå·¥ä½œæ—¶é—´å­—æ®µ
+ *           â‘¢ idx è¶Šç•Œï¼ˆ>275ï¼Œæ— å¯¹åº”çª—å£ï¼‰
+ * @retval 1=åœ¨åŒºé—´å†…(å¯å·¥ä½œ), 0=åœ¨åŒºé—´å¤–(åº”ä¼‘çœ )
  * ===================================================================== */
 static uint8_t isInWorkWindow(void) {
   uint8_t ws = 0;
@@ -708,14 +708,14 @@ static uint8_t isInWorkWindow(void) {
   int wt;
 
   if (!dtuTimeValid)
-    return 1; /* ¢Ù Î´¶ÔÊ±£º²»×öĞİÃßÅĞ¶Ï£¬±£³Ö³£¿ª */
+    return 1; /* â‘  æœªå¯¹æ—¶ï¼šä¸åšä¼‘çœ åˆ¤æ–­ï¼Œä¿æŒå¸¸å¼€ */
 
   wt = getWorkTimeFromConfig();
   if (wt < 0)
-    return 1; /* ¢Ú ÅäÖÃÎŞ¹¤×÷Ê±¼ä×Ö¶Î */
+    return 1; /* â‘¡ é…ç½®æ— å·¥ä½œæ—¶é—´å­—æ®µ */
 
   if (!indexToTimeWindow(wt, &ws, &we))
-    return 1; /* ¢Û idx Ô½½ç */
+    return 1; /* â‘¢ idx è¶Šç•Œ */
 
   hour = getWorkClockHour();
   end = workWindowEndAdj(we);
@@ -724,10 +724,10 @@ static uint8_t isInWorkWindow(void) {
 }
 
 /* =====================================================================
- * @brief  È¡ configStr Àï"ÖÜÆÚºóÃæµÄÄÇ¸ö²ÎÊı"²¢½âÂë³É¹¤×÷Ê±¼ä
- * @note   configStr ¸ñÊ½ "<ÖÜÆÚ·ÖÖÓ>,<¹¤×÷Ê±¼ä2×Ö·û>"£¬Èç "30,0M"
- *         È¡**µÚÒ»¸ö¶ººÅÖ®ºó**µÄÁ½¸ö×Ö·û
- * @retval >=0 = ¹¤×÷Ê±¼ä(Ô­Ê¼Öµ), -1 = ÅäÖÃÀïÃ»ÓĞ¸Ã×Ö¶Î»ò½âÂëÊ§°Ü
+ * @brief  å– configStr é‡Œ"å‘¨æœŸåé¢çš„é‚£ä¸ªå‚æ•°"å¹¶è§£ç æˆå·¥ä½œæ—¶é—´
+ * @note   configStr æ ¼å¼ "<å‘¨æœŸåˆ†é’Ÿ>,<å·¥ä½œæ—¶é—´2å­—ç¬¦>"ï¼Œå¦‚ "30,0M"
+ *         å–**ç¬¬ä¸€ä¸ªé€—å·ä¹‹å**çš„ä¸¤ä¸ªå­—ç¬¦
+ * @retval >=0 = å·¥ä½œæ—¶é—´(åŸå§‹å€¼), -1 = é…ç½®é‡Œæ²¡æœ‰è¯¥å­—æ®µæˆ–è§£ç å¤±è´¥
  * ===================================================================== */
 static int getWorkTimeFromConfig(void) {
   const char *comma;
@@ -748,8 +748,8 @@ static int getWorkTimeFromConfig(void) {
 }
 
 /* =====================================================================
- * @brief  ´òÓ¡¹¤×÷Ê±¼äµÄÍêÕû½âÂë¹ı³Ì£¨¹©ºË¶Ô£¬Ôİ²»²ÎÓëÈÎºÎÂß¼­£©
- * @note   °ÑÃ¿¸ö×Ö·ûÔÚ×ÖµäÀïµÄÎ»ÖÃÒ²´ò³öÀ´£¬·½±ãÒ»ÑÛ¿´³ö×ÖµäË³Ğò¶Ô²»¶Ô
+ * @brief  æ‰“å°å·¥ä½œæ—¶é—´çš„å®Œæ•´è§£ç è¿‡ç¨‹ï¼ˆä¾›æ ¸å¯¹ï¼Œæš‚ä¸å‚ä¸ä»»ä½•é€»è¾‘ï¼‰
+ * @note   æŠŠæ¯ä¸ªå­—ç¬¦åœ¨å­—å…¸é‡Œçš„ä½ç½®ä¹Ÿæ‰“å‡ºæ¥ï¼Œæ–¹ä¾¿ä¸€çœ¼çœ‹å‡ºå­—å…¸é¡ºåºå¯¹ä¸å¯¹
  * ===================================================================== */
 static void printWorkTimeDebug(void) {
   const char *comma = strchr(configStr, ',');
@@ -770,18 +770,18 @@ static void printWorkTimeDebug(void) {
     f[2] = '\0';
   }
 
-  printf("[¹¤×÷Ê±¼ä] config=%s, ×Ö¶Î=%s, ÖÜÆÚ=%lu ·ÖÖÓ\r\n", configStr, f,
+  printf("[å·¥ä½œæ—¶é—´] config=%s, å­—æ®µ=%s, å‘¨æœŸ=%lu åˆ†é’Ÿ\r\n", configStr, f,
          (unsigned long)(getConfigIntervalMs() / 60000));
 
   if (p0 == NULL || p1 == NULL) {
-    printf("[¹¤×÷Ê±¼ä] ½âÎöÊ§°Ü: ×Ö·û²»ÔÚ×ÖµäÄÚ\r\n");
+    printf("[å·¥ä½œæ—¶é—´] è§£æå¤±è´¥: å­—ç¬¦ä¸åœ¨å­—å…¸å†…\r\n");
     return;
   }
 
-  printf("[¹¤×÷Ê±¼ä] ¸ßÎ» '%c'=Î»%d, µÍÎ» '%c'=Î»%d, ½âÂëÖµ=%d\r\n", f[0],
+  printf("[å·¥ä½œæ—¶é—´] é«˜ä½ '%c'=ä½%d, ä½ä½ '%c'=ä½%d, è§£ç å€¼=%d\r\n", f[0],
          (int)(p0 - TIME_DICT), f[1], (int)(p1 - TIME_DICT), wt);
 
-  /* »»Ëã³ÉÊ±¼ä´°¿Ú£»idx ³¬¹ı 275 ËµÃ÷Õâ¸öÅäÖÃÖµ¸ù±¾Ã»ÓĞ¶ÔÓ¦µÄ´°¿Ú */
+  /* æ¢ç®—æˆæ—¶é—´çª—å£ï¼›idx è¶…è¿‡ 275 è¯´æ˜è¿™ä¸ªé…ç½®å€¼æ ¹æœ¬æ²¡æœ‰å¯¹åº”çš„çª—å£ */
   {
     uint8_t ws = 0;
     uint8_t we = 0;
@@ -790,32 +790,32 @@ static void printWorkTimeDebug(void) {
       uint8_t e = workWindowEndAdj(we);
 
       if (e >= 24) {
-        /* ×î´ó´°¿Ú°´ÕûÌìÏÔÊ¾£¬½áÊøµãĞ´³É 24:00£¨¼´´ÎÈÕ 00:00£© */
-        printf("[¹¤×÷Ê±¼ä] ´°¿Ú: %02u:00 ~ 24:00 (¹² %u Ğ¡Ê±)\r\n",
+        /* æœ€å¤§çª—å£æŒ‰æ•´å¤©æ˜¾ç¤ºï¼Œç»“æŸç‚¹å†™æˆ 24:00ï¼ˆå³æ¬¡æ—¥ 00:00ï¼‰ */
+        printf("[å·¥ä½œæ—¶é—´] çª—å£: %02u:00 ~ 24:00 (å…± %u å°æ—¶)\r\n",
                (unsigned int)ws, (unsigned int)(e - ws));
       } else {
-        printf("[¹¤×÷Ê±¼ä] ´°¿Ú: %02u:00 ~ %02u:00 (¹² %u Ğ¡Ê±)\r\n",
+        printf("[å·¥ä½œæ—¶é—´] çª—å£: %02u:00 ~ %02u:00 (å…± %u å°æ—¶)\r\n",
                (unsigned int)ws, (unsigned int)e, (unsigned int)(e - ws));
       }
     } else {
-      printf("[¹¤×÷Ê±¼ä] idx=%d ÎŞ¶ÔÓ¦´°¿Ú(ºÏ·¨·¶Î§ 0~275)\r\n", wt);
+      printf("[å·¥ä½œæ—¶é—´] idx=%d æ— å¯¹åº”çª—å£(åˆæ³•èŒƒå›´ 0~275)\r\n", wt);
     }
   }
 
-  /* µ±Ç°Ê±¿ÌÓëÅĞ¶¨½á¹û£¬¹©ºË¶Ô×Ô¶¯¿ª¹ØĞĞÎª */
+  /* å½“å‰æ—¶åˆ»ä¸åˆ¤å®šç»“æœï¼Œä¾›æ ¸å¯¹è‡ªåŠ¨å¼€å…³è¡Œä¸º */
   if (dtuTimeValid) {
-    /* ¿ÌÒâ²»Ğ´³É ... ? "ÔÚÇø¼äÄÚ" : "ÔÚÇø¼äÍâ"£º
-     * ÖĞÎÄÄ©×Ö½Ú½ôÌù±ÕºÏÒıºÅ£¬ÊÇ GBK ½âÂëÍÌÒıºÅµÄ¸ßÎ£Ğ´·¨ */
-    printf("[¹¤×÷Ê±¼ä] µ±Ç°=%02u Ê±, ´¦ÓÚ¹¤×÷Çø¼äÄÚ=%d (1=ÊÇ, 0=·ñ)\r\n",
+    /* åˆ»æ„ä¸å†™æˆ ... ? "åœ¨åŒºé—´å†…" : "åœ¨åŒºé—´å¤–"ï¼š
+     * ä¸­æ–‡æœ«å­—èŠ‚ç´§è´´é—­åˆå¼•å·ï¼Œæ˜¯ GBK è§£ç åå¼•å·çš„é«˜å±å†™æ³• */
+    printf("[å·¥ä½œæ—¶é—´] å½“å‰=%02u æ—¶, å¤„äºå·¥ä½œåŒºé—´å†…=%d (1=æ˜¯, 0=å¦)\r\n",
            (unsigned int)getWorkClockHour(), isInWorkWindow() ? 1 : 0);
   } else {
-    printf("[¹¤×÷Ê±¼ä] 4GÎ´¶ÔÊ±, ÊÓÎªÈ«ÌìÔÚÇø¼äÄÚ(ÉäÆµ³£¿ª)\r\n");
+    printf("[å·¥ä½œæ—¶é—´] 4Gæœªå¯¹æ—¶, è§†ä¸ºå…¨å¤©åœ¨åŒºé—´å†…(å°„é¢‘å¸¸å¼€)\r\n");
   }
 }
 
 /**
- * @brief  »ñÈ¡µ±Ç°ÊµÊ±Ê±¼ä´Á£¨»ùÓÚÍøÂç¶ÔÊ± + HAL ¼ÆÊ±£©
- * @note   ¶ÔÊ±ºóÒÔ dtuTimestamp Îª»ù×¼£¬¼ÓÉÏ¾­¹ıµÄÃëÊı
+ * @brief  è·å–å½“å‰å®æ—¶æ—¶é—´æˆ³ï¼ˆåŸºäºç½‘ç»œå¯¹æ—¶ + HAL è®¡æ—¶ï¼‰
+ * @note   å¯¹æ—¶åä»¥ dtuTimestamp ä¸ºåŸºå‡†ï¼ŒåŠ ä¸Šç»è¿‡çš„ç§’æ•°
  */
 static uint32_t getCurrentTimestamp(void) {
   if (!dtuTimeValid)
@@ -824,7 +824,7 @@ static uint32_t getCurrentTimestamp(void) {
 }
 
 /* =====================================================================
- * @brief  ´Ó Flash ¶Á³öÒ»¸öÒÔ '\0' ½áÎ²µÄ×Ö·û´®
+ * @brief  ä» Flash è¯»å‡ºä¸€ä¸ªä»¥ '\0' ç»“å°¾çš„å­—ç¬¦ä¸²
  * ===================================================================== */
 static void flash_read_str(uint32_t addr, char *dst, int dstSize) {
   const char *p = (const char *)addr;
@@ -835,9 +835,9 @@ static void flash_read_str(uint32_t addr, char *dst, int dstSize) {
 }
 
 /* =====================================================================
- * @brief  °ÑÒ»¸ö×Ö·û´®£¨º¬½áÎ² '\0'£©°´°ë×ÖĞ´Èë Flash
- *         STM32F1 Ö»ÄÜ°ë×Ö±à³Ì£»ÓÃ i+1<=len ¶µµ×£¬
- *         ±ÜÃâ¶Áµ½Ô´´® '\0' Ö®ºóµÄÔ½½ç×Ö½Ú
+ * @brief  æŠŠä¸€ä¸ªå­—ç¬¦ä¸²ï¼ˆå«ç»“å°¾ '\0'ï¼‰æŒ‰åŠå­—å†™å…¥ Flash
+ *         STM32F1 åªèƒ½åŠå­—ç¼–ç¨‹ï¼›ç”¨ i+1<=len å…œåº•ï¼Œ
+ *         é¿å…è¯»åˆ°æºä¸² '\0' ä¹‹åçš„è¶Šç•Œå­—èŠ‚
  * ===================================================================== */
 static void flash_write_str(uint32_t addr, const char *str) {
   int len = (int)strlen(str);
@@ -851,9 +851,9 @@ static void flash_write_str(uint32_t addr, const char *str) {
 }
 
 /* =====================================================================
- * @brief  ÕûÒ³ÖØĞ´£º¶ÔÊ±ÅäÖÃ + Å©³¡ÖĞĞÄ×ø±ê
- * @note   ±ØĞëÁ½ÏîÒ»ÆğĞ´£ºFlash ²Á³ıÒÔÒ³Îªµ¥Î»£¬
- *         Ö»Ğ´ÆäÖĞÒ»Ïî»á°ÑÍ¬Ò³ÀïµÄÁíÒ»ÏîÒ»Æğ²Áµô
+ * @brief  æ•´é¡µé‡å†™ï¼šå¯¹æ—¶é…ç½® + å†œåœºä¸­å¿ƒåæ ‡
+ * @note   å¿…é¡»ä¸¤é¡¹ä¸€èµ·å†™ï¼šFlash æ“¦é™¤ä»¥é¡µä¸ºå•ä½ï¼Œ
+ *         åªå†™å…¶ä¸­ä¸€é¡¹ä¼šæŠŠåŒé¡µé‡Œçš„å¦ä¸€é¡¹ä¸€èµ·æ“¦æ‰
  * ===================================================================== */
 static void flash_save_all(void) {
   FLASH_EraseInitTypeDef eraseInit;
@@ -866,52 +866,52 @@ static void flash_save_all(void) {
   HAL_FLASH_Unlock();
   HAL_FLASHEx_Erase(&eraseInit, &pageError);
 
-  /* ¶ÔÊ±ÅäÖÃÇø */
+  /* å¯¹æ—¶é…ç½®åŒº */
   HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CONFIG_FLASH_ADDR, CONFIG_MAGIC);
   flash_write_str(CONFIG_FLASH_ADDR + 4, configStr);
 
-  /* Å©³¡ÖĞĞÄ×ø±êÇø */
+  /* å†œåœºä¸­å¿ƒåæ ‡åŒº */
   HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
                     CONFIG_FLASH_ADDR + CENTER_FLASH_OFF, CENTER_MAGIC);
   flash_write_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4, centerStr);
 
   HAL_FLASH_Lock();
-  printf("[Flash] ÒÑ±£´æ: config=%s, center=%s\r\n", configStr, centerStr);
+  printf("[Flash] å·²ä¿å­˜: config=%s, center=%s\r\n", configStr, centerStr);
 }
 
 /**
- * @brief  ´Ó Flash ¼ÓÔØÅäÖÃĞÅÏ¢ + Å©³¡ÖĞĞÄ×ø±ê
- * @note   ¿ª»úÊ±µ÷ÓÃ£¬Èç¹û Flash ÖĞÓĞÓĞĞ§Êı¾İÔò¼ÓÔØ
+ * @brief  ä» Flash åŠ è½½é…ç½®ä¿¡æ¯ + å†œåœºä¸­å¿ƒåæ ‡
+ * @note   å¼€æœºæ—¶è°ƒç”¨ï¼Œå¦‚æœ Flash ä¸­æœ‰æœ‰æ•ˆæ•°æ®åˆ™åŠ è½½
  */
 static void loadConfigFromFlash(void) {
-  /* ¶ÔÊ±ÅäÖÃ */
+  /* å¯¹æ—¶é…ç½® */
   if (*(volatile uint32_t *)CONFIG_FLASH_ADDR == CONFIG_MAGIC) {
     flash_read_str(CONFIG_FLASH_ADDR + 4, configStr, sizeof(configStr));
-    printf("[Flash] ¼ÓÔØÅäÖÃ: %s\r\n", configStr);
+    printf("[Flash] åŠ è½½é…ç½®: %s\r\n", configStr);
   } else {
-    printf("[Flash] ÎŞÓĞĞ§ÅäÖÃ£¬Ê¹ÓÃÄ¬ÈÏ: %s\r\n", configStr);
+    printf("[Flash] æ— æœ‰æ•ˆé…ç½®ï¼Œä½¿ç”¨é»˜è®¤: %s\r\n", configStr);
   }
 
-  /* Å©³¡ÖĞĞÄ×ø±ê */
+  /* å†œåœºä¸­å¿ƒåæ ‡ */
   if (*(volatile uint32_t *)(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF) ==
       CENTER_MAGIC) {
     flash_read_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4, centerStr,
                    sizeof(centerStr));
-    printf("[Flash] ¼ÓÔØÖĞĞÄ×ø±ê: %s\r\n", centerStr);
+    printf("[Flash] åŠ è½½ä¸­å¿ƒåæ ‡: %s\r\n", centerStr);
   } else {
     centerStr[0] = '\0';
-    printf("[Flash] ÎŞÖĞĞÄ×ø±ê£¨Î´ÉèÖÃ£©\r\n");
+    printf("[Flash] æ— ä¸­å¿ƒåæ ‡ï¼ˆæœªè®¾ç½®ï¼‰\r\n");
   }
 
-  /* LoRa ÉäÆµ¿ª¹Ø²»ÂäÅÌ£ºÄ¬ÈÏ¾ÍÊÇ¿ÉÊÕ·¢£¬ÖØÆôºóÍ¬Ñù»Øµ½¿ÉÊÕ·¢ */
+  /* LoRa å°„é¢‘å¼€å…³ä¸è½ç›˜ï¼šé»˜è®¤å°±æ˜¯å¯æ”¶å‘ï¼Œé‡å¯ååŒæ ·å›åˆ°å¯æ”¶å‘ */
   loraSwOn = 1;
 }
 
 /**
- * @brief  ½«ÏûÏ¢¼ÓÈë DTU ·¢ËÍ¶ÓÁĞ£¨»·ĞÎ»º³åÇø£©
- * @param  msg: ÏûÏ¢Êı¾İÖ¸Õë
- * @param  len: ÏûÏ¢³¤¶È
- * @note   ¶ÓÁĞÂúÊ±¶ªÆú×îÔçµÄÏûÏ¢£¨¸²¸Ç¶ÓÍ·£©
+ * @brief  å°†æ¶ˆæ¯åŠ å…¥ DTU å‘é€é˜Ÿåˆ—ï¼ˆç¯å½¢ç¼“å†²åŒºï¼‰
+ * @param  msg: æ¶ˆæ¯æ•°æ®æŒ‡é’ˆ
+ * @param  len: æ¶ˆæ¯é•¿åº¦
+ * @note   é˜Ÿåˆ—æ»¡æ—¶ä¸¢å¼ƒæœ€æ—©çš„æ¶ˆæ¯ï¼ˆè¦†ç›–é˜Ÿå¤´ï¼‰
  */
 static void enqueueDtuMsg(const char *msg, int len) {
   if (len <= 0 || len >= DTU_MSG_MAX_LEN)
@@ -919,12 +919,12 @@ static void enqueueDtuMsg(const char *msg, int len) {
 
   __disable_irq();
   if (dtuQueueCount >= DTU_QUEUE_SIZE) {
-    // ¶ÓÁĞÂú£¬¶ªÆú×îÔçµÄÒ»Ìõ£¨¶ÓÍ·Ç°ÒÆ£©
+    // é˜Ÿåˆ—æ»¡ï¼Œä¸¢å¼ƒæœ€æ—©çš„ä¸€æ¡ï¼ˆé˜Ÿå¤´å‰ç§»ï¼‰
     dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
     dtuQueueCount--;
-    printf("[DTU Queue] ¶ÓÁĞÂú£¬¶ªÆú¾ÉÏûÏ¢\r\n");
+    printf("[DTU Queue] é˜Ÿåˆ—æ»¡ï¼Œä¸¢å¼ƒæ—§æ¶ˆæ¯\r\n");
   }
-  // ¿½±´ÏûÏ¢µ½¶ÓÎ²
+  // æ‹·è´æ¶ˆæ¯åˆ°é˜Ÿå°¾
   memcpy(dtuQueue[dtuQueueTail].buf, msg, len);
   dtuQueue[dtuQueueTail].buf[len] = '\0';
   dtuQueue[dtuQueueTail].len = (uint16_t)len;
@@ -934,8 +934,8 @@ static void enqueueDtuMsg(const char *msg, int len) {
 }
 
 /**
- * @brief  ´¦Àí DTU ·¢ËÍ¶ÓÁĞ£ºÃ¿ 1 Ãë´Ó¶ÓÍ·È¡³öÒ»ÌõÏûÏ¢·¢ËÍ
- * @note   ÔÚÖ÷Ñ­»·ÖĞµ÷ÓÃ£¬·Ç×èÈû
+ * @brief  å¤„ç† DTU å‘é€é˜Ÿåˆ—ï¼šæ¯ 1 ç§’ä»é˜Ÿå¤´å–å‡ºä¸€æ¡æ¶ˆæ¯å‘é€
+ * @note   åœ¨ä¸»å¾ªç¯ä¸­è°ƒç”¨ï¼Œéé˜»å¡
  */
 static void processDtuQueue(void) {
   if (dtuQueueCount == 0)
@@ -944,24 +944,24 @@ static void processDtuQueue(void) {
   if (HAL_GetTick() - dtuLastSendTick >= 500) {
     dtuLastSendTick = HAL_GetTick();
 
-    // ´Ó¶ÓÍ·È¡³öÒ»ÌõÏûÏ¢
+    // ä»é˜Ÿå¤´å–å‡ºä¸€æ¡æ¶ˆæ¯
     DtuQueueItem_t *item = &dtuQueue[dtuQueueHead];
     HAL_UART_Transmit(&huart3, (uint8_t *)item->buf, item->len, 1000);
     HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
-    printf("[DTU ¶ÓÁĞ·¢ËÍ] %s\r\n", item->buf);
+    printf("[DTU é˜Ÿåˆ—å‘é€] %s\r\n", item->buf);
 
-    // ³ö¶Ó
+    // å‡ºé˜Ÿ
     dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
     dtuQueueCount--;
   }
 }
 
 /**
- * @brief  Í³Ò»ÉÏ±¨Êı¾İ¸ø DTU£¨JSON¸ñÊ½£©
- * @note   Êı¾İÏÈÈë¶Ó£¬ÓÉ processDtuQueue() Ã¿Ãë·¢ËÍÒ»Ìõ
- * @param  loraStr: lorainfo ×Ö¶ÎÄÚÈİ
- * @param  rssi:    RSSI ĞÅºÅÇ¿¶È
- * @param  snr:     SNR ĞÅÔë±È
+ * @brief  ç»Ÿä¸€ä¸ŠæŠ¥æ•°æ®ç»™ DTUï¼ˆJSONæ ¼å¼ï¼‰
+ * @note   æ•°æ®å…ˆå…¥é˜Ÿï¼Œç”± processDtuQueue() æ¯ç§’å‘é€ä¸€æ¡
+ * @param  loraStr: lorainfo å­—æ®µå†…å®¹
+ * @param  rssi:    RSSI ä¿¡å·å¼ºåº¦
+ * @param  snr:     SNR ä¿¡å™ªæ¯”
  */
 static void sendToDtu(const char *loraStr, int rssi, int snr) {
   char txBuf[DTU_MSG_MAX_LEN];
@@ -982,13 +982,13 @@ static void sendToDtu(const char *loraStr, int rssi, int snr) {
 
   if (len > 0 && len < (int)sizeof(txBuf)) {
     enqueueDtuMsg(txBuf, len);
-    printf("[DTU Èë¶Ó] ¶ÓÁĞ=%d/%d\r\n", dtuQueueCount, DTU_QUEUE_SIZE);
+    printf("[DTU å…¥é˜Ÿ] é˜Ÿåˆ—=%d/%d\r\n", dtuQueueCount, DTU_QUEUE_SIZE);
   }
 }
 
 /**
- * @brief  »ñÈ¡µ½ÍøÂçÊ±¼äºó£¬ÉÏ±¨Ò»´Î¶ÔÊ±ĞÅÏ¢¸ø DTU
- * @note   Êı¾İ¸ñÊ½: 2|deviceName|timestamp|battery|count
+ * @brief  è·å–åˆ°ç½‘ç»œæ—¶é—´åï¼Œä¸ŠæŠ¥ä¸€æ¬¡å¯¹æ—¶ä¿¡æ¯ç»™ DTU
+ * @note   æ•°æ®æ ¼å¼: 2|deviceName|timestamp|battery|count
  */
 static void sendTimeSyncToDtu(void) {
   char dataStr[64];
@@ -999,8 +999,8 @@ static void sendTimeSyncToDtu(void) {
 }
 
 /**
- * @brief  ¿ª»úÍøÂçÕı³£ºó£¬ÉÏ±¨Ò»´ÎÅäÖÃĞÅÏ¢¸ø DTU
- * @note   Êı¾İ¸ñÊ½: 6|deviceName|config_str|count
+ * @brief  å¼€æœºç½‘ç»œæ­£å¸¸åï¼Œä¸ŠæŠ¥ä¸€æ¬¡é…ç½®ä¿¡æ¯ç»™ DTU
+ * @note   æ•°æ®æ ¼å¼: 6|deviceName|config_str|count
  */
 static void sendConfigToDtu(void) {
   char dataStr[64];
@@ -1010,11 +1010,11 @@ static void sendConfigToDtu(void) {
 }
 
 /* =====================================================================
- * @brief  ÉÏ±¨Å©³¡ÖĞĞÄ×ø±ê¸ø DTU
- * @note   Êı¾İ¸ñÊ½: 1|deviceName|lat,lng|
- *         £¨MSG_TYPE_GPS = 1£¬ÓëÖÕ¶Ë GPS ÉÏ±¨ÀàĞÍÒ»ÖÂ£©
- *         Î´ÉèÖÃ¹ı×ø±êÊ±µÚ 3 ¶ÎÉÏ±¨ "0,0"£¬±£Ö¤Ö¡½á¹¹¹Ì¶¨Îª 3 ¶Î£¬
- *         ÔÆ¶Ë/Ğ¡³ÌĞò split('|') ²»»áÄÃµ½¿Õ´®
+ * @brief  ä¸ŠæŠ¥å†œåœºä¸­å¿ƒåæ ‡ç»™ DTU
+ * @note   æ•°æ®æ ¼å¼: 1|deviceName|lat,lng|
+ *         ï¼ˆMSG_TYPE_GPS = 1ï¼Œä¸ç»ˆç«¯ GPS ä¸ŠæŠ¥ç±»å‹ä¸€è‡´ï¼‰
+ *         æœªè®¾ç½®è¿‡åæ ‡æ—¶ç¬¬ 3 æ®µä¸ŠæŠ¥ "0,0"ï¼Œä¿è¯å¸§ç»“æ„å›ºå®šä¸º 3 æ®µï¼Œ
+ *         äº‘ç«¯/å°ç¨‹åº split('|') ä¸ä¼šæ‹¿åˆ°ç©ºä¸²
  * ===================================================================== */
 static void sendCenterToDtu(void) {
   char dataStr[64];
@@ -1022,25 +1022,25 @@ static void sendCenterToDtu(void) {
 
   snprintf(dataStr, sizeof(dataStr), "%d|%s|%s|", MSG_TYPE_GPS, deviceName,
            coord);
-  printf("[DTU] ÉÏ±¨ÖĞĞÄ×ø±ê: %s\r\n", dataStr);
+  printf("[DTU] ä¸ŠæŠ¥ä¸­å¿ƒåæ ‡: %s\r\n", dataStr);
   sendToDtu(dataStr, dtuCsqRssi, 0);
 }
 
 /**
- * @brief  »º´æ´ıÖ´ĞĞÖ¸Áî£¨Ã¿¸öÉè±¸×î¶àÒ»Ìõ£¬ĞÂÖ¸ÁîÌæ»»¾ÉÖ¸Áî£©
- * @param  deviceId: Ä¿±êÉè±¸ ID
- * @param  cmd:      Ö¸ÁîÄÚÈİ
- * @param  val:      Ö¸Áî²ÎÊı
+ * @brief  ç¼“å­˜å¾…æ‰§è¡ŒæŒ‡ä»¤ï¼ˆæ¯ä¸ªè®¾å¤‡æœ€å¤šä¸€æ¡ï¼Œæ–°æŒ‡ä»¤æ›¿æ¢æ—§æŒ‡ä»¤ï¼‰
+ * @param  deviceId: ç›®æ ‡è®¾å¤‡ ID
+ * @param  cmd:      æŒ‡ä»¤å†…å®¹
+ * @param  val:      æŒ‡ä»¤å‚æ•°
  */
 static void cachePendingCommand(const char *deviceId, const char *cmd,
                                 const char *val) {
   int freeSlot = -1;
 
-  /* ÏÈ²éÕÒÊÇ·ñÒÑÓĞ¸ÃÉè±¸µÄ»º´æ²ÛÎ» */
+  /* å…ˆæŸ¥æ‰¾æ˜¯å¦å·²æœ‰è¯¥è®¾å¤‡çš„ç¼“å­˜æ§½ä½ */
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used &&
         strcmp(pendingCmdCache[i].deviceId, deviceId) == 0) {
-      /* ÒÑÓĞ¸ÃÉè±¸µÄ»º´æ£¬Ö±½ÓÌæ»» */
+      /* å·²æœ‰è¯¥è®¾å¤‡çš„ç¼“å­˜ï¼Œç›´æ¥æ›¿æ¢ */
       strncpy(pendingCmdCache[i].cmd, cmd, sizeof(pendingCmdCache[i].cmd) - 1);
       pendingCmdCache[i].cmd[sizeof(pendingCmdCache[i].cmd) - 1] = '\0';
       strncpy(pendingCmdCache[i].val, val, sizeof(pendingCmdCache[i].val) - 1);
@@ -1053,7 +1053,7 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
       freeSlot = i;
   }
 
-  /* Î´ÕÒµ½ÒÑÓĞ²ÛÎ»£¬Ê¹ÓÃ¿ÕÏĞ²ÛÎ» */
+  /* æœªæ‰¾åˆ°å·²æœ‰æ§½ä½ï¼Œä½¿ç”¨ç©ºé—²æ§½ä½ */
   if (freeSlot >= 0) {
     pendingCmdCache[freeSlot].used = 1;
     strncpy(pendingCmdCache[freeSlot].deviceId, deviceId,
@@ -1077,9 +1077,9 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
 }
 
 /**
- * @brief  ¼ì²é²¢´¦ÀíÖ¸¶¨Éè±¸µÄ´ıÖ´ĞĞ»º´æÖ¸Áî
- * @note   µ± LoRa ÊÕµ½¸ÃÉè±¸µÄÉÏ±¨Êı¾İÊ±µ÷ÓÃ£¬´òÓ¡»º´æÖ¸Áî²¢Çå³ı»º´æ
- * @param  deviceId: ÉÏ±¨Êı¾İµÄÉè±¸ ID
+ * @brief  æ£€æŸ¥å¹¶å¤„ç†æŒ‡å®šè®¾å¤‡çš„å¾…æ‰§è¡Œç¼“å­˜æŒ‡ä»¤
+ * @note   å½“ LoRa æ”¶åˆ°è¯¥è®¾å¤‡çš„ä¸ŠæŠ¥æ•°æ®æ—¶è°ƒç”¨ï¼Œæ‰“å°ç¼“å­˜æŒ‡ä»¤å¹¶æ¸…é™¤ç¼“å­˜
+ * @param  deviceId: ä¸ŠæŠ¥æ•°æ®çš„è®¾å¤‡ ID
  */
 static uint8_t checkPendingCommand(const char *deviceId) {
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
@@ -1088,22 +1088,22 @@ static uint8_t checkPendingCommand(const char *deviceId) {
       printf(
           "[PENDING CMD] Found pending cmd for device=%s: cmd=%s, val=%s\r\n",
           deviceId, pendingCmdCache[i].cmd, pendingCmdCache[i].val);
-      return 1; /* ÓĞ»º´æÖ¸Áî */
+      return 1; /* æœ‰ç¼“å­˜æŒ‡ä»¤ */
     }
   }
-  return 0; /* ÎŞ»º´æÖ¸Áî */
+  return 0; /* æ— ç¼“å­˜æŒ‡ä»¤ */
 }
 
 /**
- * @brief  Í¨¹ı LoRa ·¢ËÍ»º´æÖ¸Áî¸øÄ¿±êÉè±¸²¢Çå³ı»º´æ
- * @param  deviceId: Ä¿±êÉè±¸ ID
- * @retval 1=ÒÑ·¢ËÍ, 0=ÎŞ»º´æ
+ * @brief  é€šè¿‡ LoRa å‘é€ç¼“å­˜æŒ‡ä»¤ç»™ç›®æ ‡è®¾å¤‡å¹¶æ¸…é™¤ç¼“å­˜
+ * @param  deviceId: ç›®æ ‡è®¾å¤‡ ID
+ * @retval 1=å·²å‘é€, 0=æ— ç¼“å­˜
  */
 static uint8_t sendPendingCommand(const char *deviceId) {
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used &&
         strcmp(pendingCmdCache[i].deviceId, deviceId) == 0) {
-      /* Í¨¹ı LoRa ÏÂ·¢Ö¸Áî¸øÄ¿±êÉè±¸£¬¸ñÊ½: 9|deviceId|cmd|val| */
+      /* é€šè¿‡ LoRa ä¸‹å‘æŒ‡ä»¤ç»™ç›®æ ‡è®¾å¤‡ï¼Œæ ¼å¼: 9|deviceId|cmd|val| */
       char txData[64];
       int txLen = snprintf(txData, sizeof(txData), "%d|%s|%s|%s", MSG_TYPE_COM,
                            pendingCmdCache[i].deviceId, pendingCmdCache[i].cmd,
@@ -1112,7 +1112,7 @@ static uint8_t sendPendingCommand(const char *deviceId) {
       rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
       printf("[PENDING CMD] LoRa TX: %s\r\n", txData);
 
-      /* µÈ´ı·¢ËÍÍê³É */
+      /* ç­‰å¾…å‘é€å®Œæˆ */
       uint32_t waitStart = HAL_GetTick();
       while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
         if (HAL_GetTick() - waitStart > 3000)
@@ -1120,7 +1120,7 @@ static uint8_t sendPendingCommand(const char *deviceId) {
       }
       rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
-      /* Çå³ı¸Ã»º´æ²ÛÎ» */
+      /* æ¸…é™¤è¯¥ç¼“å­˜æ§½ä½ */
       pendingCmdCache[i].used = 0;
       memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
       printf("[PENDING CMD] Cache cleared for device=%s, cmd delivered\r\n",
@@ -1132,8 +1132,8 @@ static uint8_t sendPendingCommand(const char *deviceId) {
 }
 
 /* =====================================================================
- * @brief  Ğ£Ñé¾­Î³¶ÈÊÇ·ñÔÚºÏ·¨µØÀí·¶Î§ÄÚ
- * @retval 1=ºÏ·¨, 0=·Ç·¨
+ * @brief  æ ¡éªŒç»çº¬åº¦æ˜¯å¦åœ¨åˆæ³•åœ°ç†èŒƒå›´å†…
+ * @retval 1=åˆæ³•, 0=éæ³•
  * ===================================================================== */
 static int center_coord_valid(double lat, double lng) {
   if (lat < -90.0 || lat > 90.0)
@@ -1144,23 +1144,23 @@ static int center_coord_valid(double lat, double lng) {
 }
 
 /**
- * @brief  JSON ½âÎö DTU ÏÂ·¢µÄÖ¸Áî
- * @note   ´ÓÍâ²ã JSON ÌáÈ¡ cominfo ×Ö¶Î£¬·´×ªÒåºó½âÎöÄÚ²¿ JSON
- *         ÄÚ²¿¸ñÊ½: {"cmd":"xxx","value":"xxx","deviceId":"xxx"}
+ * @brief  JSON è§£æ DTU ä¸‹å‘çš„æŒ‡ä»¤
+ * @note   ä»å¤–å±‚ JSON æå– cominfo å­—æ®µï¼Œåè½¬ä¹‰åè§£æå†…éƒ¨ JSON
+ *         å†…éƒ¨æ ¼å¼: {"cmd":"xxx","value":"xxx","deviceId":"xxx"}
  */
 static void parseDtuCommand(char *buf) {
-  /* Step 1: ´ÓÍâ²ã JSON ÌáÈ¡ cominfo ×Ö¶ÎÖµ£¨´¦Àí×ªÒå£© */
+  /* Step 1: ä»å¤–å±‚ JSON æå– cominfo å­—æ®µå€¼ï¼ˆå¤„ç†è½¬ä¹‰ï¼‰ */
   char *pCominfo = strstr(buf, "\"cominfo\":\"");
   if (!pCominfo) {
     printf("[DTU JSON] cominfo not found\r\n");
     return;
   }
 
-  pCominfo += 11; // Ìø¹ı "cominfo":"
+  pCominfo += 11; // è·³è¿‡ "cominfo":"
   char unescaped[200];
   int ui = 0;
 
-  // ¶ÁÈ¡ cominfo ×Ö·û´®Öµ£¬´¦Àí×ªÒåĞòÁĞ
+  // è¯»å– cominfo å­—ç¬¦ä¸²å€¼ï¼Œå¤„ç†è½¬ä¹‰åºåˆ—
   while (*pCominfo && ui < (int)sizeof(unescaped) - 1) {
     if (*pCominfo == '\\' && *(pCominfo + 1) != '\0') {
       char next = *(pCominfo + 1);
@@ -1170,17 +1170,17 @@ static void parseDtuCommand(char *buf) {
         continue;
       }
     } else if (*pCominfo == '"') {
-      break; // Î´×ªÒåµÄÒıºÅ = cominfo ×Ö·û´®½áÊø
+      break; // æœªè½¬ä¹‰çš„å¼•å· = cominfo å­—ç¬¦ä¸²ç»“æŸ
     }
     unescaped[ui++] = *pCominfo++;
   }
   unescaped[ui] = '\0';
   printf("[DTU JSON] cominfo: %s\r\n", unescaped);
 
-  /* Step 2: ´Ó·´×ªÒåºóµÄ JSON ÌáÈ¡¸÷×Ö¶Î */
+  /* Step 2: ä»åè½¬ä¹‰åçš„ JSON æå–å„å­—æ®µ */
   char cmd[32] = {0}, devId[32] = {0}, val[32] = {0};
 
-  // ÌáÈ¡ cmd
+  // æå– cmd
   char *p = strstr(unescaped, "\"cmd\":");
   if (p) {
     p += 6;
@@ -1192,7 +1192,7 @@ static void parseDtuCommand(char *buf) {
     cmd[i] = '\0';
   }
 
-  // ÌáÈ¡ deviceId
+  // æå– deviceId
   p = strstr(unescaped, "\"deviceId\":");
   if (p) {
     p += 11;
@@ -1204,7 +1204,7 @@ static void parseDtuCommand(char *buf) {
     devId[i] = '\0';
   }
 
-  // ÌáÈ¡ value
+  // æå– value
   p = strstr(unescaped, "\"value\":");
   if (p) {
     p += 8;
@@ -1214,7 +1214,7 @@ static void parseDtuCommand(char *buf) {
     while (*p && *p != '"' && i < 31)
       val[i++] = *p++;
     val[i] = '\0';
-    // È¥³ı value Î²²¿¶àÓàµÄ¶ººÅ
+    // å»é™¤ value å°¾éƒ¨å¤šä½™çš„é€—å·
     int vlen = (int)strlen(val);
     while (vlen > 0 && val[vlen - 1] == ',')
       val[--vlen] = '\0';
@@ -1222,12 +1222,12 @@ static void parseDtuCommand(char *buf) {
 
   printf("[DTU JSON] cmd=%s, deviceId=%s, value=%s\r\n", cmd, devId, val);
 
-  /* debug Ö¸ÁîÌØÊâ´¦Àí£ºÎŞÂÛ deviceId ÊÇ·ñÆ¥Åä¶¼´òÓ¡µ÷ÊÔĞÅÏ¢ */
+  /* debug æŒ‡ä»¤ç‰¹æ®Šå¤„ç†ï¼šæ— è®º deviceId æ˜¯å¦åŒ¹é…éƒ½æ‰“å°è°ƒè¯•ä¿¡æ¯ */
   if (strcmp(cmd, "debug") == 0) {
-    printf("[DTU CMD] ½ÓÊÕµ½ÁË debug ÃüÁî (deviceId=%s, value=%s)\r\n", devId, val);
+    printf("[DTU CMD] æ¥æ”¶åˆ°äº† debug å‘½ä»¤ (deviceId=%s, value=%s)\r\n", devId, val);
   }
 
-  /* Step 3: ¼ì²é deviceId ÊÇ·ñÎª±¾»ú */
+  /* Step 3: æ£€æŸ¥ deviceId æ˜¯å¦ä¸ºæœ¬æœº */
   if (strcmp(devId, (char *)deviceName) != 0) {
     printf("[DTU CMD] Not this device (target=%s, local=%s), cache it\r\n",
            devId, deviceName);
@@ -1235,43 +1235,43 @@ static void parseDtuCommand(char *buf) {
     return;
   }
 
-  /* Step 4: Ö´ĞĞÖ¸Áî */
+  /* Step 4: æ‰§è¡ŒæŒ‡ä»¤ */
   if (strcmp(cmd, "relayreboot") == 0) {
-    printf("[DTU CMD] Ö´ĞĞÉè±¸ÖØÆô...\r\n");
+    printf("[DTU CMD] æ‰§è¡Œè®¾å¤‡é‡å¯...\r\n");
     HAL_Delay(500);
     NVIC_SystemReset();
   } else if (strcmp(cmd, "mapcenter") == 0) {
-    /* ÉèÖÃÅ©³¡ÖĞĞÄ×ø±ê£ºÏÈÑé¸ñÊ½ºÍµØÀí·¶Î§£¬Ö»ÓĞºÏ·¨²ÅĞ´ÄÚ´æ + Flash¡£
-     * ÓÃ double ½âÎö£¬±ÜÃâ 109.39087 ÕâÀà 8 Î»ÓĞĞ§Êı×Ö±» float ½Ø¶Ï¡£ */
+    /* è®¾ç½®å†œåœºä¸­å¿ƒåæ ‡ï¼šå…ˆéªŒæ ¼å¼å’Œåœ°ç†èŒƒå›´ï¼Œåªæœ‰åˆæ³•æ‰å†™å†…å­˜ + Flashã€‚
+     * ç”¨ double è§£æï¼Œé¿å… 109.39087 è¿™ç±» 8 ä½æœ‰æ•ˆæ•°å­—è¢« float æˆªæ–­ã€‚ */
     double la = 0.0, lo = 0.0;
 
     if (sscanf(val, "%lf,%lf", &la, &lo) == 2 && center_coord_valid(la, lo)) {
-      /* ¹éÒ»»¯³É 5 Î»Ğ¡Êı´æ´¢£ºÖ¡³¤¹Ì¶¨£¬ÇÒÌìÈ»²»º¬ " \ | µÈ»áÆÆ»µ
-       * JSON Æ´½ÓµÄ×Ö·û */
+      /* å½’ä¸€åŒ–æˆ 5 ä½å°æ•°å­˜å‚¨ï¼šå¸§é•¿å›ºå®šï¼Œä¸”å¤©ç„¶ä¸å« " \ | ç­‰ä¼šç ´å
+       * JSON æ‹¼æ¥çš„å­—ç¬¦ */
       snprintf(centerStr, sizeof(centerStr), "%.5f,%.5f", la, lo);
       flash_save_all();
-      printf("[DTU CMD] ÖĞĞÄ×ø±êÒÑÓÀ¾Ã±£´æ: %s\r\n", centerStr);
+      printf("[DTU CMD] ä¸­å¿ƒåæ ‡å·²æ°¸ä¹…ä¿å­˜: %s\r\n", centerStr);
     } else {
-      /* ·Ç·¨£º²»Ğ´ÄÚ´æ¡¢²»Ğ´ Flash£¬±£³ÖÉÏÒ»´ÎµÄºÏ·¨Öµ */
-      printf("[DTU CMD] mapcenter: ×ø±ê·Ç·¨ÒÑ¾Ü¾ø(Ô­Öµ=%s ±£³Ö): %s\r\n",
+      /* éæ³•ï¼šä¸å†™å†…å­˜ã€ä¸å†™ Flashï¼Œä¿æŒä¸Šä¸€æ¬¡çš„åˆæ³•å€¼ */
+      printf("[DTU CMD] mapcenter: åæ ‡éæ³•å·²æ‹’ç»(åŸå€¼=%s ä¿æŒ): %s\r\n",
              centerStr, val);
     }
-    /* ÎŞÂÛ±¾´ÎÊÇ·ñºÏ·¨£¬¶¼ÉÏ±¨µ±Ç°ÄÚ´æÖĞµÄ×ø±ê£º
-     * ºÏ·¨  -> »ØĞÂ×ø±ê£»·Ç·¨ -> »ØÉÏÒ»¸öºÏ·¨Öµ£¨Î´Éè¹ıÔò "0,0"£©
-     * ¸ñÊ½: 1|deviceName|lat,lng| */
+    /* æ— è®ºæœ¬æ¬¡æ˜¯å¦åˆæ³•ï¼Œéƒ½ä¸ŠæŠ¥å½“å‰å†…å­˜ä¸­çš„åæ ‡ï¼š
+     * åˆæ³•  -> å›æ–°åæ ‡ï¼›éæ³• -> å›ä¸Šä¸€ä¸ªåˆæ³•å€¼ï¼ˆæœªè®¾è¿‡åˆ™ "0,0"ï¼‰
+     * æ ¼å¼: 1|deviceName|lat,lng| */
     sendCenterToDtu();
   } else if (strcmp(cmd, "debug") == 0) {
-     printf("[DTU CMD] ½ÓÊÕµ½ÁËdebugÃüÁî...\r\n");
-    /* debug: value=2 Ê±¸´Î» DTU Ä£¿é */
+     printf("[DTU CMD] æ¥æ”¶åˆ°äº†debugå‘½ä»¤...\r\n");
+    /* debug: value=2 æ—¶å¤ä½ DTU æ¨¡å— */
     int debugVal = atoi(val);
     if (debugVal == 2) {
-      printf("[DTU CMD] debug: ¸´Î» DTU Ä£¿é (PA3 À­µÍ 100ms)\r\n");
-      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET); // À­µÍ
-      HAL_Delay(100);                                                     // ±£³Ö 100ms
-      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);   // À­¸ß
-      printf("[DTU CMD] DTU ¸´Î»Íê³É\r\n");
+      printf("[DTU CMD] debug: å¤ä½ DTU æ¨¡å— (PA3 æ‹‰ä½ 100ms)\r\n");
+      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET); // æ‹‰ä½
+      HAL_Delay(100);                                                     // ä¿æŒ 100ms
+      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);   // æ‹‰é«˜
+      printf("[DTU CMD] DTU å¤ä½å®Œæˆ\r\n");
     } else {
-      printf("[DTU CMD] debug: value=%d (·Ç 2£¬²»Ö´ĞĞ¸´Î»)\r\n", debugVal);
+      printf("[DTU CMD] debug: value=%d (é 2ï¼Œä¸æ‰§è¡Œå¤ä½)\r\n", debugVal);
     }
   } else if (strcmp(cmd, "A") == 0) {
     if (val[0] != '\0') {
@@ -1279,17 +1279,17 @@ static void parseDtuCommand(char *buf) {
       configStr[sizeof(configStr) - 1] = '\0';
       flash_save_all();
       printf("[DTU CMD] Config updated: %s\r\n", configStr);
-      printWorkTimeDebug(); /* ÅäÖÃ±äÁË£¬´òÓ¡Ò»´Î½âÂë½á¹û¹©ºË¶Ô */
+      printWorkTimeDebug(); /* é…ç½®å˜äº†ï¼Œæ‰“å°ä¸€æ¬¡è§£ç ç»“æœä¾›æ ¸å¯¹ */
       HAL_Delay(1000);
       sendConfigToDtu();
-      printf("[DTU CMD] ÅäÖÃÒÑÉÏ±¨\r\n");
+      printf("[DTU CMD] é…ç½®å·²ä¸ŠæŠ¥\r\n");
     } else {
-      printf("[DTU CMD] value Îª¿Õ\r\n");
+      printf("[DTU CMD] value ä¸ºç©º\r\n");
     }
   } else if (strcmp(cmd, "gpstm") == 0) {
-    /* gpstm ÖĞ¼ÌÖ¸Áî£º½öµ± deviceId Æ¥Åä±¾»úÊ±¼¤»î£¬¼ÇÂ¼µ±Ç°Ê±¼äºÍÓĞĞ§Ê±³¤ */
+    /* gpstm ä¸­ç»§æŒ‡ä»¤ï¼šä»…å½“ deviceId åŒ¹é…æœ¬æœºæ—¶æ¿€æ´»ï¼Œè®°å½•å½“å‰æ—¶é—´å’Œæœ‰æ•ˆæ—¶é•¿ */
     if (strcmp(devId, (char *)deviceName) != 0) {
-      printf("[DTU CMD] gpstm Ä¿±êÉè±¸²»Æ¥Åä(Ä¿±ê=%s, ±¾»ú=%s)£¬ºöÂÔ\r\n",
+      printf("[DTU CMD] gpstm ç›®æ ‡è®¾å¤‡ä¸åŒ¹é…(ç›®æ ‡=%s, æœ¬æœº=%s)ï¼Œå¿½ç•¥\r\n",
              devId, deviceName);
       return;
     }
@@ -1297,59 +1297,59 @@ static void parseDtuCommand(char *buf) {
     gpstmRecvTick = HAL_GetTick();
     gpstmTimeoutMin = (uint32_t)atoi(val);
     if (gpstmTimeoutMin == 0)
-      gpstmTimeoutMin = 30; // Ä¬ÈÏ 30 ·ÖÖÓ
-    printf("[DTU CMD] gpstm ÖĞ¼ÌÒÑ¼ÇÂ¼: device=%s, timeout=%lu min\r\n",
+      gpstmTimeoutMin = 30; // é»˜è®¤ 30 åˆ†é’Ÿ
+    printf("[DTU CMD] gpstm ä¸­ç»§å·²è®°å½•: device=%s, timeout=%lu min\r\n",
            deviceName, (unsigned long)gpstmTimeoutMin);
   } else if (strcmp(cmd, "lorasw") == 0) {
-    /* lorasw ÖĞ¼Ì LoRa ÉäÆµ¿ª¹Ø
-     *   value=1 ¡ú ¿ªÆôÉäÆµ£¬»Ö¸´ÊÕ·¢
-     *   value=0 ¡ú ¹Ø±ÕÉäÆµ£¬½øÈëÉî¶ÈĞİÃß£¨MCU Óë 4G/DTU ÈÔ¹¤×÷£©
-     * ×´Ì¬Ö»´æÔÚÓÚ RAM£¬²»Ğ´ Flash£ºÄ¬ÈÏ¾ÍÊÇ¿ÉÊÕ·¢£¬
-     * ÖØÆôºóÍ¬Ñù»Øµ½¿ÉÊÕ·¢£¨µôµç/¸´Î»Ïàµ±ÓÚ×Ô¶¯»Ö¸´£©
-     * ÔÆ¶Ë¿É¾­ 4G ÏÂ·¢ lorasw|1 Ô¶³Ì»½ĞÑ */
+    /* lorasw ä¸­ç»§ LoRa å°„é¢‘å¼€å…³
+     *   value=1 â†’ å¼€å¯å°„é¢‘ï¼Œæ¢å¤æ”¶å‘
+     *   value=0 â†’ å…³é—­å°„é¢‘ï¼Œè¿›å…¥æ·±åº¦ä¼‘çœ ï¼ˆMCU ä¸ 4G/DTU ä»å·¥ä½œï¼‰
+     * çŠ¶æ€åªå­˜åœ¨äº RAMï¼Œä¸å†™ Flashï¼šé»˜è®¤å°±æ˜¯å¯æ”¶å‘ï¼Œ
+     * é‡å¯ååŒæ ·å›åˆ°å¯æ”¶å‘ï¼ˆæ‰ç”µ/å¤ä½ç›¸å½“äºè‡ªåŠ¨æ¢å¤ï¼‰
+     * äº‘ç«¯å¯ç» 4G ä¸‹å‘ lorasw|1 è¿œç¨‹å”¤é†’ */
     if (strcmp(devId, (char *)deviceName) != 0) {
-      printf("[DTU CMD] lorasw Ä¿±êÉè±¸²»Æ¥Åä(Ä¿±ê=%s, ±¾»ú=%s)£¬ºöÂÔ\r\n",
+      printf("[DTU CMD] lorasw ç›®æ ‡è®¾å¤‡ä¸åŒ¹é…(ç›®æ ‡=%s, æœ¬æœº=%s)ï¼Œå¿½ç•¥\r\n",
              devId, deviceName);
       return;
     }
 
     if (atoi(val) != 0) {
-      /* 1 ¡ú »½ĞÑ
-       * @warning ¹¤×÷Ê±¼äÓÅÏÈ£º²»ÔÚ¹¤×÷Çø¼äÄÚÊ±Ò»ÂÉ¾Ü¾ø¿ªÆô£¬
-       *          lorasw Ö»ÄÜÔÚÇø¼äÄÚÉúĞ§£¬²»ÄÜÔ½È¨°ÑÇø¼äÍâµÄÉäÆµ´ò¿ª */
+      /* 1 â†’ å”¤é†’
+       * @warning å·¥ä½œæ—¶é—´ä¼˜å…ˆï¼šä¸åœ¨å·¥ä½œåŒºé—´å†…æ—¶ä¸€å¾‹æ‹’ç»å¼€å¯ï¼Œ
+       *          lorasw åªèƒ½åœ¨åŒºé—´å†…ç”Ÿæ•ˆï¼Œä¸èƒ½è¶ŠæƒæŠŠåŒºé—´å¤–çš„å°„é¢‘æ‰“å¼€ */
       if (!isInWorkWindow()) {
-        printf("[DTU CMD] lorasw: µ±Ç°²»ÔÚ¹¤×÷Çø¼äÄÚ, ¾Ü¾ø¿ªÆôÉäÆµ\r\n");
+        printf("[DTU CMD] lorasw: å½“å‰ä¸åœ¨å·¥ä½œåŒºé—´å†…, æ‹’ç»å¼€å¯å°„é¢‘\r\n");
       } else if (loraSwOn) {
-        printf("[DTU CMD] lorasw: µ±Ç°ÒÑÊÇÊÕ·¢×´Ì¬, ÎŞĞèÖØ¸´¿ªÆô\r\n");
+        printf("[DTU CMD] lorasw: å½“å‰å·²æ˜¯æ”¶å‘çŠ¶æ€, æ— éœ€é‡å¤å¼€å¯\r\n");
       } else {
         lora_rf_wake();
       }
     } else {
-      /* 0 ¡ú ĞİÃß£¨ÈÎºÎÊ±ºò¶¼ÔÊĞí¹Ø±Õ£¬²»ÊÜ¹¤×÷Çø¼äÏŞÖÆ£© */
+      /* 0 â†’ ä¼‘çœ ï¼ˆä»»ä½•æ—¶å€™éƒ½å…è®¸å…³é—­ï¼Œä¸å—å·¥ä½œåŒºé—´é™åˆ¶ï¼‰ */
       if (!loraSwOn) {
-        printf("[DTU CMD] lorasw: µ±Ç°ÒÑÊÇĞİÃß×´Ì¬, ÎŞĞèÖØ¸´¹Ø±Õ\r\n");
+        printf("[DTU CMD] lorasw: å½“å‰å·²æ˜¯ä¼‘çœ çŠ¶æ€, æ— éœ€é‡å¤å…³é—­\r\n");
       } else {
         lora_rf_sleep();
       }
     }
   } else if (strcmp(cmd, "txpower") == 0) {
-    /* txpower: »º´æÖ¸Áî¸øÄ¿±êÉè±¸£¬²¢Á¢¼´ÖØĞÂ»ñÈ¡ĞÅºÅÇ¿¶ÈºÍÍøÂçÊ±¼ä */
+    /* txpower: ç¼“å­˜æŒ‡ä»¤ç»™ç›®æ ‡è®¾å¤‡ï¼Œå¹¶ç«‹å³é‡æ–°è·å–ä¿¡å·å¼ºåº¦å’Œç½‘ç»œæ—¶é—´ */
     printf("[DTU CMD] txpower: target=%s, value=%s, cache it\r\n", devId, val);
     cachePendingCommand(devId, cmd, val);
-    /* ½«²éÑ¯ÃüÁî¼ÓÈë DTU ·¢ËÍ¶ÓÁĞ£¨ÓÉ processDtuQueue Ã¿ 500ms ·¢ËÍÒ»Ìõ£© */
+    /* å°†æŸ¥è¯¢å‘½ä»¤åŠ å…¥ DTU å‘é€é˜Ÿåˆ—ï¼ˆç”± processDtuQueue æ¯ 500ms å‘é€ä¸€æ¡ï¼‰ */
     {
       const char *csqCmd = "config,get,csq";
       const char *nettimeCmd = "config,get,nettime";
       enqueueDtuMsg(csqCmd, strlen(csqCmd));
       enqueueDtuMsg(nettimeCmd, strlen(nettimeCmd));
-      printf("[DTU CMD] ÒÑ½« CSQ + nettime ²éÑ¯¼ÓÈë¶ÓÁĞ\r\n");
+      printf("[DTU CMD] å·²å°† CSQ + nettime æŸ¥è¯¢åŠ å…¥é˜Ÿåˆ—\r\n");
     }
-    /* ÖØÖÃ²éÑ¯¶¨Ê±Æ÷£¬ºóĞø°´Õı³£¼ä¸ô²éÑ¯ */
+    /* é‡ç½®æŸ¥è¯¢å®šæ—¶å™¨ï¼Œåç»­æŒ‰æ­£å¸¸é—´éš”æŸ¥è¯¢ */
     dtuCsqTick = HAL_GetTick();
     return;
   } else if (strcmp(cmd, "realyname") == 0) {
-    /* realyname ¸ü»»Éè±¸Ãû×Ö */
-    /* value ¸ñÊ½: "v3-10=v3-11"  ¡ú  Ä¿±êÉè±¸=v3-10, ĞÂÃû×Ö=v3-11 */
+    /* realyname æ›´æ¢è®¾å¤‡åå­— */
+    /* value æ ¼å¼: "v3-10=v3-11"  â†’  ç›®æ ‡è®¾å¤‡=v3-10, æ–°åå­—=v3-11 */
     char *eq = strchr(val, '=');
     if (eq != NULL) {
       *eq = '\0';
@@ -1359,69 +1359,69 @@ static void parseDtuCommand(char *buf) {
              targetDevId, newName);
       cachePendingCommand(targetDevId, cmd, newName);
     } else {
-      printf("[DTU CMD] realyname: value ¸ñÊ½´íÎó (È±ÉÙ '=')\r\n");
+      printf("[DTU CMD] realyname: value æ ¼å¼é”™è¯¯ (ç¼ºå°‘ '=')\r\n");
     }
 
 
   } else {
-    printf("[DTU CMD] Î´ÖªÖ¸Áî: %s\r\n", cmd);
+    printf("[DTU CMD] æœªçŸ¥æŒ‡ä»¤: %s\r\n", cmd);
   }
 }
 
 /* USER CODE END 0 */
 
 /**
- * @brief  Ó¦ÓÃ³ÌĞòÖ÷Èë¿Úº¯Êı
- * @retval int (Êµ¼Ê²»»á·µ»Ø)
- * @note   Ö÷º¯ÊıÖ´ĞĞÁ÷³Ì£º
- *         1. HAL ¿â³õÊ¼»¯£¨¸´Î»ËùÓĞÍâÉè¡¢³õÊ¼»¯ Flash ºÍ SysTick£©
- *         2. ÏµÍ³Ê±ÖÓÅäÖÃ£¨72MHz£©
- *         3. ÍâÉè³õÊ¼»¯£¨GPIO¡¢USART1¡¢USART2¡¢NVIC£©
- *         4. LoRa Ä£¿é³õÊ¼»¯ºÍ²ÎÊıÅäÖÃ
- *         5. Ä¬ÈÏ½øÈë½ÓÊÕÄ£Ê½
- *         5. Ö÷Ñ­»·£ºLED ĞÄÌø¡¢Ä£Ê½´¦Àí
+ * @brief  åº”ç”¨ç¨‹åºä¸»å…¥å£å‡½æ•°
+ * @retval int (å®é™…ä¸ä¼šè¿”å›)
+ * @note   ä¸»å‡½æ•°æ‰§è¡Œæµç¨‹ï¼š
+ *         1. HAL åº“åˆå§‹åŒ–ï¼ˆå¤ä½æ‰€æœ‰å¤–è®¾ã€åˆå§‹åŒ– Flash å’Œ SysTickï¼‰
+ *         2. ç³»ç»Ÿæ—¶é’Ÿé…ç½®ï¼ˆ72MHzï¼‰
+ *         3. å¤–è®¾åˆå§‹åŒ–ï¼ˆGPIOã€USART1ã€USART2ã€NVICï¼‰
+ *         4. LoRa æ¨¡å—åˆå§‹åŒ–å’Œå‚æ•°é…ç½®
+ *         5. é»˜è®¤è¿›å…¥æ¥æ”¶æ¨¡å¼
+ *         5. ä¸»å¾ªç¯ï¼šLED å¿ƒè·³ã€æ¨¡å¼å¤„ç†
  */
 int main(void) {
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
 
-  /* MCU ÅäÖÃ --------------------------------------------------------*/
+  /* MCU é…ç½® --------------------------------------------------------*/
 
-  /* ¸´Î»ËùÓĞÍâÉè£¬³õÊ¼»¯ Flash ½Ó¿ÚºÍ SysTick ¶¨Ê±Æ÷ */
+  /* å¤ä½æ‰€æœ‰å¤–è®¾ï¼Œåˆå§‹åŒ– Flash æ¥å£å’Œ SysTick å®šæ—¶å™¨ */
   HAL_Init();
 
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
 
-  /* ÅäÖÃÏµÍ³Ê±ÖÓ */
+  /* é…ç½®ç³»ç»Ÿæ—¶é’Ÿ */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
 
-  /* ³õÊ¼»¯ËùÓĞÅäÖÃµÄÍâÉè */
-  MX_GPIO_Init();        // GPIO ³õÊ¼»¯£¨LED¡¢°´¼ü¡¢LoRa CSN/RST/IRQ£©
-  MX_SPI1_Init();        // SPI1 ³õÊ¼»¯£¨LoRa Ó²¼ş SPI£©
-  MX_USART1_UART_Init(); // USART1 ³õÊ¼»¯£¨µ÷ÊÔ´®¿Ú£¬115200 ²¨ÌØÂÊ£©
-  MX_USART3_UART_Init(); // USART3 ³õÊ¼»¯£¨DTU Í¨ĞÅ£¬115200 ²¨ÌØÂÊ£©
+  /* åˆå§‹åŒ–æ‰€æœ‰é…ç½®çš„å¤–è®¾ */
+  MX_GPIO_Init();        // GPIO åˆå§‹åŒ–ï¼ˆLEDã€æŒ‰é”®ã€LoRa CSN/RST/IRQï¼‰
+  MX_SPI1_Init();        // SPI1 åˆå§‹åŒ–ï¼ˆLoRa ç¡¬ä»¶ SPIï¼‰
+  MX_USART1_UART_Init(); // USART1 åˆå§‹åŒ–ï¼ˆè°ƒè¯•ä¸²å£ï¼Œ115200 æ³¢ç‰¹ç‡ï¼‰
+  MX_USART3_UART_Init(); // USART3 åˆå§‹åŒ–ï¼ˆDTU é€šä¿¡ï¼Œ115200 æ³¢ç‰¹ç‡ï¼‰
 
-  /* ³õÊ¼»¯ NVIC ÖĞ¶Ï¿ØÖÆÆ÷£¨LoRa IRQ Ê¹ÓÃ PA2 EXTI£© */
+  /* åˆå§‹åŒ– NVIC ä¸­æ–­æ§åˆ¶å™¨ï¼ˆLoRa IRQ ä½¿ç”¨ PA2 EXTIï¼‰ */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
 
-  // ´òÓ¡Æô¶¯ĞÅÏ¢
+  // æ‰“å°å¯åŠ¨ä¿¡æ¯
   printf("\r\n===== LoRa Receiver Start =====\r\n");
   printf("DTU UART (USART3): PB10=TX, PB11=RX, 115200 8N1\r\n");
   printf("USART3 CR1=0x%04X CR2=0x%04X CR3=0x%04X BRR=0x%04X SR=0x%04X\r\n",
          (uint16_t)huart3.Instance->CR1, (uint16_t)huart3.Instance->CR2,
          (uint16_t)huart3.Instance->CR3, (uint16_t)huart3.Instance->BRR,
          (uint16_t)huart3.Instance->SR);
-  printf_logo(); // ÏÔÊ¾¹¤³ÌĞÅÏ¢ Logo
+  printf_logo(); // æ˜¾ç¤ºå·¥ç¨‹ä¿¡æ¯ Logo
 
-  /* ´òÓ¡Ğ¾Æ¬Î¨Ò» ID ²¢¸ù¾İ UID Éú³É deviceName */
+  /* æ‰“å°èŠ¯ç‰‡å”¯ä¸€ ID å¹¶æ ¹æ® UID ç”Ÿæˆ deviceName */
   {
     uint32_t uid0 = *(volatile uint32_t *)0x1FFFF7E8;
     uint32_t uid1 = *(volatile uint32_t *)0x1FFFF7EC;
@@ -1432,63 +1432,63 @@ int main(void) {
     int devIndex = getDeviceIndex();
     if (devIndex >= 0) {
       snprintf(deviceName, sizeof(deviceName), "v3-%d", 100 + devIndex);
-      printf("Éè±¸Ãû³Æ Device Name : %s (index=%d)\r\n", deviceName,
+      printf("è®¾å¤‡åç§° Device Name : %s (index=%d)\r\n", deviceName,
              100 + devIndex);
     } else {
       printf("Device Name : %s (UID not in list, use default)\r\n", deviceName);
     }
   }
 
-  /* ´Ó Flash ¼ÓÔØÅäÖÃ */
+  /* ä» Flash åŠ è½½é…ç½® */
   loadConfigFromFlash();
 
-  /* ¿ª»ú´òÓ¡Ò»´Î¹¤×÷Ê±¼ä½âÂë½á¹û£¬¹©ºË¶Ô×ÖµäË³ĞòÊÇ·ñÕıÈ· */
+  /* å¼€æœºæ‰“å°ä¸€æ¬¡å·¥ä½œæ—¶é—´è§£ç ç»“æœï¼Œä¾›æ ¸å¯¹å­—å…¸é¡ºåºæ˜¯å¦æ­£ç¡® */
   printWorkTimeDebug();
 
-  /* ²âÊÔ¹«¹²Ä£¿é */
+  /* æµ‹è¯•å…¬å…±æ¨¡å— */
   commonTest_PrintInfo();
   printf("commonTest_Increment = %lu\r\n",
          (unsigned long)commonTest_Increment());
 
-  HAL_Delay(1); // ¶ÌÔİÑÓÊ±£¬µÈ´ı´®¿ÚÊä³öÍê³É
+  HAL_Delay(1); // çŸ­æš‚å»¶æ—¶ï¼Œç­‰å¾…ä¸²å£è¾“å‡ºå®Œæˆ
 
-  /* LoRa PAN3029 Ä£¿é³õÊ¼»¯ */
+  /* LoRa PAN3029 æ¨¡å—åˆå§‹åŒ– */
   printf("LoRa init...\r\n");
 
-  /* È·±£ CSN ºÍ RST Òı½ÅÎª¸ßµçÆ½£¨LoRa Ä£¿é¿ÕÏĞ×´Ì¬£© */
-  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET); // CSN À­¸ß
-  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET); // RST À­¸ß
-  HAL_Delay(100); // µÈ´ıÄ£¿éµçÔ´ÎÈ¶¨
+  /* ç¡®ä¿ CSN å’Œ RST å¼•è„šä¸ºé«˜ç”µå¹³ï¼ˆLoRa æ¨¡å—ç©ºé—²çŠ¶æ€ï¼‰ */
+  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET); // CSN æ‹‰é«˜
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET); // RST æ‹‰é«˜
+  HAL_Delay(100); // ç­‰å¾…æ¨¡å—ç”µæºç¨³å®š
 
-  // ³õÊ¼»¯ LoRa ÉäÆµÄ£¿é
+  // åˆå§‹åŒ– LoRa å°„é¢‘æ¨¡å—
   if (rf_init() != RF_OK) {
-    // µÚÒ»´Î³õÊ¼»¯Ê§°Ü£¬³¢ÊÔ RST ¸´Î»ºóÖØÊÔ
-    printf("[LoRa] Ê×´Î³õÊ¼»¯Ê§°Ü£¬³¢ÊÔ RST ¸´Î»...\r\n");
-    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET); // RST À­µÍ
-    HAL_Delay(100);                                                       // ±£³Ö 100ms
-    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);   // RST À­¸ß
-    HAL_Delay(100);                                                       // µÈ´ıÄ£¿éÎÈ¶¨
+    // ç¬¬ä¸€æ¬¡åˆå§‹åŒ–å¤±è´¥ï¼Œå°è¯• RST å¤ä½åé‡è¯•
+    printf("[LoRa] é¦–æ¬¡åˆå§‹åŒ–å¤±è´¥ï¼Œå°è¯• RST å¤ä½...\r\n");
+    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET); // RST æ‹‰ä½
+    HAL_Delay(100);                                                       // ä¿æŒ 100ms
+    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);   // RST æ‹‰é«˜
+    HAL_Delay(100);                                                       // ç­‰å¾…æ¨¡å—ç¨³å®š
     
-    // ÖØĞÂ³õÊ¼»¯
+    // é‡æ–°åˆå§‹åŒ–
     if (rf_init() != RF_OK) {
-      // ÈÔÈ»Ê§°Ü£¬½øÈë´íÎóÑ­»·
-      printf("[LoRa] RST ¸´Î»ºóÈÔ³õÊ¼»¯Ê§°Ü! Check wiring.\r\n");
+      // ä»ç„¶å¤±è´¥ï¼Œè¿›å…¥é”™è¯¯å¾ªç¯
+      printf("[LoRa] RST å¤ä½åä»åˆå§‹åŒ–å¤±è´¥! Check wiring.\r\n");
       while (1) {
-        HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin); // LED1 ¿ìËÙÉÁË¸±íÊ¾´íÎó
+        HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin); // LED1 å¿«é€Ÿé—ªçƒè¡¨ç¤ºé”™è¯¯
         HAL_Delay(100);
       }
     }
-    printf("[LoRa] RST ¸´Î»ºó³õÊ¼»¯³É¹¦\r\n");
+    printf("[LoRa] RST å¤ä½ååˆå§‹åŒ–æˆåŠŸ\r\n");
   }
   printf("RF init ok\r\n");
 
-  /* ÉèÖÃ LoRa Ä¬ÈÏ²ÎÊı£¨Óë CenterReceiveBLE_v4 ETSI_868 ÅäÖÃÒ»ÖÂ£©£º
-   *   ÆµÂÊ = 915 MHz, À©ÆµÒò×Ó SF = 10, ´ø¿í BW = 125 kHz
-   *   ±àÂëÂÊ CR = 4/5, ·¢Éä¹¦ÂÊ = 22 dBm
-   * ´Ëº¯Êı»¹»á´òÓ¡: FREQ= xxx  SF=x   BW=x  CR=x */
+  /* è®¾ç½® LoRa é»˜è®¤å‚æ•°ï¼ˆä¸ CenterReceiveBLE_v4 ETSI_868 é…ç½®ä¸€è‡´ï¼‰ï¼š
+   *   é¢‘ç‡ = 915 MHz, æ‰©é¢‘å› å­ SF = 10, å¸¦å®½ BW = 125 kHz
+   *   ç¼–ç ç‡ CR = 4/5, å‘å°„åŠŸç‡ = 22 dBm
+   * æ­¤å‡½æ•°è¿˜ä¼šæ‰“å°: FREQ= xxx  SF=x   BW=x  CR=x */
   rf_set_default_para();
 
-  // ´òÓ¡ LoRa ÅäÖÃĞÅÏ¢£¨¶ÁÈ¡ radio.h Êµ¼ÊÅäÖÃ£©
+  // æ‰“å° LoRa é…ç½®ä¿¡æ¯ï¼ˆè¯»å– radio.h å®é™…é…ç½®ï¼‰
   printf("===== LoRa Ready =====\r\n");
   printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
   printf("  SF      : %d\r\n", DEFAULT_SF);
@@ -1498,27 +1498,27 @@ int main(void) {
   printf("  CRC     : OFF\r\n");
   printf("  SyncWord: 0x12\r\n");
   printf("----------------------------\r\n");
-  printf("  K1 -> RX mode (LED 500ms blink)\r\n");        // °´¼ü K1 ¹¦ÄÜËµÃ÷
-  printf("  K2 -> TX mode (send 'I LOVE YOU' / 3s)\r\n"); // °´¼ü K2 ¹¦ÄÜËµÃ÷
+  printf("  K1 -> RX mode (LED 500ms blink)\r\n");        // æŒ‰é”® K1 åŠŸèƒ½è¯´æ˜
+  printf("  K2 -> TX mode (send 'I LOVE YOU' / 3s)\r\n"); // æŒ‰é”® K2 åŠŸèƒ½è¯´æ˜
   printf("----------------------------\r\n");
 
-  /* LoRa ÉäÆµ¿ª¹Ø²»ÂäÅÌ£¬¿ª»úºãÎª"¿ÉÊÕ·¢"£¬
-   * ÈÎºÎµôµç/¸´Î»¶¼×Ô¶¯»Ö¸´ÊÕ·¢£¬ÎŞĞèÔ¶³Ì»½ĞÑ */
-  enter_rx_mode(); // Ä¬ÈÏ½øÈë½ÓÊÕÄ£Ê½
+  /* LoRa å°„é¢‘å¼€å…³ä¸è½ç›˜ï¼Œå¼€æœºæ’ä¸º"å¯æ”¶å‘"ï¼Œ
+   * ä»»ä½•æ‰ç”µ/å¤ä½éƒ½è‡ªåŠ¨æ¢å¤æ”¶å‘ï¼Œæ— éœ€è¿œç¨‹å”¤é†’ */
+  enter_rx_mode(); // é»˜è®¤è¿›å…¥æ¥æ”¶æ¨¡å¼
 
-  /* ¼ÇÂ¼Æô¶¯Ê±¼ä£¬ÓÃÓÚ 5 ÃëºóÏò DTU ·¢ËÍ CSQ ²éÑ¯ */
+  /* è®°å½•å¯åŠ¨æ—¶é—´ï¼Œç”¨äº 5 ç§’åå‘ DTU å‘é€ CSQ æŸ¥è¯¢ */
   dtuCsqTick = HAL_GetTick();
 
   /* USER CODE END 2 */
 
-  /* ÎŞÏŞÑ­»· */
+  /* æ— é™å¾ªç¯ */
   /* USER CODE BEGIN WHILE */
   while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-    /* [µ÷ÊÔ] Ã¿Ãë´òÓ¡Ò»´Î STM32 ÊµÊ±Ê±¼ä */
+    /* [è°ƒè¯•] æ¯ç§’æ‰“å°ä¸€æ¬¡ STM32 å®æ—¶æ—¶é—´ */
     if (dtuTimeValid && HAL_GetTick() - lastPrintTick >= 1000) {
       lastPrintTick = HAL_GetTick();
       char timeBuf[24];
@@ -1526,19 +1526,19 @@ int main(void) {
       // printf("[TIME] %s\r\n", timeBuf);
     }
 
-    /* PB15 (LED1) ½ÓÊÕÖ¸Ê¾£ºµãÁÁ500msºó×Ô¶¯Ï¨Ãğ */
+    /* PB15 (LED1) æ¥æ”¶æŒ‡ç¤ºï¼šç‚¹äº®500msåè‡ªåŠ¨ç†„ç­ */
     if (led1On && HAL_GetTick() - led1OnTick >= 500) {
       led1On = 0;
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
     }
 
-    /* DTU ·¢ËÍ¶ÓÁĞ´¦Àí£ºÃ¿Ãë´Ó¶ÓÁĞÈ¡³öÒ»ÌõÏûÏ¢·¢ËÍ */
+    /* DTU å‘é€é˜Ÿåˆ—å¤„ç†ï¼šæ¯ç§’ä»é˜Ÿåˆ—å–å‡ºä¸€æ¡æ¶ˆæ¯å‘é€ */
     processDtuQueue();
 
-    /* ¹¤×÷Çø¼ä×Ô¶¯¿ª¹ØÉäÆµ£¨Ã¿Ãë¼ì²âÒ»´Î£¬Ö»ÔÚ½ø³öÇø¼äµÄÄÇÒ»¿Ì¶¯×÷£©
-     * ±ßÑØ´¥·¢¶ø·ÇÈ«³ÌÇ¿ÖÆ£ºÇø¼äÄÚÊÖ¶¯ lorasw|0 ¹Øµôºó»áÒ»Ö±±£³Ö¹Ø±Õ£¬
-     * Ö±µ½Çø¼ä½áÊøÔÙ½øÈë²Å×Ô¶¯ÖØ¿ª£¬ÊÖ¶¯¹ØÔÚÇø¼äÄÚÒò´ËÈÔÈ»ÓĞĞ§
-     * ¹¤×÷Çø¼äÓÅÏÈ¼¶¸ßÓÚ lorasw Ö¸Áî£ºÇø¼äÍâÒ»ÂÉĞİÃß */
+    /* å·¥ä½œåŒºé—´è‡ªåŠ¨å¼€å…³å°„é¢‘ï¼ˆæ¯ç§’æ£€æµ‹ä¸€æ¬¡ï¼Œåªåœ¨è¿›å‡ºåŒºé—´çš„é‚£ä¸€åˆ»åŠ¨ä½œï¼‰
+     * è¾¹æ²¿è§¦å‘è€Œéå…¨ç¨‹å¼ºåˆ¶ï¼šåŒºé—´å†…æ‰‹åŠ¨ lorasw|0 å…³æ‰åä¼šä¸€ç›´ä¿æŒå…³é—­ï¼Œ
+     * ç›´åˆ°åŒºé—´ç»“æŸå†è¿›å…¥æ‰è‡ªåŠ¨é‡å¼€ï¼Œæ‰‹åŠ¨å…³åœ¨åŒºé—´å†…å› æ­¤ä»ç„¶æœ‰æ•ˆ
+     * å·¥ä½œåŒºé—´ä¼˜å…ˆçº§é«˜äº lorasw æŒ‡ä»¤ï¼šåŒºé—´å¤–ä¸€å¾‹ä¼‘çœ  */
     if (HAL_GetTick() - workWinCheckTick >= 1000) {
       uint8_t inWin = isInWorkWindow();
 
@@ -1546,11 +1546,11 @@ int main(void) {
 
       if (inWin != prevInWorkWindow) {
         if (inWin) {
-          printf("[¹¤×÷Ê±¼ä] ½øÈë¹¤×÷Çø¼ä, ÉäÆµ»½ĞÑ\r\n");
+          printf("[å·¥ä½œæ—¶é—´] è¿›å…¥å·¥ä½œåŒºé—´, å°„é¢‘å”¤é†’\r\n");
           if (!loraSwOn)
             lora_rf_wake();
         } else {
-          printf("[¹¤×÷Ê±¼ä] Àë¿ª¹¤×÷Çø¼ä, ÉäÆµĞİÃß\r\n");
+          printf("[å·¥ä½œæ—¶é—´] ç¦»å¼€å·¥ä½œåŒºé—´, å°„é¢‘ä¼‘çœ \r\n");
           if (loraSwOn)
             lora_rf_sleep();
         }
@@ -1558,20 +1558,20 @@ int main(void) {
       }
     }
 
-    /* ¸ù¾İµ±Ç°¹¤×÷Ä£Ê½Ö´ĞĞÏàÓ¦´¦Àí */
+    /* æ ¹æ®å½“å‰å·¥ä½œæ¨¡å¼æ‰§è¡Œç›¸åº”å¤„ç† */
     switch (workMode) {
-    case MODE_RX: // ½ÓÊÕÄ£Ê½
-      OnSlave();  // µ÷ÓÃ½ÓÊÕ´¦Àíº¯Êı
+    case MODE_RX: // æ¥æ”¶æ¨¡å¼
+      OnSlave();  // è°ƒç”¨æ¥æ”¶å¤„ç†å‡½æ•°
       break;
 
-    default: // ¿ÕÏĞÄ£Ê½£¬²»×öÈÎºÎ´¦Àí
+    default: // ç©ºé—²æ¨¡å¼ï¼Œä¸åšä»»ä½•å¤„ç†
       break;
     }
 
-    /* DTU Ò»Ö¡Íê³ÉÅĞ¶Ï£ºÊÕµ½Êı¾İºó 500ms ÎŞĞÂ×Ö½Ú »ò »º³åÇøÂú */
+    /* DTU ä¸€å¸§å®Œæˆåˆ¤æ–­ï¼šæ”¶åˆ°æ•°æ®å 500ms æ— æ–°å­—èŠ‚ æˆ– ç¼“å†²åŒºæ»¡ */
     if ((dtuRxLen > 0 && HAL_GetTick() - dtuLastRxTick > 500) ||
         dtuRxLen >= DTU_RX_BUF_SIZE) {
-      /* È·±£×Ö·û´®½áÎ² */
+      /* ç¡®ä¿å­—ç¬¦ä¸²ç»“å°¾ */
       if (dtuRxLen < DTU_RX_BUF_SIZE)
         dtuRxBuf[dtuRxLen] = '\0';
       else
@@ -1579,39 +1579,39 @@ int main(void) {
 
       char *pBuf = (char *)dtuRxBuf;
 
-      /* ½âÎö CSQ ĞÅºÅÖÊÁ¿: config,csq,ok,<value> */
+      /* è§£æ CSQ ä¿¡å·è´¨é‡: config,csq,ok,<value> */
       char *pCsq = strstr(pBuf, "config,csq,ok,");
       if (pCsq) {
         int csqVal = 0;
         if (sscanf(pCsq, "config,csq,ok,%d", &csqVal) == 1) {
           int percent = csqVal * 100 / 31;
-          printf("[DTU] ĞÅºÅÇ¿¶È: %d (%d%%)\r\n", csqVal, percent);
-          dtuCsqRssi = csqVal; // ±£´æ CSQ Öµ¹©¶ÔÊ±ÉÏ±¨Ê¹ÓÃ
+          printf("[DTU] ä¿¡å·å¼ºåº¦: %d (%d%%)\r\n", csqVal, percent);
+          dtuCsqRssi = csqVal; // ä¿å­˜ CSQ å€¼ä¾›å¯¹æ—¶ä¸ŠæŠ¥ä½¿ç”¨
         }
       }
 
-      /* ½âÎöÍøÂçÊ±¼ä: config,nettime,ok,Äê,ÔÂ,ÈÕ,Ê±,·Ö,Ãë,ºÁÃë */
+      /* è§£æç½‘ç»œæ—¶é—´: config,nettime,ok,å¹´,æœˆ,æ—¥,æ—¶,åˆ†,ç§’,æ¯«ç§’ */
       char *pNet = strstr(pBuf, "config,nettime,ok,");
       if (pNet) {
         int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
         if (sscanf(pNet, "config,nettime,ok,%d,%d,%d,%d,%d,%d,%d", &y, &mo, &d,
                    &h, &mi, &s, &ms) >= 6) {
-          printf("[DTU] ÍøÂçÊ±¼ä: %04d/%02d/%02d %02d:%02d:%02d\r\n", y, mo, d,
+          printf("[DTU] ç½‘ç»œæ—¶é—´: %04d/%02d/%02d %02d:%02d:%02d\r\n", y, mo, d,
                  h, mi, s);
-          /* ±£´æÊ±¼ä´Á¹© LoRa ÉÏ±¨Ê¹ÓÃ */
+          /* ä¿å­˜æ—¶é—´æˆ³ä¾› LoRa ä¸ŠæŠ¥ä½¿ç”¨ */
           snprintf(dtuNetTimeStr, sizeof(dtuNetTimeStr),
                    "%04d%02d%02d%02d%02d%02d", y, mo, d, h, mi, s);
           dtuTimestamp = dateTimeToTimestamp(y, mo, d, h, mi, s);
-          dtuSyncTick = HAL_GetTick(); // ¼ÇÂ¼¶ÔÊ±Ê±¿Ì
+          dtuSyncTick = HAL_GetTick(); // è®°å½•å¯¹æ—¶æ—¶åˆ»
           printf("[DTU] Unix timestamp: %lu\r\n", (unsigned long)dtuTimestamp);
-          dtuTimeValid = 1; // ±ê¼ÇÍøÂçÊ±¼äÒÑ»ñÈ¡
-          dtuNetTimeFailCount = 0;  /* ÖØÖÃÁ¬ĞøÊ§°Ü¼ÆÊıÆ÷ */
-          printf("[DTU] ÍøÂçÊ±¼ä»ñÈ¡³É¹¦£¬ÇĞ»»Îª%lu·ÖÖÓ¶ÔÊ±\r\n",
+          dtuTimeValid = 1; // æ ‡è®°ç½‘ç»œæ—¶é—´å·²è·å–
+          dtuNetTimeFailCount = 0;  /* é‡ç½®è¿ç»­å¤±è´¥è®¡æ•°å™¨ */
+          printf("[DTU] ç½‘ç»œæ—¶é—´è·å–æˆåŠŸï¼Œåˆ‡æ¢ä¸º%luåˆ†é’Ÿå¯¹æ—¶\r\n",
                  (unsigned long)(getConfigIntervalMs() / 60000));
 
-          // »ñÈ¡µ½ÕıÈ·Ê±¼äºó£¬Á¢¼´ÉÏ±¨Ò»´Î¶ÔÊ±ĞÅÏ¢£¨Èë¶Ó£¬ÓÉ¶ÓÁĞ¿ØÖÆ¼ä¸ô£©
+          // è·å–åˆ°æ­£ç¡®æ—¶é—´åï¼Œç«‹å³ä¸ŠæŠ¥ä¸€æ¬¡å¯¹æ—¶ä¿¡æ¯ï¼ˆå…¥é˜Ÿï¼Œç”±é˜Ÿåˆ—æ§åˆ¶é—´éš”ï¼‰
           sendTimeSyncToDtu();
-          // ¿ª»úºóÊ×´Î»ñÈ¡µ½ÍøÂçÊ±¼ä£¬ÉÏ±¨Ò»´ÎÅäÖÃĞÅÏ¢£¨½öÉÏ±¨Ò»´Î£©
+          // å¼€æœºåé¦–æ¬¡è·å–åˆ°ç½‘ç»œæ—¶é—´ï¼Œä¸ŠæŠ¥ä¸€æ¬¡é…ç½®ä¿¡æ¯ï¼ˆä»…ä¸ŠæŠ¥ä¸€æ¬¡ï¼‰
           if (!configBootSent) {
             configBootSent = 1;
             sendConfigToDtu();
@@ -1619,40 +1619,40 @@ int main(void) {
         }
       }
 
-      /* ¶¼Ã»Æ¥Åäµ½£¬Ô­Ñù´òÓ¡Ã÷ÎÄ */
+      /* éƒ½æ²¡åŒ¹é…åˆ°ï¼ŒåŸæ ·æ‰“å°æ˜æ–‡ */
       if (!pCsq && !pNet) {
-        /* ÊÕµ½ DTU ÏÂ·¢Êı¾İ£ºÏÈ°Ñµ±Ç°ÉúĞ§µÄ¹¤×÷Ê±¼ä´ò³öÀ´£¬
-         * ·ÅÔÚ parseDtuCommand() Ö®Ç°£¬·½±ã¶ÔÕÕ"Ö¸ÁîÖ´ĞĞÇ° / Ö´ĞĞºó" */
+        /* æ”¶åˆ° DTU ä¸‹å‘æ•°æ®ï¼šå…ˆæŠŠå½“å‰ç”Ÿæ•ˆçš„å·¥ä½œæ—¶é—´æ‰“å‡ºæ¥ï¼Œ
+         * æ”¾åœ¨ parseDtuCommand() ä¹‹å‰ï¼Œæ–¹ä¾¿å¯¹ç…§"æŒ‡ä»¤æ‰§è¡Œå‰ / æ‰§è¡Œå" */
         printWorkTimeDebug();
 
-        /* JSON ½âÎö DTU ÏÂ·¢µÄÖ¸Áî */
+        /* JSON è§£æ DTU ä¸‹å‘çš„æŒ‡ä»¤ */
         parseDtuCommand(pBuf);
       }
 
       dtuRxLen = 0;
-      /* ÖØĞÂÆô¶¯ÖĞ¶Ï½ÓÊÕ */
+      /* é‡æ–°å¯åŠ¨ä¸­æ–­æ¥æ”¶ */
       HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
     }
 
-    /* Ïò DTU ·¢ËÍ csq + nettime ²éÑ¯
-     * Î´»ñÈ¡µ½Ê±¼äÇ°£ºÃ¿ 5 Ãë²éÑ¯Ò»´Î
-     * »ñÈ¡µ½Ê±¼äºó£ºÓÉ configStr ÅäÖÃ¾ö¶¨£¨Ä¬ÈÏ 30 ·ÖÖÓ£¬·¶Î§ 5~60 ·ÖÖÓ£© */
+    /* å‘ DTU å‘é€ csq + nettime æŸ¥è¯¢
+     * æœªè·å–åˆ°æ—¶é—´å‰ï¼šæ¯ 5 ç§’æŸ¥è¯¢ä¸€æ¬¡
+     * è·å–åˆ°æ—¶é—´åï¼šç”± configStr é…ç½®å†³å®šï¼ˆé»˜è®¤ 30 åˆ†é’Ÿï¼ŒèŒƒå›´ 5~60 åˆ†é’Ÿï¼‰ */
     {
       uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
       if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
         dtuCsqTick = HAL_GetTick();
         uint8_t cmd1[] = "config,get,csq\r\n";
         HAL_UART_Transmit(&huart3, cmd1, sizeof(cmd1) - 1, 1000);
-        HAL_Delay(300); // µÈ´ı csq ÏìÓ¦
+        HAL_Delay(300); // ç­‰å¾… csq å“åº”
         uint8_t cmd2[] = "config,get,nettime\r\n";
         HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
         if (!dtuTimeValid) {
           dtuNetTimeFailCount++;
           printf("[DTU] Waiting for net time... (retry %lus, fail=%d/5)\r\n",
                  queryInterval / 1000, dtuNetTimeFailCount);
-          /* Á¬Ğø 5 ´ÎÊ§°Ü£¬ÖØÆô STM32 */
+          /* è¿ç»­ 5 æ¬¡å¤±è´¥ï¼Œé‡å¯ STM32 */
           if (dtuNetTimeFailCount >= 5) {
-            printf("[DTU] Á¬Ğø 5 ´Î»ñÈ¡ÍøÂçÊ±¼äÊ§°Ü£¬ÖØÆô STM32...\r\n");
+            printf("[DTU] è¿ç»­ 5 æ¬¡è·å–ç½‘ç»œæ—¶é—´å¤±è´¥ï¼Œé‡å¯ STM32...\r\n");
             HAL_Delay(500);
             NVIC_SystemReset();
           }
@@ -1660,7 +1660,7 @@ int main(void) {
       }
     }
 
-    HAL_Delay(1); // ¶ÌÑÓÊ±
+    HAL_Delay(1); // çŸ­å»¶æ—¶
   }
   /* USER CODE END 3 */
 }
@@ -1726,25 +1726,25 @@ static void MX_USART1_UART_Init(void) {
 }
 
 /**
- * @brief  GPIO ³õÊ¼»¯º¯Êı
- * @note   ÅäÖÃËµÃ÷£º
- *         1. LED Ö¸Ê¾µÆ£¨±¾°å½öÓĞ 1 ¸ö£©£º
- *            - LED1 (PB15) - Êä³ö£¬ÍÆÍì£¬µÍËÙ£¬Ä¬ÈÏÃğ
- *                            ÊÕµ½ LoRa Êı¾İÊ±µãÁÁ£¬500ms ºóÓÉÖ÷Ñ­»·Ï¨Ãğ£»
- *                            LoRa ³õÊ¼»¯Ê§°ÜÊ±¿ìËÙÉÁË¸±¨´í
- *         2. °´¼üÊäÈë£º
- *            - ±¾°åÎŞ°´¼ü£¨Ö»ÓĞ¸´Î»¼ü£©
- *            - Ô­ K1(PB4)/K2(PB5) µÄÒı½Å¶¨Òå¡¢GPIO ÅäÖÃ¡¢NVIC Ê¹ÄÜÓë
- *              EXTI4/EXTI9_5 ÖĞ¶Ï·şÎñº¯Êı¾ùÒÑÉ¾³ı
- *         3. LoRa SPI Òı½Å£¨Èí¼şÄ£Äâ SPI£©£º
- *            - SCK (PA5) - Êä³ö£¬ÍÆÍì£¬¸ßËÙ
- *            - MOSI (PA7) - Êä³ö£¬ÍÆÍì£¬¸ßËÙ
- *            - MISO (PA6) - ÊäÈë£¬ÎŞÉÏÏÂÀ­
- *         4. LoRa ¿ØÖÆÒı½Å£º
- *            - CSN (PB0) - Êä³ö£¬ÍÆÍì£¬¸ßËÙ£¬Ä¬ÈÏ¸ßµçÆ½£¨Î´Ñ¡ÖĞ£©
- *            - RST (PA1) - Êä³ö£¬ÍÆÍì£¬¸ßËÙ£¬Ä¬ÈÏ¸ßµçÆ½£¨²»¸´Î»£©
- *         5. LoRa ÖĞ¶ÏÒı½Å£º
- *            - IRQ (PA2) - Íâ²¿ÖĞ¶Ï£¬ÉÏÉıÑØ´¥·¢£¬ÏÂÀ­
+ * @brief  GPIO åˆå§‹åŒ–å‡½æ•°
+ * @note   é…ç½®è¯´æ˜ï¼š
+ *         1. LED æŒ‡ç¤ºç¯ï¼ˆæœ¬æ¿ä»…æœ‰ 1 ä¸ªï¼‰ï¼š
+ *            - LED1 (PB15) - è¾“å‡ºï¼Œæ¨æŒ½ï¼Œä½é€Ÿï¼Œé»˜è®¤ç­
+ *                            æ”¶åˆ° LoRa æ•°æ®æ—¶ç‚¹äº®ï¼Œ500ms åç”±ä¸»å¾ªç¯ç†„ç­ï¼›
+ *                            LoRa åˆå§‹åŒ–å¤±è´¥æ—¶å¿«é€Ÿé—ªçƒæŠ¥é”™
+ *         2. æŒ‰é”®è¾“å…¥ï¼š
+ *            - æœ¬æ¿æ— æŒ‰é”®ï¼ˆåªæœ‰å¤ä½é”®ï¼‰
+ *            - åŸ K1(PB4)/K2(PB5) çš„å¼•è„šå®šä¹‰ã€GPIO é…ç½®ã€NVIC ä½¿èƒ½ä¸
+ *              EXTI4/EXTI9_5 ä¸­æ–­æœåŠ¡å‡½æ•°å‡å·²åˆ é™¤
+ *         3. LoRa SPI å¼•è„šï¼ˆè½¯ä»¶æ¨¡æ‹Ÿ SPIï¼‰ï¼š
+ *            - SCK (PA5) - è¾“å‡ºï¼Œæ¨æŒ½ï¼Œé«˜é€Ÿ
+ *            - MOSI (PA7) - è¾“å‡ºï¼Œæ¨æŒ½ï¼Œé«˜é€Ÿ
+ *            - MISO (PA6) - è¾“å…¥ï¼Œæ— ä¸Šä¸‹æ‹‰
+ *         4. LoRa æ§åˆ¶å¼•è„šï¼š
+ *            - CSN (PB0) - è¾“å‡ºï¼Œæ¨æŒ½ï¼Œé«˜é€Ÿï¼Œé»˜è®¤é«˜ç”µå¹³ï¼ˆæœªé€‰ä¸­ï¼‰
+ *            - RST (PA1) - è¾“å‡ºï¼Œæ¨æŒ½ï¼Œé«˜é€Ÿï¼Œé»˜è®¤é«˜ç”µå¹³ï¼ˆä¸å¤ä½ï¼‰
+ *         5. LoRa ä¸­æ–­å¼•è„šï¼š
+ *            - IRQ (PA2) - å¤–éƒ¨ä¸­æ–­ï¼Œä¸Šå‡æ²¿è§¦å‘ï¼Œä¸‹æ‹‰
  * @param  None
  * @retval None
  */
@@ -1754,72 +1754,72 @@ static void MX_GPIO_Init(void) {
 
   /* USER CODE END MX_GPIO_Init_1 */
 
-  /* Ê¹ÄÜ GPIO ¶Ë¿ÚÊ±ÖÓ */
-  __HAL_RCC_GPIOC_CLK_ENABLE(); // GPIOC Ê±ÖÓ
-  __HAL_RCC_GPIOD_CLK_ENABLE(); // GPIOD Ê±ÖÓ
-  __HAL_RCC_GPIOA_CLK_ENABLE(); // GPIOA Ê±ÖÓ
-  __HAL_RCC_GPIOB_CLK_ENABLE(); // GPIOB Ê±ÖÓ
+  /* ä½¿èƒ½ GPIO ç«¯å£æ—¶é’Ÿ */
+  __HAL_RCC_GPIOC_CLK_ENABLE(); // GPIOC æ—¶é’Ÿ
+  __HAL_RCC_GPIOD_CLK_ENABLE(); // GPIOD æ—¶é’Ÿ
+  __HAL_RCC_GPIOA_CLK_ENABLE(); // GPIOA æ—¶é’Ÿ
+  __HAL_RCC_GPIOB_CLK_ENABLE(); // GPIOB æ—¶é’Ÿ
 
-  /* ÅäÖÃ GPIO Êä³öÒı½Å³õÊ¼µçÆ½ */
-  HAL_GPIO_WritePin(GPIOB, LED1_Pin, GPIO_PIN_RESET); // LED1 Ä¬ÈÏÃğ
+  /* é…ç½® GPIO è¾“å‡ºå¼•è„šåˆå§‹ç”µå¹³ */
+  HAL_GPIO_WritePin(GPIOB, LED1_Pin, GPIO_PIN_RESET); // LED1 é»˜è®¤ç­
 
-  /* ÅäÖÃ LED1 Òı½Å (PB15) ¡ª¡ª ±¾°åÎ¨Ò»µÄ LED */
+  /* é…ç½® LED1 å¼•è„š (PB15) â€”â€” æœ¬æ¿å”¯ä¸€çš„ LED */
   GPIO_InitStruct.Pin = LED1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;  // ÍÆÍìÊä³öÄ£Ê½
-  GPIO_InitStruct.Pull = GPIO_NOPULL;          // ÎŞÉÏÏÂÀ­
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW; // µÍËÙ
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;  // æ¨æŒ½è¾“å‡ºæ¨¡å¼
+  GPIO_InitStruct.Pull = GPIO_NOPULL;          // æ— ä¸Šä¸‹æ‹‰
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW; // ä½é€Ÿ
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /* °´¼ü K1(PB4)/K2(PB5) ±¾°åÒÑÎŞ´ËÒı½Å£¬Òı½ÅÅäÖÃÓë EXTI Ê¹ÄÜÕûÌåÉ¾³ı */
+  /* æŒ‰é”® K1(PB4)/K2(PB5) æœ¬æ¿å·²æ— æ­¤å¼•è„šï¼Œå¼•è„šé…ç½®ä¸ EXTI ä½¿èƒ½æ•´ä½“åˆ é™¤ */
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* ÅäÖÃ LoRa SPI Òı½Å (PA5/PA6/PA7) - Ó²¼ş SPI1 ¸´ÓÃÍÆÍìÊä³ö */
+  /* é…ç½® LoRa SPI å¼•è„š (PA5/PA6/PA7) - ç¡¬ä»¶ SPI1 å¤ç”¨æ¨æŒ½è¾“å‡º */
   GPIO_InitStruct.Pin = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;       // ¸´ÓÃÍÆÍìÊä³ö£¨Ó²¼ş SPI£©
-  GPIO_InitStruct.Pull = GPIO_NOPULL;           // ÎŞÉÏÏÂÀ­
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // ¸ßËÙ
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;       // å¤ç”¨æ¨æŒ½è¾“å‡ºï¼ˆç¡¬ä»¶ SPIï¼‰
+  GPIO_InitStruct.Pull = GPIO_NOPULL;           // æ— ä¸Šä¸‹æ‹‰
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // é«˜é€Ÿ
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /* ÅäÖÃ LoRa CSN Æ¬Ñ¡Òı½Å (PB0) - Ä¬ÈÏ¸ßµçÆ½£¨Î´Ñ¡ÖĞ£© */
+  /* é…ç½® LoRa CSN ç‰‡é€‰å¼•è„š (PB0) - é»˜è®¤é«˜ç”µå¹³ï¼ˆæœªé€‰ä¸­ï¼‰ */
   GPIO_InitStruct.Pin = LORA_CSN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;   // ÍÆÍìÊä³öÄ£Ê½
-  GPIO_InitStruct.Pull = GPIO_NOPULL;           // ÎŞÉÏÏÂÀ­
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // ¸ßËÙ
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;   // æ¨æŒ½è¾“å‡ºæ¨¡å¼
+  GPIO_InitStruct.Pull = GPIO_NOPULL;           // æ— ä¸Šä¸‹æ‹‰
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // é«˜é€Ÿ
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET); // CSN À­¸ß
+  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET); // CSN æ‹‰é«˜
 
-  /* ÅäÖÃ LoRa RST ¸´Î»Òı½Å (PA1) - Ä¬ÈÏ¸ßµçÆ½£¨²»¸´Î»£© */
+  /* é…ç½® LoRa RST å¤ä½å¼•è„š (PA1) - é»˜è®¤é«˜ç”µå¹³ï¼ˆä¸å¤ä½ï¼‰ */
   GPIO_InitStruct.Pin = LORA_RST_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;   // ÍÆÍìÊä³öÄ£Ê½
-  GPIO_InitStruct.Pull = GPIO_NOPULL;           // ÎŞÉÏÏÂÀ­
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // ¸ßËÙ
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;   // æ¨æŒ½è¾“å‡ºæ¨¡å¼
+  GPIO_InitStruct.Pull = GPIO_NOPULL;           // æ— ä¸Šä¸‹æ‹‰
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // é«˜é€Ÿ
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET); // RST À­¸ß
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET); // RST æ‹‰é«˜
 
-  /* ÅäÖÃ DTU RST ¸´Î»Òı½Å (PA3) - Ä¬ÈÏ¸ßµçÆ½£¨²»¸´Î»£© */
+  /* é…ç½® DTU RST å¤ä½å¼•è„š (PA3) - é»˜è®¤é«˜ç”µå¹³ï¼ˆä¸å¤ä½ï¼‰ */
   GPIO_InitStruct.Pin = DTU_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(DTU_RST_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET); // Ä¬ÈÏ¸ßµçÆ½
+  HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET); // é»˜è®¤é«˜ç”µå¹³
 
-  /* ÅäÖÃ LoRa IRQ ÖĞ¶ÏÒı½Å (PA2) - ÉÏÉıÑØ´¥·¢£¬ÏÂÀ­ */
+  /* é…ç½® LoRa IRQ ä¸­æ–­å¼•è„š (PA2) - ä¸Šå‡æ²¿è§¦å‘ï¼Œä¸‹æ‹‰ */
   GPIO_InitStruct.Pin = GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING; // Íâ²¿ÖĞ¶Ï£¬ÉÏÉıÑØ´¥·¢
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;       // ÏÂÀ­£¨Ä¬ÈÏµÍµçÆ½£©
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING; // å¤–éƒ¨ä¸­æ–­ï¼Œä¸Šå‡æ²¿è§¦å‘
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;       // ä¸‹æ‹‰ï¼ˆé»˜è®¤ä½ç”µå¹³ï¼‰
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /**
- * @brief  SPI1 ³õÊ¼»¯º¯Êı£¨LoRa PAN3029 Ó²¼ş SPI£©
- * @note   ÅäÖÃ SPI1 ÍâÉè£º
- *         - Ö÷»úÄ£Ê½£¬È«Ë«¹¤£¬8-bit Êı¾İ
- *         - CPOL=0, CPHA=0£¨¿ÕÏĞÊ± SCK µÍµçÆ½£¬µÚÒ»±ßÑØ²ÉÑù£©
- *         - MSB ÓÅÏÈ£¬Èí¼ş NSS£¬²¨ÌØÂÊ·ÖÆµ 16£¨72MHz/16 = 4.5MHz£©
+ * @brief  SPI1 åˆå§‹åŒ–å‡½æ•°ï¼ˆLoRa PAN3029 ç¡¬ä»¶ SPIï¼‰
+ * @note   é…ç½® SPI1 å¤–è®¾ï¼š
+ *         - ä¸»æœºæ¨¡å¼ï¼Œå…¨åŒå·¥ï¼Œ8-bit æ•°æ®
+ *         - CPOL=0, CPHA=0ï¼ˆç©ºé—²æ—¶ SCK ä½ç”µå¹³ï¼Œç¬¬ä¸€è¾¹æ²¿é‡‡æ ·ï¼‰
+ *         - MSB ä¼˜å…ˆï¼Œè½¯ä»¶ NSSï¼Œæ³¢ç‰¹ç‡åˆ†é¢‘ 16ï¼ˆ72MHz/16 = 4.5MHzï¼‰
  * @param  None
  * @retval None
  */
@@ -1840,18 +1840,18 @@ static void MX_SPI1_Init(void) {
 }
 
 /**
- * @brief  NVIC ÖĞ¶Ï¿ØÖÆÆ÷³õÊ¼»¯º¯Êı£¨LoRa IRQ£©
- * @note   ÅäÖÃ LoRa Ä£¿éµÄ IRQ Òı½Å (PA2) ¶ÔÓ¦µÄÍâ²¿ÖĞ¶Ï EXTI2
- *         - ÖĞ¶ÏÓÅÏÈ¼¶: ÇÀÕ¼ÓÅÏÈ¼¶ 0£¬×ÓÓÅÏÈ¼¶ 0£¨×î¸ßÓÅÏÈ¼¶£©
- *         - ´¥·¢·½Ê½: ÉÏÉıÑØ´¥·¢£¨ÔÚ GPIO ³õÊ¼»¯ÖĞÅäÖÃ£©
+ * @brief  NVIC ä¸­æ–­æ§åˆ¶å™¨åˆå§‹åŒ–å‡½æ•°ï¼ˆLoRa IRQï¼‰
+ * @note   é…ç½® LoRa æ¨¡å—çš„ IRQ å¼•è„š (PA2) å¯¹åº”çš„å¤–éƒ¨ä¸­æ–­ EXTI2
+ *         - ä¸­æ–­ä¼˜å…ˆçº§: æŠ¢å ä¼˜å…ˆçº§ 0ï¼Œå­ä¼˜å…ˆçº§ 0ï¼ˆæœ€é«˜ä¼˜å…ˆçº§ï¼‰
+ *         - è§¦å‘æ–¹å¼: ä¸Šå‡æ²¿è§¦å‘ï¼ˆåœ¨ GPIO åˆå§‹åŒ–ä¸­é…ç½®ï¼‰
  * @retval None
  */
 static void MX_NVIC_Init(void) {
-  /* EXTI2 ÖĞ¶ÏÓÃÓÚ LoRa IRQ (PA2) */
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0); // ÉèÖÃ×î¸ßÓÅÏÈ¼¶
-  HAL_NVIC_EnableIRQ(EXTI2_IRQn);         // Ê¹ÄÜ EXTI2 ÖĞ¶Ï
+  /* EXTI2 ä¸­æ–­ç”¨äº LoRa IRQ (PA2) */
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0); // è®¾ç½®æœ€é«˜ä¼˜å…ˆçº§
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);         // ä½¿èƒ½ EXTI2 ä¸­æ–­
 
-  /* USART3 ÖĞ¶ÏÓÃÓÚ DTU Êı¾İ½ÓÊÕ */
+  /* USART3 ä¸­æ–­ç”¨äº DTU æ•°æ®æ¥æ”¶ */
   HAL_NVIC_SetPriority(USART3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(USART3_IRQn);
 }
@@ -1859,32 +1859,32 @@ static void MX_NVIC_Init(void) {
 /* USER CODE BEGIN 4 */
 
 /**
- * @brief  GPIO Íâ²¿ÖĞ¶Ï»Øµ÷º¯Êı
- * @note   µ± EXTI ÖĞ¶Ï´¥·¢Ê±£¬HAL ¿â»áµ÷ÓÃ´Ëº¯Êı
- *         ¸ù¾İÖĞ¶ÏÒı½ÅÅĞ¶ÏÖĞ¶ÏÔ´£¬Ö´ĞĞÏàÓ¦´¦Àí
- * @param  GPIO_Pin: ´¥·¢ÖĞ¶ÏµÄÒı½ÅºÅ
+ * @brief  GPIO å¤–éƒ¨ä¸­æ–­å›è°ƒå‡½æ•°
+ * @note   å½“ EXTI ä¸­æ–­è§¦å‘æ—¶ï¼ŒHAL åº“ä¼šè°ƒç”¨æ­¤å‡½æ•°
+ *         æ ¹æ®ä¸­æ–­å¼•è„šåˆ¤æ–­ä¸­æ–­æºï¼Œæ‰§è¡Œç›¸åº”å¤„ç†
+ * @param  GPIO_Pin: è§¦å‘ä¸­æ–­çš„å¼•è„šå·
  * @retval None
  */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  /* LoRa IRQ ÖĞ¶Ï: PA2 -> µ÷ÓÃÉäÆµÖĞ¶Ï´¦Àíº¯Êı */
+  /* LoRa IRQ ä¸­æ–­: PA2 -> è°ƒç”¨å°„é¢‘ä¸­æ–­å¤„ç†å‡½æ•° */
   if (GPIO_Pin == GPIO_PIN_2) {
-    rf_irq_process(); // ´¦Àí LoRa Ä£¿éµÄÖĞ¶ÏÊÂ¼ş
+    rf_irq_process(); // å¤„ç† LoRa æ¨¡å—çš„ä¸­æ–­äº‹ä»¶
   }
 
-  /* ±¾°åÎŞ°´¼ü£¬K1(PB4)/K2(PB5) ÒÑ´Ó¹¤³Ì³¹µ×É¾³ı
-   * £¨Òı½Å¶¨Òå¡¢GPIO ÅäÖÃ¡¢NVIC Ê¹ÄÜ¡¢EXTI4/EXTI9_5 ÖĞ¶Ï·şÎñº¯ÊıÈ«²¿ÒÆ³ı£©
-   * ÈôÒÔºóĞÂ°åÒª¼Ó°´¼ü£¬ĞèÈı´¦Ò»Æğ²¹»Ø£º
-   *   1) main.h µÄ K1_Pin/K2_Pin ¶¨Òå
-   *   2) MX_GPIO_Init µÄ IT_FALLING + PULLUP ÅäÖÃÓë NVIC Ê¹ÄÜ
-   *   3) stm32f1xx_it.c µÄ EXTI4_IRQHandler / EXTI9_5_IRQHandler
-   * ÇÒÉäÆµ²Ù×÷±ØĞë·ÅÔÚÖ÷Ñ­»·£¬¾ø²»ÄÜÔÚÖĞ¶ÏÀïµ÷ÓÃ£¨°´¼ü EXTI ÓÅÏÈ¼¶ 0£¬
-   * SysTick ÓÅÏÈ¼¶ 15£¬ÖĞ¶ÏÀïµ÷ HAL_Delay »áÕû»ú¿¨ËÀ£© */
+  /* æœ¬æ¿æ— æŒ‰é”®ï¼ŒK1(PB4)/K2(PB5) å·²ä»å·¥ç¨‹å½»åº•åˆ é™¤
+   * ï¼ˆå¼•è„šå®šä¹‰ã€GPIO é…ç½®ã€NVIC ä½¿èƒ½ã€EXTI4/EXTI9_5 ä¸­æ–­æœåŠ¡å‡½æ•°å…¨éƒ¨ç§»é™¤ï¼‰
+   * è‹¥ä»¥åæ–°æ¿è¦åŠ æŒ‰é”®ï¼Œéœ€ä¸‰å¤„ä¸€èµ·è¡¥å›ï¼š
+   *   1) main.h çš„ K1_Pin/K2_Pin å®šä¹‰
+   *   2) MX_GPIO_Init çš„ IT_FALLING + PULLUP é…ç½®ä¸ NVIC ä½¿èƒ½
+   *   3) stm32f1xx_it.c çš„ EXTI4_IRQHandler / EXTI9_5_IRQHandler
+   * ä¸”å°„é¢‘æ“ä½œå¿…é¡»æ”¾åœ¨ä¸»å¾ªç¯ï¼Œç»ä¸èƒ½åœ¨ä¸­æ–­é‡Œè°ƒç”¨ï¼ˆæŒ‰é”® EXTI ä¼˜å…ˆçº§ 0ï¼Œ
+   * SysTick ä¼˜å…ˆçº§ 15ï¼Œä¸­æ–­é‡Œè°ƒ HAL_Delay ä¼šæ•´æœºå¡æ­»ï¼‰ */
 }
 
 /* USER CODE END 4 */
 
 /**
- * @brief USART3 Initialization Function (DTU Í¨ĞÅ)
+ * @brief USART3 Initialization Function (DTU é€šä¿¡)
  * @param None
  * @retval None
  */
@@ -1901,53 +1901,53 @@ static void MX_USART3_UART_Init(void) {
     Error_Handler();
   }
 
-  /* Æô¶¯ÖĞ¶Ï½ÓÊÕ£¬Ã¿¸ö×Ö½Ú´¥·¢Ò»´Î»Øµ÷ */
+  /* å¯åŠ¨ä¸­æ–­æ¥æ”¶ï¼Œæ¯ä¸ªå­—èŠ‚è§¦å‘ä¸€æ¬¡å›è°ƒ */
   HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
 }
 
 /**
- * @brief  USART3 ½ÓÊÕÍê³É»Øµ÷£¨HAL ¿âÈõº¯ÊıÖØĞ´£©
- * @note   Ã¿ÊÕµ½ 1 ×Ö½Ú´¥·¢Ò»´Î£¬¼ÇÂ¼Ê±¼ä´Á²¢Ğø½Ó»º³åÇø
+ * @brief  USART3 æ¥æ”¶å®Œæˆå›è°ƒï¼ˆHAL åº“å¼±å‡½æ•°é‡å†™ï¼‰
+ * @note   æ¯æ”¶åˆ° 1 å­—èŠ‚è§¦å‘ä¸€æ¬¡ï¼Œè®°å½•æ—¶é—´æˆ³å¹¶ç»­æ¥ç¼“å†²åŒº
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart->Instance == USART3) {
     dtuRxLen++;
-    dtuLastRxTick = HAL_GetTick(); // ¼ÇÂ¼ÊÕµ½×Ö½ÚµÄÊ±¼ä
+    dtuLastRxTick = HAL_GetTick(); // è®°å½•æ”¶åˆ°å­—èŠ‚çš„æ—¶é—´
     if (dtuRxLen < DTU_RX_BUF_SIZE) {
       HAL_UART_Receive_IT(&huart3, &dtuRxBuf[dtuRxLen], 1);
     } else {
-      dtuRxLen = 0; // »º³åÇøÂú£¬¶ªÆú
+      dtuRxLen = 0; // ç¼“å†²åŒºæ»¡ï¼Œä¸¢å¼ƒ
     }
   }
 }
 
 /**
- * @brief  ´íÎó´¦Àíº¯Êı
- * @note   µ±ÏµÍ³·¢ÉúÑÏÖØ´íÎóÊ±µ÷ÓÃ´Ëº¯Êı
- *         ¹Ø±ÕËùÓĞÖĞ¶Ï£¬½øÈëËÀÑ­»·
+ * @brief  é”™è¯¯å¤„ç†å‡½æ•°
+ * @note   å½“ç³»ç»Ÿå‘ç”Ÿä¸¥é‡é”™è¯¯æ—¶è°ƒç”¨æ­¤å‡½æ•°
+ *         å…³é—­æ‰€æœ‰ä¸­æ–­ï¼Œè¿›å…¥æ­»å¾ªç¯
  * @retval None
  */
 void Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
-  __disable_irq(); // ¹Ø±ÕËùÓĞÖĞ¶Ï
+  __disable_irq(); // å…³é—­æ‰€æœ‰ä¸­æ–­
   while (1) {
-    // ËÀÑ­»·£¬µÈ´ıÓ²¼ş¸´Î»
+    // æ­»å¾ªç¯ï¼Œç­‰å¾…ç¡¬ä»¶å¤ä½
   }
   /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef USE_FULL_ASSERT
 /**
- * @brief  ¶ÏÑÔÊ§°Ü»Øµ÷º¯Êı
- * @note   µ± assert_param ¼ì²éÊ§°ÜÊ±µ÷ÓÃ´Ëº¯Êı
- *         ¿ÉÒÔÔÚ´Ë´¦Ìí¼Óµ÷ÊÔĞÅÏ¢£¬Êä³öÎÄ¼şÃûºÍĞĞºÅ
- * @param  file: Ö¸ÏòÔ´ÎÄ¼şÃûµÄÖ¸Õë
- * @param  line: ¶ÏÑÔÊ§°ÜµÄÔ´´úÂëĞĞºÅ
+ * @brief  æ–­è¨€å¤±è´¥å›è°ƒå‡½æ•°
+ * @note   å½“ assert_param æ£€æŸ¥å¤±è´¥æ—¶è°ƒç”¨æ­¤å‡½æ•°
+ *         å¯ä»¥åœ¨æ­¤å¤„æ·»åŠ è°ƒè¯•ä¿¡æ¯ï¼Œè¾“å‡ºæ–‡ä»¶åå’Œè¡Œå·
+ * @param  file: æŒ‡å‘æºæ–‡ä»¶åçš„æŒ‡é’ˆ
+ * @param  line: æ–­è¨€å¤±è´¥çš„æºä»£ç è¡Œå·
  * @retval None
  */
 void assert_failed(uint8_t *file, uint32_t line) {
   /* USER CODE BEGIN 6 */
-  /* ¿ÉÒÔÔÚ´Ë´¦Ìí¼Óµ÷ÊÔÊä³ö£¬ÀıÈç£º
+  /* å¯ä»¥åœ¨æ­¤å¤„æ·»åŠ è°ƒè¯•è¾“å‡ºï¼Œä¾‹å¦‚ï¼š
    * printf("Wrong parameters value: file %s on line %d\r\n", file, line);
    */
   /* USER CODE END 6 */

@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+ï»¿/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file         stm32f1xx_hal_msp.c
@@ -86,12 +86,12 @@ void HAL_MspInit(void)
   /* USER CODE END MspInit 1 */
 }
 
-/* CAN / I2C µÄ MSP ³õÊ¼»¯Óë·´³õÊ¼»¯º¯ÊýÒÑÉ¾³ý£º
- *   HAL_CAN_MspInit / HAL_CAN_MspDeInit   £¨PB8=CAN_RX, PB9=CAN_TX£©
- *   HAL_I2C_MspInit / HAL_I2C_MspDeInit   £¨PB6=SCL,   PB7=SDA£©
- * ÀíÓÉ£ºCAN Óë I2C µÄ MX_xxx_Init() ´ÓÎ´¶¨ÒåÒ²´ÓÎ´µ÷ÓÃ£¬
- *       ÕâÁ½¸öÍâÉè´ÓÎ´±»³õÊ¼»¯¹ý£¬Æä MSP º¯ÊýÓÀÔ¶²»»á±»Ö´ÐÐ
- * Á¬´øÐ§¹û£ºPB6 / PB7 / PB8 / PB9 ²»ÔÙ±»ÅäÖÃÎª¸´ÓÃ¹¦ÄÜ */
+/* CAN / I2C çš„ MSP åˆå§‹åŒ–ä¸Žååˆå§‹åŒ–å‡½æ•°å·²åˆ é™¤ï¼š
+ *   HAL_CAN_MspInit / HAL_CAN_MspDeInit   ï¼ˆPB8=CAN_RX, PB9=CAN_TXï¼‰
+ *   HAL_I2C_MspInit / HAL_I2C_MspDeInit   ï¼ˆPB6=SCL,   PB7=SDAï¼‰
+ * ç†ç”±ï¼šCAN ä¸Ž I2C çš„ MX_xxx_Init() ä»Žæœªå®šä¹‰ä¹Ÿä»Žæœªè°ƒç”¨ï¼Œ
+ *       è¿™ä¸¤ä¸ªå¤–è®¾ä»Žæœªè¢«åˆå§‹åŒ–è¿‡ï¼Œå…¶ MSP å‡½æ•°æ°¸è¿œä¸ä¼šè¢«æ‰§è¡Œ
+ * è¿žå¸¦æ•ˆæžœï¼šPB6 / PB7 / PB8 / PB9 ä¸å†è¢«é…ç½®ä¸ºå¤ç”¨åŠŸèƒ½ */
 
 /**
   * @brief UART MSP Initialization
@@ -249,7 +249,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
 
 /**
 * @brief SPI MSP Initialization
-*        Ê¹ÄÜ SPI1 Ê±ÖÓ£¬ÅäÖÃ PA5(SCK)/PA6(MISO)/PA7(MOSI) Îª¸´ÓÃÍÆÍìÊä³ö
+*        ä½¿èƒ½ SPI1 æ—¶é’Ÿï¼Œé…ç½® PA5(SCK)/PA6(MISO)/PA7(MOSI) ä¸ºå¤ç”¨æŽ¨æŒ½è¾“å‡º
 */
 void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 {
@@ -257,13 +257,13 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 
   if(hspi->Instance == SPI1)
   {
-    /* Ê¹ÄÜ SPI1 ÍâÉèÊ±ÖÓ */
+    /* ä½¿èƒ½ SPI1 å¤–è®¾æ—¶é’Ÿ */
     __HAL_RCC_SPI1_CLK_ENABLE();
 
-    /* Ê¹ÄÜ GPIOA Ê±ÖÓ */
+    /* ä½¿èƒ½ GPIOA æ—¶é’Ÿ */
     __HAL_RCC_GPIOA_CLK_ENABLE();
 
-    /* PA5(SCK), PA6(MISO), PA7(MOSI) ¸´ÓÃÍÆÍìÊä³ö */
+    /* PA5(SCK), PA6(MISO), PA7(MOSI) å¤ç”¨æŽ¨æŒ½è¾“å‡º */
     GPIO_InitStruct.Pin   = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
     GPIO_InitStruct.Mode  = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull  = GPIO_NOPULL;

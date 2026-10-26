@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+ï»¿/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.h
@@ -61,12 +61,12 @@ void Error_Handler(void);
 #define TNOW_GPIO_Port GPIOA
 #define LED1_Pin GPIO_PIN_15
 #define LED1_GPIO_Port GPIOB
-/* ±¾°å½ö PB15 Ò»¸ö LED£ºLED2(PB13)/LED3(PB14) ÒÑÎÞ´ËÓ²¼þ£¬¶¨ÒåÒ»²¢É¾³ý
- * LED4(PA0) Ô­±¾Ö»´æÔÚÓÚ×¢ÊÍÖÐ£¬´ÓÎ´ÓÐÊµ¼Ê¶¨Òå */
-/* K1(PB4)/K2(PB5) ÒÑ´Ó±¾°åÒÆ³ý£¬Òý½Å¶¨ÒåÓëÖÐ¶ÏÅäÖÃÒ»²¢É¾³ý */
+/* æœ¬æ¿ä»… PB15 ä¸€ä¸ª LEDï¼šLED2(PB13)/LED3(PB14) å·²æ— æ­¤ç¡¬ä»¶ï¼Œå®šä¹‰ä¸€å¹¶åˆ é™¤
+ * LED4(PA0) åŽŸæœ¬åªå­˜åœ¨äºŽæ³¨é‡Šä¸­ï¼Œä»Žæœªæœ‰å®žé™…å®šä¹‰ */
+/* K1(PB4)/K2(PB5) å·²ä»Žæœ¬æ¿ç§»é™¤ï¼Œå¼•è„šå®šä¹‰ä¸Žä¸­æ–­é…ç½®ä¸€å¹¶åˆ é™¤ */
 
 /* USER CODE BEGIN Private defines */
-/* --- LoRa (PAN3029) Èí¼þ SPI Òý½Å --- */
+/* --- LoRa (PAN3029) è½¯ä»¶ SPI å¼•è„š --- */
 #define LORA_SCK_Pin      GPIO_PIN_5
 #define LORA_SCK_GPIO_Port GPIOA
 #define LORA_MISO_Pin     GPIO_PIN_6
@@ -78,7 +78,7 @@ void Error_Handler(void);
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
 
-/* --- DTU ¸´Î»Òý½Å (PA3) --- */
+/* --- DTU å¤ä½å¼•è„š (PA3) --- */
 #define DTU_RST_Pin       GPIO_PIN_3
 #define DTU_RST_GPIO_Port GPIOA
 /* USER CODE END Private defines */
