@@ -63,7 +63,9 @@ typedef struct {
 /* Work mode - 工作模式定义 */
 #define MODE_IDLE 0 // 空闲模式
 #define MODE_RX 1   // 接收模式
-#define MODE_TX 2   // 发送模式
+/* MODE_TX 已删除：进入该模式的唯一途径是按键 K2，K2 移除后无触发源，
+ * 连同 do_tx_send() / txMsg / lastTxTick 一并移除。
+ * 恢复定时发射时把 #define MODE_TX 2 补回即可 */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -72,8 +74,10 @@ typedef struct {
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-CAN_HandleTypeDef hcan;
-I2C_HandleTypeDef hi2c1;
+/* hcan(CAN) / hi2c1(I2C) 已删除：
+ * 两者的 MX_xxx_Init() 在整个工程里从未定义也从未调用，
+ * 即 CAN / I2C 外设从未被初始化过，属于死代码，
+ * 连同 MSP 初始化函数、CAN 的两个 ISR、HAL 驱动与 .ioc 引脚一并移除 */
 SPI_HandleTypeDef hspi1; // SPI1 用于 LoRa PAN3029（硬件 SPI）
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3; // USART3 用于 DTU 通信
@@ -105,9 +109,8 @@ static uint8_t led1On = 0;      // LED1 当前是否点亮（0=灭, 1=亮）
 // 工作模式相关
 
 static uint8_t workMode = MODE_RX;     // 当前工作模式（RX/TX/IDLE）
-static uint8_t txMsg[] = "I LOVE YOU"; // TX模式下循环发送的测试消息
-static uint32_t lastTxTick = 0;        // 上次发送时间戳（3秒间隔）
-                                       // （原按键消抖时间戳已随 K1/K2 移除）
+                                       // （txMsg/lastTxTick 已随 do_tx_send 移除，
+                                       //   原按键消抖时间戳已随 K1/K2 移除）
 
 /* LoRa receive buffers - LoRa 接收缓冲区 */
 static uint8_t prev_rx_buf[RX_LEN] = {
@@ -217,7 +220,7 @@ static void OnSlave(void);       // LoRa 从机接收处理函数
 static void enter_rx_mode(void);   // 切换到接收模式
 static void lora_rf_sleep(void);   // 关闭 LoRa 射频（深度休眠）
 static uint8_t lora_rf_wake(void); // 唤醒 LoRa 射频并恢复接收
-static void do_tx_send(void);      // 发送模式处理函数
+/* do_tx_send() 已随 MODE_TX 一并删除（无触发源） */
 static void sendToDtu(const char *loraStr, int rssi,
                       int snr); // 统一上报DTU（JSON格式，入队）
 static void enqueueDtuMsg(const char *msg, int len); // 将消息加入 DTU 发送队列
@@ -556,30 +559,12 @@ static uint8_t lora_rf_wake(void) {
   return 1;
 }
 
-/**
- * @brief  发送模式处理函数
- * @note   功能说明：
- *         1. 每 3 秒发送一次测试消息 "I LOVE YOU"
- *         2. 发送时 LED1 点亮 500ms 作为发送指示
- *         3. 清除发送完成标志，准备下次发送
- */
-static void do_tx_send(void) {
-  uint32_t now = HAL_GetTick(); // 获取当前系统时间
-
-  /* 每 3 秒发送一次数据 */
-  if (now - lastTxTick >= 3000) {
-    lastTxTick = now; // 更新发送时间戳
-    uint32_t tx_time;
-    // 调用驱动发送数据，tx_time 返回实际发送耗时
-    rf_single_tx_data(txMsg, sizeof(txMsg) - 1, &tx_time);
-    printf("TX: I LOVE YOU\r\n");
-  }
-
-  /* 检查并清除发送完成标志 */
-  if (rf_get_transmit_flag() == RADIO_FLAG_TXDONE) {
-    rf_set_transmit_flag(RADIO_FLAG_IDLE); // 清除标志，准备下次发送
-  }
-}
+/* do_tx_send()（每 3 秒发 "I LOVE YOU" 的测试发射）已删除
+ * 原因：它只由 MODE_TX 触发，而进入 MODE_TX 的唯一途径是按键 K2，
+ *       K2 移除后该模式再无任何入口，整个函数与 txMsg / lastTxTick /
+ *       MODE_TX 均成死代码，一并移除
+ * 恢复方法：补回本函数与 txMsg / lastTxTick，在主循环 switch 里补
+ *       case MODE_TX，并另给一个切换到 MODE_TX 的触发源 */
 
 /**
  * @brief  将日期时间转换为 Unix 时间戳（秒）
@@ -1568,10 +1553,6 @@ int main(void) {
           printf("[工作时间] 离开工作区间, 射频休眠\r\n");
           if (loraSwOn)
             lora_rf_sleep();
-          /* 必须切回 RX：do_tx_send() 不受 loraSwOn 门禁保护，
-           * 停留在 TX 模式会向已掉电的射频发射 */
-          if (workMode == MODE_TX)
-            workMode = MODE_RX;
         }
         prevInWorkWindow = inWin;
       }
@@ -1581,10 +1562,6 @@ int main(void) {
     switch (workMode) {
     case MODE_RX: // 接收模式
       OnSlave();  // 调用接收处理函数
-      break;
-
-    case MODE_TX:   // 发送模式
-      do_tx_send(); // 调用发送处理函数
       break;
 
     default: // 空闲模式，不做任何处理

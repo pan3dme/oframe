@@ -55,7 +55,10 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern CAN_HandleTypeDef hcan;
+/* extern CAN_HandleTypeDef hcan; 已随 CAN 功能删除：
+ * CAN 从未初始化（MX_CAN_Init 未定义未调用），两个 CAN 的 ISR 也已移除，
+ * 故该句柄声明一并删除 */
+
 extern UART_HandleTypeDef huart3;
 /* USER CODE BEGIN EV */
 
@@ -231,33 +234,11 @@ void EXTI2_IRQHandler(void)
  * 会导致中断反复重入。删除后由启动文件的弱定义 Default_Handler 兜底，
  * 而该中断线已无任何引脚使用，不会触发 */
 
-/**
-  * @brief This function handles USB high priority or CAN TX interrupts.
-  */
-void USB_HP_CAN1_TX_IRQHandler(void)
-{
-  /* USER CODE BEGIN USB_HP_CAN1_TX_IRQn 0 */
-
-  /* USER CODE END USB_HP_CAN1_TX_IRQn 0 */
-  HAL_CAN_IRQHandler(&hcan);
-  /* USER CODE BEGIN USB_HP_CAN1_TX_IRQn 1 */
-
-  /* USER CODE END USB_HP_CAN1_TX_IRQn 1 */
-}
-
-/**
-  * @brief This function handles USB low priority or CAN RX0 interrupts.
-  */
-void USB_LP_CAN1_RX0_IRQHandler(void)
-{
-  /* USER CODE BEGIN USB_LP_CAN1_RX0_IRQn 0 */
-
-  /* USER CODE END USB_LP_CAN1_RX0_IRQn 0 */
-  HAL_CAN_IRQHandler(&hcan);
-  /* USER CODE BEGIN USB_LP_CAN1_RX0_IRQn 1 */
-
-  /* USER CODE END USB_LP_CAN1_RX0_IRQn 1 */
-}
+/* CAN 的两个中断服务函数已删除：
+ *   USB_HP_CAN1_TX_IRQHandler / USB_LP_CAN1_RX0_IRQHandler
+ * 理由：CAN 从未初始化（MX_CAN_Init 未定义未调用），中断不会触发。
+ *       同样整体删除而非留空 —— 留空会漏清挂起位导致中断反复重入，
+ *       删除后由启动文件的弱符号 Default_Handler 兜底 */
 
 /* EXTI9_5_IRQHandler 已删除：原为按键 K2(PB5)，该引脚本板已不存在
  * 删除理由同 EXTI4（留空会漏清挂起位导致中断风暴）

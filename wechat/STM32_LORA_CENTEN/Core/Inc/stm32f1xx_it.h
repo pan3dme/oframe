@@ -58,8 +58,9 @@ void SysTick_Handler(void);
 void RCC_IRQHandler(void);
 /* EXTI4/EXTI9_5 的 ISR 声明已随按键 K1(PB4)/K2(PB5) 一并删除，
  * 无强定义时由启动文件的弱符号 Default_Handler 兜底 */
-void USB_HP_CAN1_TX_IRQHandler(void);
-void USB_LP_CAN1_RX0_IRQHandler(void);
+/* CAN 的两个 ISR 声明已删除：
+ *   USB_HP_CAN1_TX_IRQHandler / USB_LP_CAN1_RX0_IRQHandler
+ * 无强定义时由启动文件的弱符号 Default_Handler 兜底 */
 /* USER CODE BEGIN EFP */
 /* USER CODE END EFP */
 
