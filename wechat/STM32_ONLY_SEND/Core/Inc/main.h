@@ -73,6 +73,11 @@ void Error_Handler(void);
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
 
+/* --- MOS 电源开关 (PB1 → GPS 电源) ---
+ * 实测极性：高电平 = 导通(开), 低电平 = 关断(关) */
+#define MOS_SW_Pin        GPIO_PIN_1
+#define MOS_SW_GPIO_Port  GPIOB
+
 /* ONLY_SEND 项目使用低功率 (4 dBm) */
 #define DEFAULT_PWR            4
 /* USER CODE END Private defines */

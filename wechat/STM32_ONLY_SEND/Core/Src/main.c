@@ -62,7 +62,7 @@
 /* 设备信息 */
 #define DEFAULT_DEVICE_NAME  "v0-0"
 char deviceName[32] = DEFAULT_DEVICE_NAME;  /* 可变设备名，从 Flash 加载 */
-#define BATTERY_VAL  99
+#define BATTERY_VAL  99   /* 电量默认值（%）：ADC 取到值前的兜底，上电即被刷新 */
 
 /* 配置字符串（持久化到 Flash，可通过指令修改） */
 #define DEFAULT_CONFIG_STR  "1,0M,3t,6"
@@ -126,6 +126,15 @@ static uint32_t tx_count = 0;          /* 上报帧计数（所有帧类型共�
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
+static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（0~99）
+                                        * 每次 LoRa 唤醒时读一次 ADC 刷新，
+                                        * 上报帧里带的就是这个值 */
+
+/* --- 电池电量检测（PA0 / ADC1_CH0）---
+ * @note  硬件：电池 → 100K → PA0 → 100K → GND，即 1:1 分压
+ *        故 V_bat = ADC电压 × 2，电池满电 4.2V 时分压点约 2.1V（未超 3.3V 量程）
+ *        用寄存器方式操作 ADC1，不依赖 stm32f1xx_hal_adc.c
+ */
 
 /* --- GPS 模块（USART3, PB11 RX, 9600）---
  * @note  本版本不做 GPS 电源三级管/复位控制，模块常供电，直接接收 NMEA
@@ -140,6 +149,9 @@ static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前
                                     * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收，
                                     *       发太快大概率丢帧。即使立刻就有坐标，也要至少等够这 10 秒 */
 #define GPS_CONT_INTERVAL_SEC 180  /* 连续定位模式的上报轮次间隔 = 3 分钟 */
+#define GPS_PWR_ON_DELAY_MS  500   /* GPS 上电后等待模块启动的时间(ms)
+                                    * @note 硬件断电再上电是冷启动，模块要先完成
+                                    *       晶振/PLL 稳定才能吐出第一条 NMEA */
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
 
 typedef struct {
@@ -182,6 +194,7 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_NVIC_Init(void);
+static void MX_ADC1_Init(void);
 
 /* USER CODE BEGIN PFP */
 static void printf_logo(void);
@@ -220,6 +233,10 @@ static double nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsSetPowerSave(uint8_t enable); /* 向 GPS 下发 CFG-RXM 切换 PSM */
+static void gpsPowerOn(void);           /* 打开 GPS 电源（PB1 → MOS 高边开关） */
+static void gpsPowerOff(void);          /* 关闭 GPS 电源 */
+static uint16_t ADC1_Read(void);            /* ADC1 单次读取（12 位） */
+static uint8_t  GetBatteryPercent(void);    /* ADC 值 → 电池电压 → 电量百分比 */
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -1282,11 +1299,11 @@ static void OnMaster(void)
   if (gpsNeedRetry) {
     printf("[调度] 上轮搜星失败(已上报 0.0,0.0), 本轮跳过定时上报, 重试 UPGPS\r\n");
   } else {
-    /* 组包：2|v0-0|当天秒数|99|计数
+    /* 组包：2|v0-0|当天秒数|电量|计数
      * 周期上报固定发时间帧，不管有没有定位 —— 定位由 UPGPS 流程单独触发上报 */
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
              MSG_TYPE_TIME, deviceName,
-             (unsigned long)today_sec, BATTERY_VAL, (unsigned long)tx_count);
+             (unsigned long)today_sec, cachedBatteryPercent, (unsigned long)tx_count);
 
     /* 发送前 LED 闪 3 次，每次 200ms */
     for (uint8_t i = 0; i < 3; i++) {
@@ -1375,6 +1392,9 @@ static void OnMaster(void)
 
     gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿等 */
 
+    /* 只有这一轮真的要用 GPS 才上电，用完立刻断电（平时 0 电流） */
+    gpsPowerOn();
+
     /* GPS 打印的开关与恢复由 gpsSearchAndReport() 内部逐轮处理 */
     if (gpsContTotalMin > 0) {
       /* 连续定位模式：时长内不休眠，每 3 分钟上报一次坐标。
@@ -1387,6 +1407,9 @@ static void OnMaster(void)
       hasFix = gpsSearchAndReport();
       gpsNeedRetry = hasFix ? 0U : 1U;
     }
+
+    /* 上报完成，GPS 断电（连续定位模式也是整段结束后才断，避免每轮冷启动） */
+    gpsPowerOff();
 
     /* 注意：分支提示不要写成 one-liner 三元 + 中文值，
      * 中文紧贴闭合引号会被 ARMCC5 按 GBK 吞掉那个引号（missing closing quote），
@@ -1440,8 +1463,20 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   MX_NVIC_Init();
+  MX_ADC1_Init();          /* 电池电量检测：PA0 / ADC1_CH0 */
 
   /* USER CODE BEGIN 2 */
+
+  /* GPS 断电期间它的 TXD 线会浮空，PB11 可能被噪声误采成乱码字节。
+   * 这里把 PB11 改成内部上拉，让线路保持在 UART 空闲高电平。
+   * @warning 必须放在所有 MX_* 之后：USART3 的 MspInit 会把 PB11 配回浮空输入 */
+  {
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin  = GPIO_PIN_11;
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOB, &gpio);
+  }
 
   /* 从 Flash 加载设备名、配置、发射功率和农场中心坐标 */
   loadDeviceNameFromFlash();
@@ -1485,6 +1520,8 @@ int main(void)
         /* 唤醒 LoRa 并执行 5 秒倒计时 */
         printf("[WAKE] LoRa 唤醒中, 5秒倒计时...\r\n");
         loraInitFirstTime();
+        /* 读取电量并缓存（每轮上报前刷新一次，上报帧里带的就是它） */
+        cachedBatteryPercent = GetBatteryPercent();
         for (int i = 5; i > 0; i--) {
           char time_str[20];
           formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
@@ -1636,6 +1673,16 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
+  /* GPS 电源开关 (PB1 → MOS 开关)
+   * 实测极性：高电平 = 导通(GPS 上电), 低电平 = 关断(GPS 断电)
+   * 默认置低 = 断电：GPS 只在真正要用的那一轮才上电（见 gpsPowerOn/Off） */
+  GPIO_InitStruct.Pin  = MOS_SW_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(MOS_SW_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(MOS_SW_GPIO_Port, MOS_SW_Pin, GPIO_PIN_RESET);  /* 默认关断: GPS 断电 */
+
   /* LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
   GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -1691,6 +1738,56 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief  ADC1 初始化（电池电量检测 PA0/ADC1_CH0，寄存器方式）
+  * @note   不依赖 stm32f1xx_hal_adc.c，直接操作寄存器
+  *         硬件：电池 → 100K → PA0 → 100K → GND（1:1 分压）
+  */
+static void MX_ADC1_Init(void)
+{
+  uint32_t timeout;
+  uint16_t test_val;
+
+  /* 1. 先设置 ADC 时钟分频 /8（必须在 ADC 时钟使能之前） */
+  RCC->CFGR &= ~(3u << 14);
+  RCC->CFGR |=  (3u << 14);               /* ADCPRE = /8, 9MHz */
+
+  /* 2. 使能 GPIOA 和 ADC1 时钟 */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  RCC->APB2ENR |= (1u << 9);              /* ADC1EN = 1 */
+  (void)RCC->APB2ENR;
+
+  /* 3. 复位 ADC1 外设 */
+  RCC->APB2RSTR |=  (1u << 9);
+  RCC->APB2RSTR &= ~(1u << 9);
+
+  /* 4. 配置寄存器：单通道单次转换，CH0(PA0)，最长采样时间 */
+  ADC1->CR1 = 0;
+  ADC1->CR2 = 0;
+  ADC1->SQR1 = 0;                         /* 1 个转换 */
+  ADC1->SQR2 = 0;
+  ADC1->SQR3 = 0;                         /* CH0 (PA0) */
+  ADC1->SMPR2 = (7u << 0);                /* CH0 采样 239.5 周期 */
+
+  /* 5. 上电 ADC */
+  ADC1->CR2 = ADC_CR2_ADON;
+  HAL_Delay(10);
+
+  /* 6. 校准（STM32F1 必须校准才能正常工作） */
+  ADC1->CR2 |= ADC_CR2_RSTCAL;
+  timeout = 1000000;
+  while ((ADC1->CR2 & ADC_CR2_RSTCAL) && --timeout);
+  ADC1->CR2 |= ADC_CR2_CAL;
+  timeout = 1000000;
+  while ((ADC1->CR2 & ADC_CR2_CAL) && --timeout);
+
+  printf("[ADC] 校准完成 CR2=0x%08lX\r\n", (unsigned long)ADC1->CR2);
+
+  /* 7. 试读一次，顺便刷新一次缓存电量 */
+  test_val = ADC1_Read();
+  printf("[ADC] 试读=%d\r\n", test_val);
+}
+
+/**
   * @brief  NVIC 中断控制器初始化（LoRa IRQ EXTI2）
   */
 static void MX_NVIC_Init(void)
@@ -1700,6 +1797,56 @@ static void MX_NVIC_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief  ADC1 单次读取（寄存器方式）
+  * @return 12 位 ADC 值（0~4095）
+  */
+static uint16_t ADC1_Read(void)
+{
+  uint32_t timeout = 1000000;
+  /* STM32F1: 设置 ADON 触发转换（比 SWSTART 更可靠） */
+  ADC1->CR2 |= ADC_CR2_ADON;
+  while (!(ADC1->SR & ADC_SR_EOC) && --timeout);
+  return (uint16_t)(ADC1->DR & 0xFFF);
+}
+
+/**
+  * @brief  获取电池电量百分比（0~99）
+  * @note   PA0 接分压电路（100K+100K），V_bat = ADC值/4096 * 3.3V * 2
+  *         锂电池映射：4.2V=99%, 3.3V=0%，分段线性插值
+  */
+static uint8_t GetBatteryPercent(void)
+{
+  uint32_t adc_sum = 0;
+  uint8_t i;
+
+  /* 连续采样 8 次取平均，抑制噪声 */
+  for (i = 0; i < 8; i++) {
+    adc_sum += ADC1_Read();
+  }
+  uint16_t adc_val = adc_sum / 8;
+
+  /* 计算电池电压：分压比 1:1，基准 3.3V */
+  /* V_bat(mV) = adc_val * 3300 * 2 / 4096 = adc_val * 6600 / 4096 */
+  uint32_t bat_mv = (uint32_t)adc_val * 6600 / 4096;
+
+  /* 锂电池电压 → 百分比 分段线性映射 */
+  uint8_t percent;
+  if (bat_mv >= 4200)      percent = 99;
+  else if (bat_mv >= 4000) percent = 80 + (bat_mv - 4000) * 19 / 200;
+  else if (bat_mv >= 3700) percent = 50 + (bat_mv - 3700) * 30 / 300;
+  else if (bat_mv >= 3500) percent = 20 + (bat_mv - 3500) * 30 / 200;
+  else if (bat_mv >= 3300) percent = (bat_mv - 3300) * 20 / 200;
+  else                     percent = 0;
+
+  if (percent > 99) percent = 99;
+
+  printf("[电量] ADC=%d V=%lu.%01luV => %d%%\r\n",
+         adc_val, (unsigned long)(bat_mv / 1000), (unsigned long)((bat_mv / 100) % 10), percent);
+
+  return percent;
+}
 
 /**
   * @brief  GPIO 外部中断回调函数
@@ -1775,6 +1922,41 @@ static void gpsSetPowerSave(uint8_t enable)
   pkt[8] = ckB;
 
   HAL_UART_Transmit(&huart3, pkt, sizeof(pkt), 200);
+}
+
+/**
+ * @brief  打开 GPS 电源（PB1 → MOS 开关，高电平导通）
+ * @note   1) 上电后等 GPS_PWR_ON_DELAY_MS：硬件断电再上电是冷启动，
+ *            模块要先稳定晶振/PLL 才会吐出第一条 NMEA
+ *         2) 清掉断电期间环形缓冲里可能残留的半截语句，避免解析出错
+ *         3) 模块重新上电必然回到连续模式，故 PSM 标记同步清 0
+ */
+static void gpsPowerOn(void)
+{
+  HAL_GPIO_WritePin(MOS_SW_GPIO_Port, MOS_SW_Pin, GPIO_PIN_SET);    /* 高电平导通 */
+  HAL_Delay(GPS_PWR_ON_DELAY_MS);
+
+  gpsRd = gpsWr;      /* 丢弃残留字节（关中断非必需：ISR 只改 gpsWr） */
+  gpsLineLen = 0;
+  gpsPowerSave = 0;   /* 重新上电后回到连续模式 */
+
+  printf("[GPS电源] ON\r\n");
+}
+
+/**
+ * @brief  关闭 GPS 电源（低电平关断）
+ * @note   断电后旧坐标立即失效：下一轮不能把上次的定位当成有效坐标上报，
+ *         否则 GPS_FIX_TTL_MS 内会误判成"已定位"而跳过真正的新一轮搜星
+ */
+static void gpsPowerOff(void)
+{
+  HAL_GPIO_WritePin(MOS_SW_GPIO_Port, MOS_SW_Pin, GPIO_PIN_RESET);  /* 低电平关断 */
+
+  gpsFixValid = 0;
+  gpsRd = gpsWr;
+  gpsLineLen = 0;
+
+  printf("[GPS电源] OFF\r\n");
 }
 
 /* USER CODE END 4 */
