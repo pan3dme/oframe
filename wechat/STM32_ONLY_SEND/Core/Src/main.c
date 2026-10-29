@@ -170,12 +170,23 @@ typedef struct {
   float    alt;    /* 海拔 (m) */
   float    speed;  /* 地面速度 (km/h) */
   uint8_t  sats;   /* 参与定位的卫星数 */
+  /* 以下是 GPS 的 UTC 日期时间（来自 RMC），未收到过则全为 0
+   * 用于搜星状态行的"年份是否可信"判断与时间显示 */
+  uint16_t year;
+  uint8_t  month;
+  uint8_t  day;
+  uint8_t  hour;
+  uint8_t  minute;
+  uint8_t  second;
+  uint16_t msec;
 } GpsFix_t;
+
+static const uint8_t gpsDaysInMonth[12] =   /* 平年每月天数（闰年 2 月单独修正） */
+    {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
 static GpsFix_t     gpsFix;
 static uint8_t      gpsFixValid = 0;   /* 最近一帧 GGA 是否有效定位 */
 static uint32_t     gpsRxCount = 0;    /* 收到的字节数（诊断用） */
-static uint32_t     gpsLastHint = 0;   /* 未定位提示的节流时间戳 */
 static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时刻（HAL_GetTick） */
 static uint8_t      gpsWakeEn  = 1;    /* GPS 唤醒使能（1=允许 Full on, 0=保持 Standby）
                                         * 由云端 sendmode 指令控制：
@@ -212,6 +223,7 @@ static uint32_t getTodaySecond(void);
 static uint32_t getCurrentTimestamp(void);
 static uint8_t isLeapYear(uint16_t year);
 static void formatTimestamp(uint32_t ts, char *buf, uint8_t len);
+static void reportPendingMessages(void);   /* 回发待上报的配置/中心坐标帧 */
 static void OnMaster(void);
 static void parse_rx_message(uint8_t *buf, uint8_t len);
 static void LedToggle(void);
@@ -231,6 +243,7 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType);
 static uint8_t gpsSearchAndReport(uint8_t useGpsType);
 static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType);
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs);
+static void    gpsPrintSearchStatus(uint32_t elapsedMs);   /* 搜星状态行(每秒一行) */
 static uint32_t getConfigIntervalSec(void);
 static void    getConfigFieldStr(uint8_t idx, char *out, uint8_t outLen);
 static int16_t twoCharToIndex(const char *s);    /* base62 双字符 → 索引(0~275) */
@@ -1085,10 +1098,8 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
  */
 static void parseNmeaLine(char *line)
 {
-  /* 正常运行时完全静默；只有搜星期间才打印 */
-  if (gpsPrintEn) {
-    printf("[GPS] %s\r\n", line);
-  }
+  /* @note 不再打印 NMEA 原始语句：搜星期间的观察改由 gpsPrintSearchStatus()
+   *       每秒输出一行状态（坐标/年份/可靠性/卫星数/已搜时长/时间） */
 
   /* ---- GGA: 时间、定位质量、经纬度、海拔、卫星数 ---- */
   if (!strncmp(line, "$GPGGA", 6) || !strncmp(line, "$GNGGA", 6) ||
@@ -1114,11 +1125,7 @@ static void parseNmeaLine(char *line)
       gpsFix.alt   = (float)atof(alt);
       gpsFixValid  = 1;
       gpsFixTick   = HAL_GetTick();   /* 刷新定位时间戳，供新鲜度判断 */
-
-      if (gpsPrintEn) {
-        printf("[GPS定位] lat=%.6f lng=%.6f alt=%.1f sats=%d UTC=%s\r\n",
-               gpsFix.lat, gpsFix.lng, (double)gpsFix.alt, (int)gpsFix.sats, utc);
-      }
+      (void)utc;                      /* 时间统一取 RMC 的，这里不用 */
     } else {
       gpsFix.valid = 0;
       gpsFixValid  = 0;
@@ -1127,19 +1134,42 @@ static void parseNmeaLine(char *line)
   }
   /* ---- RMC: 日期、地面速度（GGA 里没有） ---- */
   else if (!strncmp(line, "$GPRMC", 6) || !strncmp(line, "$GNRMC", 6)) {
-    char status[4], spd[12], date[8];
+    char status[4], spd[12], date[8], utc[16];
 
+    nmeaField(line, 1, utc, sizeof(utc));     /* HHMMSS.sss */
     nmeaField(line, 2, status, sizeof(status));
     nmeaField(line, 7, spd, sizeof(spd));
-    nmeaField(line, 9, date, sizeof(date));
+    nmeaField(line, 9, date, sizeof(date));   /* DDMMYY */
 
-    if (status[0] == 'A') {
-      gpsFix.speed = (float)(atof(spd) * 1.852);  /* 节 → km/h */
-      if (gpsPrintEn) {
-        printf("[GPS信息] 日期=%s 速度=%.1f km/h\r\n",
-               date, (double)gpsFix.speed);
+    /* 时间/日期无论定位与否都更新：未定位时 RMC 仍带 UTC 时间，
+     * "年份是否可信"这个判断就靠它 */
+    if (strlen(utc) >= 6) {
+      gpsFix.hour   = (uint8_t)((utc[0] - '0') * 10 + (utc[1] - '0'));
+      gpsFix.minute = (uint8_t)((utc[2] - '0') * 10 + (utc[3] - '0'));
+      gpsFix.second = (uint8_t)((utc[4] - '0') * 10 + (utc[5] - '0'));
+
+      /* 小数部分 → 毫秒（最多取 3 位） */
+      gpsFix.msec = 0;
+      if (utc[6] == '.') {
+        uint8_t i;
+        uint16_t mul = 100;
+
+        for (i = 7; (i < strlen(utc)) && (mul > 0); i++) {
+          if ((utc[i] >= '0') && (utc[i] <= '9')) {
+            gpsFix.msec += (uint16_t)((utc[i] - '0') * mul);
+            mul = (uint16_t)(mul / 10);
+          }
+        }
       }
     }
+    if (strlen(date) == 6) {
+      gpsFix.day   = (uint8_t)((date[0] - '0') * 10 + (date[1] - '0'));
+      gpsFix.month = (uint8_t)((date[2] - '0') * 10 + (date[3] - '0'));
+      gpsFix.year  = (uint16_t)(2000 + (date[4] - '0') * 10 + (date[5] - '0'));
+    }
+
+    if (status[0] == 'A')
+      gpsFix.speed = (float)(atof(spd) * 1.852);  /* 节 → km/h */
   }
 }
 
@@ -1185,11 +1215,8 @@ static void gpsTask(void)
     }
   }
 
-  /* 长期未定位时给个心跳提示，避免"完全没输出"被误判成串口没收到数据 */
-  if (gpsPrintEn && !gpsFixValid && (HAL_GetTick() - gpsLastHint > 10000)) {
-    gpsLastHint = HAL_GetTick();
-    printf("[GPS] 等待定位... (已收 %lu 字节)\r\n", (unsigned long)gpsRxCount);
-  }
+  /* 未定位时的心跳提示已取消：搜星期间的观察统一由 gpsPrintSearchStatus()
+   * 每秒一行状态取代，不再刷"等待定位...已收 xxx 字节" */
 }
 
 /**
@@ -1202,18 +1229,98 @@ static void gpsTask(void)
  *                    49 天回绕也能正确计算
  * @retval 1=拿到有效定位, 0=超时仍未定位
  */
+/**
+ * @brief  搜星期间的状态行（每 1 秒一行，取代原来的 NMEA 原始打印）
+ * @param  elapsedMs: 本轮已搜星时长（毫秒）
+ * @note   一行给出：坐标是否有效 / GPS 年份是否可信(>2025) / 定位是否可靠(新鲜) /
+ *         参与定位的卫星数 / 已搜星时长 / 当前北京时间（GPS UTC + 8 小时）
+ * @warning 三元里的对勾/叉号后面留一个空格：多字节字符紧贴闭合引号时
+ *          ARMCC5 可能吞掉那个引号（missing closing quote）
+ */
+static void gpsPrintSearchStatus(uint32_t elapsedMs)
+{
+  uint16_t year = gpsFix.year;
+  uint8_t  mon  = gpsFix.month;
+  uint8_t  day  = gpsFix.day;
+  uint8_t  hh   = gpsFix.hour;
+  uint32_t rxTotal = 0;   /* 本轮累计收到的串口字节数 */
+  uint32_t rxDelta = 0;   /* 距上次打印新增的字节数（≈ 字节/秒） */
+
+  /* GPS UTC + 8 小时 = 北京时间（跨日 / 跨月 / 跨年简单进位） */
+  hh = (uint8_t)(hh + 8);
+  if (hh >= 24) {
+    uint8_t dim = gpsDaysInMonth[((mon >= 1) && (mon <= 12)) ? (mon - 1) : 0];
+
+    hh = (uint8_t)(hh - 24);
+    if ((mon == 2) && isLeapYear(year))
+      dim = 29;
+    day++;
+    if (day > dim) {
+      day = 1;
+      mon++;
+      if (mon > 12) {
+        mon  = 1;
+        year = (uint16_t)(year + 1);
+      }
+    }
+  }
+
+  /* 串口数据量：本轮累计 + 距上次打印的增量（≈ 字节/秒）。
+   * 增量为 0 就说明模块没在往外吐 NMEA —— 一眼区分"天线差没定位"和"串口根本没数据" */
+  {
+    uint32_t rx = gpsRxCount;
+    static uint32_t lastRx = 0;
+
+    if (rx >= lastRx)
+      rxDelta = rx - lastRx;
+    else
+      rxDelta = rx;                   /* 新一轮唤醒时 gpsPowerOn() 会把计数清零 */
+    lastRx  = rx;
+    rxTotal = rx;
+  }
+
+  if (gpsFixValid) {
+    printf("✅定位数据:%.5f,%.5f✅ 年份>2025:%s GPS可靠:%s 卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)    %04u/%02u/%02u %02u:%02u:%02u.%03u\r\n",
+           gpsFix.lat, gpsFix.lng,
+           (year > 2025) ? "✅ " : "❌ ",
+           gpsFixFresh() ? "✅ " : "❌ ",
+           (int)gpsFix.sats,
+           (unsigned long)(elapsedMs / 1000),
+           (unsigned long)rxTotal, (unsigned long)rxDelta,
+           year, mon, day, hh, gpsFix.minute, gpsFix.second, gpsFix.msec);
+  } else {
+    printf("❌定位数据:--,--❌ 年份>2025:%s GPS可靠:%s 卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)    %04u/%02u/%02u %02u:%02u:%02u.%03u\r\n",
+           (year > 2025) ? "✅ " : "❌ ",
+           gpsFixFresh() ? "✅ " : "❌ ",
+           (int)gpsFix.sats,
+           (unsigned long)(elapsedMs / 1000),
+           (unsigned long)rxTotal, (unsigned long)rxDelta,
+           year, mon, day, hh, gpsFix.minute, gpsFix.second, gpsFix.msec);
+  }
+}
+
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
 {
-  uint32_t startTick = HAL_GetTick();
+  uint32_t startTick  = HAL_GetTick();
   uint32_t elapsed;
+  uint32_t lastStatus = 0;   /* 上次打印状态行的时刻（相对 startTick 的毫秒数） */
 
   printf("[GPS] 开始搜星: 至少 %lu 秒, 上限 %lu 秒...\r\n",
          (unsigned long)(minMs / 1000), (unsigned long)(timeoutMs / 1000));
+
+  if (gpsPrintEn)
+    gpsPrintSearchStatus(0);   /* 进入就先给一行，之后每秒刷新 */
 
   while (1) {
     gpsTask();                    /* 排空环形缓冲并解析 NMEA */
 
     elapsed = HAL_GetTick() - startTick;
+
+    /* 每 1 秒刷新一行状态行（不再打印 NMEA 原始语句） */
+    if (gpsPrintEn && ((elapsed - lastStatus) >= 1000)) {
+      lastStatus = elapsed;
+      gpsPrintSearchStatus(elapsed);
+    }
 
     /* 先判"是否已满足上报条件"，再判超时 ——
      * 否则最后一刻刚好定上位，会被超时分支覆盖成失败 */
@@ -1501,6 +1608,30 @@ static void openRxWindow3000(void)
   }
 }
 
+/**
+  * @brief  把待回的包发出去（配置帧 / 农场中心坐标帧）
+  * @note   收到 A(配置) 或 C(中心坐标) 指令后只是置位标记，真正回包在这里做。
+  *         要在"每个接收窗口之后"都调用一次：普通轮的窗口在定时帧之后、
+  *         GPS 轮的窗口在 MSG_TYPE_GPS 之后，位置不同；
+  *         否则末尾窗口里收到的设置指令要拖到下一轮才回包
+  */
+static void reportPendingMessages(void)
+{
+  /* 配置需要上报时，延迟 1 秒发送配置消息（开机首次或收到配置更新指令） */
+  if (configNeedReport) {
+    HAL_Delay(1000);
+    sendConfigMessage();
+    configNeedReport = 0;  /* 标记已上报 */
+  }
+
+  /* 收到 C 指令后，延迟 1 秒上报农场中心坐标 1|deviceName|lat,lng| */
+  if (centerNeedReport) {
+    HAL_Delay(1000);
+    sendCenterMessage();
+    centerNeedReport = 0;  /* 标记已上报 */
+  }
+}
+
 static void OnMaster(void)
 {
   char tx_msg[TX_LEN];
@@ -1522,10 +1653,15 @@ static void OnMaster(void)
   /* 下列两种情况不发定时帧 MSG_TYPE_TIME，把这一轮让给 GPS：
    *   1) 上轮无坐标要重试(gpsNeedRetry)
    *   2) 当前在 GPS 工作时间段且 GPS 允许唤醒(gpsWakeEn=1)
-   *      —— 本轮改由末尾的 MSG_TYPE_GPS 上报，它上报后同样开 3 秒接收窗口，
-   *         对时与接收下发指令都不受影响，无需再发 MSG_TYPE_TIME
+   *      —— 本轮改由末尾的 MSG_TYPE_GPS 上报，并在它上报后开接收窗口，
+   *         对时与接收下发指令都在那个窗口完成（故本处不再开窗口）
+   * @note 本轮已收到 upgps 指令(gpsWaitReport=1)时不跳过：末尾走的是 UP_GPS
+   *       老逻辑（上报后不开窗口），必须靠定时后这个窗口收指令/对时
    * @note sendmode=0(gpsWakeEn=0) 时 GPS 不工作，照常发定时帧，避免整轮空发 */
-  if (gpsNeedRetry || (isInGpsWorkWindow() && gpsWakeEn)) {
+  uint8_t skipTimeFrame =
+      ((gpsNeedRetry || (isInGpsWorkWindow() && gpsWakeEn)) && !gpsWaitReport) ? 1U : 0U;
+
+  if (skipTimeFrame) {
     if (gpsNeedRetry)
       printf("[调度] 上轮无有效坐标(已上报 0.0,0.0), 本轮跳过定时上报, 用 MSG_TYPE_GPS 重试\r\n");
     else
@@ -1559,22 +1695,14 @@ static void OnMaster(void)
     printf("发送成功 -> \"%s\"\r\n", tx_msg);
   }
 
-  /* ---- 开启 3 秒接收窗口（single 模式，最多只收一条） ---- */
-  openRxWindow3000();
+  /* ---- 3 秒接收窗口（single 模式，最多只收一条） ----
+   * 只在本轮发了定时帧时在这里开；跳过定时帧的轮次改为在末尾 MSG_TYPE_GPS
+   * 上报之后再开（见下面 GPS 块），避免"没发帧还白等 3 秒" */
+  if (!skipTimeFrame)
+    openRxWindow3000();
 
-  /* 配置需要上报时，延迟 1 秒发送配置消息（开机首次或收到配置更新指令） */
-  if (configNeedReport) {
-    HAL_Delay(1000);
-    sendConfigMessage();
-    configNeedReport = 0;  /* 标记已上报 */
-  }
-
-  /* 收到 C 指令后，延迟 1 秒上报农场中心坐标 1|deviceName|lat,lng| */
-  if (centerNeedReport) {
-    HAL_Delay(1000);
-    sendCenterMessage();
-    centerNeedReport = 0;  /* 标记已上报 */
-  }
+  /* 窗口里收到的 A/C 等设置指令，本轮就回包 */
+  reportPendingMessages();
 
   /* ---- GPS 上报流程 ----
    * 规则（GPS 工作时间段一定落在工作时间段之内）:
@@ -1629,9 +1757,15 @@ static void OnMaster(void)
         gpsPowerOff();
       }
 
-      /* MSG_TYPE_GPS(1) 上报后开接收窗口；MSG_TYPE_UP_GPS(5) 首次上报不开 */
-      if (useType1)
+      /* MSG_TYPE_GPS(1) 上报后开接收窗口（对时 + 收下发指令）；
+       * MSG_TYPE_UP_GPS(5) 的首次跟踪上报不开窗口，保持老逻辑 */
+      if (useType1) {
         openRxWindow3000();
+
+        /* 这个窗口里收到的指令照常处理：upgps → 置 gpsWaitReport 下一轮执行；
+         * A/C 等设置 → 本轮立即回包，不等下一轮 */
+        reportPendingMessages();
+      }
 
       /* 注意：分支提示不要写成 one-liner 三元 + 中文值，
        * 中文紧贴闭合引号会被 ARMCC5 按 GBK 吞掉那个引号（missing closing quote），
@@ -2131,6 +2265,7 @@ static void gpsPowerOn(void)
 
   gpsRd = gpsWr;      /* 丢弃残留字节（关中断非必需：ISR 只改 gpsWr） */
   gpsLineLen = 0;
+  gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数据 */
 
   printf("[GPS] Wake ON (PB1=高, Full on)\r\n");
 }
