@@ -227,15 +227,14 @@ static uint8_t centerCoordValid(double lat, double lng);
 static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
 static void sendCenterMessage(void);
-static void sendGpsPositionMessage(uint8_t hasFix);
-static uint8_t gpsSearchAndReport(void);
-static uint8_t gpsRunContinuous(uint16_t totalMin);
+static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType);
+static uint8_t gpsSearchAndReport(uint8_t useGpsType);
+static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType);
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs);
 static uint32_t getConfigIntervalSec(void);
 static void    getConfigFieldStr(uint8_t idx, char *out, uint8_t outLen);
 static int16_t twoCharToIndex(const char *s);    /* base62 双字符 → 索引(0~275) */
 static uint8_t timeIdxToRange(int16_t idx, uint8_t *startHour, uint8_t *endHour);
-static int16_t rangeToTimeIdx(uint8_t startHour, uint8_t endHour);
 static int16_t getConfigWorkStartIdx(void);      /* 工作时间段(第2段 "0M") */
 static int16_t getConfigGpsEndIdx(void);         /* GPS 上报时间段(第3段 "3t") */
 static uint8_t  getDeviceIndex(void);
@@ -247,6 +246,9 @@ static void parseNmeaLine(char *line);
 static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen);
 static double nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
+static uint8_t isInWorkWindow(void);      /* 当前是否在工作时间段内(config 第2段) */
+static uint8_t isInGpsWorkWindow(void);   /* 当前是否在 GPS 工作时间段内(config 第3段) */
+static void    openRxWindow3000(void);    /* 开 3 秒接收窗口并解析（可重复调用） */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 → Full on */
 static void gpsPowerOff(void);              /* GPS 休眠：PB1(WAKE_UP) 置低 → Standby */
@@ -595,28 +597,32 @@ static void sendCenterMessage(void)
 }
 
 /**
- * @brief  发送当前 GPS 实时定位坐标帧（5|deviceName|lat,lng|）
+ * @brief  发送当前 GPS 实时定位坐标帧
  * @param  hasFix: 1=有有效定位（发实测坐标）, 0=搜星失败（发 "0.0,0.0"）
- * @note   用 MSG_TYPE_UP_GPS(5) 而不是 MSG_TYPE_GPS(1)：
- *         1 已被 C 指令的"农场中心坐标回显"占用，两者含义完全不同：
- *           5 = 本节点自身的实时位置（动态，牛走到哪变到哪）
- *           1 = 农场中心点（静态配置，存在 Flash 里）
+ * @param  useGpsType: 0=MSG_TYPE_UP_GPS(5), 1=MSG_TYPE_GPS(1)
+ * @note   两种帧类型的用法（云端按帧类型 + 上报时机区分）:
+ *           MSG_TYPE_UP_GPS(5) = 收到 upgps 指令后的跟踪上报，上报后不开接收窗口
+ *           MSG_TYPE_GPS(1)    = GPS 工作时间段内的自动上报、以及搜星失败后的
+ *                                重试上报，上报后要开 3 秒接收窗口
+ *         1 同时被 C 指令的农场中心坐标回显使用，但那是另一条指令路径
+ *         （收到 C 才发一次），与本函数的实时坐标不冲突
  *         搜星失败时也必须发帧，第 3 段填 "0.0,0.0"，
  *         保证云端 split('|') 拿到的段数固定，可直接判定为"无坐标"
  */
-static void sendGpsPositionMessage(uint8_t hasFix)
+static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType)
 {
   char tx_msg[TX_LEN];
   uint32_t tx_time = 1000;
+  int      msgType = useGpsType ? MSG_TYPE_GPS : MSG_TYPE_UP_GPS;
 
   if (hasFix) {
     /* 小数后 5 位：精度约 1.1m，够用且帧长更短 */
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%.5f,%.5f|%lu|",
-             MSG_TYPE_UP_GPS, deviceName, gpsFix.lat, gpsFix.lng,
+             msgType, deviceName, gpsFix.lat, gpsFix.lng,
              (unsigned long)tx_count);
   } else {
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
-             MSG_TYPE_UP_GPS, deviceName, "0.0,0.0", (unsigned long)tx_count);
+             msgType, deviceName, "0.0,0.0", (unsigned long)tx_count);
   }
 
   if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
@@ -636,7 +642,7 @@ static void sendGpsPositionMessage(uint8_t hasFix)
  * @note   搜星期间临时打开 GPS 打印，结束后恢复成进入前的状态
  * @retval 1=拿到有效坐标并已上报, 0=搜星失败已上报 "0.0,0.0"
  */
-static uint8_t gpsSearchAndReport(void)
+static uint8_t gpsSearchAndReport(uint8_t useGpsType)
 {
   uint8_t hasFix;
   uint8_t savedPrint = gpsPrintEn;   /* 用局部变量保存，连续模式下每轮都能独立开关 */
@@ -648,7 +654,7 @@ static uint8_t gpsSearchAndReport(void)
   HAL_Delay(1000);
 
   /* 无论是否定位成功都上报：失败时坐标段填 "0.0,0.0" */
-  sendGpsPositionMessage(hasFix);
+  sendGpsPositionMessage(hasFix, useGpsType);
 
   /* 打印状态恢复成本轮进来看之前的样子（默认回到静默） */
   gpsPrintEn = savedPrint;
@@ -667,7 +673,7 @@ static uint8_t gpsSearchAndReport(void)
  * @warning MCU 与射频全程全速工作，分钟数直接线性影响耗电
  * @retval 1=期间至少有一轮拿到有效坐标, 0=全程都没有有效坐标
  */
-static uint8_t gpsRunContinuous(uint16_t totalMin)
+static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
 {
   uint32_t totalSec  = (uint32_t)totalMin * 60u;
   uint32_t startSec  = getCurrentTimestamp();
@@ -682,7 +688,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin)
     uint8_t  hasFix;
 
     rounds++;
-    hasFix = gpsSearchAndReport();
+    hasFix = gpsSearchAndReport(useGpsType);
     if (hasFix)
       everFixed = 1;
 
@@ -860,24 +866,6 @@ static uint8_t timeIdxToRange(int16_t idx, uint8_t *startHour, uint8_t *endHour)
 }
 
 /**
-  * @brief  整点区间 → 索引（timeIdxToRange 的逆运算，供将来生成配置用）
-  * @retval 0~275；区间非法(起点>=终点、超范围)返回 -1
-  */
-static int16_t rangeToTimeIdx(uint8_t startHour, uint8_t endHour)
-{
-  int16_t idx = 0;
-  uint8_t s;
-
-  if (startHour >= TIME_HOUR_END || endHour <= startHour || endHour > TIME_HOUR_END)
-    return -1;
-
-  for (s = 0; s < startHour; s++)
-    idx += (int16_t)(TIME_HOUR_END - s);
-  idx += (int16_t)(endHour - startHour - 1);
-  return idx;
-}
-
-/**
   * @brief  工作时间段索引（configStr 第 2 段："0M" → 22）
   */
 static int16_t getConfigWorkStartIdx(void)
@@ -895,6 +883,50 @@ static int16_t getConfigGpsEndIdx(void)
   char f[8];
   getConfigFieldStr(2, f, sizeof(f));
   return twoCharToIndex(f);
+}
+
+/**
+  * @brief  当前是否处于 GPS 工作时间段（configStr 第 3 段，如 "3t" → 15:00~17:00）
+  * @retval 1=在时间段内, 0=不在 / 未对时 / 字段非法
+  * @note   未对时直接返回 0：此时 getTodaySecond() 是开机秒数，
+  *         拿它判小时会落到错误时段，宁可不上报也不误唤醒 GPS
+  */
+static uint8_t isInGpsWorkWindow(void)
+{
+  uint8_t  s, e;
+  uint32_t hour;
+
+  if (!timeSynced)
+    return 0;
+  if (!timeIdxToRange(getConfigGpsEndIdx(), &s, &e))
+    return 0;
+  if (e == TIME_HOUR_END)
+    e = 24;                          /* 23 表示 24:00 */
+
+  hour = getTodaySecond() / 3600u;
+  return ((hour >= s) && (hour < e)) ? 1U : 0U;
+}
+
+/**
+  * @brief  当前是否处于工作时间段（configStr 第 2 段，如 "0M" → 00:00~24:00）
+  * @retval 1=在工作时间内, 0=不在 / 未对时 / 字段非法
+  * @note   GPS 工作时间(第 3 段)一定落在工作时间(第 2 段)之内，
+  *         所以 isInGpsWorkWindow()=1 时本函数必然也是 1
+  */
+static uint8_t isInWorkWindow(void)
+{
+  uint8_t  s, e;
+  uint32_t hour;
+
+  if (!timeSynced)
+    return 0;
+  if (!timeIdxToRange(getConfigWorkStartIdx(), &s, &e))
+    return 0;
+  if (e == TIME_HOUR_END)
+    e = 24;                          /* 23 表示 24:00 */
+
+  hour = getTodaySecond() / 3600u;
+  return ((hour >= s) && (hour < e)) ? 1U : 0U;
 }
 
 /**
@@ -1418,50 +1450,15 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   *            @note  接收窗口两种周期都开，保证节点始终可被下发指令
   *         3. 计算下次上报时间并保存到 Flash
   */
-static void OnMaster(void)
+
+/**
+  * @brief  开启 3 秒接收窗口（single 模式，最多只收一条），收到则解析
+  * @note   抽成函数的原因：MSG_TYPE_GPS(1) 上报之后还要再开一次窗口，
+  *         保证节点报完定位后仍处于可被下发指令的状态；
+  *         而 MSG_TYPE_UP_GPS(5) 的首次跟踪上报后不再开窗口
+  */
+static void openRxWindow3000(void)
 {
-  char tx_msg[TX_LEN];
-  uint32_t today_sec = getTodaySecond();
-  uint32_t tx_time = 1000;
-
-  /* 计数自增并回绕，取值恒为 1 ~ TX_COUNT_MAX(999)，绝不会出现 0 或 1000 */
-  tx_count++;
-  if (tx_count > TX_COUNT_MAX)
-    tx_count = 1;
-
-  /* 上一轮搜星失败时跳过定时上报，本轮直接重试搜星 */
-  if (gpsNeedRetry) {
-    printf("[调度] 上轮搜星失败(已上报 0.0,0.0), 本轮跳过定时上报, 重试 UPGPS\r\n");
-  } else {
-    /* 组包：2|v0-0|当天秒数|电量|计数
-     * 周期上报固定发时间帧，不管有没有定位 —— 定位由 UPGPS 流程单独触发上报 */
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
-             MSG_TYPE_TIME, deviceName,
-             (unsigned long)today_sec, cachedBatteryPercent, (unsigned long)tx_count);
-
-    /* 发送前 LED 闪 3 次，每次 200ms */
-    for (uint8_t i = 0; i < 3; i++) {
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-      HAL_Delay(100);
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-      HAL_Delay(100);
-    }
-
-    /* 发送数据 */
-    if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-    }
-
-    /* 等待发送完成标志 */
-    while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-      ;
-    rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
-    LedToggle();
-    printf("发送成功 -> \"%s\"\r\n", tx_msg);
-  }
-
-  /* ---- 开启 3 秒接收窗口（single 模式，最多只收一条） ---- */
   rf_enter_single_timeout_rx(3000);
   printf("[接收窗口] 3秒监听中...\r\n");
 
@@ -1502,6 +1499,68 @@ static void OnMaster(void)
     rf_set_recv_flag(RADIO_FLAG_IDLE);
     printf("[接收窗口] CRC校验错误\r\n");
   }
+}
+
+static void OnMaster(void)
+{
+  char tx_msg[TX_LEN];
+  uint32_t today_sec = getTodaySecond();
+  uint32_t tx_time = 1000;
+
+  /* 计数自增并回绕，取值恒为 1 ~ TX_COUNT_MAX(999)，绝不会出现 0 或 1000 */
+  tx_count++;
+  if (tx_count > TX_COUNT_MAX)
+    tx_count = 1;
+
+  /* 上轮失败的重试只在"工作时间段内"继续：已离开工作时间段就放弃重试，
+   * 否则会出现"跳过定时帧、又不搜星"的空转轮次，设备整轮什么都不上报 */
+  if (gpsNeedRetry && !isInWorkWindow() && !isInGpsWorkWindow()) {
+    gpsNeedRetry = 0;
+    printf("[调度] 已离开工作时间段, 放弃 GPS 重试, 恢复正常定时上报\r\n");
+  }
+
+  /* 下列两种情况不发定时帧 MSG_TYPE_TIME，把这一轮让给 GPS：
+   *   1) 上轮无坐标要重试(gpsNeedRetry)
+   *   2) 当前在 GPS 工作时间段且 GPS 允许唤醒(gpsWakeEn=1)
+   *      —— 本轮改由末尾的 MSG_TYPE_GPS 上报，它上报后同样开 3 秒接收窗口，
+   *         对时与接收下发指令都不受影响，无需再发 MSG_TYPE_TIME
+   * @note sendmode=0(gpsWakeEn=0) 时 GPS 不工作，照常发定时帧，避免整轮空发 */
+  if (gpsNeedRetry || (isInGpsWorkWindow() && gpsWakeEn)) {
+    if (gpsNeedRetry)
+      printf("[调度] 上轮无有效坐标(已上报 0.0,0.0), 本轮跳过定时上报, 用 MSG_TYPE_GPS 重试\r\n");
+    else
+      printf("[调度] GPS 工作时间段内, 本轮跳过 MSG_TYPE_TIME, 改由 MSG_TYPE_GPS 上报并对时\r\n");
+  } else {
+    /* 组包：2|v0-0|当天秒数|电量|计数
+     * 周期上报固定发时间帧，不管有没有定位 —— 定位由 UPGPS 流程单独触发上报 */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
+             MSG_TYPE_TIME, deviceName,
+             (unsigned long)today_sec, cachedBatteryPercent, (unsigned long)tx_count);
+
+    /* 发送前 LED 闪 3 次，每次 200ms */
+    for (uint8_t i = 0; i < 3; i++) {
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+      HAL_Delay(100);
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+      HAL_Delay(100);
+    }
+
+    /* 发送数据 */
+    if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+    }
+
+    /* 等待发送完成标志 */
+    while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
+      ;
+    rf_set_transmit_flag(RADIO_FLAG_IDLE);
+
+    LedToggle();
+    printf("发送成功 -> \"%s\"\r\n", tx_msg);
+  }
+
+  /* ---- 开启 3 秒接收窗口（single 模式，最多只收一条） ---- */
+  openRxWindow3000();
 
   /* 配置需要上报时，延迟 1 秒发送配置消息（开机首次或收到配置更新指令） */
   if (configNeedReport) {
@@ -1517,42 +1576,71 @@ static void OnMaster(void)
     centerNeedReport = 0;  /* 标记已上报 */
   }
 
-  /* UPGPS 流程：搜星并上报一次实时坐标。
-   * 触发来源有二：(1) 本轮收到 upgps 指令；(2) 上轮搜星失败自动重试。
+  /* ---- GPS 上报流程 ----
+   * 规则（GPS 工作时间段一定落在工作时间段之内）:
+   *   (1) upgps 指令(gpsWaitReport) —— 任何时间收到都立刻搜星，
+   *       用 MSG_TYPE_UP_GPS(5) 上报，上报后**不开**接收窗口
+   *   (2) 上一次 MSG_TYPE_UP_GPS 没拿到正确坐标(gpsNeedRetry) ——
+   *       之后每个上报点都用 MSG_TYPE_GPS(1) 重试并开接收窗口，
+   *       即使当前不是 GPS 工作时间也一样，直到拿到正确坐标为止
+   *       （仅在工作时间段内重试，离开工作时间段则放弃，见 OnMaster 开头）
+   *   (3) GPS 工作时间段(config 第 3 段) 内 —— 正常用 MSG_TYPE_GPS(1) 上报
+   *       并开接收窗口；已有新鲜坐标就直接发缓存坐标，没有坐标才临时搜星
    * 放在 calcNextTxTime() 之前 —— 等待可能耗时几十秒，
    * 之后必须重新计算下次上报时间，不能用本轮算出的旧值。 */
-  if (gpsWaitReport || gpsNeedRetry) {
-    uint8_t hasFix;
+  {
+    uint8_t inGpsWin = isInGpsWorkWindow();
 
-    gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿等 */
+    if (gpsWaitReport || gpsNeedRetry || (inGpsWin && gpsWakeEn)) {
+      uint8_t firstCmd = gpsWaitReport;        /* upgps 指令触发的第一次 */
+      uint8_t useType1 = firstCmd ? 0U : 1U;   /* 0=UP_GPS(5), 1=GPS(1) */
 
-    /* 这一轮要用 GPS：PB1(WAKE_UP) 置高唤醒模块，用完立刻置低回 Standby */
-    gpsPowerOn();
+      gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿等 */
 
-    /* GPS 打印的开关与恢复由 gpsSearchAndReport() 内部逐轮处理 */
-    if (gpsContTotalMin > 0) {
-      /* 连续定位模式：时长内不休眠，每 3 分钟上报一次坐标。
-       * 全程无坐标 → 返回 0 → gpsNeedRetry 置 1，下轮继续重试 UPGPS；
-       * 但 gpsContTotalMin 已清零，所以下轮只是单次搜星（不再拉长） */
-      gpsNeedRetry = gpsRunContinuous(gpsContTotalMin) ? 0U : 1U;
-      gpsContTotalMin = 0;
-    } else {
-      /* 单次搜星上报（参数为 0 的 upgps 指令，或失败后的自动重试） */
-      hasFix = gpsSearchAndReport();
-      gpsNeedRetry = hasFix ? 0U : 1U;
+      if (firstCmd)
+        printf("[GPS] upgps 指令首次: 用 MSG_TYPE_UP_GPS(5), 上报后不开接收窗口\r\n");
+      else
+        printf("[GPS] 用 MSG_TYPE_GPS(1) 上报, 上报后开 3 秒接收窗口\r\n");
+
+      {
+        uint8_t hasFix;
+
+        /* 这一轮要用 GPS：PB1(WAKE_UP) 置高唤醒模块，用完立刻置低回 Standby
+         * @note 一律重新搜星，不发缓存坐标：
+         *       缓存里的坐标可能是很久之前某一轮拿到的，不能代表当前位置，
+         *       所以即使 gpsFixFresh() 为真也要重新搜一遍再上报 */
+        gpsPowerOn();
+
+        /* GPS 打印的开关与恢复由 gpsSearchAndReport() 内部逐轮处理 */
+        if (gpsContTotalMin > 0) {
+          /* 连续定位模式：时长内不休眠，每 3 分钟上报一次坐标。
+           * 全程无坐标 → 返回 0 → gpsNeedRetry 置 1，下轮继续重试；
+           * 但 gpsContTotalMin 已清零，所以下轮只是单次搜星（不再拉长） */
+          gpsNeedRetry = gpsRunContinuous(gpsContTotalMin, useType1) ? 0U : 1U;
+          gpsContTotalMin = 0;
+        } else {
+          /* 单次搜星上报（参数为 0 的 upgps 指令，或失败后的自动重试） */
+          hasFix = gpsSearchAndReport(useType1);
+          gpsNeedRetry = hasFix ? 0U : 1U;
+        }
+
+        /* GPS 用完：PB1 置低进 Standby
+         * （连续定位模式是整段结束才休眠，避免每 3 分钟一轮反复唤醒/休眠） */
+        gpsPowerOff();
+      }
+
+      /* MSG_TYPE_GPS(1) 上报后开接收窗口；MSG_TYPE_UP_GPS(5) 首次上报不开 */
+      if (useType1)
+        openRxWindow3000();
+
+      /* 注意：分支提示不要写成 one-liner 三元 + 中文值，
+       * 中文紧贴闭合引号会被 ARMCC5 按 GBK 吞掉那个引号（missing closing quote），
+       * 故改成 if/else + 以 \r\n 收尾（与文件其它 printf 风格一致） */
+      if (gpsNeedRetry)
+        printf("[调度] 下轮继续重试搜星(跳过定时上报)\r\n");
+      else
+        printf("[调度] 下轮恢复正常定时上报\r\n");
     }
-
-    /* GPS 用完：PB1 置低进 Standby
-     * （连续定位模式是整段结束才休眠，避免每 3 分钟一轮反复唤醒/休眠） */
-    gpsPowerOff();
-
-    /* 注意：分支提示不要写成 one-liner 三元 + 中文值，
-     * 中文紧贴闭合引号会被 ARMCC5 按 GBK 吞掉那个引号（missing closing quote），
-     * 故改成 if/else + 以 \r\n 收尾（与文件其它 printf 风格一致） */
-    if (gpsNeedRetry)
-      printf("[调度] 下轮继续重试搜星(跳过定时上报)\r\n");
-    else
-      printf("[调度] 下轮恢复正常定时上报\r\n");
   }
 
   /* 计算下次上报时间（配置更新后间隔可能变化） */
