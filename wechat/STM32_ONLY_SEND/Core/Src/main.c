@@ -81,7 +81,12 @@ char centerStr[64] = "";
 #define CENTER_FLASH_ADDR   0x0800EC00  /* 农场中心坐标存储（倒数第五页） */
 #define CENTER_MAGIC        0xA5A55A5D  /* 中心坐标魔术字 */
 
-/* 上报间隔：由 configStr 第一个字段决定（分钟），如 "30,0M,3t,6" = 30 分钟 */
+/* 上报间隔：由 configStr 第 1 段决定（分钟），如 "30,0M,3t,6" = 30 分钟
+ * configStr 四段含义:
+ *   第 1 段 "1"  = 工作期间的上报周期(分钟)，范围 1~60
+ *   第 2 段 "0M" = 工作时间段起始，base62 双字符编码 → idx 22
+ *   第 3 段 "3t" = GPS 自动上报时间段，base62 双字符编码 → idx 241
+ *   第 4 段 "6"  = 保留 */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -144,7 +149,9 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 #define GPS_RING_LEN   512   /* 环形缓冲：主循环被 LoRa 收发阻塞时先攒着 */
 #define GPS_LINE_LEN   128   /* 单条 NMEA 语句上限 */
 #define GPS_FIX_TTL_MS 60000 /* 定位有效期(ms)：超过这么久没刷新就算失锁 */
-#define GPS_WAIT_TIMEOUT_MS 180000 /* upgps 搜星上限 = 3 分钟；超时则上报 0.0,0.0 */
+#define GPS_WAIT_TIMEOUT_MS 240000 /* upgps 搜星上限 = 4 分钟；超时则上报 0.0,0.0
+                                    * @note 冷启动首次定位最坏要 12.5 分钟，
+                                    *       天线条件差时 3 分钟不够，先放宽到 4 分钟实测 */
 #define GPS_WAIT_MIN_MS     10000  /* upgps 最短搜星时间 = 10 秒
                                     * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收，
                                     *       发太快大概率丢帧。即使立刻就有坐标，也要至少等够这 10 秒 */
@@ -153,6 +160,8 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 #define GPS_PWR_ON_DELAY_MS  500   /* PB1 唤醒后等待模块回到 Full on 的时间(ms)
                                     * @note Standby 只关内核/RF，RTC 域保持，故恢复很快；
                                     *       这里只是给模块一点时间重新输出 NMEA */
+
+
 
 typedef struct {
   uint8_t  valid;  /* 已定位 */
@@ -168,6 +177,12 @@ static uint8_t      gpsFixValid = 0;   /* 最近一帧 GGA 是否有效定位 */
 static uint32_t     gpsRxCount = 0;    /* 收到的字节数（诊断用） */
 static uint32_t     gpsLastHint = 0;   /* 未定位提示的节流时间戳 */
 static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时刻（HAL_GetTick） */
+static uint8_t      gpsWakeEn  = 1;    /* GPS 唤醒使能（1=允许 Full on, 0=保持 Standby）
+                                        * 由云端 sendmode 指令控制：
+                                        *   sendmode 0 → 置 0：PB1 拉低，模块休眠，
+                                        *                之后即使触发 UPGPS 也不再唤醒
+                                        *   sendmode 1 → 置 1：PB1 拉高，恢复正常搜星
+                                        * @note 掉电不保存，上电默认 1（正常工作） */
 static uint8_t      gpsPrintEn = 0;    /* GPS 打印总开关（1=打印, 0=静默）
                                         * 默认 0：正常启动/运行不打任何 GPS 日志；
                                         * 收到 upgps 后临时置 1，处理完自动恢复原值；
@@ -217,6 +232,12 @@ static uint8_t gpsSearchAndReport(void);
 static uint8_t gpsRunContinuous(uint16_t totalMin);
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs);
 static uint32_t getConfigIntervalSec(void);
+static void    getConfigFieldStr(uint8_t idx, char *out, uint8_t outLen);
+static int16_t twoCharToIndex(const char *s);    /* base62 双字符 → 索引(0~275) */
+static uint8_t timeIdxToRange(int16_t idx, uint8_t *startHour, uint8_t *endHour);
+static int16_t rangeToTimeIdx(uint8_t startHour, uint8_t endHour);
+static int16_t getConfigWorkStartIdx(void);      /* 工作时间段(第2段 "0M") */
+static int16_t getConfigGpsEndIdx(void);         /* GPS 上报时间段(第3段 "3t") */
 static uint8_t  getDeviceIndex(void);
 static uint32_t getSlotOffsetSec(void);
 static void calcNextTxTime(void);
@@ -752,6 +773,130 @@ static uint32_t getConfigIntervalSec(void)
   return min * 60;
 }
 
+/* ---- 时间段编码：base62 双字符 → 索引(0~275) → 当天整点区间 ----
+ * 索引枚举当天所有"起点 < 终点"的整点区间：
+ *   起点 0~22, 终点 起点+1 ~ 23 (23 点即代表 24 点, 故 0~23 就是全天)
+ *   总数 = 23+22+...+1 = 276, 即 idx 0~275
+ * 编号方式(三角枚举): idx = 前面所有起点的区间数之和 + (终点 - 起点 - 1)
+ * 实例(标准 base62 字典):
+ *   "0M" → idx 22  → 00:00 ~ 24:00
+ *   "1M" → idx 84  → 03:00 ~ 22:00
+ *   "3t" → idx 241 → 15:00 ~ 17:00
+ *   "3u" → idx 242 → 15:00 ~ 18:00
+ * @warning 字典顺序必须与下发方完全一致，否则解出来的时间会偏 */
+static const char TIME_DICT[] =
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+#define TIME_HOUR_END  23   /* 终点最大取值：23 即代表 24:00 */
+
+/**
+  * @brief  取 configStr 第 idx 段的原始字符串（到下一个 ',' 为止，idx 从 0 起）
+  * @note   时间段字段是 "0M" 这种双字符编码，不能用 atoi（会被截断成 0）
+  */
+static void getConfigFieldStr(uint8_t idx, char *out, uint8_t outLen)
+{
+  const char *p   = configStr;
+  const char *end;
+  uint8_t i;
+
+  out[0] = '\0';
+  for (i = 0; i < idx; i++) {
+    p = strchr(p, ',');
+    if (p == NULL)
+      return;
+    p++;                     /* 跳过逗号本身 */
+  }
+  end = strchr(p, ',');
+  if (end == NULL)
+    end = p + strlen(p);
+  if ((uint8_t)(end - p) >= outLen)
+    end = p + outLen - 1;
+  memcpy(out, p, (size_t)(end - p));
+  out[end - p] = '\0';
+}
+
+/**
+  * @brief  双字符 → 索引（base62 解码）
+  * @retval 0~275；字符不在字典中或长度不足 2 时返回 -1
+  */
+static int16_t twoCharToIndex(const char *s)
+{
+  const char *p0, *p1;
+
+  if (s == NULL || s[0] == '\0' || s[1] == '\0')
+    return -1;
+  p0 = strchr(TIME_DICT, s[0]);
+  p1 = strchr(TIME_DICT, s[1]);
+  if (p0 == NULL || p1 == NULL)
+    return -1;
+  return (int16_t)((p0 - TIME_DICT) * 62 + (p1 - TIME_DICT));
+}
+
+/**
+  * @brief  索引 → 当天整点区间（三角枚举的解码）
+  * @param[out] startHour 起点小时 0~22
+  * @param[out] endHour   终点小时 起点+1~23（23 表示 24:00）
+  * @retval 1=成功, 0=索引非法
+  */
+static uint8_t timeIdxToRange(int16_t idx, uint8_t *startHour, uint8_t *endHour)
+{
+  int16_t base = 0;
+  uint8_t s;
+
+  if (idx < 0 || idx > 275)
+    return 0;
+
+  for (s = 0; s < TIME_HOUR_END; s++) {
+    int16_t cnt = (int16_t)(TIME_HOUR_END - s);   /* 该起点下的区间个数 */
+
+    if (idx < base + cnt) {
+      *startHour = s;
+      *endHour   = (uint8_t)(s + 1 + (idx - base));
+      return 1;
+    }
+    base += cnt;
+  }
+  return 0;
+}
+
+/**
+  * @brief  整点区间 → 索引（timeIdxToRange 的逆运算，供将来生成配置用）
+  * @retval 0~275；区间非法(起点>=终点、超范围)返回 -1
+  */
+static int16_t rangeToTimeIdx(uint8_t startHour, uint8_t endHour)
+{
+  int16_t idx = 0;
+  uint8_t s;
+
+  if (startHour >= TIME_HOUR_END || endHour <= startHour || endHour > TIME_HOUR_END)
+    return -1;
+
+  for (s = 0; s < startHour; s++)
+    idx += (int16_t)(TIME_HOUR_END - s);
+  idx += (int16_t)(endHour - startHour - 1);
+  return idx;
+}
+
+/**
+  * @brief  工作时间段索引（configStr 第 2 段："0M" → 22）
+  */
+static int16_t getConfigWorkStartIdx(void)
+{
+  char f[8];
+  getConfigFieldStr(1, f, sizeof(f));
+  return twoCharToIndex(f);
+}
+
+/**
+  * @brief  GPS 自动上报时间段索引（configStr 第 3 段："3t" → 241）
+  */
+static int16_t getConfigGpsEndIdx(void)
+{
+  char f[8];
+  getConfigFieldStr(2, f, sizeof(f));
+  return twoCharToIndex(f);
+}
+
 /**
   * @brief  从 deviceName 解析设备序号
   * @note   "v0-0" → 0, "v0-1" → 1, "v0-27" → 27
@@ -1170,6 +1315,30 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
+        /* sendmode: 9|v0-0|sendmode|1  →  GPS 工作模式控制（PB1 → WAKE_UP）
+         *   value=0 : PB1 置低 → 模块进 Standby（停止搜星，省电）
+         *   value=1 : PB1 置高 → 模块回 Full on（正常搜星）
+         * @note 由 gpsWakeEn 记住模式：为 0 时后续 UPGPS 也不会唤醒模块 */
+        else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
+          if (strcmp(fields[1], deviceName) == 0) {
+            int mode = atoi(fields[3]); /* atoi 会自动跳过前导空格 */
+
+            if (mode == 0) {
+              gpsWakeEn = 0;
+              HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin,
+                                GPIO_PIN_RESET);   /* 低: Standby */
+              printf("[指令] sendmode=0 : PB1=低 , GPS 进入 Standby(停止搜星)\r\n");
+            } else if (mode == 1) {
+              gpsWakeEn = 1;
+              HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin,
+                                GPIO_PIN_SET);     /* 高: Full on */
+              printf("[指令] sendmode=1 : PB1=高 , GPS 恢复 Full on(正常搜星)\r\n");
+            }
+          } else {
+            printf("[指令] sendmode: 目标=%s != 本机=%s, 跳过\r\n",
+                   fields[1], deviceName);
+          }
+        }
         /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率 */
         else if (strcmp(fields[2], "txpower") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
@@ -1448,6 +1617,25 @@ int main(void)
          getDeviceIndex(),
          (unsigned long)getConfigIntervalSec(),
          (unsigned long)getSlotOffsetSec());
+  {
+    char    f0[8], f1[8];
+    int16_t i0, i1;
+    uint8_t s0, e0, s1, e1;
+
+    getConfigFieldStr(1, f0, sizeof(f0));   /* 第 2 段: 工作时间段 */
+    getConfigFieldStr(2, f1, sizeof(f1));   /* 第 3 段: GPS 上报时间段 */
+    i0 = getConfigWorkStartIdx();
+    i1 = getConfigGpsEndIdx();
+
+    if (timeIdxToRange(i0, &s0, &e0) && timeIdxToRange(i1, &s1, &e1)) {
+      /* 终点 23 表示 24:00 */
+      printf("时段  : 工作 %02u:00 ~ %02u:00 (%s->idx %d), GPS上报 %02u:00 ~ %02u:00 (%s->idx %d)\r\n",
+             s0, (e0 == TIME_HOUR_END) ? 24u : e0, f0, i0,
+             s1, (e1 == TIME_HOUR_END) ? 24u : e1, f1, i1);
+    } else {
+      printf("时段  : 解析失败 (段2=%s->idx %d, 段3=%s->idx %d)\r\n", f0, i0, f1, i1);
+    }
+  }
 
   /* 首次 TX 延迟到主循环中执行（LoRa 在首次 TX 前才初始化） */
   printf("TX模式: 仅发送\r\n");
@@ -1698,7 +1886,6 @@ static void MX_SPI1_Init(void)
 static void MX_ADC1_Init(void)
 {
   uint32_t timeout;
-  uint16_t test_val;
 
   /* 1. 先设置 ADC 时钟分频 /8（必须在 ADC 时钟使能之前） */
   RCC->CFGR &= ~(3u << 14);
@@ -1735,9 +1922,8 @@ static void MX_ADC1_Init(void)
 
   printf("[ADC] 校准完成 CR2=0x%08lX\r\n", (unsigned long)ADC1->CR2);
 
-  /* 7. 试读一次，顺便刷新一次缓存电量 */
-  test_val = ADC1_Read();
-  printf("[ADC] 试读=%d\r\n", test_val);
+  /* 7. 空读一次：确认 ADON 触发 + EOC 等待这条链路通，结果丢弃 */
+  (void)ADC1_Read();
 }
 
 /**
@@ -1845,6 +2031,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
  */
 static void gpsPowerOn(void)
 {
+  /* sendmode=0 时云端要求 GPS 休眠：这一轮不唤醒，PB1 保持低电平(Standby) */
+  if (!gpsWakeEn) {
+    HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
+    printf("[GPS] sendmode=0, 本轮不唤醒(保持 Standby)\r\n");
+    return;
+  }
+
   HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET);  /* 高: Full on */
   HAL_Delay(GPS_PWR_ON_DELAY_MS);
 
