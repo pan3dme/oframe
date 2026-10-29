@@ -683,7 +683,7 @@ void testSheepFun(bool driftComp) {
 }
 String mathGpsRectByBaseStr(char *value) {
   char gpsOutBuf[32];
-  filterGpsByRect(value, gpsOutBuf, cfg_gps_lat, cfg_gps_lon, 0.180, 0.202);
+  // filterGpsByRect(value, gpsOutBuf, cfg_gps_lat, cfg_gps_lon, 0.180, 0.202);
   return String(gpsOutBuf);
 }
 void loadConfigNVS() {

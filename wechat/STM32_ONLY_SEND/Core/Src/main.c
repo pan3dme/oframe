@@ -149,10 +149,10 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
                                     * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收，
                                     *       发太快大概率丢帧。即使立刻就有坐标，也要至少等够这 10 秒 */
 #define GPS_CONT_INTERVAL_SEC 180  /* 连续定位模式的上报轮次间隔 = 3 分钟 */
-#define GPS_PWR_ON_DELAY_MS  500   /* GPS 上电后等待模块启动的时间(ms)
-                                    * @note 硬件断电再上电是冷启动，模块要先完成
-                                    *       晶振/PLL 稳定才能吐出第一条 NMEA */
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
+#define GPS_PWR_ON_DELAY_MS  500   /* PB1 唤醒后等待模块回到 Full on 的时间(ms)
+                                    * @note Standby 只关内核/RF，RTC 域保持，故恢复很快；
+                                    *       这里只是给模块一点时间重新输出 NMEA */
 
 typedef struct {
   uint8_t  valid;  /* 已定位 */
@@ -172,11 +172,6 @@ static uint8_t      gpsPrintEn = 0;    /* GPS 打印总开关（1=打印, 0=静�
                                         * 默认 0：正常启动/运行不打任何 GPS 日志；
                                         * 收到 upgps 后临时置 1，处理完自动恢复原值；
                                         * @note  只影响打印，不影响接收/解析/上报 */
-static uint8_t      gpsPowerSave = 0;  /* GPS 是否已进入省电模式 PSM（1=休眠中）
-                                        * 仅用于避免重复下发同一条 UBX 指令；
-                                        * 模块重新上电会自动回到连续模式，故该标记需同步重置 */
-
-
 static volatile uint8_t  gpsRing[GPS_RING_LEN];
 static volatile uint16_t gpsWr = 0;    /* 写指针（ISR 更新） */
 static volatile uint16_t gpsRd = 0;    /* 读指针（主循环更新） */
@@ -232,9 +227,8 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
 static double nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
-static void gpsSetPowerSave(uint8_t enable); /* 向 GPS 下发 CFG-RXM 切换 PSM */
-static void gpsPowerOn(void);           /* 打开 GPS 电源（PB1 → MOS 高边开关） */
-static void gpsPowerOff(void);          /* 关闭 GPS 电源 */
+static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 → Full on */
+static void gpsPowerOff(void);              /* GPS 休眠：PB1(WAKE_UP) 置低 → Standby */
 static uint16_t ADC1_Read(void);            /* ADC1 单次读取（12 位） */
 static uint8_t  GetBatteryPercent(void);    /* ADC 值 → 电池电压 → 电量百分比 */
 /* USER CODE END PFP */
@@ -1176,35 +1170,6 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
-        /* sendmode: 9|v0-0|sendmode|1  →  GPS 省电模式控制
-         *   value=0 : GPS 进入省电模式 PSM（下发 UBX-CFG-RXM lpMode=1）
-         *   value=1 : GPS 退出省电模式，恢复连续定位（下发 lpMode=0）
-         * @note  当前实现只认 0/1，其余值忽略；且只在状态发生变化时才真正
-         *        下发 UBX（由 gpsPowerSave 记住当前状态，避免重复打扰） */
-        else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
-          if (strcmp(fields[1], deviceName) == 0) {
-            int mode = atoi(fields[3]); /* atoi 会自动跳过前导空格 */
-
-            if (mode == 0) {
-              /* GPS 进入省电模式（仅在状态变化时下发，避免重复打扰） */
-              if (!gpsPowerSave) {
-                gpsSetPowerSave(1);
-                gpsPowerSave = 1;
-              }
-              printf("[指令] GPS 省电模式: ON (PSM)\r\n");
-            } else if (mode == 1) {
-              /* GPS 恢复连续定位 */
-              if (gpsPowerSave) {
-                gpsSetPowerSave(0);
-                gpsPowerSave = 0;
-              }
-              printf("[指令] GPS 省电模式: OFF (连续定位)\r\n");
-            }  
-          } else {
-            printf("[指令] sendmode: 目标=%s != 本机=%s, 跳过\r\n",
-                   fields[1], deviceName);
-          }
-        }
         /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率 */
         else if (strcmp(fields[2], "txpower") == 0 && field_count >= 4) {
           if (strcmp(fields[1], deviceName) == 0) {
@@ -1392,7 +1357,7 @@ static void OnMaster(void)
 
     gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿等 */
 
-    /* 只有这一轮真的要用 GPS 才上电，用完立刻断电（平时 0 电流） */
+    /* 这一轮要用 GPS：PB1(WAKE_UP) 置高唤醒模块，用完立刻置低回 Standby */
     gpsPowerOn();
 
     /* GPS 打印的开关与恢复由 gpsSearchAndReport() 内部逐轮处理 */
@@ -1408,7 +1373,8 @@ static void OnMaster(void)
       gpsNeedRetry = hasFix ? 0U : 1U;
     }
 
-    /* 上报完成，GPS 断电（连续定位模式也是整段结束后才断，避免每轮冷启动） */
+    /* GPS 用完：PB1 置低进 Standby
+     * （连续定位模式是整段结束才休眠，避免每 3 分钟一轮反复唤醒/休眠） */
     gpsPowerOff();
 
     /* 注意：分支提示不要写成 one-liner 三元 + 中文值，
@@ -1466,17 +1432,6 @@ int main(void)
   MX_ADC1_Init();          /* 电池电量检测：PA0 / ADC1_CH0 */
 
   /* USER CODE BEGIN 2 */
-
-  /* GPS 断电期间它的 TXD 线会浮空，PB11 可能被噪声误采成乱码字节。
-   * 这里把 PB11 改成内部上拉，让线路保持在 UART 空闲高电平。
-   * @warning 必须放在所有 MX_* 之后：USART3 的 MspInit 会把 PB11 配回浮空输入 */
-  {
-    GPIO_InitTypeDef gpio = {0};
-    gpio.Pin  = GPIO_PIN_11;
-    gpio.Mode = GPIO_MODE_INPUT;
-    gpio.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(GPIOB, &gpio);
-  }
 
   /* 从 Flash 加载设备名、配置、发射功率和农场中心坐标 */
   loadDeviceNameFromFlash();
@@ -1673,15 +1628,13 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* GPS 电源开关 (PB1 → MOS 开关)
-   * 实测极性：高电平 = 导通(GPS 上电), 低电平 = 关断(GPS 断电)
-   * 默认置低 = 断电：GPS 只在真正要用的那一轮才上电（见 gpsPowerOn/Off） */
-  GPIO_InitStruct.Pin  = MOS_SW_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  /* GNSS 唤醒脚 (PB1 → 模块 WAKE_UP) - 默认低电平 = 模块处于 Standby */
+  GPIO_InitStruct.Pin   = GNSS_WAKE_Pin;
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(MOS_SW_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(MOS_SW_GPIO_Port, MOS_SW_Pin, GPIO_PIN_RESET);  /* 默认关断: GPS 断电 */
+  HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
 
   /* LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
   GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
@@ -1883,80 +1836,38 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   }
 }
 
-/* =====================================================================
- * @brief  切换 GPS 工作模式：连续定位 <-> 省电模式 PSM（u-blox 系列）
- * @param  enable: 1=进入省电模式 PSM, 0=恢复连续定位
- * @note   本模块是 u-blox M7/M8 内核（不是 MTK），进/出省电
- *         必须用 UBX 二进制协议 —— MTK 的 $PMTK161 之类指令对它完全无效。
- *         实际发出的两帧等价于下面两组常量，此处改为运行时算校验和，
- *         避免手写魔数写错：
- *           进入 PSM : B5 62 06 11 01 00 01 19 66
- *           退出 PSM : B5 62 06 11 01 00 00 18 65
- * @warning 刻意不用备份模式(UBX-RXM-PMREQ)：本模块只有 VCC/GND/TXD/RXD/PPS，
- *          没有 EXTINT 引脚，而 u-blox 7 的 PMREQ 不带 wakeupSources 字段，
- *          进去以后只能靠断电才能醒，等于把 GPS 睡死。
- *          PSM 虽只降到约 2~3mA，但 UART 始终在线，随时可被本函数唤醒。
- * @note    发送路径是 PB10(USART3_TX)，故 huart3 必须是 UART_MODE_TX_RX。
- *          阻塞式发送不开 TXEIE 中断，与逐字节 Receive_IT 接收互不干扰。
- * ===================================================================== */
-static void gpsSetPowerSave(uint8_t enable)
-{
-  /* UBX 帧：同步字 + Class + ID + Length + Payload + CK_A + CK_B */
-  uint8_t pkt[9] = {
-      0xB5, 0x62, /* 同步字 */
-      0x06, 0x11, /* Class=0x06(CFG), ID=0x11(RXM) */
-      0x01, 0x00, /* Length=1（小端） */
-      0x00,       /* Payload[0] = lpMode，下面赋值 */
-      0x00, 0x00  /* CK_A, CK_B，下面计算 */
-  };
-  uint8_t i, ckA = 0, ckB = 0;
-
-  pkt[6] = enable ? 0x01u : 0x00u; /* lpMode: 1=省电模式, 0=连续模式 */
-
-  /* 8 位 Fletcher 校验，覆盖 Class/ID/Length/Payload，即 pkt[2..6] */
-  for (i = 2; i < 7; i++) {
-    ckA = (uint8_t)(ckA + pkt[i]);
-    ckB = (uint8_t)(ckB + ckA);
-  }
-  pkt[7] = ckA;
-  pkt[8] = ckB;
-
-  HAL_UART_Transmit(&huart3, pkt, sizeof(pkt), 200);
-}
-
 /**
- * @brief  打开 GPS 电源（PB1 → MOS 开关，高电平导通）
- * @note   1) 上电后等 GPS_PWR_ON_DELAY_MS：硬件断电再上电是冷启动，
- *            模块要先稳定晶振/PLL 才会吐出第一条 NMEA
- *         2) 清掉断电期间环形缓冲里可能残留的半截语句，避免解析出错
- *         3) 模块重新上电必然回到连续模式，故 PSM 标记同步清 0
+ * @brief  GPS 唤醒：PB1(WAKE_UP) 置高 → 模块回到 Full on，开始搜星
+ * @note   1) 置高后等 GPS_PWR_ON_DELAY_MS：模块从 Standby 回到 Full on
+ *            需要一点时间才会重新输出 NMEA
+ *         2) 清掉休眠期间环形缓冲里可能残留的半截语句，避免解析出错
+ *         3) Standby 只停内核/RF，RTC 域保持，故恢复是热启动级（秒级定位）
  */
 static void gpsPowerOn(void)
 {
-  HAL_GPIO_WritePin(MOS_SW_GPIO_Port, MOS_SW_Pin, GPIO_PIN_SET);    /* 高电平导通 */
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET);  /* 高: Full on */
   HAL_Delay(GPS_PWR_ON_DELAY_MS);
 
   gpsRd = gpsWr;      /* 丢弃残留字节（关中断非必需：ISR 只改 gpsWr） */
   gpsLineLen = 0;
-  gpsPowerSave = 0;   /* 重新上电后回到连续模式 */
 
-  printf("[GPS电源] ON\r\n");
+  printf("[GPS] Wake ON (PB1=高, Full on)\r\n");
 }
 
 /**
- * @brief  关闭 GPS 电源（低电平关断）
- * @note   断电后旧坐标立即失效：下一轮不能把上次的定位当成有效坐标上报，
+ * @brief  GPS 休眠：PB1(WAKE_UP) 置低 → 模块进入 Standby，停止搜星
+ * @note   休眠后旧坐标立即失效：下一轮不能把上次的定位当成有效坐标上报，
  *         否则 GPS_FIX_TTL_MS 内会误判成"已定位"而跳过真正的新一轮搜星
  */
 static void gpsPowerOff(void)
 {
-  HAL_GPIO_WritePin(MOS_SW_GPIO_Port, MOS_SW_Pin, GPIO_PIN_RESET);  /* 低电平关断 */
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);  /* 低: Standby */
 
   gpsFixValid = 0;
   gpsRd = gpsWr;
   gpsLineLen = 0;
 
-  printf("[GPS电源] OFF\r\n");
+  printf("[GPS] Wake OFF (PB1=低, Standby)\r\n");
 }
 
 /* USER CODE END 4 */

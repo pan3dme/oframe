@@ -73,10 +73,11 @@ void Error_Handler(void);
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
 
-/* --- MOS 电源开关 (PB1 → GPS 电源) ---
- * 实测极性：高电平 = 导通(开), 低电平 = 关断(关) */
-#define MOS_SW_Pin        GPIO_PIN_1
-#define MOS_SW_GPIO_Port  GPIOB
+/* --- GNSS 唤醒脚 (PB1 → GPS 模块 WAKE_UP) ---
+ * 高电平 = Full on（正常工作、搜星）
+ * 低电平 = Standby（停止搜星，约 0.3~1mA，RTC 域保持 → 热启动级恢复） */
+#define GNSS_WAKE_Pin        GPIO_PIN_1
+#define GNSS_WAKE_GPIO_Port  GPIOB
 
 /* ONLY_SEND 项目使用低功率 (4 dBm) */
 #define DEFAULT_PWR            4
