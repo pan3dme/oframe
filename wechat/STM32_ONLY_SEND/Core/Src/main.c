@@ -155,11 +155,27 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 #define GPS_WAIT_MIN_MS     10000  /* upgps 最短搜星时间 = 10 秒
                                     * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收，
                                     *       发太快大概率丢帧。即使立刻就有坐标，也要至少等够这 10 秒 */
-#define GPS_CONT_INTERVAL_SEC 180  /* 连续定位模式的上报轮次间隔 = 3 分钟 */
+/* 连续定位模式：每一轮**最少**占用的时间（搜星 + 等待）
+ * 直接取"搜星上限"而不是固定 3 分钟：一轮搜星最坏就要 GPS_WAIT_TIMEOUT_MS，
+ * 间隔若比它小，会出现上一轮还没搜完就催下一轮；
+ * 搜星提前结束（如 10 秒定位）时也要把这个间隔占满，避免 1 分钟的指令里
+ * 连着上报 5 次。搜星耗时更长时，本轮时长自然以搜星耗时为准 */
+#define GPS_CONT_INTERVAL_SEC ((GPS_WAIT_TIMEOUT_MS) / 1000)
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
 #define GPS_PWR_ON_DELAY_MS  500   /* PB1 唤醒后等待模块回到 Full on 的时间(ms)
                                     * @note Standby 只关内核/RF，RTC 域保持，故恢复很快；
                                     *       这里只是给模块一点时间重新输出 NMEA */
+
+/* PB1(WAKE_UP) 电平控制总开关: 1=由 MCU 翻转电平, 0=暂不动电平（核对阶段）
+ * 置 0 时的行为（当前生效）:
+ *   - MX_GPIO_Init 里 PB1 配成**高阻输入**，既不拉高也不拉低，
+ *     模块状态完全由外部上拉/悬空决定，用于核对"这两种状态分别能不能搜星"
+ *   - gpsPowerOn()/gpsPowerOff() 保留清缓冲、打印等流程，但跳过所有 GPIO 写
+ *   - sendmode 指令仍记住 gpsWakeEn（决定本轮是否搜星），但不翻转电平
+ * @warning 若 PB1 真的接到模块 WAKE_UP，需先确认悬空/上拉能让模块进 Full on，
+ *          否则每轮都搜不到星。核对完把这里改回 1 即恢复正常上下电控制
+ */
+#define GPS_PWR_CTRL_EN  0
 
 
 
@@ -260,6 +276,7 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
 static double nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
 static uint8_t isInWorkWindow(void);      /* 当前是否在工作时间段内(config 第2段) */
+static void    printTimeWindows(const char *tag);   /* 打印当前生效的两个时间段 */
 static uint8_t isInGpsWorkWindow(void);   /* 当前是否在 GPS 工作时间段内(config 第3段) */
 static void    openRxWindow3000(void);    /* 开 3 秒接收窗口并解析（可重复调用） */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
@@ -679,10 +696,14 @@ static uint8_t gpsSearchAndReport(uint8_t useGpsType)
 
 /**
  * @brief  连续定位上报：totalMin 分钟内不休眠，每隔 GPS_CONT_INTERVAL_SEC 秒上报一次坐标
- * @note   每轮固定占 3 分钟，结构为：
- *           1) gpsSearchAndReport() —— 最短 10 秒、最长 3 分钟搜星后发一帧坐标
- *           2) 本轮剩余时间里继续跑 gpsTask() 排空环形缓冲，但**不进入休眠**
- *         总计 ceil(totalMin/3) 轮，用完额度才回到正常的休眠调度
+ * @note   每一轮的结构：
+ *           1) gpsSearchAndReport() —— 最短 10 秒、最长 GPS_WAIT_TIMEOUT_MS 搜星后发一帧坐标
+ *           2) 搜星提前结束时，把本轮补齐到 GPS_CONT_INTERVAL_SEC 秒再进下一轮
+ *              （期间继续跑 gpsTask() 排空环形缓冲，但**不进入休眠**）
+ *         轮数 = 1 + floor((总时长 - 已用时) / GPS_CONT_INTERVAL_SEC)：
+ *           第 1 轮收到指令就立刻执行；之后每轮开始**前**先看剩余时间，
+ *           不足一轮的最短占用就提前结束，回到正常定时逻辑（该休眠就休眠）
+ *         —— 这样"upgps 1 分钟 + 10 秒搜到星"只上报 1 次，不会在剩下 50 秒里连报 5 次
  * @warning MCU 与射频全程全速工作，分钟数直接线性影响耗电
  * @retval 1=期间至少有一轮拿到有效坐标, 0=全程都没有有效坐标
  */
@@ -693,27 +714,42 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
   uint32_t rounds    = 0;
   uint8_t  everFixed = 0;
 
-  printf("[连续定位] 开始: 时长=%u 分钟, 每 %u 秒上报一次(期间不休眠)\r\n",
+  printf("[连续定位] 开始: 时长=%u 分钟, 每轮至少 %u 秒(剩余不足则提前结束)\r\n",
          (unsigned int)totalMin, (unsigned int)GPS_CONT_INTERVAL_SEC);
 
-  while ((uint32_t)(getCurrentTimestamp() - startSec) < totalSec) {
+  while (1) {
     uint32_t slotStart = getCurrentTimestamp();
+    uint32_t elapsed;
+    uint32_t remain;
     uint8_t  hasFix;
 
+    /* 第 1 轮无条件执行：收到 upgps 指令就是要立刻搜星上报 */
     rounds++;
     hasFix = gpsSearchAndReport(useGpsType);
     if (hasFix)
       everFixed = 1;
 
     if (hasFix)
-      printf("[连续定位] 第 %lu 轮已上报真实坐标, 等待下一轮\r\n",
-             (unsigned long)rounds);
+      printf("[连续定位] 第 %lu 轮已上报真实坐标\r\n", (unsigned long)rounds);
     else
-      printf("[连续定位] 第 %lu 轮无坐标已上报 0.0,0.0, 等待下一轮\r\n",
-             (unsigned long)rounds);
+      printf("[连续定位] 第 %lu 轮无坐标已上报 0.0,0.0\r\n", (unsigned long)rounds);
 
-    /* 本轮剩余时间：不休眠，但必须持续跑 gpsTask()，
-     * 否则 GPS 字节会把 512 字节环形缓冲堆满丢句 */
+    elapsed = (uint32_t)(getCurrentTimestamp() - startSec);
+    if (elapsed >= totalSec)
+      break;                                   /* 总时长已用完 */
+
+    remain = totalSec - elapsed;
+    if (remain < (uint32_t)GPS_CONT_INTERVAL_SEC) {
+      /* 剩下的时间凑不满一轮（一轮最短也要 GPS_CONT_INTERVAL_SEC 秒），
+       * 不再空等，直接结束连续定位，回到正常定时调度（该休眠就休眠） */
+      printf("[连续定位] 剩余 %lu 秒 < 一轮最短 %u 秒, 结束(回到正常定时逻辑)\r\n",
+             (unsigned long)remain, (unsigned int)GPS_CONT_INTERVAL_SEC);
+      break;
+    }
+
+    /* 把本轮补齐到 GPS_CONT_INTERVAL_SEC 秒：搜星只用 10 秒也要占满，
+     * 搜星耗时超过它则本轮自然以搜星耗时为准，不再额外等待。
+     * 期间不休眠，但必须持续跑 gpsTask()，否则 512 字节环形缓冲会堆满丢句 */
     while ((uint32_t)(getCurrentTimestamp() - slotStart) <
            (uint32_t)GPS_CONT_INTERVAL_SEC) {
       gpsTask();
@@ -940,6 +976,35 @@ static uint8_t isInWorkWindow(void)
 
   hour = getTodaySecond() / 3600u;
   return ((hour >= s) && (hour < e)) ? 1U : 0U;
+}
+
+/**
+  * @brief  打印当前生效的两个时间段（工作时间 / GPS 上报时间）
+  * @param  tag: 行首前缀，用于区分场景（启动时 / 收到新配置时）
+  * @note   时段判断每次都是从 configStr 实时解析的，所以收到 A 指令更新配置后
+  *         **立即生效**，不存在"要重新加载"的问题，这里只是把结果打出来核对
+  */
+static void printTimeWindows(const char *tag)
+{
+  char    f0[8], f1[8];
+  int16_t i0, i1;
+  uint8_t s0, e0, s1, e1;
+
+  getConfigFieldStr(1, f0, sizeof(f0));   /* 第 2 段: 工作时间段 */
+  getConfigFieldStr(2, f1, sizeof(f1));   /* 第 3 段: GPS 上报时间段 */
+  i0 = getConfigWorkStartIdx();
+  i1 = getConfigGpsEndIdx();
+
+  if (timeIdxToRange(i0, &s0, &e0) && timeIdxToRange(i1, &s1, &e1)) {
+    /* 终点 23 表示 24:00 */
+    printf("%s工作 %02u:00 ~ %02u:00 (%s->idx %d), GPS上报 %02u:00 ~ %02u:00 (%s->idx %d)\r\n",
+           tag,
+           s0, (e0 == TIME_HOUR_END) ? 24u : e0, f0, i0,
+           s1, (e1 == TIME_HOUR_END) ? 24u : e1, f1, i1);
+  } else {
+    printf("%s解析失败, 时段判断不生效 (段2=%s->idx %d, 段3=%s->idx %d)\r\n",
+           tag, f0, i0, f1, i1);
+  }
 }
 
 /**
@@ -1422,11 +1487,14 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                    fields[1], deviceName);
           }
         }
-        /* upgps: 9|v0-0|upgps|1  →  等待有效定位后上报一次 GPS 坐标
+        /* upgps: 9|v0-0|upgps|N  →  等待有效定位后上报 GPS 坐标
+         *   N=0（或参数非数字）：单次搜星上报一次就结束
+         *   N>0                ：连续定位 N 分钟，每轮至少 GPS_CONT_INTERVAL_SEC 秒
          * @note  这里只置标志，真正的等待/上报在 OnMaster() 末尾执行：
          *        1) 阻塞搜星：最短 GPS_WAIT_MIN_MS(10秒, 给中继留准备时间),
-         *                    上限 GPS_WAIT_TIMEOUT_MS(3分钟)
-         *        2) 发 5|deviceName|lat,lng|（MSG_TYPE_UP_GPS，定位失败发 "0.0,0.0"）
+         *                    上限 GPS_WAIT_TIMEOUT_MS(4分钟)
+         *        2) 首次发 5|deviceName|lat,lng|（MSG_TYPE_UP_GPS，定位失败发 "0.0,0.0"）；
+         *           之后没拿到坐标的重试轮改发 1|...|（MSG_TYPE_GPS）
          *        3) calcNextTxTime() 重新算下次时间 → 再进深度休眠
          *        不能在中断/解析上下文里长时间等待，否则会堵死整个流程 */
         else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
@@ -1445,10 +1513,11 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             gpsWaitReport = 1;
 
             if (mins > 0)
-              printf("[指令] upgps: 连续定位 %d 分钟, 每 3 分钟上报一次(期间不休眠)\r\n",
-                     mins);
+              printf("[指令] upgps: 连续定位 %d 分钟, 每轮至少 %u 秒(剩余不足则提前结束)\r\n",
+                     mins, (unsigned int)GPS_CONT_INTERVAL_SEC);
             else
-              printf("[指令] upgps: 单次搜星上报(上限 180 秒)\r\n");
+              printf("[指令] upgps: 单次搜星上报一次(参数=0, 上限 %lu 秒)\r\n",
+                     (unsigned long)(GPS_WAIT_TIMEOUT_MS / 1000));
           } else {
             printf("[指令] upgps: 目标=%s != 本机=%s, 跳过\r\n",
                    fields[1], deviceName);
@@ -1462,16 +1531,26 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           if (strcmp(fields[1], deviceName) == 0) {
             int mode = atoi(fields[3]); /* atoi 会自动跳过前导空格 */
 
+            /* @note sendmode 只决定"本轮是否启用 GPS 搜星"(gpsWakeEn)，
+             *       PB1 电平要不要真的翻转由 GPS_PWR_CTRL_EN 控制（核对阶段不翻转） */
             if (mode == 0) {
               gpsWakeEn = 0;
+#if GPS_PWR_CTRL_EN
               HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin,
                                 GPIO_PIN_RESET);   /* 低: Standby */
               printf("[指令] sendmode=0 : PB1=低 , GPS 进入 Standby(停止搜星)\r\n");
+#else
+              printf("[指令] sendmode=0 : 停用 GPS 搜星(核对阶段: PB1 电平不动)\r\n");
+#endif
             } else if (mode == 1) {
               gpsWakeEn = 1;
+#if GPS_PWR_CTRL_EN
               HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin,
                                 GPIO_PIN_SET);     /* 高: Full on */
               printf("[指令] sendmode=1 : PB1=高 , GPS 恢复 Full on(正常搜星)\r\n");
+#else
+              printf("[指令] sendmode=1 : 启用 GPS 搜星(核对阶段: PB1 电平不动)\r\n");
+#endif
             }
           } else {
             printf("[指令] sendmode: 目标=%s != 本机=%s, 跳过\r\n",
@@ -1527,6 +1606,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               saveConfigToFlash(configStr);
               configNeedReport = 1;  /* 标记需要上报配置 */
               printf("[指令] 配置已更新: %s\r\n", configStr);
+
+              /* 工作时间段 / GPS 上报时间段都是从 configStr 实时解析的，
+               * 这里不用做额外的"重新加载"，直接把生效的区间打出来核对 */
+              printTimeWindows("[指令] 新时段 : ");
             } else {
               printf("[指令] A: 间隔=%lu 超范围(1~60), 拒绝\r\n",
                      (unsigned long)newMin);
@@ -1644,8 +1727,11 @@ static void OnMaster(void)
     tx_count = 1;
 
   /* 上轮失败的重试只在"工作时间段内"继续：已离开工作时间段就放弃重试，
-   * 否则会出现"跳过定时帧、又不搜星"的空转轮次，设备整轮什么都不上报 */
-  if (gpsNeedRetry && !isInWorkWindow() && !isInGpsWorkWindow()) {
+   * 否则会出现"跳过定时帧、又不搜星"的空转轮次，设备整轮什么都不上报
+   * @note 未对时(timeSynced=0)时两个时段判断都恒为 0，此时**不能**放弃重试：
+   *       否则一开机没对时就会把重试标记清掉，永远拿不到坐标。
+   *       未对时一律继续重试，等到对上时间后再按时段判定 */
+  if (gpsNeedRetry && timeSynced && !isInWorkWindow() && !isInGpsWorkWindow()) {
     gpsNeedRetry = 0;
     printf("[调度] 已离开工作时间段, 放弃 GPS 重试, 恢复正常定时上报\r\n");
   }
@@ -1839,25 +1925,7 @@ int main(void)
          getDeviceIndex(),
          (unsigned long)getConfigIntervalSec(),
          (unsigned long)getSlotOffsetSec());
-  {
-    char    f0[8], f1[8];
-    int16_t i0, i1;
-    uint8_t s0, e0, s1, e1;
-
-    getConfigFieldStr(1, f0, sizeof(f0));   /* 第 2 段: 工作时间段 */
-    getConfigFieldStr(2, f1, sizeof(f1));   /* 第 3 段: GPS 上报时间段 */
-    i0 = getConfigWorkStartIdx();
-    i1 = getConfigGpsEndIdx();
-
-    if (timeIdxToRange(i0, &s0, &e0) && timeIdxToRange(i1, &s1, &e1)) {
-      /* 终点 23 表示 24:00 */
-      printf("时段  : 工作 %02u:00 ~ %02u:00 (%s->idx %d), GPS上报 %02u:00 ~ %02u:00 (%s->idx %d)\r\n",
-             s0, (e0 == TIME_HOUR_END) ? 24u : e0, f0, i0,
-             s1, (e1 == TIME_HOUR_END) ? 24u : e1, f1, i1);
-    } else {
-      printf("时段  : 解析失败 (段2=%s->idx %d, 段3=%s->idx %d)\r\n", f0, i0, f1, i1);
-    }
-  }
+  printTimeWindows("时段  : ");   /* 工作时间段 + GPS 上报时间段 */
 
   /* 首次 TX 延迟到主循环中执行（LoRa 在首次 TX 前才初始化） */
   printf("TX模式: 仅发送\r\n");
@@ -2038,13 +2106,20 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* GNSS 唤醒脚 (PB1 → 模块 WAKE_UP) - 默认低电平 = 模块处于 Standby */
+  /* GNSS 唤醒脚 (PB1 → 模块 WAKE_UP) */
   GPIO_InitStruct.Pin   = GNSS_WAKE_Pin;
-  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+#if GPS_PWR_CTRL_EN
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);  /* 默认低 = Standby */
+#else
+  /* 核对阶段：配成高阻输入，MCU 不驱动 WAKE_UP，
+   * 由模块内部上拉/外部电平决定它处于 Full on 还是 Standby */
+  GPIO_InitStruct.Mode  = GPIO_MODE_INPUT;
+  HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
+#endif
 
   /* LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
   GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
@@ -2253,21 +2328,28 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
  */
 static void gpsPowerOn(void)
 {
-  /* sendmode=0 时云端要求 GPS 休眠：这一轮不唤醒，PB1 保持低电平(Standby) */
-  if (!gpsWakeEn) {
-    HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
-    printf("[GPS] sendmode=0, 本轮不唤醒(保持 Standby)\r\n");
-    return;
-  }
-
-  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET);  /* 高: Full on */
-  HAL_Delay(GPS_PWR_ON_DELAY_MS);
-
   gpsRd = gpsWr;      /* 丢弃残留字节（关中断非必需：ISR 只改 gpsWr） */
   gpsLineLen = 0;
   gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数据 */
 
+  /* sendmode=0 时云端要求 GPS 休眠：这一轮不唤醒 */
+  if (!gpsWakeEn) {
+#if GPS_PWR_CTRL_EN
+    HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
+    printf("[GPS] sendmode=0, 本轮不唤醒(保持 Standby)\r\n");
+#else
+    printf("[GPS] sendmode=0, 本轮不搜星(核对阶段: 不驱动 PB1)\r\n");
+#endif
+    return;
+  }
+
+#if GPS_PWR_CTRL_EN
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET);  /* 高: Full on */
+  HAL_Delay(GPS_PWR_ON_DELAY_MS);
   printf("[GPS] Wake ON (PB1=高, Full on)\r\n");
+#else
+  printf("[GPS] 开始搜星(核对阶段: PB1 未驱动, 由外部电平决定模块状态)\r\n");
+#endif
 }
 
 /**
@@ -2277,13 +2359,19 @@ static void gpsPowerOn(void)
  */
 static void gpsPowerOff(void)
 {
+#if GPS_PWR_CTRL_EN
   HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);  /* 低: Standby */
+#endif
 
   gpsFixValid = 0;
   gpsRd = gpsWr;
   gpsLineLen = 0;
 
+#if GPS_PWR_CTRL_EN
   printf("[GPS] Wake OFF (PB1=低, Standby)\r\n");
+#else
+  printf("[GPS] 本轮搜星结束(核对阶段: PB1 未驱动, 模块状态不变)\r\n");
+#endif
 }
 
 /* USER CODE END 4 */
