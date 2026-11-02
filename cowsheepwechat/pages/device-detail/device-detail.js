@@ -995,6 +995,22 @@ Page({
     wx.navigateTo({ url: '/pages/trackmap/trackmap?deviceId=' + encodeURIComponent(this.data.deviceId || '') })
   },
 
+  // 查看电量走势 → 跳转电量走势页（带上本机设备ID，页面自动选中该设备）
+  onBatteryChartTap() {
+    const deviceId = this.data.deviceId || ''
+    if (!deviceId) {
+      wx.showToast({ title: '设备ID为空', icon: 'none' })
+      return
+    }
+    wx.navigateTo({
+      url: '/pages/battery-chart/battery-chart?deviceId=' + encodeURIComponent(deviceId),
+      fail: (err) => {
+        console.error('[电量走势] 跳转失败:', JSON.stringify(err))
+        wx.showToast({ title: '跳转失败', icon: 'none' })
+      }
+    })
+  },
+
   // ========== 中继设置坐标 ==========
   // 仅中继设备（有 ProductKey）可用：打开地图选坐标页（复用地名选取页），
   // 选点确定返回后在 onShow 中读取 globalData._placePickedGps，确认后提交 insertlog

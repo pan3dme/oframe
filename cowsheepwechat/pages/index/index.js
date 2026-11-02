@@ -52,7 +52,7 @@ Page({
       { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
       { id: 'track',    label: '轨迹地图', color: '#F0A020', icon: '🗺' },
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
-      { id: 'alarm',    label: '报警信息', color: '#1E88E5', icon: '🔔' },
+      { id: 'battery',  label: '电量走势', color: '#1E88E5', icon: '🔋' },
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
       { id: 'logout',   label: '注销登入', color: '#EF5350', icon: '🚪' }
     ],
@@ -863,6 +863,10 @@ Page({
       this.onDataListTap()
       return
     }
+    if (id === 'battery') {
+      this.onBatteryChartTap()
+      return
+    }
     if (id === 'setcoord') {
       // 中继设置坐标：打开地图选点页，选点确定返回后在 onShow 确认并 insertlog 提交
       this.onSetCoordTap()
@@ -875,6 +879,22 @@ Page({
     }
     // TODO: 根据 id 跳转到对应子页
     wx.showToast({ title: '功能开发中', icon: 'none' })
+  },
+
+  // 查看电量走势 → 跳转电量走势页（带上当前选中设备ID，页面自动选中）
+  onBatteryChartTap() {
+    const deviceId = this.data.selectedDeviceId || ''
+    if (!deviceId) {
+      wx.showToast({ title: '请先选择设备', icon: 'none' })
+      return
+    }
+    wx.navigateTo({
+      url: '/pages/battery-chart/battery-chart?deviceId=' + encodeURIComponent(deviceId),
+      fail: (err) => {
+        console.error('[电量走势] 跳转失败:', JSON.stringify(err))
+        wx.showToast({ title: '跳转失败', icon: 'none' })
+      }
+    })
   },
 
   // ========== 注销登入 ==========

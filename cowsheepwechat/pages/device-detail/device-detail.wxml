@@ -57,6 +57,9 @@
             <view class="track-link" wx:if="{{!deviceInfo.ProductKey}}" bindtap="onViewTrackTap">
               <text class="track-icon">🗺</text>
             </view>
+            <view class="battery-chart-link" wx:if="{{!deviceInfo.ProductKey}}" bindtap="onBatteryChartTap">
+              <text class="battery-chart-icon">🔋</text>
+            </view>
           </view>
         </view>
       </view>

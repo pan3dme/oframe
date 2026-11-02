@@ -6,9 +6,11 @@
 
 const dataCache = require('../../config/data-cache.js')
 
-const LIMIT_OPTIONS = [10, 20, 30, 50, 80, 100] // 可选展示点数
-const PAGE_SIZE = 100                // 每次请求最多 100 条
-const MAX_PAGES = 8                  // 最多翻 8 页（800 条原始记录），防止请求过多
+const LIMIT_OPTIONS = [10, 30, 50, 200, 400, 800] // 可选展示点数
+const SECRET_LIMIT = 800                 // 该档位需要密码才能使用
+const SECRET_PASSWORD = '1234'           // 密码
+const PAGE_SIZE = 100                    // 每页最多 100 条
+const MAX_PAGES = 20                 // 最多翻 20 页（2000 条原始记录），防止请求过多（凑够点数会提前停）
 const JUMP_DELTA = 15                // 电量回升 ≥15 个百分点，计为一次换电/重新上电
 const MIN_VALID = 0.05               // 忽略过低无效读数（<5%）
 
@@ -61,7 +63,7 @@ Page({
 
     // ---- 点数选择 ----
     limitOptions: LIMIT_OPTIONS,
-    selectedLimit: 100,
+    selectedLimit: 10,
 
     // ---- 状态 ----
     loading: false,
@@ -75,7 +77,11 @@ Page({
     hoverIndex: -1
   },
 
-  onLoad() {
+  onLoad(options) {
+    // 从设备详情页跳转过来时带 deviceId，自动选中该设备
+    this._presetDeviceId = (options && options.deviceId)
+      ? decodeURIComponent(options.deviceId)
+      : ''
     this._loadDevices()
   },
 
@@ -100,15 +106,26 @@ Page({
         return
       }
 
-      // 默认选中：优先首页当前选中的设备
+      // 默认选中：① 详情页带过来的设备ID → ② 首页当前选中的设备 → ③ 第一个
       let idx = 0
-      try {
-        const cur = dataCache.getHomeSelectedDevice()
-        if (cur && typeof cur === 'string') {
-          const i = options.findIndex(o => o.id === cur)
-          if (i >= 0) idx = i
+      if (this._presetDeviceId) {
+        const i = options.findIndex(o => o.id === this._presetDeviceId)
+        if (i >= 0) {
+          idx = i
+        } else {
+          // 设备表里没有这台（未登记/历史设备）→ 直接置顶为可选项，保证仍能查
+          options.unshift({ id: this._presetDeviceId, label: this._presetDeviceId })
+          idx = 0
         }
-      } catch (e) { /* ignore */ }
+      } else {
+        try {
+          const cur = dataCache.getHomeSelectedDevice()
+          if (cur && typeof cur === 'string') {
+            const i = options.findIndex(o => o.id === cur)
+            if (i >= 0) idx = i
+          }
+        } catch (e) { /* ignore */ }
+      }
 
       this.setData({
         deviceOptions: options,
@@ -133,7 +150,34 @@ Page({
   onLimitTap(e) {
     const n = parseInt(e.currentTarget.dataset.n, 10)
     if (isNaN(n) || n === this.data.selectedLimit) return
+    // 800 条会明显增加服务器压力，需要密码
+    if (n === SECRET_LIMIT) {
+      this._askPassword(() => {
+        this.setData({ selectedLimit: n }, () => this._query())
+      })
+      return
+    }
     this.setData({ selectedLimit: n }, () => this._query())
+  },
+
+  // 密码弹框：输入正确才回调
+  _askPassword(onOk) {
+    wx.showModal({
+      title: '需要密码',
+      content: '查询 ' + SECRET_LIMIT + ' 条会明显增加服务器压力，请输入密码：',
+      editable: true,
+      placeholderText: '请输入密码',
+      confirmText: '确定',
+      cancelText: '取消',
+      success: (res) => {
+        if (!res.confirm) return
+        if ((res.content || '').trim() === SECRET_PASSWORD) {
+          if (onOk) onOk()
+        } else {
+          wx.showToast({ title: '密码错误', icon: 'none' })
+        }
+      }
+    })
   },
 
   onRefresh() {
@@ -167,15 +211,18 @@ Page({
       that._finish(acc, rawCount, need)
       return
     }
+    // 每次请求条数跟着目标点数走：选 10 就只拉 10 条原始记录，减少服务器压力；
+    // 上限仍为 PAGE_SIZE(100)，选 200/400 时按每页 100 条翻页
+    const limit = Math.min(need, PAGE_SIZE)
     wx.request({
       url: _apiUrl(),
       method: 'POST',
       data: {
         action: 'getDeviceLogbyId',
         info: {
-          limit: PAGE_SIZE,
+          limit: limit,
           deviceId: deviceId,
-          offset: page * PAGE_SIZE,
+          offset: page * limit,
           wechatid: _wechatId()
         },
         time: _now()
@@ -189,7 +236,7 @@ Page({
         console.log('[电量走势] 第' + page + '页：原始' + raw.length +
           '条，电量点' + pts.length + '个，累计' + merged.length + '个')
 
-        const noMore = raw.length < PAGE_SIZE
+        const noMore = raw.length < limit
         if (noMore || merged.length >= need || page + 1 >= MAX_PAGES) {
           that._finish(merged, totalRaw, need)
         } else {
@@ -365,22 +412,9 @@ Page({
       const plotW = W - padL - padR
       const plotH = H - padT - padB
 
-      // ---- Y 轴范围自适应（取整到 5%，至少 10 个百分点） ----
-      let lo = pts[0].pct
-      let hi = pts[0].pct
-      pts.forEach(p => {
-        if (p.pct < lo) lo = p.pct
-        if (p.pct > hi) hi = p.pct
-      })
-      const padV = Math.max(2, (hi - lo) * 0.15)
-      let yMin = Math.floor((lo - padV) / 5) * 5
-      let yMax = Math.ceil((hi + padV) / 5) * 5
-      if (yMin < 0) yMin = 0
-      if (yMax > 100) yMax = 100
-      if (yMax - yMin < 10) {
-        yMax = Math.min(100, yMin + 10)
-        if (yMax - yMin < 10) yMin = Math.max(0, yMax - 10)
-      }
+      // ---- Y 轴固定 0%~100%（直观，不随数据区间缩放） ----
+      const yMin = 0
+      const yMax = 100
 
       // ---- X 轴时间范围 ----
       const t0 = pts[0].t
