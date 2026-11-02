@@ -1,0 +1,61 @@
+<!--pages/battery-chart/battery-chart.wxml— 设备电量走势图-->
+<navigation-bar title="电量走势" back="{{true}}" color="black" background="#FFF"></navigation-bar>
+
+<view class="page-body">
+  <!-- 顶部控制栏：设备选择 + 点数选择 + 刷新 -->
+  <view class="ctrl-panel">
+    <view class="ctrl-row">
+      <text class="ctrl-label">🔋 设备</text>
+      <picker mode="selector" range="{{deviceLabels}}" value="{{selectedDeviceIndex}}" bindchange="onDeviceChange">
+        <view class="ctrl-picker">{{deviceLabels[selectedDeviceIndex] || '请选择设备'}}</view>
+      </picker>
+    </view>
+
+    <view class="ctrl-row">
+      <text class="ctrl-label">📊 条数</text>
+      <view class="ctrl-seg">
+        <text class="seg-btn {{selectedLimit === item ? 'seg-btn-on' : ''}}"
+          wx:for="{{limitOptions}}" wx:key="*this"
+          bindtap="onLimitTap" data-n="{{item}}">{{item}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 加载中 -->
+  <view class="state-box" wx:if="{{loading}}">
+    <text class="state-text">⏳ 加载中...</text>
+  </view>
+
+  <!-- 错误 / 空状态 -->
+  <view class="state-box" wx:elif="{{errorMsg}}">
+    <text class="state-icon">😞</text>
+    <text class="state-text">{{errorMsg}}</text>
+    <button class="retry-btn" bindtap="onRefresh">🔄 点击重试</button>
+  </view>
+
+  <!-- 图表 -->
+  <block wx:else>
+    <!-- 走势图 -->
+    <view class="chart-panel">
+      <view class="chart-header">
+        <text class="chart-title">📈 电量走势</text>
+        <text class="chart-count">{{summary.count}} 点 / 扫描 {{scannedRaw}} 条</text>
+      </view>
+      <view class="chart-hover" wx:if="{{hoverText}}">{{hoverText}}</view>
+      <view class="chart-hover chart-hover-idle" wx:else>触摸图表查看某点详情</view>
+      <canvas
+        type="2d"
+        id="batteryCanvas"
+        class="chart-canvas"
+        bindtouchstart="onChartTouch"
+        bindtouchmove="onChartTouch"
+        bindtouchend="onChartTouchEnd"></canvas>
+    </view>
+
+    <!-- 时间跨度说明 -->
+    <view class="tip-panel">
+      <text class="tip-text">时间跨度：{{summary.firstTime}} → {{summary.lastTime}}（{{summary.spanText}}）</text>
+      <text class="tip-text tip-text-sub">橙色圆圈 = 电量回升≥15%（疑似换电/重新上电）</text>
+    </view>
+  </block>
+</view>

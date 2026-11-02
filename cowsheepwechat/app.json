@@ -21,7 +21,8 @@
     "pages/cloud-records/cloud-records",
     "pages/dtu-cmd/dtu-cmd",
     "pages/relay-dtu-cmd/relay-dtu-cmd",
-    "pages/location-map/location-map"
+    "pages/location-map/location-map",
+    "pages/battery-chart/battery-chart"
   ],
   "tabBar": {
     "custom": true,

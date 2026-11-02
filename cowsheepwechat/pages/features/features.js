@@ -57,6 +57,11 @@ Page({
         label: 'DTU发送指令',
         minLevel: 1
       },
+      {
+        id: 10,
+        label: '电量走势',
+        minLevel: 1
+      },
     ],
     // 按用户 level 过滤后的可见按钮列表（wxml 渲染用）
     visibleFeatureBtns: []
@@ -86,7 +91,8 @@ Page({
 
   // 功能按钮事件
   onFeatureTap(e) {
-    const id = e.currentTarget.dataset.id
+    // dataset 里的 id 可能是数字或数字字符串，统一转成数字再比较
+    const id = Number(e.currentTarget.dataset.id)
     console.log('功能按钮 ' + id + ' 被点击')
 
     if (id === 1) {
@@ -137,6 +143,15 @@ Page({
     } else if (id === 9) {
       // DTU发送指令
       wx.navigateTo({ url: '/pages/dtu-cmd/dtu-cmd' })
+    } else if (id === 10) {
+      // 电量走势
+      wx.navigateTo({
+        url: '/pages/battery-chart/battery-chart',
+        fail: (err) => {
+          console.error('[电量走势] 跳转失败:', JSON.stringify(err))
+          wx.showToast({ title: '跳转失败: ' + (err && err.errMsg ? err.errMsg : '未知'), icon: 'none', duration: 3000 })
+        }
+      })
     }
   },
 
