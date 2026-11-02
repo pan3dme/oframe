@@ -56,7 +56,11 @@
 #define MSG_TYPE_COM      9   /* 指令消息 */
 #define MSG_TYPE_CONFIG   6   /* 配置消息 */
 #define MSG_TYPE_SYN_TIME 4   /* 下发对时信息（中继→本设备） */
-#define MSG_TYPE_WARN     8   /* 告警消息 */
+#define MSG_TYPE_WARN     8   /* 告警消息（预留，当前未使用；类型 8 已给 READINFO） */
+#define MSG_TYPE_READINFO 8   /* 设备信息上报（readinfo 指令回复）
+                               * 帧格式: 8|设备名|设备数量|发射功率(dBm)|保留(当前填计数)|
+                               * @note 与 MSG_TYPE_WARN 同值 8：告警消息从未实现过，
+                               *       若将来要做告警，必须换一个类型号 */
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
 /* 设备信息 */
@@ -80,6 +84,8 @@ char centerStr[64] = "";
 #define TXPWR_MAGIC         0xA5A55A5C  /* 功率魔术字 */
 #define CENTER_FLASH_ADDR   0x0800EC00  /* 农场中心坐标存储（倒数第五页） */
 #define CENTER_MAGIC        0xA5A55A5D  /* 中心坐标魔术字 */
+#define DEVCNT_FLASH_ADDR   0x0800E800  /* 子设备总台数存储（倒数第六页） */
+#define DEVCNT_MAGIC        0xA5A55A5E  /* 设备台数魔术字 */
 
 /* 上报间隔：由 configStr 第 1 段决定（分钟），如 "30,0M,3t,6" = 30 分钟
  * configStr 四段含义:
@@ -115,6 +121,7 @@ static uint16_t gpsContTotalMin = 0;   /* upgps 指令带的分钟数参数：
 static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0） */
+static uint8_t  readInfoNeedReport = 0;/* 设备信息需要上报（收到 readinfo 指令=1，上报后=0） */
 static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自动清零 */
 static uint8_t  gpsNeedRetry = 0;      /* 上一轮搜星失败(已上报 0.0,0.0)=1
                                         * → 本轮跳过定时上报，直接重试搜星上报坐标；
@@ -130,6 +137,8 @@ static uint32_t tx_count = 0;          /* 上报帧计数（所有帧类型共�
                                         * 也都要带这个计数，便于云端判重和算丢包 */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
+static uint8_t  deviceCount    = 30;  /* 分时隙上报的子设备总台数（默认 30，可由
+                                       * devicecount 指令下发并持久化到 Flash） */
 static uint8_t  loraInitialized = 0;  /* LoRa 是否已初始化（首次 TX 前才初始化） */
 static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（0~99）
                                         * 每次 LoRa 唤醒时读一次 ADC 刷新，
@@ -242,6 +251,7 @@ static void formatTimestamp(uint32_t ts, char *buf, uint8_t len);
 static void reportPendingMessages(void);   /* 回发待上报的配置/中心坐标帧 */
 static void OnMaster(void);
 static void parse_rx_message(uint8_t *buf, uint8_t len);
+static uint8_t cmdIsForMe(char *fields[]);   /* 指令目标校验(统一跳过打印) */
 static void LedToggle(void);
 static void loadDeviceNameFromFlash(void);
 static void saveDeviceNameToFlash(const char *name);
@@ -249,12 +259,15 @@ static void loadConfigFromFlash(void);
 static void saveConfigToFlash(const char *str);
 static void loadTxPowerFromFlash(void);
 static void saveTxPowerToFlash(uint8_t power);
+static void loadDeviceCountFromFlash(void);  /* 子设备总台数(默认30, devicecount 指令可改) */
+static void saveDeviceCountToFlash(uint8_t count);
 static void loadCenterFromFlash(void);
 static void saveCenterToFlash(const char *str);
 static uint8_t centerCoordValid(double lat, double lng);
 static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
 static void sendCenterMessage(void);
+static void sendReadInfoMessage(void);  /* 设备信息上报 8|设备|设备数量|发射功率|保留| */
 static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType);
 static uint8_t gpsSearchAndReport(uint8_t useGpsType);
 static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType);
@@ -309,14 +322,7 @@ PUTCHAR_PROTOTYPE
   */
 static void printf_logo(void)
 {
-  printf("\n\r");
-  printf("*************************************************************\r\n");
-  printf("* Project Name  : %s\r\n", EXAMPLE_NAME);
-  printf("* Demo Version  : %s\r\n", DEMO_VER);
-  printf("* Date          : %s\r\n", EXAMPLE_DATE);
-  printf("* MCU           : STM32F103C8T6\r\n");
-  printf("* Radio         : PAN3029 (LoRa)\r\n");
-  printf("*************************************************************\r\n");
+  /* @note logo 已裁掉以省 Flash（MDK Lite 32KB 限制），保留空函数避免改调用处 */
 }
 
 /**
@@ -413,6 +419,48 @@ static void saveConfigToFlash(const char *str)
 
   HAL_FLASH_Lock();
   printf("[Flash] 配置已保存: %s\r\n", str);
+}
+
+/**
+  * @brief  从 Flash 加载子设备总台数（devicecount 指令持久化的值）
+  * @note   无保存 / 值超范围(1~60)时用默认 30
+  */
+static void loadDeviceCountFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)DEVCNT_FLASH_ADDR;
+  if (magic == DEVCNT_MAGIC) {
+    uint8_t saved = (uint8_t)(*(volatile uint32_t *)(DEVCNT_FLASH_ADDR + 4));
+    if (saved >= 1 && saved <= 60) {
+      deviceCount = saved;
+      printf("[Flash] 设备台数已加载: %d 台\r\n", deviceCount);
+    } else {
+      printf("[Flash] 设备台数超范围(%d), 使用默认: %d\r\n", saved, deviceCount);
+    }
+  } else {
+    printf("[Flash] 无保存设备台数, 使用默认: %d\r\n", deviceCount);
+  }
+}
+
+/**
+  * @brief  保存子设备总台数到 Flash
+  */
+static void saveDeviceCountToFlash(uint8_t count)
+{
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+
+  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = DEVCNT_FLASH_ADDR;
+  eraseInit.NbPages = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DEVCNT_FLASH_ADDR, DEVCNT_MAGIC);
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DEVCNT_FLASH_ADDR + 4, count);
+
+  HAL_FLASH_Lock();
+  printf("[Flash] 设备台数已保存: %d\r\n", count);
 }
 
 /**
@@ -564,28 +612,21 @@ static void loraInitFirstTime(void)
     HAL_Delay(3000);
 
     printf("[复位] NVIC_SystemReset() ...\r\n");
-    NVIC_SystemReset();
-
-    while (1) {          /* 复位不会返回，留个防呆 */
-      HAL_Delay(1000);
-    }
+    NVIC_SystemReset();              /* noreturn，不会回来 */
   }
   printf("射频初始化成功\r\n");
 
   rf_set_default_para();
   rf_set_tx_power(currentTxPower);
 
-  printf("===== LoRa 就绪 =====\r\n");
-  printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
-  printf("  SF      : %d\r\n", DEFAULT_SF);
-  printf("  BW      : 125 kHz\r\n");
-  printf("  CR      : 4/5\r\n");
-  printf("  功率    : %d dBm (当前)\r\n", currentTxPower);
-  printf("  CRC     : OFF\r\n");
-  printf("  SyncWord: 0x12\r\n");
-  printf("----------------------------\r\n");
+
 
   loraInitialized = 1;
+
+ 
+  /* @note 合并成一行：MDK Lite 32KB 限制，Flash 余额紧张，长横幅打印已精简 */
+  printf("[LoRa] 就绪: %d MHz SF%d BW125 CR4/5 CRC-off SW0x12 PWR=%d dBm\r\n",
+         DEFAULT_FREQ / 1000000, DEFAULT_SF, currentTxPower);
 }
 
 /**
@@ -610,6 +651,33 @@ static void loraInitFirstTime(void)
 
   LedToggle();
   printf("[配置] 发送  -> \"%s\"\r\n", tx_msg);
+}
+
+/**
+ * @brief  发送设备信息消息（8|deviceName|设备数量|发射功率(dBm)|保留|）
+ * @note   由 readinfo 指令触发：8|设备|设备数量|发射功率dm|保留
+ *         最后一段目前填上报计数（与项目其它帧一致，段数固定不为空），
+ *         以后要加字段（如固件版本/电量）就替换或追加在这段之后
+ */
+static void sendReadInfoMessage(void)
+{
+  char tx_msg[TX_LEN];
+  uint32_t tx_time = 1000;
+
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%u|%d|%lu|",
+           MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
+           (int)currentTxPower, (unsigned long)tx_count);
+
+  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
+    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+  }
+
+  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
+    ;
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+
+  LedToggle();
+  printf("[设备信息] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -1036,14 +1104,22 @@ static uint8_t getDeviceIndex(void)
 
 /**
   * @brief  计算本设备在上报周期中的时隙偏移（秒）
-  * @note   公式: deviceIndex / 30 * intervalSec
-  *         如: v0-27, 30 分钟周期 → 27/30*1800 = 1740 秒
+  * @note   公式: deviceIndex / deviceCount * intervalSec
+  *         总台数 deviceCount 默认 30，可由 devicecount 指令下发（1~60，持久化）
+  *         如: v0-27, 30 台, 30 分钟周期 → 27/30*1800 = 1740 秒
+  * @note   序号超出总台数时按 deviceCount 取模绕回，保证偏移仍落在本周期内，
+  *         否则 offset 会超过 intervalSec，时隙滑到下一个周期去
   */
 static uint32_t getSlotOffsetSec(void)
 {
   uint32_t intervalSec = getConfigIntervalSec();
   uint8_t  index = getDeviceIndex();
-  return (uint32_t)index * intervalSec / 30;
+
+  if (deviceCount == 0)          /* 防御：不会发生（加载/指令都已保证 >=1） */
+    return 0;
+
+  index = (uint8_t)(index % deviceCount);
+  return (uint32_t)index * intervalSec / deviceCount;
 }
 
 /**
@@ -1420,6 +1496,24 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
 }
 
 /**
+  * @brief  指令目标校验：fields[1] 是否本机设备名
+  * @param  fields: 已按 '|' 切好的字段数组（fields[1]=目标, fields[2]=命令名）
+  * @retval 1=是本机（执行指令）, 0=不是本机（已打印跳过原因）
+  * @note   统一替代每个指令分支里重复的
+  *         if (strcmp(fields[1], deviceName) == 0) { ... }
+  *         else { printf("[指令] xx: 目标=... != 本机=..., 跳过"); }
+  */
+static uint8_t cmdIsForMe(char *fields[])
+{
+  if (strcmp(fields[1], deviceName) != 0) {
+    printf("[指令] %s: 目标=%s != 本机=%s, 跳过\r\n",
+           fields[2], fields[1], deviceName);
+    return 0;
+  }
+  return 1;
+}
+
+/**
   * @brief  解析接收到的消息（按 '|' 分割字段）
   * @note   格式：MSG_TYPE|字段1|字段2|...|
   */
@@ -1490,14 +1584,11 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                fields[1], fields[2], field_count > 3 ? fields[3] : "");
         /* realyname: 9|v3-10|realyname|v3-11  →  本机改名 */
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
-          if (strcmp(fields[1], deviceName) == 0) {
+          if (cmdIsForMe(fields)) {
             strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
             deviceName[sizeof(deviceName) - 1] = '\0';
             saveDeviceNameToFlash(deviceName);
             printf("[指令] 设备已改名: %s\r\n", deviceName);
-          } else {
-            printf("[指令] 改名: 目标=%s != 本机=%s, 跳过\r\n",
-                   fields[1], deviceName);
           }
         }
         /* upgps: 9|v0-0|upgps|N  →  等待有效定位后上报 GPS 坐标
@@ -1511,7 +1602,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          *        3) calcNextTxTime() 重新算下次时间 → 再进深度休眠
          *        不能在中断/解析上下文里长时间等待，否则会堵死整个流程 */
         else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
-          if (strcmp(fields[1], deviceName) == 0) {
+          if (cmdIsForMe(fields)) {
             int mins = atoi(fields[3]);        /* atoi 自动跳过前导空格 */
 
             if (mins < 0)
@@ -1531,9 +1622,6 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             else
               printf("[指令] upgps: 单次搜星上报一次(参数=0, 上限 %lu 秒)\r\n",
                      (unsigned long)(GPS_WAIT_TIMEOUT_MS / 1000));
-          } else {
-            printf("[指令] upgps: 目标=%s != 本机=%s, 跳过\r\n",
-                   fields[1], deviceName);
           }
         }
         /* sendmode: 9|v0-0|sendmode|1  →  GPS 工作模式控制（PB1 → WAKE_UP）
@@ -1541,7 +1629,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          *   value=1 : PB1 置高 → 模块回 Full on（正常搜星）
          * @note 由 gpsWakeEn 记住模式：为 0 时后续 UPGPS 也不会唤醒模块 */
         else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
-          if (strcmp(fields[1], deviceName) == 0) {
+          if (cmdIsForMe(fields)) {
             int mode = atoi(fields[3]); /* atoi 会自动跳过前导空格 */
 
             /* @note sendmode 只决定"本轮是否启用 GPS 搜星"(gpsWakeEn)，
@@ -1565,27 +1653,49 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               printf("[指令] sendmode=1 : 启用 GPS 搜星(核对阶段: PB1 电平不动)\r\n");
 #endif
             }
-          } else {
-            printf("[指令] sendmode: 目标=%s != 本机=%s, 跳过\r\n",
-                   fields[1], deviceName);
+          }
+        }
+        /* devicecount: 9|v0-0|devicecount|30  →  设置分时隙上报的子设备总台数
+         * 时隙偏移 = 序号 / 总台数 * 上报周期，默认 30 台
+         * @note 范围 1~60：周期最短 1 分钟(60秒)，60 台刚好每台 1 秒时隙
+         * @note 改了台数后时隙立刻重排（每台设备各自收到指令才改），
+         *       要在所有设备上广播同一条指令，否则各台的时隙划分会不一致 */
+        else if (strcmp(fields[2], "devicecount") == 0 && field_count >= 4) {
+          if (cmdIsForMe(fields)) {
+            int cnt = atoi(fields[3]);   /* atoi 会自动跳过前导空格 */
+
+            if (cnt >= 1 && cnt <= 60) {
+              deviceCount = (uint8_t)cnt;
+              saveDeviceCountToFlash(deviceCount);
+              printf("[指令] devicecount=%d 台, 时隙偏移改为 %lu 秒\r\n",
+                     deviceCount, (unsigned long)getSlotOffsetSec());
+            } else {
+              printf("[指令] devicecount: %d 超范围(1~60), 拒绝\r\n", cnt);
+            }
+          }
+        }
+        /* readinfo: 9|v0-0|readinfo|  →  上报设备信息帧
+         * 回复帧: 8|设备名|设备数量(devicecount)|发射功率(dBm)|保留(当前填计数)|
+         * @note 不需要参数值，故只要求 3 段（多带值段也不影响） */
+        else if (strcmp(fields[2], "readinfo") == 0 && field_count >= 3) {
+          if (cmdIsForMe(fields)) {
+            readInfoNeedReport = 1;
+            printf("[指令] readinfo: 已标记上报设备信息\r\n");
           }
         }
         /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率 */
         else if (strcmp(fields[2], "txpower") == 0 && field_count >= 4) {
-          if (strcmp(fields[1], deviceName) == 0) {
+          if (cmdIsForMe(fields)) {
             uint8_t newPwr = (uint8_t)atoi(fields[3]);
             currentTxPower = newPwr;
             rf_set_tx_power(newPwr);
             saveTxPowerToFlash(newPwr);
             printf("[指令] 发射功率已设置: %d dBm\r\n", newPwr);
-          } else {
-            printf("[指令] 功率: 目标=%s != 本机=%s, 跳过\r\n",
-                   fields[1], deviceName);
           }
         }
         /* C: 9|v0-0|C|26.52958,109.39087  →  设置农场中心坐标并持久化 */
         else if (strcmp(fields[2], "C") == 0 && field_count >= 4) {
-          if (strcmp(fields[1], deviceName) == 0) {
+          if (cmdIsForMe(fields)) {
             double la = 0.0, lo = 0.0;
             /* 用 double 解析，避免 109.39087 这类 8 位有效数字被 float 截断；
              * %lf 会自动跳过 fields[3] 的前导空格（下发值形如 " 26.52,109.39"） */
@@ -1603,14 +1713,11 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             /* 无论本次是否合法都上报当前坐标：
              * 合法→回新坐标；非法→回上一个合法值（未设过则 "0,0"） */
             centerNeedReport = 1;
-          } else {
-            printf("[指令] C: 目标=%s != 本机=%s, 跳过\r\n",
-                   fields[1], deviceName);
           }
         }
         /* A: 9|v3-17|A|10,0M,3t,6  →  更新配置并标记上报 */
         else if (strcmp(fields[2], "A") == 0 && field_count >= 4) {
-          if (strcmp(fields[1], deviceName) == 0) {
+          if (cmdIsForMe(fields)) {
             /* 合法性检查：上报周期必须在 1~60 分钟之间 */
             uint32_t newMin = (uint32_t)atoi(fields[3]);
             if (newMin >= 1 && newMin <= 60) {
@@ -1627,9 +1734,6 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               printf("[指令] A: 间隔=%lu 超范围(1~60), 拒绝\r\n",
                      (unsigned long)newMin);
             }
-          } else {
-            printf("[指令] A: 目标=%s != 本机=%s, 跳过\r\n",
-                   fields[1], deviceName);
           }
         } else {
           printf("[指令] 未知指令: %s\r\n", fields[2]);
@@ -1718,6 +1822,13 @@ static void reportPendingMessages(void)
     HAL_Delay(1000);
     sendConfigMessage();
     configNeedReport = 0;  /* 标记已上报 */
+  }
+
+  /* 收到 readinfo 指令后，延迟 1 秒上报设备信息 8|deviceName|台数|功率|保留| */
+  if (readInfoNeedReport) {
+    HAL_Delay(1000);
+    sendReadInfoMessage();
+    readInfoNeedReport = 0;  /* 标记已上报 */
   }
 
   /* 收到 C 指令后，延迟 1 秒上报农场中心坐标 1|deviceName|lat,lng| */
@@ -1923,19 +2034,20 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
-  /* 从 Flash 加载设备名、配置、发射功率和农场中心坐标 */
+  /* 从 Flash 加载设备名、配置、发射功率、农场中心坐标和设备台数 */
   loadDeviceNameFromFlash();
   loadConfigFromFlash();
   loadTxPowerFromFlash();
   loadCenterFromFlash();
+  loadDeviceCountFromFlash();
 
   /* 打印启动信息 */
   printf("\r\n===== LoRa 仅发送模式启动 =====\r\n");
   printf_logo();
   printf("设备: %s\r\n", deviceName);
   printf("配置: %s\r\n", configStr);
-  printf("时隙  : 序号=%d, 间隔=%lu秒, 偏移=%lu秒\r\n",
-         getDeviceIndex(),
+  printf("时隙  : 序号=%d, 总台数=%d, 间隔=%lu秒, 偏移=%lu秒\r\n",
+         getDeviceIndex(), deviceCount,
          (unsigned long)getConfigIntervalSec(),
          (unsigned long)getSlotOffsetSec());
   printTimeWindows("时段  : ");   /* 工作时间段 + GPS 上报时间段 */

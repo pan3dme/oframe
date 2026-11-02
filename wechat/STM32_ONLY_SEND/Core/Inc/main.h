@@ -79,8 +79,8 @@ void Error_Handler(void);
 #define GNSS_WAKE_Pin        GPIO_PIN_1
 #define GNSS_WAKE_GPIO_Port  GPIOB
 
-/* ONLY_SEND 项目使用低功率 (4 dBm) */
-#define DEFAULT_PWR            4
+/* ONLY_SEND 项目使用低功率 (16 dBm) */
+#define DEFAULT_PWR            16
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
