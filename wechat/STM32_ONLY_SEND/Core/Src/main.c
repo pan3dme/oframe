@@ -551,10 +551,23 @@ static void loraInitFirstTime(void)
   HAL_Delay(100);
 
   if (rf_init() != RF_OK) {
-    printf("射频初始化失败! 请检查接线\r\n");
-    while (1) {
-      HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
-      HAL_Delay(100);
+    /* 启动阶段 LoRa 偶尔会初始化不成功（SPI 时序/上电未稳）。
+     * 以前是死循环闪灯等人工断电，现在改成自动复位 MCU 重跑一遍初始化：
+     *   - 先给 LoRa 一个 RST 低脉冲，避免模块停在半初始化状态拖累下一次
+     *   - 延时 3 秒让本次日志从串口吐完，同时等电源/晶振稳定
+     *   - NVIC_SystemReset() 软件复位，等价于重新上电（不经过 NRST 引脚） */
+    printf("射频初始化失败! 3 秒后复位 MCU 重跑初始化\r\n");
+
+    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
+    HAL_Delay(20);
+    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
+    HAL_Delay(3000);
+
+    printf("[复位] NVIC_SystemReset() ...\r\n");
+    NVIC_SystemReset();
+
+    while (1) {          /* 复位不会返回，留个防呆 */
+      HAL_Delay(1000);
     }
   }
   printf("射频初始化成功\r\n");
