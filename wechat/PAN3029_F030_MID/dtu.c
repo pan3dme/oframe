@@ -485,6 +485,72 @@ int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
 }
 
 /* =====================================================================
+ * @brief  还原被压缩的坐标字段（省 LoRa 字节用）
+ *         完整坐标: "1|v4-0|26.12345,109.54321|"       → 原样上报，不处理
+ *         压缩坐标: "1|v4-0|0,12|"                     → 用农场中心补齐
+ *         判定依据：第 3 段**没有小数点** = 压缩格式
+ *         压缩单位：1e-5 度（小数点后第 5 位）
+ *           "0,12"  →  偏移 +0.00000, +0.00012
+ *                    →  中心(26.52964,109.39088) ⇒ 26.52964,109.39100
+ * @param  src     收到的完整 LoRa 帧
+ * @param  dst     还原后的帧（前缀、尾部计数段原样保留）
+ * @param  dstSize dst 缓冲长度
+ * @retval 0=已还原(dst 有效), -1=无需还原(含小数点/格式不符), -2=未设中心坐标
+ * @note   18 字符的坐标压到 4~7 字符，一帧能省 11~14 字节
+ *         中心坐标未设置时返回 -2，调用处原样上报，不丢数据
+ * ===================================================================== */
+int dtu_expand_coord(const char *src, char *dst, int dstSize) {
+  const char *p1 = strchr(src, '|');
+  if (!p1)
+    return -1;
+  const char *p2 = strchr(p1 + 1, '|');
+  if (!p2)
+    return -1;
+
+  const char *pSeg = p2 + 1; /* 坐标字段起点（第二个 '|' 之后） */
+  const char *p3 = strchr(pSeg, '|');
+  const char *tail = p3 ? p3 : (src + strlen(src));
+  int segLen = (int)(tail - pSeg);
+  if (segLen <= 0 || segLen >= 24)
+    return -1;
+
+  /* 有小数点 = 完整坐标（含 "0.0,0.0" 这种失败值），原样上报 */
+  if (memchr(pSeg, '.', (size_t)segLen) != NULL)
+    return -1;
+
+  char segBuf[24];
+  memcpy(segBuf, pSeg, (size_t)segLen);
+  segBuf[segLen] = '\0';
+
+  long latOff = 0, lngOff = 0;
+  if (sscanf(segBuf, "%ld,%ld", &latOff, &lngOff) != 2)
+    return -1;
+
+  /* 基准点：mapcenter 指令保存的农场中心坐标 */
+  if (centerStr[0] == '\0')
+    return -2;
+
+  double clat = 0.0, clng = 0.0;
+  if (sscanf(centerStr, "%lf,%lf", &clat, &clng) != 2)
+    return -2;
+
+  char coord[24];
+  snprintf(coord, sizeof(coord), "%.5f,%.5f",
+           clat + (double)latOff / 100000.0,
+           clng + (double)lngOff / 100000.0);
+
+  int head = (int)(pSeg - src); /* "<type>|<deviceName>|" */
+  if (head + (int)strlen(coord) + (int)strlen(tail) + 1 > dstSize)
+    return -1;
+
+  memcpy(dst, src, (size_t)head);
+  dst[head] = '\0';
+  strcat(dst, coord);
+  strcat(dst, tail);
+  return 0;
+}
+
+/* =====================================================================
  * @brief  校验经纬度是否在合法地理范围内
  * @retval 1=合法, 0=非法
  * ===================================================================== */

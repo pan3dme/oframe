@@ -31,6 +31,9 @@ void    dtu_poll(void);                       /* 主循环调用：队列发送/
 void    dtu_uart_rx_byte(uint8_t b);          /* 串口中断收到 1 字节时调用 */
 void    dtu_report_lora(const char *loraStr, int rssi, int snr); /* JSON 上报入队 */
 int     dtu_replace_time_segment(const char *src, char *dst, int dstSize); /* 替换时间字段 */
+/* 还原压缩坐标：第 3 段无小数点时按"相对农场中心的 1e-5 度偏移"展开
+ * 返回 0=已展开, -1=无需展开(完整坐标/格式不符), -2=未设置中心坐标 */
+int     dtu_expand_coord(const char *src, char *dst, int dstSize);
 
 /* ========================== LoRa 回复接口（下行给子设备） ==========================
  * 这三个都是"被动回复"：只在收到子设备上报后，由 main.c OnSlave() 延时

@@ -306,7 +306,10 @@ void OnSlave(void) {
       msgType = atoi((char *)local_buf);
       printf("[LoRa] MsgType: %d\r\n", msgType);
 
-      if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
+      /* GPS(1) / UP_GPS(5) / TIME(2) 都要上报 DTU：
+       * 以前只判了 1 和 2，子设备用 MSG_TYPE_UP_GPS(5) 上报时被直接丢弃 */
+      if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_UP_GPS ||
+          msgType == MSG_TYPE_TIME) {
         /* 提取 deviceId（第 2 个 '|' 分隔字段），检查缓存指令 */
         const char *p1 = strchr((char *)local_buf, '|');
         if (p1) {
@@ -332,14 +335,28 @@ void OnSlave(void) {
           else
             dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
         } else {
-          dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+          /* GPS(1) / UP_GPS(5)：第 3 段可能是压缩坐标（无小数点，
+           * 单位 1e-5 度、相对农场中心）→ 还原成完整坐标再上报 DTU；
+           * 完整坐标 / 未设置中心 / 格式不符 → 原样上报，绝不丢数据 */
+          char coordBuf[RX_LEN + 16];
+          if (dtu_expand_coord((char *)local_buf, coordBuf,
+                               sizeof(coordBuf)) == 0) {
+            printf("[LoRa] 坐标还原: %s -> %s\r\n", (char *)local_buf, coordBuf);
+            dtu_report_lora(coordBuf, local_rssi - 256, local_snr);
+          } else {
+            dtu_report_lora((char *)local_buf, local_rssi - 256, local_snr);
+          }
         }
 
         /* 这里只排程，不原地等待（优先级同 CENTEN：缓存指令 > gpstm > 对时）
          * 无缓存指令且无 gpstm 时，无条件回复对时（未同步时下发开机秒数）。
          * 排程后立刻由本函数末尾的 rf_enter_single_timeout_rx() 回到监听态，
-         * 到点再由主循环 lora_reply_process() 切 TX 下发。 */
-        if (hasPendingCmd) {
+         * 到点再由主循环 lora_reply_process() 切 TX 下发。
+         * @note MSG_TYPE_UP_GPS(5) 只上报、不排程：子设备发完 5 不开接收窗口，
+         *       下发它收不到，白占 1 秒回复窗口还会挡掉其它设备的回复 */
+        if (msgType == MSG_TYPE_UP_GPS) {
+          /* 无回复 */
+        } else if (hasPendingCmd) {
           lora_reply_schedule(LORA_REPLY_PENDING_CMD, loraDevId,
                               LORA_REPLY_DELAY_CMD_MS);
         } else if (dtu_gpstm_active()) {
