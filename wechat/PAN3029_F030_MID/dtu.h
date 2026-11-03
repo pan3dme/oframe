@@ -1,12 +1,18 @@
 #ifndef _DTU_H_
 #define _DTU_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
-/* 调试打印与 DTU 协议共用 USART1(PA9/PA10)：
- * DTU_PROD_MODE = 0 桌面调试（{usb}/[dtu] 前缀，对时失败不重启）
- *               = 1 正式装机（纯协议、丢弃调试打印，对时失败 5 次重启） */
-#define DTU_PROD_MODE 1
+/* USART1(PA9/PA10) 同时承载 DTU 协议与调试打印：
+ *   DTU 上报/下发：永远原样输出，不加任何前缀
+ *   调试 printf  ：每行固定带 {usb} 前缀
+ * usbDebugPrint：true = 输出 {usb} 调试信息, false = 不输出（只跑协议）
+ * @note 只影响调试打印，不改变任何发给 DTU 的字节 */
+extern bool usbDebugPrint;
+
+/* nettime 连续失败 5 次是否重启 STM32（与打印开关无关） */
+#define NETTIME_REBOOT_ENABLE 1
 
 /* 设备名：默认值，可在 main.c 启动时按芯片 UID 覆盖（见 device_name_init） */
 #define DEVICE_NAME_DEFAULT "v4-F03"

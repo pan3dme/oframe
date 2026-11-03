@@ -3,8 +3,8 @@
  *       DTU 下发对时/配置/指令缓存/gpstm 中继；
  *       收到上报后延时回复：缓存指令 > gpstm(upgps) > 对时。
  * 硬件：STM32F030 + PAN3029/3060，USART1(PA9/PA10) 调试与 DTU 共用，115200 8N1
- *       DTU_PROD_MODE=0：开发模式（{usb}=调试，[dtu]=协议）
- *       DTU_PROD_MODE=1：正式模式（纯协议，无前缀无调试打印）
+ *       DTU 协议永远原样收发、不加前缀；调试打印每行带 {usb} 前缀
+ *       usbDebugPrint=true 输出调试信息, false 只跑协议
  * V3.0 由 CENTEN 迁移，移除旧 TX/RX 双模式
  */
 
@@ -577,6 +577,9 @@ void OnSlave(void) {
 int main(void) {
   uint32_t ret = 0;
 
+  /* 调试打印开关：true = 串口输出 {usb} 调试信息, false = 只跑 DTU 协议 */
+  usbDebugPrint = false;
+
   HW_Int();
   Delay_Ms(1);
 
@@ -645,11 +648,8 @@ int main(void) {
   /* 记录上电时是否在时段内（未对时恒为 1=常开）并打印生效区间 */
   prevInWorkWindow = dtu_in_work_window();
   dtu_print_work_window("时段  : ");
-#if DTU_PROD_MODE
-  printf("UART mode: DTU (raw protocol)\r\n");
-#else
-  printf("UART mode: DEV shared ({usb}=debug, [dtu]=protocol)\r\n");
-#endif
+  printf("UART mode: DTU raw, debug print %s\r\n",
+         usbDebugPrint ? "ON ({usb})" : "OFF");
 
   rf_enter_single_timeout_rx(5000);
   printf("RX mode: concentrator listening...\r\n");

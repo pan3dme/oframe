@@ -11,13 +11,13 @@ static void uart1_putc(uint8_t ch) {
 }
 
 /* 调试打印与 DTU 协议共用 USART1(PA9/PA10)：
- * 开发阶段(DTU_PROD_MODE=0)：打印每行加 {usb} 前缀，与 [dtu] 协议流区分
- * 正式装机(DTU_PROD_MODE=1)：丢弃打印，避免污染协议流 */
+ * usbDebugPrint=true ：打印每行加 {usb} 前缀输出
+ * usbDebugPrint=false：丢弃打印，串口上只剩协议流 */
 int fputc(int ch, FILE *f) {
     (void)f;
-#if DTU_PROD_MODE
-    return ch;
-#else
+    if (!usbDebugPrint)
+        return ch;
+
     if (s_line_start && ch != '\r' && ch != '\n') {
         const char *tag = "{usb} ";
         while (*tag)
@@ -28,7 +28,6 @@ int fputc(int ch, FILE *f) {
         s_line_start = 1;
     uart1_putc((uint8_t)ch);
     return ch;
-#endif
 }
 
 void Uart1_Int(void)
