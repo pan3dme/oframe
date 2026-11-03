@@ -47,7 +47,7 @@ void setup() {
 }
 
 void loop() {
-    const char *msg = "1|v4-88|26.12345,109.54321|";
+    const char *msg = "1|v4-0|26.12345,109.54321|";
     int len = strlen(msg);
 
     int ret = loraRadio.transmit((uint8_t *)msg, len);
