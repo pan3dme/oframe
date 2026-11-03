@@ -68,8 +68,20 @@ void GPIO_int()
   GPIO_Init(CAD_PORT, &GPIO_InitStruct);
 	
   /****************************************
-   LED1
+   RF_RST (PB0 → PAN3029 NRST，低电平有效)
+   输出高 = 芯片正常工作；低脉冲用于复位
   ****************************************/
+  GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
+  GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+  GPIO_InitStruct.GPIO_Speed = GPIO_Speed_Level_2;
+  GPIO_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
+  GPIO_InitStruct.GPIO_Pin = RF_RST_IO;
+  GPIO_Init(RF_RST_PORT, &GPIO_InitStruct);
+  GPIO_SetBits(RF_RST_PORT, RF_RST_IO);   /* 默认高：不复位 */
+
+ /****************************************
+   LED1
+ ****************************************/
   GPIO_InitStruct.GPIO_OType = GPIO_OType_PP;
   GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
   GPIO_InitStruct.GPIO_Speed = GPIO_Speed_Level_2;
@@ -87,21 +99,15 @@ void GPIO_int()
 	GPIO_Init(RF_MODE_PORT, &GPIO_InitStruct);
 	
 	/****************************************
-	   KEY1 (S2 → PB6)  切换 TX 模式
+	   KEY1 (S2 → PB6)  复位键（上拉输入，按下=低）
 	****************************************/
 	GPIO_InitStruct.GPIO_Pin = KEY1_PIN;
 	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IN;
 	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_Level_2;
 	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
 	GPIO_Init(KEY1_PORT, &GPIO_InitStruct);
-	
-	/****************************************
-	   KEY2 (S3 → PB7)  切换 RX 模式
-	****************************************/
-	GPIO_InitStruct.GPIO_Pin = KEY2_PIN;
-	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_IN;
-	GPIO_InitStruct.GPIO_Speed = GPIO_Speed_Level_2;
-	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
-	GPIO_Init(KEY2_PORT, &GPIO_InitStruct);
-	
+
+	/* KEY2 (S3 → PB7) 不再使用：与 LED2 复用，保持上拉输入防浮空即可，
+	   不做初始化也不再读取（省代码，且避免误触改变工作模式） */
+
 }

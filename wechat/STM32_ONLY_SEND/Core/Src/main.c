@@ -64,7 +64,7 @@
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
 /* 设备信息 */
-#define DEFAULT_DEVICE_NAME  "v0-0"
+#define DEFAULT_DEVICE_NAME  "v3-1"
 char deviceName[32] = DEFAULT_DEVICE_NAME;  /* 可变设备名，从 Flash 加载 */
 #define BATTERY_VAL  99   /* 电量默认值（%）：ADC 取到值前的兜底，上电即被刷新 */
 

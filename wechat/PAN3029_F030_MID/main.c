@@ -257,6 +257,50 @@ void LedToggle(void) {
 }
 
 /* =====================================================================
+ * @brief  复位按键轮询：S2(KEY1/PB6) 按下 → 20ms 消抖 → 重启 MCU
+ * @note   底板三个按键：
+ *           S1 = 硬件复位 NRST，按下直接重启芯片，软件不参与
+ *           S2 = PB6，本函数处理，按下即软件复位（等价上电重启）
+ *           S3 = PB7，不使用（与 LED2 复用，保持上拉输入）
+ *         放在主循环里轮询，不占中断、不阻塞 LoRa/DTU 时序
+ * ===================================================================== */
+static void key_reset_poll(void) {
+  static uint8_t  pressed   = 0;  /* 已确认按下并开始计时 */
+  static uint32_t pressTick = 0;  /* 按下起始 tick */
+
+  if (GPIO_ReadInputDataBit(KEY1_PORT, KEY1_PIN) == Bit_RESET) { /* 低=按下 */
+    if (!pressed) {
+      pressed   = 1;
+      pressTick = HAL_GetTick();
+    } else if (HAL_GetTick() - pressTick >= 20) {
+      /* 20ms 消抖确认：LED 点亮提示 → 重启 MCU（等价断电重上电） */
+      GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_RESET); /* 低电平点亮 */
+      printf("[KEY] 复位键(S2/PB6)按下, 重启 MCU\r\n");
+      Delay_Ms(200);        /* 让日志吐完，也给手指松开的余量 */
+      NVIC_SystemReset();   /* noreturn */
+    }
+  } else {
+    pressed = 0;          /* 松开清零，下次按下重新计时 */
+  }
+}
+
+/* =====================================================================
+ * @brief  给 PAN3029 一个硬件复位脉冲（NRST = PB0，低电平有效）
+ * @note   拉低 20ms（数据手册要求 ≥10ms）→ 拉高 → 等 50ms 内部逻辑稳定，
+ *         之后 SPI 访问才可靠。上电和初始化失败重试前都调用一次，
+ *         避免芯片停在上一次的半初始化状态，导致 rf_init() 反复失败
+ * @note   50ms 相比手册最小值 10ms 留了 5 倍余量：NRST 上若并了电容，
+ *         10ms 可能还没充到高电平就开始 SPI 访问，表现为偶发初始化失败
+ * ===================================================================== */
+static void lora_hw_reset(void) {
+  GPIO_WriteBit(RF_RST_PORT, RF_RST_IO, Bit_RESET); /* 低：芯片复位 */
+  Delay_Ms(20);
+  GPIO_WriteBit(RF_RST_PORT, RF_RST_IO, Bit_SET);   /* 高：释放，正常工作 */
+  Delay_Ms(50);                                     /* 等内部状态机稳定 */
+  printf("[LoRa] NRST(PB0) reset pulse done\r\n");
+}
+
+/* =====================================================================
  * @brief  集中器接收处理（同 CENTEN OnSlave）
  *         1. 收到完整包：打印 RSSI/SNR/载荷 → 上报 DTU → 延时 1.5s →
  *            下发缓存指令 > gpstm 中继(upgps) > 对时消息
@@ -442,13 +486,28 @@ int main(void) {
 
   printf_logo();  /* 打印工程信息 */
 
+  /* 射频芯片先做一次硬件复位（NRST=PB0 低脉冲），再走 SPI 初始化：
+   * 之前没有这一步，芯片上电状态不确定，偶发 rf_init() 失败 */
+  lora_hw_reset();
+
   /* 初始化射频芯片 */
   ret = rf_init();
   if (ret != RF_OK) {
-    printf("[LoRa] init FAIL (ret=%lu), system halted\r\n",
-           (unsigned long)ret); /* 射频初始化失败，死循环 */
-    while (1)
-      ;
+    /* 启动阶段 LoRa 偶尔初始化不成功（SPI 时序 / 上电未稳）。
+     * 处理顺序：先复位射频芯片，再复位 MCU：
+     *   1) LED 常亮：现场无串口时也能一眼看出是射频初始化失败
+     *   2) NRST 低脉冲：让 PAN3029 一起回到干净状态，否则 MCU 重启后
+     *      芯片仍停在上一次的半初始化状态，下一次 rf_init() 大概率还失败
+     *   3) 延时 3 秒：让本次日志吐完，同时等电源/时钟稳定
+     *   4) NVIC_SystemReset()：软件复位，等价重新上电
+     * @note 硬件真坏（SPI 断线/虚焊）时会表现为每 3 秒重启一次，
+     *       串口反复打印 init FAIL，而不是死机——更好定位 */
+    printf("[LoRa] init FAIL (ret=%lu), reset MCU in 3s\r\n",
+           (unsigned long)ret);
+    GPIO_WriteBit(LED1_PORT, LED1_PIN, Bit_RESET); /* 低电平点亮 = 失败指示 */
+    lora_hw_reset();                               /* 射频芯片跟着复位 */
+    Delay_Ms(3000);
+    NVIC_SystemReset();                            /* noreturn，不会返回 */
   }
   printf("[LoRa] init OK\r\n");
   rf_set_default_para(); /* 设置默认射频参数（频率、功率、扩频因子等） */
@@ -496,6 +555,9 @@ int main(void) {
 
   /* 主循环 */
   while (1) {
+    /* 复位按键轮询：S2(PB6) 按下 20ms 后重启 MCU */
+    key_reset_poll();
+
     /* DTU 协议轮询：队列发送/帧解析/csq+nettime 周期查询 */
     dtu_poll();
 
