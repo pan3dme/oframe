@@ -1,19 +1,19 @@
-/**********************************************************************************************
- * @file dtu.c
- * @brief DTU 协议层（自 STM32_LORA_CENTEN 移植，适配 STM32F030 StdPeriph 库）
- *        - 与调试打印共用 USART1(PA9/PA10)：开发阶段协议流带 [dtu] 前缀，
- *          正式装机(DTU_PROD_MODE=1)原样收发且丢弃调试打印
- *        - 功能：JSON 上报 / csq+nettime 周期查询 / JSON 指令解析 /
- *          待执行指令缓存 / gpstm 中继 / Flash 配置存储
- ********************************************************************************************/
+/* DTU 协议层（自 STM32_LORA_CENTEN 移植，适配 STM32F030 StdPeriph）
+ * 与调试打印共用 USART1(PA9/PA10)：开发阶段协议流带 [dtu] 前缀，
+ * 正式装机(DTU_PROD_MODE=1)原样收发且丢弃调试打印。
+ * 功能：JSON 上报 / csq+nettime 周期查询 / JSON 指令解析 /
+ *       待执行指令缓存 / gpstm 中继 / Flash 配置存储
+ */
 #include "user.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ========================== DTU 发送队列：环形缓冲区
- * ========================== */
+/* 设备名，默认取 DEVICE_NAME_DEFAULT，启动时可能被 UID 表改写 */
+char deviceName[16] = DEVICE_NAME_DEFAULT;
+
+/* DTU 发送队列（环形缓冲，最多 5 条） */
 #define DTU_QUEUE_SIZE 5
 #define DTU_MSG_MAX_LEN 256
 
@@ -28,38 +28,36 @@ static uint8_t dtuQueueTail = 0;
 static uint8_t dtuQueueCount = 0;
 static uint32_t dtuLastSendTick = 0;
 
-/* ========================== DTU 接收缓冲区 ========================== */
+/* DTU 接收缓冲 */
 #define DTU_RX_BUF_SIZE 256
 static uint8_t dtuRxBuf[DTU_RX_BUF_SIZE];
 static uint16_t dtuRxLen = 0;
 static uint32_t dtuLastRxTick = 0;
 
-/* ========================== 查询 / 时间状态 ========================== */
+/* 查询 / 时间状态 */
 static uint32_t dtuCsqTick = 0;         /* 周期查询定时器 */
-static uint8_t dtuTimeValid = 0;        /* DTU 网络时间是否已获取 */
+static uint8_t dtuTimeValid = 0;        /* 网络时间是否已获取 */
 static uint8_t dtuNetTimeFailCount = 0; /* 连续失败计数（5 次重启） */
-static int dtuCsqRssi = 0;              /* DTU CSQ 信号强度 */
+static int dtuCsqRssi = 0;              /* CSQ 信号强度 */
 static uint32_t rtcSendCount = 0;       /* 对时上报计数器 */
 static int batteryValue = 100;          /* 电池电量（%） */
 static uint8_t configBootSent = 0;      /* 开机配置是否已上报 */
-static uint8_t configSendPending = 0;   /* 配置上报延迟待发标志 */
-static uint32_t configSendTick = 0;     /* 配置上报延迟计时起点 */
-#define CONFIG_SEND_DELAY_MS 5000       /* 对时上报后延迟 5s 再上报配置 */
+static uint8_t configSendPending = 0;   /* 配置上报延迟待发 */
+static uint32_t configSendTick = 0;
+#define CONFIG_SEND_DELAY_MS 5000       /* 对时后延迟 5s 再报配置 */
 
-/* ========================== Flash 配置存储（F030C8 最后一页 1KB）
- * ==========================
- * 同一页内分区存放（擦除以页为单位，所以任何一项写入都要整页重写）：
+/* Flash 配置（F030C8 最后一页 1KB，同一页分区存放，
+ * 擦除以页为单位，任何一项写入都要整页重写）：
  *   +0  : CONFIG_MAGIC(4B) + 对时配置字符串(32B)
- *   +64 : CENTER_MAGIC(4B) + 农场中心坐标字符串(32B)
- * ===================================================================== */
+ *   +64 : CENTER_MAGIC(4B) + 农场中心坐标字符串(32B) */
 #define CONFIG_FLASH_ADDR 0x0800FC00
 #define CONFIG_MAGIC 0xA5A5A5A5
-#define CENTER_FLASH_OFF 64 /* 中心坐标区在配置页内的偏移 */
+#define CENTER_FLASH_OFF 64
 #define CENTER_MAGIC 0x5A5A5A5A
 static char configStr[32] = "2,0M"; /* 对时上报间隔，如 "2,0M" */
 static char centerStr[32] = "";     /* 农场中心坐标 "lat,lng"，空=未设置 */
 
-/* ========================== 待执行指令缓存 ========================== */
+/* 待执行指令缓存：每个设备最多一条 */
 #define PENDING_CMD_MAX_SLOTS 8
 
 typedef struct {
@@ -71,14 +69,12 @@ typedef struct {
 
 static PendingCmd_t pendingCmdCache[PENDING_CMD_MAX_SLOTS];
 
-/* ========================== gpstm 中继状态 ========================== */
+/* gpstm 中继状态 */
 static uint8_t gpstmActive = 0;
 static uint32_t gpstmRecvTick = 0;
 static uint32_t gpstmTimeoutMin = 0;
 
-/* =====================================================================
- * @brief  LoRa 发送并等待完成（3 秒超时保护）
- * ===================================================================== */
+/* LoRa 发送并等待完成（3s 超时保护） */
 static void lora_tx_wait(void) {
   uint32_t waitStart = HAL_GetTick();
   while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
@@ -88,10 +84,7 @@ static void lora_tx_wait(void) {
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 }
 
-/* =====================================================================
- * @brief  将消息加入 DTU 发送队列（队列满时丢弃最早一条）
- *         统一存储字符串：原始命令和 JSON 上报都走同一个队列
- * ===================================================================== */
+/* 入队（队列满时丢弃最早一条） */
 static void enqueueDtuMsg(const char *msg, int len) {
   if (len <= 0 || len >= DTU_MSG_MAX_LEN)
     return;
@@ -109,10 +102,7 @@ static void enqueueDtuMsg(const char *msg, int len) {
   __enable_irq();
 }
 
-/* =====================================================================
- * @brief  协议流发送：开发阶段加 [dtu] 前缀，与 {usb} 调试打印区分；
- *         正式装机原样发送
- * ===================================================================== */
+/* 协议流发送：开发阶段加 [dtu] 前缀区分调试打印 */
 static void dtu_wire_send(const uint8_t *p, uint16_t len) {
 #if !DTU_PROD_MODE
   Uart1_SendBytes((const uint8_t *)"[dtu] ", 6);
@@ -120,11 +110,7 @@ static void dtu_wire_send(const uint8_t *p, uint16_t len) {
   Uart1_SendBytes(p, len);
 }
 
-/* =====================================================================
- * @brief  处理 DTU 发送队列：每 1500ms 从队头取出一条发送
- *         所有向 DTU 的发送统一走本队列（JSON 上报 / csq+nettime 查询 /
- *         开机配置上报），保证相邻两条至少间隔 1.5s，DTU 有时间回复
- * ===================================================================== */
+/* 队列发送：每 1500ms 发一条，保证相邻两条间隔，给 DTU 回复时间 */
 static void processDtuQueue(void) {
   if (dtuQueueCount == 0)
     return;
@@ -139,9 +125,7 @@ static void processDtuQueue(void) {
   }
 }
 
-/* =====================================================================
- * @brief  统一上报数据给 DTU（JSON 格式，入队）
- * ===================================================================== */
+/* 统一上报（JSON 格式，入队） */
 void dtu_report_lora(const char *loraStr, int rssi, int snr) {
   char txBuf[DTU_MSG_MAX_LEN];
   int len = snprintf(txBuf, sizeof(txBuf),
@@ -163,10 +147,7 @@ void dtu_report_lora(const char *loraStr, int rssi, int snr) {
     enqueueDtuMsg(txBuf, len);
 }
 
-/* =====================================================================
- * @brief  获取到网络时间后，上报一次对时信息给 DTU
- *         格式: 2|deviceName|timestamp|battery|count
- * ===================================================================== */
+/* 对时上报：2|deviceName|timestamp|battery|count */
 static void sendTimeSyncToDtu(void) {
   char dataStr[64];
   snprintf(dataStr, sizeof(dataStr), "%d|%s|%lu|%d|%lu", MSG_TYPE_TIME,
@@ -175,10 +156,7 @@ static void sendTimeSyncToDtu(void) {
   dtu_report_lora(dataStr, dtuCsqRssi, 0);
 }
 
-/* =====================================================================
- * @brief  开机网络正常后，上报一次配置信息给 DTU
- *         格式: 6|deviceName|config_str|count
- * ===================================================================== */
+/* 配置上报：6|deviceName|config_str|count */
 static void sendConfigToDtu(void) {
   char dataStr[64];
   snprintf(dataStr, sizeof(dataStr), "%d|%s|%s|%lu", MSG_TYPE_CONFIG,
@@ -186,12 +164,7 @@ static void sendConfigToDtu(void) {
   dtu_report_lora(dataStr, dtuCsqRssi, 0);
 }
 
-/* =====================================================================
- * @brief  上报农场中心坐标：1|deviceName|lat,lng|
- *         （MSG_TYPE_GPS = 1，与终端 GPS 上报类型一致）
- *         未设置过坐标时第 3 段上报 "0,0"，保证帧结构固定为 3 段，
- *         云端/小程序解析不会拿到空串
- * ===================================================================== */
+/* 农场中心坐标上报：1|deviceName|lat,lng|（未设置时报 "0,0" 保持 3 段） */
 static void sendCenterToDtu(void) {
   char dataStr[64];
   const char *coord = (centerStr[0] != '\0') ? centerStr : "0,0";
@@ -202,9 +175,7 @@ static void sendCenterToDtu(void) {
   dtu_report_lora(dataStr, dtuCsqRssi, 0);
 }
 
-/* =====================================================================
- * @brief  从 Flash 读出一个以 '\0' 结尾的字符串
- * ===================================================================== */
+/* 从 Flash 读字符串 */
 static void flash_read_str(uint32_t addr, char *dst, int dstSize) {
   const char *p = (const char *)addr;
   int i;
@@ -213,11 +184,7 @@ static void flash_read_str(uint32_t addr, char *dst, int dstSize) {
   dst[i] = '\0';
 }
 
-/* =====================================================================
- * @brief  把一个字符串（含结尾 '\0'）按半字写入 Flash
- *         STM32F0 只能半字编程；用 i+1<=len 兜底，
- *         避免读到源串 '\0' 之后的越界字节
- * ===================================================================== */
+/* 按半字写 Flash（F0 只支持半字编程），含结尾 '\0' */
 static void flash_write_str(uint32_t addr, const char *str) {
   int len = (int)strlen(str);
   int i;
@@ -229,11 +196,7 @@ static void flash_write_str(uint32_t addr, const char *str) {
   }
 }
 
-/* =====================================================================
- * @brief  整页重写：对时配置 + 农场中心坐标
- *         必须两项一起写：Flash 擦除以页为单位，
- *         只写其中一项会把同页里的另一项一起擦掉
- * ===================================================================== */
+/* 整页重写：配置 + 中心坐标必须一起写，否则擦页会把另一项擦掉 */
 static void flash_save_all(void) {
   FLASH_Unlock();
   FLASH_ErasePage(CONFIG_FLASH_ADDR);
@@ -247,11 +210,8 @@ static void flash_save_all(void) {
   FLASH_Lock();
 }
 
-/* =====================================================================
- * @brief  启动时从 Flash 加载对时配置 + 农场中心坐标
- * ===================================================================== */
+/* 启动时加载配置 + 中心坐标 */
 static void loadConfigFromFlash(void) {
-  /* 对时配置 */
   if (*(volatile uint32_t *)CONFIG_FLASH_ADDR == CONFIG_MAGIC) {
     flash_read_str(CONFIG_FLASH_ADDR + 4, configStr, sizeof(configStr));
     printf("[Flash] 加载配置: %s\r\n", configStr);
@@ -259,7 +219,6 @@ static void loadConfigFromFlash(void) {
     printf("[Flash] 无有效配置，使用默认: %s\r\n", configStr);
   }
 
-  /* 农场中心坐标 */
   if (*(volatile uint32_t *)(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF) ==
       CENTER_MAGIC) {
     flash_read_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4, centerStr,
@@ -271,11 +230,7 @@ static void loadConfigFromFlash(void) {
   }
 }
 
-/* =====================================================================
- * @brief  从 configStr 解析对时间隔（毫秒），限制 1~60 分钟
- *         configStr 格式: "<分钟>,<子参数>M"，例如 "2,0M" = 2 分钟
- *         atoi() 只取第一个数字，后面的 ",0M" 忽略
- * ===================================================================== */
+/* configStr 第 1 段 = 对时间隔（分钟，1~60） */
 static uint32_t getConfigIntervalMs(void) {
   int minutes = atoi(configStr);
   if (minutes < 1)
@@ -285,9 +240,104 @@ static uint32_t getConfigIntervalMs(void) {
   return (uint32_t)minutes * 60 * 1000;
 }
 
-/* =====================================================================
- * @brief  将日期时间转换为 Unix 时间戳（秒）
- * ===================================================================== */
+/* 工作时段（62 进制 2 字符，与云端一致）
+ * 字典顺序必须严格为 数字 + 大写 + 小写，
+ * 已核对："00"=00:00~01:00, "0G"=00:00~17:00, "38"=10:00~20:00 */
+#define TIME_DICT                                                              \
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+/* 2 字符 → idx（高位*62+低位）；不在字典返回 -1 */
+static int twoCharToIndex(const char *s) {
+  const char *p0 = strchr(TIME_DICT, s[0]);
+  const char *p1 = strchr(TIME_DICT, s[1]);
+
+  if (p0 == NULL || p1 == NULL)
+    return -1;
+  return (int)(p0 - TIME_DICT) * 62 + (int)(p1 - TIME_DICT);
+}
+
+/* 取 configStr 第一个逗号后的 2 字符 → idx；无字段/失败返回 -1 */
+static int getWorkTimeFromConfig(void) {
+  const char *comma = strchr(configStr, ',');
+  char f[3];
+
+  if (comma == NULL || comma[1] == '\0' || comma[2] == '\0')
+    return -1;
+
+  f[0] = comma[1];
+  f[1] = comma[2];
+  f[2] = '\0';
+  return twoCharToIndex(f);
+}
+
+/* idx(0~275) → 小时窗口 [start,end)：起始 s 有 (23-s) 个窗口，累计 276 个 */
+static uint8_t indexToTimeWindow(int idx, uint8_t *outStart, uint8_t *outEnd) {
+  int sum = 0;
+
+  if (idx < 0)
+    return 0;
+
+  for (int s = 0; s <= 22; s++) {
+    int valid = 23 - s;
+
+    if (idx < sum + valid) {
+      *outStart = (uint8_t)s;
+      *outEnd = (uint8_t)(s + 1 + (idx - sum));
+      return 1;
+    }
+    sum += valid;
+  }
+  return 0;
+}
+
+/* end==23 视为 24，使 [0,23] 表示整天 */
+static uint8_t workWindowEndAdj(uint8_t end) {
+  return (end == 23) ? 24u : end;
+}
+
+/* 当前是否处于工作时段：1=是, 0=否。
+ * 未对时 / 无时段字段 / idx 越界 一律返回 1（宁可耗电也不能睡死丢数据） */
+uint8_t dtu_in_work_window(void) {
+  uint8_t ws = 0, we = 0, hour, end;
+  int wt;
+
+  if (!dtuTimeValid)
+    return 1;
+
+  wt = getWorkTimeFromConfig();
+  if (wt < 0)
+    return 1;
+
+  if (!indexToTimeWindow(wt, &ws, &we))
+    return 1;
+
+  hour = (uint8_t)((getCurrentTimestamp() % 86400UL) / 3600UL);
+  end = workWindowEndAdj(we);
+
+  return (hour >= ws && hour < end) ? 1 : 0;
+}
+
+/* 打印当前生效的工作时段（启动 / 收到新配置后调用） */
+void dtu_print_work_window(const char *tag) {
+  uint8_t ws = 0, we = 0, end;
+  uint32_t hour = (getCurrentTimestamp() % 86400UL) / 3600UL;
+  int wt = getWorkTimeFromConfig();
+
+  if (wt < 0) {
+    printf("%s配置无工作时段字段, 射频全天工作\r\n", tag);
+    return;
+  }
+  if (!indexToTimeWindow(wt, &ws, &we)) {
+    printf("%s工作时段 idx=%d 越界(0~275), 射频全天工作\r\n", tag, wt);
+    return;
+  }
+
+  end = workWindowEndAdj(we);
+  printf("%s%02u:00 ~ %02u:00, 当前 %02lu:00, 处于区间内=%d (1=是)\r\n", tag,
+         ws, end, (unsigned long)hour, dtu_in_work_window());
+}
+
+/* 日期时间 → Unix 时间戳（秒） */
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour,
                                     int min, int sec) {
   static const int daysBeforeMonth[] = {0,   0,   31,  59,  90,  120, 151,
@@ -306,9 +356,7 @@ static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour,
   return timestamp;
 }
 
-/* =====================================================================
- * @brief  缓存待执行指令（每个设备最多一条，新指令替换旧指令）
- * ===================================================================== */
+/* 缓存待执行指令（每设备一条，新指令替换旧指令） */
 static void cachePendingCommand(const char *deviceId, const char *cmd,
                                 const char *val) {
   int freeSlot = -1;
@@ -350,9 +398,7 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
   }
 }
 
-/* =====================================================================
- * @brief  检查指定设备是否有缓存指令，返回 1=有, 0=无
- * ===================================================================== */
+/* 指定设备是否有缓存指令：1=有, 0=无 */
 uint8_t dtu_check_pending(const char *deviceId) {
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used &&
@@ -362,12 +408,8 @@ uint8_t dtu_check_pending(const char *deviceId) {
   return 0;
 }
 
-/* =====================================================================
- * @brief  通过 LoRa 回复缓存指令给目标设备并清除缓存
- *         格式: 9|deviceId|cmd|val
- *         由 main.c OnSlave() 在收到该设备上报后，延时
- *         LORA_REPLY_DELAY_CMD_MS(1000ms) 调用，落在子设备接收窗口内
- * ===================================================================== */
+/* LoRa 回复缓存指令并清除：9|deviceId|cmd|val
+ * 被动回复，由 OnSlave() 延时 LORA_REPLY_DELAY_CMD_MS 调用 */
 uint8_t lora_reply_pending_cmd(const char *deviceId) {
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used &&
@@ -388,20 +430,14 @@ uint8_t lora_reply_pending_cmd(const char *deviceId) {
   return 0;
 }
 
-/* =====================================================================
- * @brief  gpstm 中继是否在有效期内
- * ===================================================================== */
+/* gpstm 中继是否在有效期内 */
 uint8_t dtu_gpstm_active(void) {
   if (!gpstmActive)
     return 0;
   return (HAL_GetTick() - gpstmRecvTick) < gpstmTimeoutMin * 60 * 1000 ? 1 : 0;
 }
 
-/* =====================================================================
- * @brief  LoRa 回复 upgps 指令：9|deviceId|upgps|0
- *         由 main.c OnSlave() 在收到该设备上报后，延时
- *         LORA_REPLY_DELAY_CMD_MS(1000ms) 调用，落在子设备接收窗口内
- * ===================================================================== */
+/* LoRa 回复 upgps：9|deviceId|upgps|0（被动回复，延时时长同上） */
 void lora_reply_upgps(const char *deviceId) {
   char txData[64];
   int txLen =
@@ -412,14 +448,9 @@ void lora_reply_upgps(const char *deviceId) {
   lora_tx_wait();
 }
 
-/* =====================================================================
- * @brief  LoRa 回复对时消息：4|timestamp|deviceName
- *         被动回复而非主动下发：只在收到子设备上报后，由 main.c OnSlave()
- *         延时 LORA_REPLY_DELAY_TIMESYNC_MS(1500ms) 调用。
- *         延时的原因：子设备发完 LoRa 需要从 TX 切回 RX，1.5s 后本中继
- *         才下发，正好落在子设备的接收窗口内，否则子设备收不到。
- *         对时比指令类回复（1000ms）多等 500ms，是按子设备侧实测窗口定的。
- * ===================================================================== */
+/* LoRa 回复对时：4|timestamp|deviceName
+ * 被动回复，延时 LORA_REPLY_DELAY_TIMESYNC_MS(1500ms)，
+ * 比指令类多 500ms，按子设备接收窗口实测值定 */
 void lora_reply_time_sync(void) {
   char txData[64];
   int txLen = snprintf(txData, sizeof(txData), "%d|%lu|%s", MSG_TYPE_SYN_TIME,
@@ -430,14 +461,9 @@ void lora_reply_time_sync(void) {
   lora_tx_wait();
 }
 
-/* =====================================================================
- * @brief  加工并替换上报数据中的时间字段（第 3 个 '|' 分隔段）
- *         规则：
- *         - 收到的时间字段为含日期的完整时间戳（>=10 位数字）时，原样保留；
- *         - 否则视为“当天从 00:00 起的秒数”，用本机当天 00:00 时间戳补全。
- *         本机日期来源：getCurrentTimestamp()（网络对时后为真实时间）。
- * @retval 0=成功, -1=格式不符或缓冲区不足
- * ===================================================================== */
+/* 替换上报数据第 3 段（时间字段）：
+ * >=10 位数字视为完整时间戳原样保留；否则视为"当天 00:00 起的秒数"，
+ * 用本机当天 00:00 补齐。0=成功, -1=格式不符或缓冲区不足 */
 int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
   const char *p1 = strchr(src, '|');
   if (!p1)
@@ -446,12 +472,11 @@ int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
   if (!p2)
     return -1;
 
-  const char *pSeg = p2 + 1;   /* 时间字段起点（第二个 '|' 之后） */
+  const char *pSeg = p2 + 1;   /* 时间字段起点 */
   const char *p3 = strchr(pSeg, '|');
-  const char *tail = p3 ? p3 : (src + strlen(src)); /* 从第 3 个 '|' 起的尾部 */
-  int head = (int)(pSeg - src); /* 含第二个 '|'：即 "<type>|<deviceName>|" */
+  const char *tail = p3 ? p3 : (src + strlen(src));
+  int head = (int)(pSeg - src); /* "<type>|<deviceName>|" */
 
-  /* 取出原始时间字段（原地无 '\0'），拷贝到本地解析 */
   int segLen = (int)(tail - pSeg);
   char segBuf[16];
   if (segLen <= 0 || segLen >= (int)sizeof(segBuf))
@@ -459,16 +484,14 @@ int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
   memcpy(segBuf, pSeg, segLen);
   segBuf[segLen] = '\0';
 
-  /* 判断：>=10 位数字视为含日期的完整时间戳，原样使用；
-   * 否则视为“当天从 00:00 起的秒数”，用本机日期补全成完整时间戳 */
   uint32_t recvVal = (uint32_t)strtoul(segBuf, NULL, 10);
   uint32_t reportTs;
   if (recvVal >= 1000000000UL) {
-    reportTs = recvVal;                     /* 已是完整 Unix 时间戳 */
+    reportTs = recvVal;                     /* 已是完整时间戳 */
   } else {
-    uint32_t now = getCurrentTimestamp();   /* 本机当前时间 */
+    uint32_t now = getCurrentTimestamp();
     uint32_t todayMidnight = now - (now % 86400UL); /* 本机当天 00:00 */
-    reportTs = todayMidnight + recvVal;     /* 补全为当天真实时间戳 */
+    reportTs = todayMidnight + recvVal;
   }
 
   char tsStr[12];
@@ -484,21 +507,9 @@ int dtu_replace_time_segment(const char *src, char *dst, int dstSize) {
   return 0;
 }
 
-/* =====================================================================
- * @brief  还原被压缩的坐标字段（省 LoRa 字节用）
- *         完整坐标: "1|v4-0|26.12345,109.54321|"       → 原样上报，不处理
- *         压缩坐标: "1|v4-0|0,12|"                     → 用农场中心补齐
- *         判定依据：第 3 段**没有小数点** = 压缩格式
- *         压缩单位：1e-5 度（小数点后第 5 位）
- *           "0,12"  →  偏移 +0.00000, +0.00012
- *                    →  中心(26.52964,109.39088) ⇒ 26.52964,109.39100
- * @param  src     收到的完整 LoRa 帧
- * @param  dst     还原后的帧（前缀、尾部计数段原样保留）
- * @param  dstSize dst 缓冲长度
- * @retval 0=已还原(dst 有效), -1=无需还原(含小数点/格式不符), -2=未设中心坐标
- * @note   18 字符的坐标压到 4~7 字符，一帧能省 11~14 字节
- *         中心坐标未设置时返回 -2，调用处原样上报，不丢数据
- * ===================================================================== */
+/* 还原压缩坐标（第 3 段无小数点 = 压缩格式，单位 1e-5 度、相对农场中心）：
+ * "0,12" → 中心 + (0.00000, 0.00012)，一帧省 11~14 字节
+ * 0=已还原, -1=无需还原(完整坐标/格式不符), -2=未设中心坐标 */
 int dtu_expand_coord(const char *src, char *dst, int dstSize) {
   const char *p1 = strchr(src, '|');
   if (!p1)
@@ -507,14 +518,14 @@ int dtu_expand_coord(const char *src, char *dst, int dstSize) {
   if (!p2)
     return -1;
 
-  const char *pSeg = p2 + 1; /* 坐标字段起点（第二个 '|' 之后） */
+  const char *pSeg = p2 + 1; /* 坐标字段起点 */
   const char *p3 = strchr(pSeg, '|');
   const char *tail = p3 ? p3 : (src + strlen(src));
   int segLen = (int)(tail - pSeg);
   if (segLen <= 0 || segLen >= 24)
     return -1;
 
-  /* 有小数点 = 完整坐标（含 "0.0,0.0" 这种失败值），原样上报 */
+  /* 有小数点 = 完整坐标（含 "0.0,0.0" 失败值），原样上报 */
   if (memchr(pSeg, '.', (size_t)segLen) != NULL)
     return -1;
 
@@ -526,7 +537,7 @@ int dtu_expand_coord(const char *src, char *dst, int dstSize) {
   if (sscanf(segBuf, "%ld,%ld", &latOff, &lngOff) != 2)
     return -1;
 
-  /* 基准点：mapcenter 指令保存的农场中心坐标 */
+  /* 基准点：mapcenter 保存的农场中心坐标 */
   if (centerStr[0] == '\0')
     return -2;
 
@@ -539,7 +550,7 @@ int dtu_expand_coord(const char *src, char *dst, int dstSize) {
            clat + (double)latOff / 100000.0,
            clng + (double)lngOff / 100000.0);
 
-  int head = (int)(pSeg - src); /* "<type>|<deviceName>|" */
+  int head = (int)(pSeg - src);
   if (head + (int)strlen(coord) + (int)strlen(tail) + 1 > dstSize)
     return -1;
 
@@ -550,10 +561,7 @@ int dtu_expand_coord(const char *src, char *dst, int dstSize) {
   return 0;
 }
 
-/* =====================================================================
- * @brief  校验经纬度是否在合法地理范围内
- * @retval 1=合法, 0=非法
- * ===================================================================== */
+/* 经纬度合法性校验：1=合法, 0=非法 */
 static int center_coord_valid(double lat, double lng) {
   if (lat < -90.0 || lat > 90.0)
     return 0;
@@ -562,12 +570,9 @@ static int center_coord_valid(double lat, double lng) {
   return 1;
 }
 
-/* =====================================================================
- * @brief  JSON 解析 DTU 下发的指令
- *         外层提取 cominfo 字段，反转义后解析 {"cmd","value","deviceId"}
- * ===================================================================== */
+/* 解析 DTU 下发指令：外层取 cominfo，反转义后解析 cmd/value/deviceId */
 static void parseDtuCommand(char *buf) {
-  /* Step 1: 提取 cominfo 字段值（处理转义） */
+  /* Step 1: 提取 cominfo（处理转义） */
   char *pCominfo = strstr(buf, "\"cominfo\":\"");
   if (!pCominfo) {
     printf("[DTU JSON] cominfo not found\r\n");
@@ -649,24 +654,20 @@ static void parseDtuCommand(char *buf) {
     Delay_Ms(500);
     NVIC_SystemReset();
   } else if (strcmp(cmd, "mapcenter") == 0) {
-    /* 设置农场中心坐标：先验格式和地理范围，只有合法才写内存 + Flash。
-     * 用 double 解析，避免 109.39087 这类 8 位有效数字被 float 截断。 */
+    /* 设置农场中心坐标：校验格式和范围，合法才写内存 + Flash。
+     * 用 double 解析，避免 8 位有效数字被 float 截断 */
     double la = 0.0, lo = 0.0;
 
     if (sscanf(val, "%lf,%lf", &la, &lo) == 2 && center_coord_valid(la, lo)) {
-      /* 归一化成 5 位小数存储：帧长固定，且天然不含 " \ | 等会破坏
-       * JSON 拼接的字符 */
+      /* 归一化成 5 位小数：帧长固定，也不含会破坏 JSON 的字符 */
       snprintf(centerStr, sizeof(centerStr), "%.5f,%.5f", la, lo);
       flash_save_all();
       printf("[DTU CMD] 中心坐标已永久保存: %s\r\n", centerStr);
     } else {
-      /* 非法：不写内存、不写 Flash，保持上一次的合法值 */
       printf("[DTU CMD] mapcenter: 坐标非法已拒绝(原值=%s 保持): %s\r\n",
              centerStr, val);
     }
-    /* 无论本次是否合法，都上报当前内存中的坐标：
-     * 合法  -> 回新坐标；非法 -> 回上一个合法值（未设过则 "0,0"）
-     * 格式: 1|deviceName|lat,lng| */
+    /* 无论是否合法都回报当前内存中的坐标 */
     sendCenterToDtu();
   } else if (strcmp(cmd, "debug") == 0) {
     /* MID 板无 DTU 复位引脚，仅记录 */
@@ -677,6 +678,8 @@ static void parseDtuCommand(char *buf) {
       configStr[sizeof(configStr) - 1] = '\0';
       flash_save_all();
       printf("[DTU CMD] Config updated: %s\r\n", configStr);
+      /* 工作时段实时解析，改完立即生效 */
+      dtu_print_work_window("[DTU CMD] 新时段: ");
       Delay_Ms(1000);
       sendConfigToDtu();
     } else {
@@ -690,6 +693,24 @@ static void parseDtuCommand(char *buf) {
       gpstmTimeoutMin = 30;
     printf("[DTU CMD] gpstm 中继已记录: device=%s, timeout=%lu min\r\n",
            DEVICE_NAME, (unsigned long)gpstmTimeoutMin);
+  } else if (strcmp(cmd, "lorasw") == 0) {
+    /* 远程开关射频：1=开启（时段外拒绝，时段优先），0=休眠（任何时候允许）。
+     * 休眠只关射频，MCU/DTU 照常工作，仍可远程唤醒；状态只存 RAM */
+    if (atoi(val) != 0) {
+      if (!dtu_in_work_window()) {
+        printf("[DTU CMD] lorasw: 当前不在工作时段内, 拒绝开启射频\r\n");
+      } else if (app_lora_is_on()) {
+        printf("[DTU CMD] lorasw: 当前已是收发状态, 无需重复开启\r\n");
+      } else {
+        app_lora_switch(1);
+      }
+    } else {
+      if (!app_lora_is_on()) {
+        printf("[DTU CMD] lorasw: 当前已是休眠状态, 无需重复关闭\r\n");
+      } else {
+        app_lora_switch(0);
+      }
+    }
   } else if (strcmp(cmd, "txpower") == 0) {
     printf("[DTU CMD] txpower: target=%s, value=%s, cache it\r\n", devId, val);
     cachePendingCommand(devId, cmd, val);
@@ -712,10 +733,7 @@ static void parseDtuCommand(char *buf) {
   }
 }
 
-/* =====================================================================
- * @brief  串口中断收到 1 字节时调用
- *         开发/DTU 两种模式都解析（开发阶段可由串口助手模拟 DTU 下发指令）
- * ===================================================================== */
+/* 串口中断收到 1 字节时调用 */
 void dtu_uart_rx_byte(uint8_t b) {
   if (dtuRxLen < DTU_RX_BUF_SIZE) {
     dtuRxBuf[dtuRxLen++] = b;
@@ -723,29 +741,24 @@ void dtu_uart_rx_byte(uint8_t b) {
   }
 }
 
-/* =====================================================================
- * @brief  初始化：加载 Flash 配置，启动查询定时器
- * ===================================================================== */
+/* 初始化：加载 Flash 配置，启动查询定时器 */
 void dtu_init(void) {
   loadConfigFromFlash();
   dtuCsqTick = HAL_GetTick();
 }
 
-/* =====================================================================
- * @brief  主循环轮询：队列发送 / 帧解析 / csq+nettime 周期查询
- *         自动重启仅正式装机模式(DTU_PROD_MODE=1)启用
- * ===================================================================== */
+/* 主循环轮询：队列发送 / 帧解析 / csq+nettime 周期查询 */
 void dtu_poll(void) {
   processDtuQueue();
 
-  /* 开机首次配置上报：对时上报后延迟 5s 再入队，保证两条不挤在一起 */
+  /* 开机首次配置上报：对时上报后延迟 5s 入队 */
   if (configSendPending &&
       HAL_GetTick() - configSendTick >= CONFIG_SEND_DELAY_MS) {
     configSendPending = 0;
     sendConfigToDtu();
   }
 
-  /* DTU 一帧完成判断：500ms 无新字节 或 缓冲区满 */
+  /* 一帧结束：500ms 无新字节 或 缓冲区满 */
   if ((dtuRxLen > 0 && HAL_GetTick() - dtuLastRxTick > 500) ||
       dtuRxLen >= DTU_RX_BUF_SIZE) {
     if (dtuRxLen < DTU_RX_BUF_SIZE)
@@ -755,7 +768,7 @@ void dtu_poll(void) {
 
     char *pBuf = (char *)dtuRxBuf;
 
-    /* 解析 CSQ: config,csq,ok,<value> */
+    /* CSQ: config,csq,ok,<value> */
     char *pCsq = strstr(pBuf, "config,csq,ok,");
     if (pCsq) {
       int csqVal = 0;
@@ -765,7 +778,7 @@ void dtu_poll(void) {
       }
     }
 
-    /* 解析网络时间: config,nettime,ok,年,月,日,时,分,秒,毫秒 */
+    /* 网络时间: config,nettime,ok,年,月,日,时,分,秒,毫秒 */
     char *pNet = strstr(pBuf, "config,nettime,ok,");
     if (pNet) {
       int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
@@ -774,16 +787,12 @@ void dtu_poll(void) {
         uint32_t ts = dateTimeToTimestamp(y, mo, d, h, mi, s);
         printf("[DTU] 网络时间: %04d/%02d/%02d %02d:%02d:%02d ts=%lu\r\n", y,
                mo, d, h, mi, s, (unsigned long)ts);
-        app_set_synced_time(ts); /* 写入主时间源 */
+        app_set_synced_time(ts);
         dtuTimeValid = 1;
         dtuNetTimeFailCount = 0;
 
-        /* 每次拿到网络时间后上报对时信息（周期由 configStr 控制，如
-         * "2,0M"=2分钟） 流程：定时查询 csq+nettime → DTU 回复 nettime →
-         * 上报对时 JSON */
         sendTimeSyncToDtu();
         if (!configBootSent) {
-          /* 开机首次：对时上报后延迟 5s 再上报配置，避免两条挤在一起 */
           configBootSent = 1;
           configSendPending = 1;
           configSendTick = HAL_GetTick();
@@ -798,16 +807,13 @@ void dtu_poll(void) {
     dtuRxLen = 0;
   }
 
-  /* 周期查询 csq+nettime（始终主动查询）：统一入队，相邻 1.5s 发一条；
-   * 对时成功后间隔由 configStr 控制（如 "2,0M"=2分钟），未对时时固定 5s 重试；
-   * 对时失败 5 次自动重启仅正式装机模式(DTU_PROD_MODE=1)启用，
-   * 桌面调试时 DTU 口可能空接，不重启避免反复复位 */
+  /* 周期查询 csq+nettime：统一入队，相邻 1.5s 一条。
+   * 对时后间隔由 configStr 控制，未对时固定 5s 重试；
+   * 连续失败 5 次重启仅正式装机模式启用（桌面调试 DTU 口可能空接） */
   {
     uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
     if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
       dtuCsqTick = HAL_GetTick();
-      /* 两条查询入队，processDtuQueue 会以 1.5s 间隔逐条发出（末尾 \r\n
-       * 由队列统一追加）*/
       enqueueDtuMsg("config,get,csq", strlen("config,get,csq"));
       enqueueDtuMsg("config,get,nettime", strlen("config,get,nettime"));
       if (!dtuTimeValid) {
