@@ -30,7 +30,11 @@ typedef enum {
   MSG_TYPE_UP_GPS = 5,      //   上报GPS跟踪坐标
   MSG_TYPE_CONFIG = 6,      // 配置信息
   MSG_TYPE_SYN_UP_TIME = 7, //   上报对时信息
-  MSG_TYPE_WARN = 8,        // 警告消息
+  MSG_TYPE_WARN = 8,        // 警告消息（预留，当前未实现）
+  MSG_TYPE_READINFO = 8,    // 设备信息上报（readinfo 指令回复）
+                            // 帧格式: 8|设备名|设备数量|发射功率(dBm)|保留|
+                            // @note 与 MSG_TYPE_WARN 同值 8：告警从未实现，
+                            //       若将来做告警必须换类型号（如 10）
   MSG_TYPE_COM = 9          // 下载指令到设备
 } MessageType_t;
 

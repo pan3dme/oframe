@@ -1,4 +1,4 @@
-﻿/* USER CODE BEGIN Header */
+/* USER CODE BEGIN Header */
 /**
  ******************************************************************************
  * @file           : main.c
@@ -469,10 +469,11 @@ static void OnSlave(void) {
 			}
 		}
 
-    /* MSG_TYPE_CONFIG: 直接上报原始数据，不对时 */
-    if (msgType == MSG_TYPE_CONFIG) {
+    /* MSG_TYPE_CONFIG MSG_TYPE_READINFO  直接上报原始数据，不对时 */
+    if (msgType == MSG_TYPE_CONFIG|| msgType == MSG_TYPE_READINFO) {
       sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
     }
+
 
     rf_enter_single_timeout_rx(15000); // 重新进入接收模式，超时 15 秒
   }
