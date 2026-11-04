@@ -101,18 +101,17 @@ char centerStr[64] = "";
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-SPI_HandleTypeDef hspi1;
-UART_HandleTypeDef huart1;
+SPI_HandleTypeDef hspi1;    /* LoRa PAN3029 */
+UART_HandleTypeDef huart1;  /* 调试打印 */
 UART_HandleTypeDef huart3;  /* GPS 模块 USART3 (PB11 RX, 9600, 仅接收) */
-I2C_HandleTypeDef hi2c1;  /* OLED 模块需要 */
 
 /* USER CODE BEGIN PV */
 
-/* 时间同步变量 */
+/* 时间同步变量（时间基准 = RTC 秒计数器，STOP 深度休眠期间继续走） */
 static uint32_t syncedTimestamp = 0;  /* 同步到的 Unix 时间戳 */
-static uint32_t syncedTick = 0;       /* 同步时的 HAL_GetTick() 值 */
+static uint32_t syncedRtcSec = 0;     /* 对时那一刻的 RTC 计数（秒） */
 static uint8_t  timeSynced = 0;       /* 是否已同步时间 */
-static uint32_t anchorTick = 0;       /* 首次对时的 tick 基准（用于晶振偏差计算） */
+static uint32_t anchorRtcSec = 0;     /* 首次对时的 RTC 基准（用于晶振偏差计算） */
 static uint16_t gpsContTotalMin = 0;   /* upgps 指令带的分钟数参数：
                                         *   0   = 单次搜星上报（现有逻辑）
                                         * 1~60  = 连续定位模式：这么长时间内不休眠，
@@ -176,25 +175,21 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
                                     *       这里只是给模块一点时间重新输出 NMEA */
 
 /* PB1(WAKE_UP) 电平控制总开关: 1=由 MCU 翻转电平, 0=暂不动电平（核对阶段）
- * 置 0 时的行为（当前生效）:
- *   - MX_GPIO_Init 里 PB1 配成**高阻输入**，既不拉高也不拉低，
- *     模块状态完全由外部上拉/悬空决定，用于核对"这两种状态分别能不能搜星"
- *   - gpsPowerOn()/gpsPowerOff() 保留清缓冲、打印等流程，但跳过所有 GPIO 写
- *   - sendmode 指令仍记住 gpsWakeEn（决定本轮是否搜星），但不翻转电平
- * @warning 若 PB1 真的接到模块 WAKE_UP，需先确认悬空/上拉能让模块进 Full on，
- *          否则每轮都搜不到星。核对完把这里改回 1 即恢复正常上下电控制
+ * 置 1 时的行为（当前生效）:
+ *   - 上电 PB1 默认拉低 → GPS 模块 Standby（停止搜星，仅几十 µA）
+ *   - 搜星前 gpsPowerOn() 置高 → Full on，搜完 gpsPowerOff() 置低回 Standby
+ *   - 深度休眠等待期模块始终处于 Standby，不耗搜星电流
+ * 置 0 时为核对模式：PB1 高阻输入、不翻转，模块状态由外部电平决定
  */
-#define GPS_PWR_CTRL_EN  0
+#define GPS_PWR_CTRL_EN  1
 
 
 
 typedef struct {
-  uint8_t  valid;  /* 已定位 */
-  double   lat;    /* 纬度（北纬为正） */
-  double   lng;    /* 经度（东经为正） */
-  float    alt;    /* 海拔 (m) */
-  float    speed;  /* 地面速度 (km/h) */
-  uint8_t  sats;   /* 参与定位的卫星数 */
+  uint8_t  valid;   /* 已定位 */
+  int32_t  lat;     /* 纬度 ×1e5（北纬为正），如 26.52958 → 2652958 */
+  int32_t  lng;     /* 经度 ×1e5（东经为正） */
+  uint8_t  sats;    /* 参与定位的卫星数 */
   /* 以下是 GPS 的 UTC 日期时间（来自 RMC），未收到过则全为 0
    * 用于搜星状态行的"年份是否可信"判断与时间显示 */
   uint16_t year;
@@ -263,7 +258,9 @@ static void loadDeviceCountFromFlash(void);  /* 子设备总台数(默认30, dev
 static void saveDeviceCountToFlash(uint8_t count);
 static void loadCenterFromFlash(void);
 static void saveCenterToFlash(const char *str);
-static uint8_t centerCoordValid(double lat, double lng);
+static uint8_t centerCoordValid(int32_t lat, int32_t lng);
+static void    deg1e5ToStr(int32_t v, char *buf);
+static uint8_t parseDeg1e5(const char *s, int32_t *out);
 static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
 static void sendCenterMessage(void);
@@ -286,7 +283,7 @@ static void MX_USART3_UART_Init(void);
 static void gpsTask(void);
 static void parseNmeaLine(char *line);
 static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen);
-static double nmeaToDeg(const char *v, char dir);
+static int32_t nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
 static uint8_t isInWorkWindow(void);      /* 当前是否在工作时间段内(config 第2段) */
 static void    printTimeWindows(const char *tag);   /* 打印当前生效的两个时间段 */
@@ -577,11 +574,11 @@ static void saveCenterToFlash(const char *str)
  * @brief  校验经纬度是否在合法地理范围内
  * @retval 1=合法, 0=非法
  */
-static uint8_t centerCoordValid(double lat, double lng)
+static uint8_t centerCoordValid(int32_t lat, int32_t lng)
 {
-  if (lat < -90.0 || lat > 90.0)
+  if (lat < -9000000 || lat > 9000000)     /* ±90 度 ×1e5 */
     return 0;
-  if (lng < -180.0 || lng > 180.0)
+  if (lng < -18000000 || lng > 18000000)   /* ±180 度 ×1e5 */
     return 0;
   return 1;
 }
@@ -727,9 +724,13 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType)
   int      msgType = useGpsType ? MSG_TYPE_GPS : MSG_TYPE_UP_GPS;
 
   if (hasFix) {
+    char latBuf[16], lngBuf[16];
+
     /* 小数后 5 位：精度约 1.1m，够用且帧长更短 */
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%.5f,%.5f|%lu|",
-             msgType, deviceName, gpsFix.lat, gpsFix.lng,
+    deg1e5ToStr(gpsFix.lat, latBuf);
+    deg1e5ToStr(gpsFix.lng, lngBuf);
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|",
+             msgType, deviceName, latBuf, lngBuf,
              (unsigned long)tx_count);
   } else {
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
@@ -1122,6 +1123,109 @@ static uint32_t getSlotOffsetSec(void)
   return (uint32_t)index * intervalSec / deviceCount;
 }
 
+/* ================= RTC：STOP 深度休眠的时间基准 =================
+ * F1 的 RTC 是 32 位秒计数器，STOP 模式下继续走，替代 HAL_GetTick 做系统时钟。
+ * 时钟源优先 LSE(32.768k, ±20ppm)；板上无晶振则退 LSI(40k, 误差~1%)，
+ * LSI 的偏差靠每轮上报后的 nettime 对时重新校准，不跨轮累计。
+ * STOP 唤醒源 = RTC 闹钟中断(EXTI line 17)；唤醒后系统时钟回落 HSI 8MHz，
+ * 必须重新 SystemClock_Config() 才能恢复 72MHz 和外设波特率 */
+static uint32_t rtcPrl = 32767;  /* 预分频-1：LSE=32767，LSI=39999 */
+
+/* 等 RTC 写操作完成（RTOFF=1） */
+static void rtc_wait_rtoff(void)
+{
+  uint32_t guard = 200000;
+  while (!(RTC->CRL & RTC_CRL_RTOFF) && --guard)
+    ;
+}
+
+/* 读 32 位秒计数（先读高 16 位，硬件锁存低 16 位） */
+static uint32_t rtc_read_counter(void)
+{
+  return ((uint32_t)RTC->CNTH << 16) | (uint32_t)RTC->CNTL;
+}
+
+/* 设置闹钟（绝对 RTC 秒）并使能闹钟中断 */
+static void rtc_set_alarm(uint32_t alarmSec)
+{
+  rtc_wait_rtoff();
+  RTC->CRL |= RTC_CRL_CNF;              /* 进入配置模式 */
+  RTC->ALRH = (uint16_t)(alarmSec >> 16);
+  RTC->ALRL = (uint16_t)(alarmSec & 0xFFFFU);
+  RTC->CRH |= RTC_CRH_ALRIE;
+  RTC->CRL &= (uint16_t)~RTC_CRL_CNF;   /* 退出配置模式 */
+  rtc_wait_rtoff();
+}
+
+/* RTC 初始化：备份域 + 时钟源 + 预分频 + 闹钟中断
+ * 备份域已配置过（软件复位/唤醒）则保留计数，不破坏时间 */
+static void rtc_init(void)
+{
+  uint32_t guard;
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_RCC_BKP_CLK_ENABLE();
+  SET_BIT(PWR->CR, PWR_CR_DBP);         /* 解锁备份域写保护 */
+
+  if ((RCC->BDCR & RCC_BDCR_RTCSEL) == 0) {
+    /* 备份域未配置：选时钟源并初始化 */
+    RCC->BDCR |= RCC_BDCR_LSEON;
+    guard = 3000000;
+    while (!(RCC->BDCR & RCC_BDCR_LSERDY) && --guard)
+      ;
+
+    if (guard) {                        /* LSE 起振成功 */
+      rtcPrl = 32767;
+      RCC->BDCR |= RCC_BDCR_RTCSEL_LSE;
+    } else {                            /* 无 LSE 晶振 → LSI */
+      RCC->BDCR &= ~RCC_BDCR_LSEON;
+      RCC->CSR |= RCC_CSR_LSION;
+      guard = 200000;
+      while (!(RCC->CSR & RCC_CSR_LSIRDY) && --guard)
+        ;
+      rtcPrl = 39999;
+      RCC->BDCR |= RCC_BDCR_RTCSEL_LSI;
+    }
+    RCC->BDCR |= RCC_BDCR_RTCEN;
+
+    rtc_wait_rtoff();
+    RTC->CRL |= RTC_CRL_CNF;
+    RTC->PRLH = (uint16_t)(rtcPrl >> 16);
+    RTC->PRLL = (uint16_t)(rtcPrl & 0xFFFFU);
+    RTC->CNTH = 0;
+    RTC->CNTL = 0;
+    RTC->CRL &= (uint16_t)~RTC_CRL_CNF;
+    rtc_wait_rtoff();
+  }
+
+  /* APB1 复位后等 RTC 与 APB 同步完成 */
+  guard = 200000;
+  while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
+    ;
+
+  /* 闹钟中断：EXTI line 17 上升沿 → STOP 唤醒 */
+  EXTI->PR  = EXTI_PR_PR17;             /* 清挂起 */
+  EXTI->IMR |= EXTI_IMR_MR17;
+  EXTI->RTSR |= EXTI_RTSR_TR17;
+  RTC->CRH |= RTC_CRH_ALRIE;
+
+  HAL_NVIC_SetPriority(RTC_Alarm_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(RTC_Alarm_IRQn);
+}
+
+/* 进入 STOP 深度休眠，直到 RTC 计数到达 wakeTs（绝对 RTC 秒）
+ * @note  唤醒后时钟回落 HSI 8MHz、SysTick 停走；
+ *        由调用方判断到点后 SystemClock_Config() 恢复 */
+static void enterStopUntil(uint32_t wakeTs)
+{
+  uint32_t rtcNow = rtc_read_counter();
+  uint32_t delta = (wakeTs > rtcNow + 1) ? (wakeTs - rtcNow) : 1;
+
+  rtc_set_alarm(rtcNow + delta);
+  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+  /* 从这里继续 = 被闹钟唤醒 */
+}
+
 /**
   * @brief  获取当前"当天秒数"
   * @note   未同步时：把开机当作 00:00，返回开机秒数
@@ -1129,24 +1233,21 @@ static uint32_t getSlotOffsetSec(void)
   */
 static uint32_t getTodaySecond(void)
 {
-  if (!timeSynced) {
-    return HAL_GetTick() / 1000;
-  }
-  uint32_t elapsed_sec = (HAL_GetTick() - syncedTick) / 1000;
-  uint32_t currentTs = syncedTimestamp + elapsed_sec;
-  return currentTs % 86400;
+  return getCurrentTimestamp() % 86400;
 }
 
 /**
-  * @brief  获取当前完整时间戳
+  * @brief  获取当前完整时间戳（基准 = RTC 秒计数器）
+  * @note   未同步时返回 RTC 计数本身（开机秒数）；
+  *         已同步后 = 对时时间戳 + RTC 走过的秒数（STOP 期间也连续）
   */
 static uint32_t getCurrentTimestamp(void)
 {
-  if (!timeSynced) {
-    return HAL_GetTick() / 1000;
-  }
-  uint32_t elapsed_sec = (HAL_GetTick() - syncedTick) / 1000;
-  return syncedTimestamp + elapsed_sec;
+  uint32_t rtcNow = rtc_read_counter();
+
+  if (!timeSynced)
+    return rtcNow;
+  return syncedTimestamp + (rtcNow - syncedRtcSec);
 }
 
 /**
@@ -1203,21 +1304,102 @@ static void LedToggle(void)
 }
 
 /**
- * @brief  NMEA 坐标 ddmm.mmmm / dddmm.mmmm → 十进制度
+ * @brief  NMEA 坐标 ddmm.mmmm / dddmm.mmmm → 十进制度 ×1e5
  * @param  v:   原始字段，如 "2629.5800"
  * @param  dir: 'N'/'S'/'E'/'W'，南纬和西经取负
- * @retval 十进制度
+ * @retval 度 ×1e5（如 26.493 → 264930）；格式异常返回 0
+ * @note   纯整数实现，避免拉入浮点解析库：度×1e5 = deg×1e5 + 分×1e4/6
  */
-static double nmeaToDeg(const char *v, char dir)
+static int32_t nmeaToDeg(const char *v, char dir)
 {
-  double val = atof(v);
-  int    deg = (int)(val / 100.0);
-  double min = val - (double)deg * 100.0;
-  double d   = (double)deg + min / 60.0;
+  const char *dot = strchr(v, '.');
+  int32_t    deg = 0;
+  uint32_t   minE4 = 0;   /* 分 ×1e4，如 29.58 分 → 295800 */
+  uint32_t   mul = 100000;
+  int32_t    d;
 
+  if (dot == NULL || dot - v < 3)
+    return 0;
+
+  /* 整数部分去掉末 2 位即度 */
+  while (v < dot - 2) {
+    if (*v < '0' || *v > '9')
+      return 0;
+    deg = deg * 10 + (*v++ - '0');
+  }
+  v = dot - 2;          /* 分钟整数部分 2 位 */
+  for (d = 0; d < 2; d++) {
+    if (*v < '0' || *v > '9')
+      return 0;
+    minE4 += (uint32_t)(*v++ - '0') * mul;
+    mul /= 10;
+  }
+  if (*v == '.')
+    v++;
+  while (mul && *v >= '0' && *v <= '9') {  /* 分钟小数部分 */
+    minE4 += (uint32_t)(*v++ - '0') * mul;
+    mul /= 10;
+  }
+
+  d = (int32_t)deg * 100000 + (int32_t)((minE4 + 3) / 6);  /* +3 四舍五入 */
   if (dir == 'S' || dir == 'W')
     d = -d;
   return d;
+}
+
+/**
+ * @brief  度 ×1e5 → "[-]dd.ddddd" 字符串（等价于 %.5f 输出，补足 5 位小数）
+ */
+static void deg1e5ToStr(int32_t v, char *buf)
+{
+  uint32_t a = (v < 0) ? (uint32_t)(-v) : (uint32_t)v;
+
+  if (v < 0)
+    *buf++ = '-';
+  snprintf(buf, 14, "%lu.%05lu",
+           (unsigned long)(a / 100000UL), (unsigned long)(a % 100000UL));
+}
+
+/**
+ * @brief  解析 "26.52958" / " -26.52958" → 度 ×1e5（跳过前导空格，带四舍五入）
+ * @retval 1=成功, 0=格式非法
+ */
+static uint8_t parseDeg1e5(const char *s, int32_t *out)
+{
+  int32_t  sign = 1, deg = 0;
+  uint32_t frac = 0, fracMul = 100000;
+  uint8_t  seenDigit = 0;
+
+  while (*s == ' ')
+    s++;
+  if (*s == '-') { sign = -1; s++; }
+  else if (*s == '+') s++;
+
+  while (*s >= '0' && *s <= '9') {
+    deg = deg * 10 + (*s++ - '0');
+    seenDigit = 1;
+  }
+  if (*s == '.') {
+    s++;
+    while (*s >= '0' && *s <= '9') {
+      if (fracMul) {
+        frac += (uint32_t)(*s - '0') * fracMul;
+        fracMul /= 10;
+        if (fracMul == 0 && s[1] >= '5' && s[1] <= '9')
+          frac++;   /* 第 6 位小数四舍五入 */
+      }
+      s++;
+    }
+  }
+  if (!seenDigit)
+    return 0;
+  while (*s == ' ')
+    s++;
+  if (*s != '\0' && *s != ',')
+    return 0;
+
+  *out = sign * ((int32_t)deg * 100000 + (int32_t)frac);
+  return 1;
 }
 
 /**
@@ -1259,7 +1441,7 @@ static void parseNmeaLine(char *line)
   if (!strncmp(line, "$GPGGA", 6) || !strncmp(line, "$GNGGA", 6) ||
       !strncmp(line, "$GBGGA", 6)) {
     char utc[12], lat[16], latDir[4], lng[16], lngDir[4];
-    char qual[4], sats[4], alt[12];
+    char qual[4], sats[4];
 
     nmeaField(line, 1, utc, sizeof(utc));
     nmeaField(line, 2, lat, sizeof(lat));
@@ -1268,7 +1450,6 @@ static void parseNmeaLine(char *line)
     nmeaField(line, 5, lngDir, sizeof(lngDir));
     nmeaField(line, 6, qual, sizeof(qual));
     nmeaField(line, 7, sats, sizeof(sats));
-    nmeaField(line, 9, alt, sizeof(alt));
 
     /* qual: 0=无效, 1=单点定位, 2=差分, 4=RTK固定, 5=RTK浮点 */
     if (atoi(qual) > 0 && lat[0] != '\0' && lng[0] != '\0') {
@@ -1276,7 +1457,6 @@ static void parseNmeaLine(char *line)
       gpsFix.lat   = nmeaToDeg(lat, latDir[0]);
       gpsFix.lng   = nmeaToDeg(lng, lngDir[0]);
       gpsFix.sats  = (uint8_t)atoi(sats);
-      gpsFix.alt   = (float)atof(alt);
       gpsFixValid  = 1;
       gpsFixTick   = HAL_GetTick();   /* 刷新定位时间戳，供新鲜度判断 */
       (void)utc;                      /* 时间统一取 RMC 的，这里不用 */
@@ -1321,9 +1501,8 @@ static void parseNmeaLine(char *line)
       gpsFix.month = (uint8_t)((date[2] - '0') * 10 + (date[3] - '0'));
       gpsFix.year  = (uint16_t)(2000 + (date[4] - '0') * 10 + (date[5] - '0'));
     }
-
-    if (status[0] == 'A')
-      gpsFix.speed = (float)(atof(spd) * 1.852);  /* 节 → km/h */
+    (void)status;   /* 速度/海拔不再解析（未使用），避免拉入 atof 浮点库 */
+    (void)spd;
   }
 }
 
@@ -1434,8 +1613,12 @@ static void gpsPrintSearchStatus(uint32_t elapsedMs)
   }
 
   if (gpsFixValid) {
-    printf("✅定位数据:%.5f,%.5f✅ 年份>2025:%s GPS可靠:%s 卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)    %04u/%02u/%02u %02u:%02u:%02u.%03u\r\n",
-           gpsFix.lat, gpsFix.lng,
+    char latBuf[16], lngBuf[16];
+
+    deg1e5ToStr(gpsFix.lat, latBuf);
+    deg1e5ToStr(gpsFix.lng, lngBuf);
+    printf("✅定位数据:%s,%s✅ 年份>2025:%s GPS可靠:%s 卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)    %04u/%02u/%02u %02u:%02u:%02u.%03u\r\n",
+           latBuf, lngBuf,
            (year > 2025) ? "✅ " : "❌ ",
            gpsFixFresh() ? "✅ " : "❌ ",
            (int)gpsFix.sats,
@@ -1543,12 +1726,12 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
     case MSG_TYPE_SYN_TIME: /* 4: 下发对时信息 4|timestamp|xxx */
       if (field_count >= 2) {
         uint32_t recvTs = (uint32_t)atoi(fields[1]);
-        uint32_t nowTick = HAL_GetTick();
+        uint32_t nowTick = rtc_read_counter();  /* RTC 秒（STOP 期间连续） */
 
-        /* 晶振偏差计算（首次对时设为锚点，后续每次对时输出偏差） */
+        /* 晶振偏差计算（首次对时设为锚点，后续每次对时输出偏差）。
+         * 本地间隔用 RTC 秒：STOP 休眠期间 RTC 继续走，测的才是真实钟差 */
         if (timeSynced) {
-          uint32_t localElapsedMs = nowTick - anchorTick;
-          uint32_t localElapsedSec = localElapsedMs / 1000;
+          uint32_t localElapsedSec = nowTick - anchorRtcSec;
           uint32_t remoteElapsedSec = recvTs - anchorTimestamp;
           /* 直接用间隔差值计算偏差，避免绝对时间戳整数截断 */
           int32_t  driftSec = (int32_t)localElapsedSec - (int32_t)remoteElapsedSec;
@@ -1563,14 +1746,14 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                  (unsigned long)remoteElapsedSec);
         } else {
           /* 首次对时：记录锚点 */
-          anchorTick = nowTick;
+          anchorRtcSec = nowTick;
           anchorTimestamp = recvTs;
-          printf("[晶振] 锚点已设置  ts=%lu tick=%lu\r\n",
+          printf("[晶振] 锚点已设置  ts=%lu rtc=%lu\r\n",
                  (unsigned long)recvTs, (unsigned long)nowTick);
         }
 
         syncedTimestamp = recvTs;
-        syncedTick = nowTick;
+        syncedRtcSec = nowTick;
         timeSynced = 1;
         printf("[对时] ts=%lu 当天秒=%lu\r\n",
                (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
@@ -1696,13 +1879,19 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         /* C: 9|v0-0|C|26.52958,109.39087  →  设置农场中心坐标并持久化 */
         else if (strcmp(fields[2], "C") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
-            double la = 0.0, lo = 0.0;
-            /* 用 double 解析，避免 109.39087 这类 8 位有效数字被 float 截断；
-             * %lf 会自动跳过 fields[3] 的前导空格（下发值形如 " 26.52,109.39"） */
-            if (sscanf(fields[3], "%lf,%lf", &la, &lo) == 2 &&
+            int32_t la = 0, lo = 0;
+            const char *comma = strchr(fields[3], ',');
+            /* 整数解析（×1e5），精度同 %.5f；parseDeg1e5 会跳过前导空格
+             * （下发值形如 " 26.52,109.39"），第二段以后的内容忽略 */
+            if (comma != NULL &&
+                parseDeg1e5(fields[3], &la) &&
+                parseDeg1e5(comma + 1, &lo) &&
                 centerCoordValid(la, lo)) {
+              char laBuf[16], loBuf[16];
               /* 归一化成 5 位小数存储：帧长固定，且天然不含会破坏帧结构的 '|' */
-              snprintf(centerStr, sizeof(centerStr), "%.5f,%.5f", la, lo);
+              deg1e5ToStr(la, laBuf);
+              deg1e5ToStr(lo, loBuf);
+              snprintf(centerStr, sizeof(centerStr), "%s,%s", laBuf, loBuf);
               saveCenterToFlash(centerStr);
               printf("[指令] 中心坐标已保存: %s\r\n", centerStr);
             } else {
@@ -2034,6 +2223,9 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
+  /* RTC：STOP 深度休眠的时间基准与唤醒源（LSE 优先，无晶振退 LSI） */
+  rtc_init();
+
   /* 从 Flash 加载设备名、配置、发射功率、农场中心坐标和设备台数 */
   loadDeviceNameFromFlash();
   loadConfigFromFlash();
@@ -2075,6 +2267,8 @@ int main(void)
       /* LoRa 未初始化（首次启动 或 从 deepsleep 唤醒） */
       uint32_t wakeTime = (nextTxTimestamp > 5) ? (nextTxTimestamp - 5) : 0;
       if (nowTs >= wakeTime) {
+        /* STOP 醒来时钟回落 HSI 8MHz，先恢复 72MHz（SysTick 随之恢复） */
+        SystemClock_Config();
         /* 唤醒 LoRa 并执行 5 秒倒计时 */
         printf("[WAKE] LoRa 唤醒中, 5秒倒计时...\r\n");
         loraInitFirstTime();
@@ -2086,7 +2280,14 @@ int main(void)
           printf("[WAKE] %s  %d\r\n", time_str, i);
           HAL_Delay(1000);
         }
+      } else if (!gpsWaitReport && !gpsNeedRetry && !gpsContTotalMin) {
+        /* 等待期：GPS 无待办时 MCU 进 STOP 深度休眠，
+         * RTC 闹钟在 wakeTime（上报前 5 秒）唤醒；RAM 内容保持。
+         * 双保险：确认 LoRa 已深度休眠（OnMaster 末尾已调过，重复调用安全） */
+        rf_deepsleep();
+        enterStopUntil(wakeTime);
       }
+      /* GPS 待办时保持活跃空转，由 HAL_Delay(100) 节流 */
     }
 
     /* GPS: 取出环形缓冲里的 NMEA 语句并打印/解析 */

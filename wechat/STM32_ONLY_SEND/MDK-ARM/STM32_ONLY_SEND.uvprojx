@@ -421,11 +421,6 @@
               <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio_ex.c</FilePath>
             </File>
             <File>
-              <FileName>stm32f1xx_hal_can.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_can.c</FilePath>
-            </File>
-            <File>
               <FileName>stm32f1xx_hal.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal.c</FilePath>
@@ -476,11 +471,6 @@
               <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_exti.c</FilePath>
             </File>
             <File>
-              <FileName>stm32f1xx_hal_i2c.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_i2c.c</FilePath>
-            </File>
-            <File>
               <FileName>stm32f1xx_hal_uart.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c</FilePath>
@@ -503,21 +493,6 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>user</GroupName>
-          <Files>
-            <File>
-              <FileName>OLED_Function.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\user\OLED_Function.c</FilePath>
-            </File>
-            <File>
-              <FileName>OLED_IIC_Config.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\user\OLED_IIC_Config.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
           <GroupName>Radio</GroupName>
           <Files>
             <File>
@@ -529,21 +504,6 @@
               <FileName>pan3029_rf.c</FileName>
               <FileType>1</FileType>
               <FilePath>../../Common/RadioF103/src/pan3029_rf.c</FilePath>
-            </File>
-            <File>
-              <FileName>crc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../../Common/RadioF103/src/crc.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>Common</GroupName>
-          <Files>
-            <File>
-              <FileName>common_test.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../../Common/src/common_test.c</FilePath>
             </File>
           </Files>
         </Group>

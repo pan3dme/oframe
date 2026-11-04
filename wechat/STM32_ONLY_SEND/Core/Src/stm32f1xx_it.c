@@ -242,4 +242,16 @@ void USART3_IRQHandler(void)
   /* USER CODE END USART3_IRQn 1 */
 }
 
+/* USER CODE BEGIN 1 */
+
+/**
+  * @brief RTC 闹钟中断：STOP 深度休眠的唤醒源（EXTI line 17）
+  */
+void RTC_Alarm_IRQHandler(void)
+{
+  if (RTC->CRL & RTC_CRL_ALRF)
+    RTC->CRL &= (uint16_t)~RTC_CRL_ALRF;  /* 清闹钟标志（写 0） */
+  EXTI->PR = EXTI_PR_PR17;                /* 清 EXTI 挂起 */
+}
+
 /* USER CODE END 1 */
