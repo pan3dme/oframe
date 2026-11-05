@@ -207,12 +207,6 @@ static GpsFix_t     gpsFix;
 static uint8_t      gpsFixValid = 0;   /* 最近一帧 GGA 是否有效定位 */
 static uint32_t     gpsRxCount = 0;    /* 收到的字节数（诊断用） */
 static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时刻（HAL_GetTick） */
-static uint8_t      gpsWakeEn  = 1;    /* GPS 唤醒使能（1=允许 Full on, 0=保持 Standby）
-                                        * 由云端 sendmode 指令控制：
-                                        *   sendmode 0 → 置 0：PB1 拉低，模块休眠，
-                                        *                之后即使触发 UPGPS 也不再唤醒
-                                        *   sendmode 1 → 置 1：PB1 拉高，恢复正常搜星
-                                        * @note 掉电不保存，上电默认 1（正常工作） */
 static uint8_t      gpsPrintEn = 0;    /* GPS 打印总开关（1=打印, 0=静默）
                                         * 默认 0：正常启动/运行不打任何 GPS 日志；
                                         * 收到 upgps 后临时置 1，处理完自动恢复原值；
@@ -263,7 +257,8 @@ static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
 static void sendCenterMessage(void);
 static void sendReadInfoMessage(void);  /* 设备信息上报 8|设备|设备数量|发射功率|保留| */
-static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType);
+static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
+                                   uint32_t searchSec, uint32_t rxBytes);
 static uint8_t gpsSearchAndReport(uint8_t useGpsType);
 static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType);
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs);
@@ -279,6 +274,7 @@ static uint32_t getSlotOffsetSec(void);
 static void calcNextTxTime(void);
 static void MX_USART3_UART_Init(void);
 static void gpsTask(void);
+static void gpsTrySyncFromSat(void);        /* 卫星授时兜底（本机未对时时用一次） */
 static void parseNmeaLine(char *line);
 static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen);
 static int32_t nmeaToDeg(const char *v, char dir);
@@ -703,7 +699,8 @@ static void sendCenterMessage(void)
  *         搜星失败时也必须发帧，第 3 段填 "0.0,0.0"，
  *         保证云端 split('|') 拿到的段数固定，可直接判定为"无坐标"
  */
-static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType)
+static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
+                                   uint32_t searchSec, uint32_t rxBytes)
 {
   char tx_msg[TX_LEN];
   uint32_t tx_time = 1000;
@@ -715,12 +712,18 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType)
     /* 小数后 5 位：精度约 1.1m，够用且帧长更短 */
     deg1e5ToStr(gpsFix.lat, latBuf);
     deg1e5ToStr(gpsFix.lng, lngBuf);
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|",
+    /* 有定位: 类型|设备名|lat,lng|搜星秒数|计数| */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|%lu|",
              msgType, deviceName, latBuf, lngBuf,
-             (unsigned long)tx_count);
+             (unsigned long)searchSec, (unsigned long)tx_count);
   } else {
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
-             msgType, deviceName, "0.0,0.0", (unsigned long)tx_count);
+    /* 无定位: 类型|设备名|0.0,0.0|串口字节数|计数|
+     * @note  第 4 段=本轮搜星期间 GPS 模块吐到 MCU 的字节数（纯数字），
+     *        用于诊断"模块没输出"(0 或极小)还是"有输出但没定位"(数值正常)；
+     *        不带中文前缀，避免 GBK/UTF-8 编码差异和额外帧长 */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|0.0,0.0|%lu|%lu|",
+             msgType, deviceName, (unsigned long)rxBytes,
+             (unsigned long)tx_count);
   }
 
   rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
@@ -738,17 +741,21 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType)
  */
 static uint8_t gpsSearchAndReport(uint8_t useGpsType)
 {
-  uint8_t hasFix;
-  uint8_t savedPrint = gpsPrintEn;   /* 用局部变量保存，连续模式下每轮都能独立开关 */
+  uint8_t  hasFix;
+  uint8_t  savedPrint = gpsPrintEn;   /* 用局部变量保存，连续模式下每轮都能独立开关 */
+  uint32_t t0, searchSec;
 
   gpsPrintEn = 1;                    /* 搜星期间打开 GPS 打印 */
+  gpsRxCount = 0;                    /* 本轮字节数从 0 起算（连续模式下每轮独立统计） */
 
   /* 搜星：最短 GPS_WAIT_MIN_MS(给中继留准备时间), 上限 GPS_WAIT_TIMEOUT_MS */
+  t0 = HAL_GetTick();
   hasFix = gpsWaitForFix(GPS_WAIT_MIN_MS, GPS_WAIT_TIMEOUT_MS);
+  searchSec = (HAL_GetTick() - t0 + 999u) / 1000u;   /* 搜星耗时，秒（向上取整） */
   HAL_Delay(1000);
 
-  /* 无论是否定位成功都上报：失败时坐标段填 "0.0,0.0" */
-  sendGpsPositionMessage(hasFix, useGpsType);
+  /* 无论是否定位成功都上报：失败时坐标段填 "0.0,0.0"，参数段填串口字节数 */
+  sendGpsPositionMessage(hasFix, useGpsType, searchSec, gpsRxCount);
 
   /* 打印状态恢复成本轮进来看之前的样子（默认回到静默） */
   gpsPrintEn = savedPrint;
@@ -1605,6 +1612,79 @@ static void gpsTask(void)
 
   /* 未定位时的心跳提示已取消：搜星期间的观察统一由 gpsPrintSearchStatus()
    * 每秒一行状态取代，不再刷"等待定位...已收 xxx 字节" */
+
+  /* 卫星授时兜底：本机还没对时且 GPS 给出可信日期 → 用一次卫星时间 */
+  gpsTrySyncFromSat();
+}
+
+/**
+ * @brief  GPS 日期时间(UTC) → Unix 时间戳（秒）
+ * @note   仅用于 GPS 授时，1970-01-01 起算；年范围限制在 2026~2099 内无需优化
+ */
+static uint32_t gpsUtcToTimestamp(uint16_t year, uint8_t mon, uint8_t day,
+                                  uint8_t hour, uint8_t minute, uint8_t second)
+{
+  uint32_t days = 0;
+  uint16_t y;
+  uint8_t  m;
+
+  for (y = 1970; y < year; y++)
+    days += isLeapYear(y) ? 366u : 365u;
+
+  for (m = 1; m < mon; m++) {
+    days += gpsDaysInMonth[m - 1];
+    if ((m == 2) && isLeapYear(year))
+      days += 1;                    /* 闰年 2 月 +1 天 */
+  }
+  days += (uint32_t)(day - 1);
+
+  return days * 86400u + (uint32_t)hour * 3600u
+         + (uint32_t)minute * 60u + (uint32_t)second;
+}
+
+/**
+ * @brief  GPS 卫星授时兜底（只在"本机从未对时"时用一次）
+ * @note   适用场景：设备上电后一直收不到集中器/云端下发对时（SYN_TIME），
+ *         但这次搜到了星 —— 卫星时间就是可信源，直接拿来对一次时。
+ *         条件（全部满足才授时，任何一条不满足都直接返回）：
+ *           1) timeSynced == 0  —— 本机还没对过时；已对时后永不覆盖
+ *              （服务器/微信端授时优先，卫星授时只是兜底）
+ *           2) gpsFixValid == 1 —— 本次已成功定位（避免拿无定位的乱日期）
+ *           3) year > 2025      —— 日期可信（模块冷启动默认日期是 2000 左右）
+ *         时区：RMC 输出 UTC，+8 小时得北京时间，与 SYN_TIME 时间戳同基准
+ */
+static void gpsTrySyncFromSat(void)
+{
+  uint32_t ts, nowTick;
+
+  if (timeSynced)
+    return;                         /* 已对时：不接收卫星授时 */
+  if (!gpsFixValid)
+    return;                         /* 没定位：日期不可信 */
+  if (gpsFix.year <= 2025)
+    return;                         /* 年份不对：模块日期未同步 */
+  if (gpsFix.month < 1 || gpsFix.month > 12 || gpsFix.day < 1 || gpsFix.day > 31)
+    return;                         /* 日期非法 */
+
+  ts = gpsUtcToTimestamp(gpsFix.year, gpsFix.month, gpsFix.day,
+                         gpsFix.hour, gpsFix.minute, gpsFix.second);
+  ts += 8u * 3600u;                 /* UTC → 北京时间 */
+
+  nowTick = rtc_read_counter();     /* RTC 秒（STOP 期间连续走） */
+
+  /* 与 SYN_TIME 首次对时一致：记录锚点，供后续晶振偏差计算 */
+  anchorRtcSec    = nowTick;
+  anchorTimestamp = ts;
+  syncedTimestamp = ts;
+  syncedRtcSec    = nowTick;
+  timeSynced      = 1;
+
+  printf("[对时] 卫星授时(本机首次): %04u/%02u/%02u %02u:%02u:%02u UTC+8, ts=%lu\r\n",
+         gpsFix.year, gpsFix.month, gpsFix.day,
+         gpsFix.hour, gpsFix.minute, gpsFix.second, (unsigned long)ts);
+
+  /* 对时成功后按真实时间重算下次上报时间（与 SYN_TIME 路径一致） */
+  calcNextTxTime();
 }
 
 /**
@@ -1633,6 +1713,13 @@ static void gpsPrintSearchStatus(uint32_t elapsedMs)
   uint8_t  hh   = gpsFix.hour;
   uint32_t rxTotal = 0;   /* 本轮累计收到的串口字节数 */
   uint32_t rxDelta = 0;   /* 距上次打印新增的字节数（≈ 字节/秒） */
+  char     rtcBuf[24];    /* 系统(RTC)时间：未对时固定显示 1970-01-01 */
+
+  /* RTC 系统时间：统一用 getCurrentTimestamp() 格式化。
+   * 未对时(timeSynced=0)时它返回 RTC 计数（开机秒数），
+   * 从 1970-01-01 00:00:00 起逐秒递增（在走，只是日期无意义）；
+   * 已对时后显示真实北京时间（STOP 休眠期间 RTC 连续走时） */
+  formatTimestamp(getCurrentTimestamp(), rtcBuf, sizeof(rtcBuf));
 
   /* GPS UTC + 8 小时 = 北京时间（跨日 / 跨月 / 跨年简单进位） */
   hh = (uint8_t)(hh + 8);
@@ -1672,22 +1759,20 @@ static void gpsPrintSearchStatus(uint32_t elapsedMs)
 
     deg1e5ToStr(gpsFix.lat, latBuf);
     deg1e5ToStr(gpsFix.lng, lngBuf);
-    printf("✅定位数据:%s,%s✅ 年份>2025:%s GPS可靠:%s 卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)    %04u/%02u/%02u %02u:%02u:%02u.%03u\r\n",
+    printf("✅定位数据:%s,%s✅   年份>2025:%s   GPS可靠:%s   卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)   RTC:%s\r\n",
            latBuf, lngBuf,
            (year > 2025) ? "✅ " : "❌ ",
            gpsFixFresh() ? "✅ " : "❌ ",
            (int)gpsFix.sats,
            (unsigned long)(elapsedMs / 1000),
-           (unsigned long)rxTotal, (unsigned long)rxDelta,
-           year, mon, day, hh, gpsFix.minute, gpsFix.second, gpsFix.msec);
+           (unsigned long)rxTotal, (unsigned long)rxDelta, rtcBuf);
   } else {
-    printf("❌定位数据:--,--❌ 年份>2025:%s GPS可靠:%s 卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)    %04u/%02u/%02u %02u:%02u:%02u.%03u\r\n",
+    printf("❌定位数据:--,--❌   年份>2025:%s   GPS可靠:%s   卫星数量:%d   搜星时间:(%lu秒)   串口数据:%lu字节(+%lu)   RTC:%s\r\n",
            (year > 2025) ? "✅ " : "❌ ",
            gpsFixFresh() ? "✅ " : "❌ ",
            (int)gpsFix.sats,
            (unsigned long)(elapsedMs / 1000),
-           (unsigned long)rxTotal, (unsigned long)rxDelta,
-           year, mon, day, hh, gpsFix.minute, gpsFix.second, gpsFix.msec);
+           (unsigned long)rxTotal, (unsigned long)rxDelta, rtcBuf);
   }
 }
 
@@ -1862,33 +1947,13 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                      (unsigned long)(GPS_WAIT_TIMEOUT_MS / 1000));
           }
         }
-        /* sendmode: 9|v0-0|sendmode|1  →  GPS 工作模式控制（PB15 → 电源开关）
-         *   value=0 : PB15 置高 → GPS 断电（完全关机，最省电）
-         *   value=1 : PB15 置低 → GPS 上电（正常搜星）
-         * @note 由 gpsWakeEn 记住模式：为 0 时后续 UPGPS 也不会上电 */
+        /* sendmode: 9|v0-0|sendmode|1  →  预留：原有 GPS 工作模式控制逻辑已移除
+         * （GPS 电源现在由 PB15 在搜星流程里自动控制）
+         * 保留本分支占位，后续在此追加新功能 */
         else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
-            int mode = atoi(fields[3]); /* atoi 会自动跳过前导空格 */
-
-            /* @note sendmode 只决定"本轮是否启用 GPS 搜星"(gpsWakeEn)，
-             *       PB15 电平要不要真的翻转由 GPS_PWR_CTRL_EN 控制（核对阶段不翻转） */
-            if (mode == 0) {
-              gpsWakeEn = 0;
-#if GPS_PWR_CTRL_EN
-              HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);
-              printf("[指令] sendmode=0 : PB15=高 , GPS 断电(停止搜星)\r\n");
-#else
-              printf("[指令] sendmode=0 : 停用 GPS 搜星(核对阶段: PB15 电平不动)\r\n");
-#endif
-            } else if (mode == 1) {
-              gpsWakeEn = 1;
-#if GPS_PWR_CTRL_EN
-              HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);
-              printf("[指令] sendmode=1 : PB15=低 , GPS 上电(正常搜星)\r\n");
-#else
-              printf("[指令] sendmode=1 : 启用 GPS 搜星(核对阶段: PB15 电平不动)\r\n");
-#endif
-            }
+            /* TODO: 后续功能在此实现 */
+            printf("[指令] sendmode=%d : 预留分支(当前无动作)\r\n", atoi(fields[3]));
           }
         }
         /* devicecount: 9|v0-0|devicecount|30  →  设置分时隙上报的子设备总台数
@@ -2104,14 +2169,13 @@ static void OnMaster(void)
 
   /* 下列两种情况不发定时帧 MSG_TYPE_TIME，把这一轮让给 GPS：
    *   1) 上轮无坐标要重试(gpsNeedRetry)
-   *   2) 当前在 GPS 工作时间段且 GPS 允许唤醒(gpsWakeEn=1)
+   *   2) 当前在 GPS 工作时间段内
    *      —— 本轮改由末尾的 MSG_TYPE_GPS 上报，并在它上报后开接收窗口，
    *         对时与接收下发指令都在那个窗口完成（故本处不再开窗口）
    * @note 本轮已收到 upgps 指令(gpsWaitReport=1)时不跳过：末尾走的是 UP_GPS
-   *       老逻辑（上报后不开窗口），必须靠定时后这个窗口收指令/对时
-   * @note sendmode=0(gpsWakeEn=0) 时 GPS 不工作，照常发定时帧，避免整轮空发 */
+   *       老逻辑（上报后不开窗口），必须靠定时后这个窗口收指令/对时 */
   uint8_t skipTimeFrame =
-      ((gpsNeedRetry || (isInGpsWorkWindow() && gpsWakeEn)) && !gpsWaitReport) ? 1U : 0U;
+      ((gpsNeedRetry || isInGpsWorkWindow()) && !gpsWaitReport) ? 1U : 0U;
 
   if (skipTimeFrame) {
     if (gpsNeedRetry)
@@ -2160,7 +2224,7 @@ static void OnMaster(void)
   {
     uint8_t inGpsWin = isInGpsWorkWindow();
 
-    if (gpsWaitReport || gpsNeedRetry || (inGpsWin && gpsWakeEn)) {
+    if (gpsWaitReport || gpsNeedRetry || inGpsWin) {
       uint8_t firstCmd = gpsWaitReport;        /* upgps 指令触发的第一次 */
       uint8_t useType1 = firstCmd ? 0U : 1U;   /* 0=UP_GPS(5), 1=GPS(1) */
 
@@ -2689,13 +2753,6 @@ static void gpsPowerOn(void)
   gpsRd = gpsWr;      /* 丢弃残留字节（关中断非必需：ISR 只改 gpsWr） */
   gpsLineLen = 0;
   gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数据 */
-
-  /* sendmode=0 时云端要求不搜星：这一轮保持断电 */
-  if (!gpsWakeEn) {
-    HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);   /* 高 = 断电 */
-    printf("[GPS] sendmode=0, 本轮不搜星(保持断电)\r\n");
-    return;
-  }
 
 #if GPS_PWR_CTRL_EN
   HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);   /* 低 = 上电 */
