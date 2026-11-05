@@ -717,7 +717,8 @@ function _parseCacheRecordTime(raw) {
   const ts = new Date(rawTime).getTime()
   if (isNaN(ts)) return null
 
-  return { deviceId, ts, rawTime, type }
+  // lorastr 一并返回：设备列表判断"定位记录坐标是否有效(0,0)"时需要原始数据
+  return { deviceId, ts, rawTime, type, lorastr: infoText }
 }
 
 // ========== 供外部读取：本地蓝牙缓存记录（按设备过滤） ==========

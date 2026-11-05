@@ -339,6 +339,13 @@ page {
   box-shadow: 0 0 8rpx rgba(0, 0, 0, 0.2);
 }
 
+/* 定位记录但坐标无效（0,0）：空心圆点，border-color 由 inline style 动态设置 */
+.item-type-dot-invalid {
+  background: transparent;
+  border: 2rpx solid #999999;
+  box-sizing: border-box;
+}
+
 .item-type-icon {
   font-size: 24rpx;
   margin-left: 6rpx;

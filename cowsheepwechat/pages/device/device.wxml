@@ -27,7 +27,9 @@
       <view class="item-info">
         <view class="item-line-one">
           <text class="item-name-compact" style="color:{{item.nameColor}}">{{item.deviceId}}<text wx:if="{{item.rename}}" class="item-name-alias">（{{item.rename}}）</text><text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text></text>
-          <view wx:if="{{item.lastRecordType === 'gps'}}" class="item-type-dot item-type-dot-gps" style="background:{{item.dotColor}}"></view>
+          <!-- 定位记录：坐标有效=实心圆点；坐标 0,0（定位无效）=空心圆点 -->
+          <view wx:if="{{item.lastRecordType === 'gps' && !item.gpsInvalid}}" class="item-type-dot item-type-dot-gps" style="background:{{item.dotColor}}"></view>
+          <view wx:elif="{{item.lastRecordType === 'gps' && item.gpsInvalid}}" class="item-type-dot item-type-dot-invalid" style="border-color:{{item.dotColor}}"></view>
           <view wx:if="{{item.lastRecordType === 'time'}}" class="item-type-icon-clock" style="color:{{item.timeColor}}"></view>
           <text class="item-time-compact" wx:if="{{item.countdownText}}" style="color:{{item.timeColor}};background:{{item.timeBgColor}}">{{item.countdownText}}</text>
           <text class="item-time-compact" wx:else style="color:#999;background:#f5f5f5">暂无上报</text>

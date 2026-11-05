@@ -353,12 +353,13 @@ function _parseDeviceSyncRecords(data) {
     const upDateDevice = attr.upDateDevice || attr.updatedevice || record.upDateDevice || record.updatedevice || ''
     const rssi = attr.rssi != null ? attr.rssi : (record.rssi != null ? record.rssi : '')
     const snr = attr.snr != null ? attr.snr : (record.snr != null ? record.snr : '')
-    // 电量从 lorastr 中提取（第4段，索引3），如 "2|v3-18|2026/8/10 23:13:33|1.0|4.2|0" 中 1.0
+    // 电量只存在于"对时记录"的 lorastr 第4段（索引3），如 "2|v3-18|2026/8/10 23:13:33|1.0|4.2|0" 中 1.0；
+    // 定位记录（1|/5|）第4段不是电量，必须排除，否则会显示成错误电量
     let battery = ''
     const lorastr = attr.lorastr || record.lorastr || ''
     if (lorastr) {
-      const parts = String(lorastr).split('|')
-      if (parts.length > 3) battery = parts[3]
+      const parts = String(lorastr).split(/[｜|]/)
+      if ((parts[0] || '').trim() === '2' && parts.length > 3) battery = parts[3]
     }
     if (deviceId && rawTime && rawTime !== '-') {
       const existing = map[deviceId]
