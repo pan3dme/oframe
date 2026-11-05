@@ -126,6 +126,11 @@ static uint8_t  gpsNeedRetry = 0;      /* 上一轮搜星失败(已上报 0.0,0.
                                         *   成功拿到坐标后自动清零，恢复定时上报
                                         * @note  RAM 在 deepsleep 期间保持，故跨休眠有效；
                                         *        但真正掉电重启会丢失(回到0)，这是可接受的 */
+/* 提前搜星结果（需要 GPS 的上报轮，唤醒后先搜星再等到点上报，保证时间点不后移） */
+static uint8_t  gpsPreSearched = 0;    /* 1=本轮已提前搜过星，OnMaster 直接取结果上报 */
+static uint8_t  gpsPreFixOk    = 0;    /* 预搜结果：1=拿到有效坐标 */
+static uint32_t gpsPreSec      = 0;    /* 预搜耗时（秒），上报帧第 4 段用 */
+static uint32_t gpsPreBytes    = 0;    /* 预搜期间 GPS 串口字节数，无定位时上报帧第 4 段用 */
 #define TX_COUNT_MAX   999             /* 上报帧计数上限：超过后回绕到 1
                                         * 好处是帧里这一字段恒为 1~3 位数字，
                                         * 帧长稳定，也不用担心 uint32 溢出(约 49 天后) */
@@ -169,6 +174,10 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
  * 连着上报 5 次。搜星耗时更长时，本轮时长自然以搜星耗时为准 */
 #define GPS_CONT_INTERVAL_SEC ((GPS_WAIT_TIMEOUT_MS) / 1000)
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
+/* 需要搜星的上报轮：提前唤醒量 = 搜星上限 + 5 秒（LoRa 初始化倒计时）
+ * 醒来先搜星，搜到就把 GPS 断电再睡到上报点前 5 秒，到点准点发帧；
+ * 搜不到也到点发 "0.0,0.0|串口字节数|"，保证上报时间点不后移 */
+#define GPS_PRESEARCH_LEAD_SEC ((GPS_WAIT_TIMEOUT_MS / 1000) + 5)
 #define GPS_PWR_ON_DELAY_MS  1000  /* PB15 上电后等待模块输出 NMEA 的时间(ms)
                                     * @note 电源冷启动（不用 WAKE_UP 休眠模式），
                                     *       比Standby热唤醒慢，给足 1 秒 */
@@ -282,6 +291,9 @@ static uint8_t gpsFixFresh(void);
 static uint8_t isInWorkWindow(void);      /* 当前是否在工作时间段内(config 第2段) */
 static void    printTimeWindows(const char *tag);   /* 打印当前生效的两个时间段 */
 static uint8_t isInGpsWorkWindow(void);   /* 当前是否在 GPS 工作时间段内(config 第3段) */
+static uint8_t isInGpsWorkWindowAt(uint32_t ts);  /* 指定时刻是否在 GPS 时间段内 */
+static uint8_t gpsNeededTimelyAt(uint32_t ts);    /* 该时刻是否"必须准点"的 GPS 轮(类型1) */
+static void    gpsPreSearch(void);                /* 提前搜星（到点前必须完成） */
 static void    openRxWindow3000(void);    /* 开 3 秒接收窗口并解析（可重复调用） */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 → Full on */
@@ -687,6 +699,29 @@ static void sendCenterMessage(void)
 }
 
 /**
+ * @brief  串口字节数 → 紧凑可读格式（用于无定位时的上报帧第 4 段）
+ * @param  bytes: 本轮搜星期间 GPS 串口收到的字节数
+ * @param  buf:   输出缓冲（≥9 字节：最坏 "999.99M\0" = 8）
+ * @retval 格式：<1024 → "NByte"；<1M → "X.XXK"；≥1M → "X.XXM"
+ * @note   两位小数用整数运算（×100/1024）实现，不引入浮点库；
+ *         长度上限：uint32 最大 4G → "4095.99M" 共 8 字符，buf 12 足够
+ */
+static void fmtRxBytes(uint32_t bytes, char *buf, uint8_t len)
+{
+  if (bytes < 1024u) {
+    snprintf(buf, len, "%luByte", (unsigned long)bytes);
+  } else if (bytes < 1024u * 1024u) {
+    snprintf(buf, len, "%lu.%02luK",
+             (unsigned long)(bytes / 1024u),
+             (unsigned long)((bytes % 1024u) * 100u / 1024u));
+  } else {
+    snprintf(buf, len, "%lu.%02luM",
+             (unsigned long)(bytes / (1024u * 1024u)),
+             (unsigned long)((bytes % (1024u * 1024u)) * 100u / (1024u * 1024u)));
+  }
+}
+
+/**
  * @brief  发送当前 GPS 实时定位坐标帧
  * @param  hasFix: 1=有有效定位（发实测坐标）, 0=搜星失败（发 "0.0,0.0"）
  * @param  useGpsType: 0=MSG_TYPE_UP_GPS(5), 1=MSG_TYPE_GPS(1)
@@ -717,13 +752,15 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
              msgType, deviceName, latBuf, lngBuf,
              (unsigned long)searchSec, (unsigned long)tx_count);
   } else {
+    char bytesBuf[12];
+
     /* 无定位: 类型|设备名|0.0,0.0|串口字节数|计数|
-     * @note  第 4 段=本轮搜星期间 GPS 模块吐到 MCU 的字节数（纯数字），
-     *        用于诊断"模块没输出"(0 或极小)还是"有输出但没定位"(数值正常)；
-     *        不带中文前缀，避免 GBK/UTF-8 编码差异和额外帧长 */
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|0.0,0.0|%lu|%lu|",
-             msgType, deviceName, (unsigned long)rxBytes,
-             (unsigned long)tx_count);
+     * @note  第 4 段=本轮搜星期间 GPS 模块吐到 MCU 的字节数，
+     *        诊断"模块没输出"(0 或极小)还是"有输出但没定位"(数值正常)；
+     *        格式化为紧凑可读形式: 1Byte / 0.32K / 34.22M（两位小数） */
+    fmtRxBytes(rxBytes, bytesBuf, sizeof(bytesBuf));
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|0.0,0.0|%s|%lu|",
+             msgType, deviceName, bytesBuf, (unsigned long)tx_count);
   }
 
   rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
@@ -763,6 +800,59 @@ static uint8_t gpsSearchAndReport(uint8_t useGpsType)
          hasFix ? "(已定位)" : "(未定位)", gpsPrintEn ? "ON" : "OFF");
 
   return hasFix;
+}
+
+/**
+ * @brief  提前搜星（需要 GPS 的上报轮：唤醒后先搜，到点只发帧）
+ * @note   1) 搜星窗口 = 现在 → (nextTxTimestamp - 5 秒)，必须留 5 秒给 LoRa 发送；
+ *         2) 窗口不足 GPS_WAIT_MIN_MS(10 秒) 时直接跳过：标记"已完成、无坐标"，
+ *            到点发 "0.0,0.0|串口字节数|"，绝不让上报时间点后移；
+ *         3) 窗口够但小于搜星上限时以窗口为准
+ *            （例如上报周期 1 分钟 < 4 分钟搜星上限，只能在 1 分钟内尽力搜）；
+ *         4) 搜完立即断电，结果暂存 gpsPreXxx，OnMaster 到点直接上报，不再现场搜星
+ */
+static void gpsPreSearch(void)
+{
+  uint32_t nowTs    = getCurrentTimestamp();
+  uint32_t deadline = (nextTxTimestamp > 5u) ? (nextTxTimestamp - 5u) : nowTs;
+  uint32_t availMs  = (deadline > nowTs) ? ((deadline - nowTs) * 1000u) : 0u;
+  uint32_t maxMs, minMs, t0;
+  uint8_t  hasFix, savedPrint;
+
+  gpsPreSearched = 1;      /* 无论搜不搜，都标记本轮预搜已处理 */
+  gpsPreFixOk    = 0;
+  gpsPreSec      = 0;
+  gpsPreBytes    = 0;
+
+  if (availMs < GPS_WAIT_MIN_MS) {
+    printf("[GPS] 预搜窗口仅 %lu 秒(<最短 %lu 秒), 跳过搜星, 到点直接上报 0.0,0.0\r\n",
+           (unsigned long)(availMs / 1000u),
+           (unsigned long)(GPS_WAIT_MIN_MS / 1000u));
+    return;
+  }
+
+  maxMs = (availMs > GPS_WAIT_TIMEOUT_MS) ? GPS_WAIT_TIMEOUT_MS : availMs;
+  minMs = (maxMs > GPS_WAIT_MIN_MS) ? GPS_WAIT_MIN_MS : maxMs;
+
+  printf("[GPS] 提前搜星: 窗口 %lu 秒(上限 %lu 秒), 到点前 5 秒截止\r\n",
+         (unsigned long)(availMs / 1000u), (unsigned long)(maxMs / 1000u));
+
+  savedPrint = gpsPrintEn;
+  gpsPrintEn = 1;          /* 搜星期间打开 GPS 打印 */
+  gpsRxCount = 0;
+
+  gpsPowerOn();
+  t0 = HAL_GetTick();
+  hasFix = gpsWaitForFix(minMs, maxMs);
+  gpsPreSec   = (HAL_GetTick() - t0 + 999u) / 1000u;
+  gpsPreBytes = gpsRxCount;
+  gpsPowerOff();           /* 搜完立即断电，等上报点时再发帧 */
+
+  gpsPrintEn = savedPrint;
+  gpsPreFixOk = hasFix;
+  printf("[GPS] 预搜完成: %s, 耗时 %lu 秒, 串口 %lu 字节\r\n",
+         hasFix ? "(已定位, 到点直接上报缓存坐标)" : "(未定位, 到点上报 0.0,0.0)",
+         (unsigned long)gpsPreSec, (unsigned long)gpsPreBytes);
 }
 
 /**
@@ -1013,6 +1103,17 @@ static int16_t getConfigGpsEndIdx(void)
   */
 static uint8_t isInGpsWorkWindow(void)
 {
+  return isInGpsWorkWindowAt(getCurrentTimestamp());
+}
+
+/**
+ * @brief  指定时刻是否处于 GPS 工作时间段（configStr 第 3 段）
+ * @param  ts: Unix 时间戳（秒）；用于提前判断"下次上报时刻"是否要搜星
+ * @retval 1=在时间段内, 0=不在 / 未对时 / 字段非法
+ * @note   未对时时返回 0（时间基准是开机秒数，判断无意义）
+ */
+static uint8_t isInGpsWorkWindowAt(uint32_t ts)
+{
   uint8_t  s, e;
   uint32_t hour;
 
@@ -1023,8 +1124,28 @@ static uint8_t isInGpsWorkWindow(void)
   if (e == TIME_HOUR_END)
     e = 24;                          /* 23 表示 24:00 */
 
-  hour = getTodaySecond() / 3600u;
+  hour = (ts % 86400u) / 3600u;
   return ((hour >= s) && (hour < e)) ? 1U : 0U;
+}
+
+/**
+ * @brief  指定上报时刻是否是"必须准点"的 GPS 轮（类型 1）
+ * @param  ts: 下次上报的 Unix 时间戳
+ * @retval 1=准点 GPS 轮（上轮失败重试 / 该时刻在 GPS 时间段内）
+ * @note   两类 GPS 轮的定位不同：
+ *         1) 类型 1（本函数返回 1）：定时上报，**必须准点** —— 提前搜星，
+ *            到点无论有无坐标都发帧，时间点绝不允许后移；
+ *         2) 类型 5（gpsWaitReport，upgps 指令触发）：**不受时间约束** ——
+ *            醒后现场搜星，搜多久算多久，上报时间可以后移到搜星结束，
+ *            所以不参与提前量计算（返回 0）
+ */
+static uint8_t gpsNeededTimelyAt(uint32_t ts)
+{
+  if (gpsWaitReport)
+    return 0;                        /* 类型5：upgps 不受约束，现场搜 */
+  if (gpsNeedRetry)
+    return 1;                        /* 类型1：上轮失败，本轮准点重试 */
+  return isInGpsWorkWindowAt(ts);
 }
 
 /**
@@ -2235,10 +2356,39 @@ static void OnMaster(void)
       else
         printf("[GPS] 用 MSG_TYPE_GPS(1) 上报, 上报后开 3 秒接收窗口\r\n");
 
-      {
+      /* 类型5(upgps) 不受时间约束：一律现场搜星，搜完再发（时间可后移）。
+       * 万一有残留的预搜标志（例如上一轮被指令打断），在这里清掉，避免误用 */
+      if (firstCmd && gpsPreSearched) {
+        gpsPreSearched = 0;
+        gpsPreFixOk    = 0;
+        printf("[GPS] 类型5 不受时间约束: 忽略残留预搜结果, 现场搜星后上报\r\n");
+      }
+
+      if (gpsPreSearched) {
+        /* 【提前搜星】本轮在唤醒时已预先搜完（搜到 或 窗口不足被跳过）：
+         * 直接取结果上报，绝不再现场搜星 —— 上报时间点因此不会后移。
+         * 预搜成功后 GPS 已断电，坐标暂存在 gpsFix 里（gpsPowerOff 不清坐标） */
+        uint8_t preOk = gpsPreFixOk;
+
+        /* 中文值不要写进三元表达式：ARMCC5 按 GBK 解析会吞掉引号 */
+        if (preOk)
+          printf("[GPS] 使用预搜结果上报: 已定位(耗时 %lu 秒)\r\n",
+                 (unsigned long)gpsPreSec);
+        else
+          printf("[GPS] 使用预搜结果上报: 未定位(耗时 %lu 秒)\r\n",
+                 (unsigned long)gpsPreSec);
+
+        sendGpsPositionMessage(preOk, useType1, gpsPreSec, gpsPreBytes);
+        gpsNeedRetry = preOk ? 0U : 1U;
+
+        gpsPreSearched = 0;
+        gpsPreFixOk    = 0;
+        gpsPowerOff();   /* 确保断电（预搜里已断电，重复调用安全） */
+      } else {
         uint8_t hasFix;
 
-        /* 这一轮要用 GPS：PB1(WAKE_UP) 置高唤醒模块，用完立刻置低回 Standby
+        /* 兜底路径（未走预搜，如运行中被现场触发）：
+         * 这一轮要用 GPS：PB15 置低上电，用完立刻置高断电
          * @note 一律重新搜星，不发缓存坐标：
          *       缓存里的坐标可能是很久之前某一轮拿到的，不能代表当前位置，
          *       所以即使 gpsFixFresh() 为真也要重新搜一遍再上报 */
@@ -2257,8 +2407,8 @@ static void OnMaster(void)
           gpsNeedRetry = hasFix ? 0U : 1U;
         }
 
-        /* GPS 用完：PB1 置低进 Standby
-         * （连续定位模式是整段结束才休眠，避免每 3 分钟一轮反复唤醒/休眠） */
+        /* GPS 用完：PB15 置高断电
+         * （连续定位模式是整段结束才断电，避免反复上电/断电） */
         gpsPowerOff();
       }
 
@@ -2370,8 +2520,33 @@ int main(void)
         OnMaster();  /* 内部会处理发送、接收窗口、以及发送后的休眠判断 */
       }
     } else {
-      /* LoRa 未初始化（首次启动 或 从 deepsleep 唤醒） */
-      uint32_t wakeTime = (nextTxTimestamp > 5) ? (nextTxTimestamp - 5) : 0;
+      /* LoRa 未初始化（首次启动 或 从 deepsleep 唤醒）
+       * 唤醒时刻按"本轮是否必须准点的 GPS 轮"决定：
+       *   类型1(GPS时段/重试) → 提前搜星，到点准点发帧（提前量见下）
+       *   类型5(upgps 指令)   → 提前 5 秒醒，醒后现场搜星，上报时间可后移
+       *   普通定时帧          → 提前 5 秒醒（LoRa 初始化倒计时）
+       *
+       * 提前量 = min(搜星上限+5, 周期-5)：
+       *   正式上线周期(30~60 分钟) > 搜星上限，取 245 秒，搜星时间充足；
+       *   若周期被设得很小(如 1 分钟 < 4 分钟搜星上限)，压缩为"周期-5 秒"，
+       *   保证提前量不跨进上一轮，绝不会把这个上报点挤掉；
+       *   压缩后窗口不足 GPS_WAIT_MIN_MS(10 秒) 时 gpsPreSearch() 会跳过搜星，
+       *   到点照发 "0.0,0.0|字节数|" —— 准点优先，绝不后移 */
+      uint8_t  timelyGps   = gpsNeededTimelyAt(nextTxTimestamp);
+      uint8_t  doPreSearch = (timelyGps && !gpsPreSearched && !gpsContTotalMin) ? 1U : 0U;
+      uint32_t leadSec     = 5u;
+      uint32_t wakeTime;
+
+      if (timelyGps) {
+        uint32_t intervalSec = getConfigIntervalSec();
+        uint32_t maxLead = (intervalSec > 10u) ? (intervalSec - 5u) : 5u;
+
+        leadSec = (GPS_PRESEARCH_LEAD_SEC < maxLead) ? GPS_PRESEARCH_LEAD_SEC : maxLead;
+        if (leadSec < 5u)
+          leadSec = 5u;
+      }
+      wakeTime = (nextTxTimestamp > leadSec) ? (nextTxTimestamp - leadSec) : 0u;
+
       if (nowTs >= wakeTime) {
         /* STOP 醒来时钟回落 HSI 8MHz，先恢复 72MHz（SysTick 随之恢复） */
         SystemClock_Config();
@@ -2386,14 +2561,42 @@ int main(void)
           printf("[WAKE] %s  %d\r\n", time_str, i);
           HAL_Delay(1000);
         }
-      } else if (!gpsWaitReport && !gpsNeedRetry && !gpsContTotalMin) {
-        /* 等待期：GPS 无待办时 MCU 进 STOP 深度休眠，
-         * RTC 闹钟在 wakeTime（上报前 5 秒）唤醒；RAM 内容保持。
+
+        /* 需要 GPS：醒后立刻预搜（搜星窗口到"上报点前 5 秒"截止），
+         * 保证到点无论有无坐标都能准时发帧 */
+        if (doPreSearch) {
+          if (leadSec < GPS_PRESEARCH_LEAD_SEC)
+            printf("[GPS] 上报周期小于搜星上限: 提前量压缩为 %lu 秒, 尽力搜星(到点必发)\r\n",
+                   (unsigned long)leadSec);
+
+          gpsPreSearch();
+
+          {
+            uint32_t now2  = getCurrentTimestamp();
+            uint32_t wake2 = (nextTxTimestamp > 5u) ? (nextTxTimestamp - 5u) : now2;
+
+            if (wake2 > now2 + 5u) {
+              /* 距离上报点还有 >5 秒：GPS 已断电，进 STOP 睡到点前 5 秒。
+               * 醒来只需初始化 LoRa + 倒计时，到点直接发预搜结果（最省电） */
+              printf("[调度] 预搜完成, 距上报还有 %lu 秒, 再休眠到点前 5 秒\r\n",
+                     (unsigned long)(wake2 - now2));
+              rf_deepsleep();
+              loraInitialized = 0;
+              enterStopUntil(wake2);
+            }
+          }
+        }
+      } else if (!gpsContTotalMin && !gpsPreSearched) {
+        /* 等待期：MCU 进 STOP 深度休眠，RTC 闹钟在 wakeTime 唤醒；RAM 内容保持。
+         * 说明：
+         *   - 类型5(upgps) 允许睡到"上报点前 5 秒"，醒后现场搜星再发（不受约束）
+         *   - 类型1 允许睡到"上报点前 提前量"，醒后先预搜再到点发（准点）
+         *   所以 GPS 待办不再需要空转等满一个周期（省电）
          * 双保险：确认 LoRa 已深度休眠（OnMaster 末尾已调过，重复调用安全） */
         rf_deepsleep();
         enterStopUntil(wakeTime);
       }
-      /* GPS 待办时保持活跃空转，由 HAL_Delay(100) 节流 */
+      /* 连续定位模式(gpsContTotalMin)保持活跃空转，由 HAL_Delay(100) 节流 */
     }
 
     /* GPS: 取出环形缓冲里的 NMEA 语句并打印/解析 */
