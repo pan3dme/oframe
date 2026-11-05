@@ -8,8 +8,7 @@
   *                 1. TX 模式：每隔一段时间上报一帧 MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
                        （固定发时间帧；GPS 坐标由 upgps 指令单独触发上报）
   *                 2. 发送后开启 3 秒 RX 窗口，解析对时消息（MSG_TYPE_SYN_TIME）
-  *                 3. LED1 指示：发送/接收时闪烁
-  *                 4. 调试输出：通过 USART1 输出系统状态
+  *                 3. 调试输出：通过 USART1 输出系统状态
   ******************************************************************************
   * @attention
   *
@@ -170,16 +169,16 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
  * 连着上报 5 次。搜星耗时更长时，本轮时长自然以搜星耗时为准 */
 #define GPS_CONT_INTERVAL_SEC ((GPS_WAIT_TIMEOUT_MS) / 1000)
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
-#define GPS_PWR_ON_DELAY_MS  500   /* PB1 唤醒后等待模块回到 Full on 的时间(ms)
-                                    * @note Standby 只关内核/RF，RTC 域保持，故恢复很快；
-                                    *       这里只是给模块一点时间重新输出 NMEA */
+#define GPS_PWR_ON_DELAY_MS  1000  /* PB15 上电后等待模块输出 NMEA 的时间(ms)
+                                    * @note 电源冷启动（不用 WAKE_UP 休眠模式），
+                                    *       比Standby热唤醒慢，给足 1 秒 */
 
-/* PB1(WAKE_UP) 电平控制总开关: 1=由 MCU 翻转电平, 0=暂不动电平（核对阶段）
+/* GPS 电源控制总开关 (PB15): 1=由 MCU 控制电源通断, 0=不动电平（核对阶段）
  * 置 1 时的行为（当前生效）:
- *   - 上电 PB1 默认拉低 → GPS 模块 Standby（停止搜星，仅几十 µA）
- *   - 搜星前 gpsPowerOn() 置高 → Full on，搜完 gpsPowerOff() 置低回 Standby
- *   - 深度休眠等待期模块始终处于 Standby，不耗搜星电流
- * 置 0 时为核对模式：PB1 高阻输入、不翻转，模块状态由外部电平决定
+ *   - 上电 PB15 默认高 → GPS 断电（完全关机，0 电流）
+ *   - 搜星前 gpsPowerOn() 置低 → 上电开机，搜完 gpsPowerOff() 置高 → 断电
+ *   - 深度休眠等待期模块始终断电，不耗任何电流
+ * 置 0 时为核对模式：PB15 高阻、不翻转，模块状态由外部电源决定
  */
 #define GPS_PWR_CTRL_EN  1
 
@@ -247,7 +246,6 @@ static void reportPendingMessages(void);   /* 回发待上报的配置/中心坐
 static void OnMaster(void);
 static void parse_rx_message(uint8_t *buf, uint8_t len);
 static uint8_t cmdIsForMe(char *fields[]);   /* 指令目标校验(统一跳过打印) */
-static void LedToggle(void);
 static void loadDeviceNameFromFlash(void);
 static void saveDeviceNameToFlash(const char *name);
 static void loadConfigFromFlash(void);
@@ -638,15 +636,11 @@ static void loraInitFirstTime(void)
    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
             MSG_TYPE_CONFIG, deviceName, configStr, (unsigned long)tx_count);
 
-  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-  }
-
+  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
     ;
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
-  LedToggle();
   printf("[配置] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
@@ -665,15 +659,11 @@ static void sendReadInfoMessage(void)
            MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
            (int)currentTxPower, (unsigned long)tx_count);
 
-  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-  }
-
+  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
     ;
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
-  LedToggle();
   printf("[设备信息] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
@@ -692,15 +682,11 @@ static void sendCenterMessage(void)
   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
            MSG_TYPE_GPS, deviceName, coord, (unsigned long)tx_count);
 
-  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-  }
-
+  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
     ;
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
-  LedToggle();
   printf("[中心坐标] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
@@ -737,15 +723,11 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType)
              msgType, deviceName, "0.0,0.0", (unsigned long)tx_count);
   }
 
-  if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-  }
-
+  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
     ;
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
-  LedToggle();
   printf("[定位上报] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
@@ -1139,22 +1121,75 @@ static void rtc_wait_rtoff(void)
     ;
 }
 
-/* 读 32 位秒计数（先读高 16 位，硬件锁存低 16 位） */
+/* 等 APB1 与 RTC 接口重新同步（RSF 置位）
+ * @note  系统复位或 STOP 唤醒后必须先等 RSF，否则读 RTC 计数得到 0！ */
+static void rtc_wait_rsf(void)
+{
+  uint32_t guard = 200000;
+  while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
+    ;
+}
+
+/* 读 32 位秒计数（先读高 16 位，硬件锁存低 16 位）
+ * @note  STOP 唤醒后 RTC 接口需要 2 个 RTC 时钟重新同步，
+ *        必须软件清 RSF 再等硬件重新置位，否则读到休眠前的影子值！ */
 static uint32_t rtc_read_counter(void)
 {
+  rtc_wait_rtoff();
+  RTC->CRL &= (uint16_t)~RTC_CRL_RSF;   /* 清同步标志，强制重新同步 */
+  (void)RTC->CRL;
+  rtc_wait_rsf();
   return ((uint32_t)RTC->CNTH << 16) | (uint32_t)RTC->CNTL;
 }
 
-/* 设置闹钟（绝对 RTC 秒）并使能闹钟中断 */
+/* 清 RTC 标志（ALRF/SECF）
+ * @note  RM0008 要求：写 0 清标志后必须紧跟一次读操作，
+ *        且写前必须等 RTOFF=1（实测缺失尾读会导致 ALRF 后续无法置位） */
+static void rtc_clear_alarm_flag(void)
+{
+  rtc_wait_rtoff();
+  RTC->CRL &= (uint16_t)~(RTC_CRL_ALRF | RTC_CRL_SECF);
+  (void)RTC->CRL;
+}
+
+/* 设置闹钟（绝对 RTC 秒）
+ * @note  20+ 轮硬件实测结论（本芯片批次）：
+ *        1) ALRIE=1 会抑制 ALRF 置位与 EXTI17 事件，ALRIE 必须保持 0！
+ *           （ALRIE=0 时 ALRF 置位本身就能产生 EXTI17 事件）
+ *        2) 清标志必须"等 RTOFF → 写 0 → 尾读"，见 rtc_clear_alarm_flag
+ *        3) STOP 唤醒不用 WFI+NVIC（实测不醒），用 WFE+EXTI17 事件，见
+ *           enterStopUntil */
 static void rtc_set_alarm(uint32_t alarmSec)
 {
   rtc_wait_rtoff();
   RTC->CRL |= RTC_CRL_CNF;              /* 进入配置模式 */
   RTC->ALRH = (uint16_t)(alarmSec >> 16);
   RTC->ALRL = (uint16_t)(alarmSec & 0xFFFFU);
-  RTC->CRH |= RTC_CRH_ALRIE;
   RTC->CRL &= (uint16_t)~RTC_CRL_CNF;   /* 退出配置模式 */
+  (void)RTC->CRL;                       /* 尾读 */
   rtc_wait_rtoff();
+  RTC->CRH &= (uint16_t)~RTC_CRH_ALRIE; /* 确保 ALRIE=0（见函数头注释） */
+}
+
+/* 确保所选 RTC 时钟源正在运行：
+ * RTCSEL 在备份域（掉电保持），但 LSI 使能位在主电源域、每次上电=0！
+ * 若备份域已选 LSI 而本不上电没重开 LSI，RTC 将无时钟、计数恒 0 */
+static void rtc_ensure_clock_running(void)
+{
+  uint32_t guard;
+  uint32_t sel = RCC->BDCR & RCC_BDCR_RTCSEL;
+
+  if (sel == RCC_BDCR_RTCSEL_LSI) {
+    RCC->CSR |= RCC_CSR_LSION;
+    guard = 200000;
+    while (!(RCC->CSR & RCC_CSR_LSIRDY) && --guard)
+      ;
+  } else if (sel == RCC_BDCR_RTCSEL_LSE) {
+    RCC->BDCR |= RCC_BDCR_LSEON;        /* 备份域本应保留，保险重开 */
+    guard = 8000000;
+    while (!(RCC->BDCR & RCC_BDCR_LSERDY) && --guard)
+      ;
+  }
 }
 
 /* RTC 初始化：备份域 + 时钟源 + 预分频 + 闹钟中断
@@ -1168,9 +1203,12 @@ static void rtc_init(void)
   SET_BIT(PWR->CR, PWR_CR_DBP);         /* 解锁备份域写保护 */
 
   if ((RCC->BDCR & RCC_BDCR_RTCSEL) == 0) {
-    /* 备份域未配置：选时钟源并初始化 */
+    /* 备份域未配置：选时钟源并初始化
+     * @note  等待窗口必须足够长（32.768k 晶振起振可到数秒），
+     *        太短会把正常晶振误判失败而退到 LSI，且 RTCSEL 写进备份域后
+     *        不复位备份域就改不回来 */
     RCC->BDCR |= RCC_BDCR_LSEON;
-    guard = 3000000;
+    guard = 120000000;                   /* 72MHz 下约 4~8 秒 */
     while (!(RCC->BDCR & RCC_BDCR_LSERDY) && --guard)
       ;
 
@@ -1198,32 +1236,60 @@ static void rtc_init(void)
     rtc_wait_rtoff();
   }
 
+  /* 无条件确保所选时钟源在跑（主电源域的 LSI 每次上电都要重开） */
+  rtc_ensure_clock_running();
+
   /* APB1 复位后等 RTC 与 APB 同步完成 */
   guard = 200000;
   while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
     ;
 
-  /* 闹钟中断：EXTI line 17 上升沿 → STOP 唤醒 */
+  /* RTC 闹钟 → EXTI line 17 事件：STOP 的唤醒源
+   * @note  用 WFE 事件模式（EMR）而非中断模式（IMR+NVIC）：
+   *        实测本芯片 STOP 下 WFI+NVIC 唤醒不工作，WFE 事件唤醒正常；
+   *        ALRIE 保持 0（=1 会抑制 ALRF/事件，见 rtc_set_alarm 注释） */
   EXTI->PR  = EXTI_PR_PR17;             /* 清挂起 */
-  EXTI->IMR |= EXTI_IMR_MR17;
-  EXTI->RTSR |= EXTI_RTSR_TR17;
-  RTC->CRH |= RTC_CRH_ALRIE;
-
-  HAL_NVIC_SetPriority(RTC_Alarm_IRQn, 2, 0);
-  HAL_NVIC_EnableIRQ(RTC_Alarm_IRQn);
+  EXTI->RTSR |= EXTI_RTSR_TR17;         /* 上升沿 */
+  EXTI->EMR |= EXTI_EMR_MR17;           /* 事件模式：直接唤醒 WFE */
+  EXTI->IMR &= ~EXTI_IMR_MR17;          /* 关中断模式（不走 NVIC） */
+  RTC->CRH &= (uint16_t)~RTC_CRH_ALRIE; /* 确保 ALRIE=0 */
 }
 
-/* 进入 STOP 深度休眠，直到 RTC 计数到达 wakeTs（绝对 RTC 秒）
- * @note  唤醒后时钟回落 HSI 8MHz、SysTick 停走；
+/* 进入 STOP 深度休眠，直到时间到达 wakeTs
+ * @param wakeTs: Unix 时间戳；未对时时是 RTC 计数秒（两者此时同域）
+ * @note  已对时后必须先把 Unix 时间戳换算回 RTC 计数域
+ *        （RTC 计数 ≠ Unix 时间戳，直接比较会把闹钟设到几十年后！）；
+ *        唤醒机制 = WFE + EXTI17 事件（实测本芯片 WFI+NVIC 唤醒不醒）；
+ *        唤醒后时钟回落 HSI 8MHz、SysTick 停走，
  *        由调用方判断到点后 SystemClock_Config() 恢复 */
 static void enterStopUntil(uint32_t wakeTs)
 {
-  uint32_t rtcNow = rtc_read_counter();
-  uint32_t delta = (wakeTs > rtcNow + 1) ? (wakeTs - rtcNow) : 1;
+  uint32_t rtcNow  = rtc_read_counter();
+  uint32_t wakeRtc = wakeTs;
 
-  rtc_set_alarm(rtcNow + delta);
-  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
-  /* 从这里继续 = 被闹钟唤醒 */
+  if (timeSynced)
+    wakeRtc = syncedRtcSec + (wakeTs - syncedTimestamp);
+
+  /* 到点保护：唤醒时刻已过就直接返回，绝不能把闹钟设在过去
+   * （F1 闹钟设在过去要等计数回绕 136 年才触发 = 永久沉睡） */
+  if (wakeRtc <= rtcNow + 1)
+    return;
+
+  {
+    uint32_t delta = wakeRtc - rtcNow;
+
+    rtc_set_alarm(rtcNow + delta);
+  }
+
+  /* WFE 事件唤醒循环：防假唤醒（event 寄存器残留/意外事件），
+   * 每次醒来核对时间，未到点继续睡 */
+  for (;;) {
+    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFE);
+    rtc_clear_alarm_flag();               /* 等 RTOFF → 写 0 → 尾读 */
+    if (rtc_read_counter() >= wakeRtc)
+      break;
+  }
+  /* 从这里继续 = 时间到点 */
 }
 
 /**
@@ -1290,17 +1356,6 @@ static void formatTimestamp(uint32_t ts, char *buf, uint8_t len)
 
   snprintf(buf, len, "%04d-%02d-%02d %02d:%02d:%02d",
            year, month, day, hour, min, sec);
-}
-
-/**
-  * @brief  LED 闪烁一次（亮 50ms → 灭 50ms）
-  */
-static void LedToggle(void)
-{
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-  HAL_Delay(50);
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-  HAL_Delay(50);
 }
 
 /**
@@ -1807,33 +1862,31 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                      (unsigned long)(GPS_WAIT_TIMEOUT_MS / 1000));
           }
         }
-        /* sendmode: 9|v0-0|sendmode|1  →  GPS 工作模式控制（PB1 → WAKE_UP）
-         *   value=0 : PB1 置低 → 模块进 Standby（停止搜星，省电）
-         *   value=1 : PB1 置高 → 模块回 Full on（正常搜星）
-         * @note 由 gpsWakeEn 记住模式：为 0 时后续 UPGPS 也不会唤醒模块 */
+        /* sendmode: 9|v0-0|sendmode|1  →  GPS 工作模式控制（PB15 → 电源开关）
+         *   value=0 : PB15 置高 → GPS 断电（完全关机，最省电）
+         *   value=1 : PB15 置低 → GPS 上电（正常搜星）
+         * @note 由 gpsWakeEn 记住模式：为 0 时后续 UPGPS 也不会上电 */
         else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             int mode = atoi(fields[3]); /* atoi 会自动跳过前导空格 */
 
             /* @note sendmode 只决定"本轮是否启用 GPS 搜星"(gpsWakeEn)，
-             *       PB1 电平要不要真的翻转由 GPS_PWR_CTRL_EN 控制（核对阶段不翻转） */
+             *       PB15 电平要不要真的翻转由 GPS_PWR_CTRL_EN 控制（核对阶段不翻转） */
             if (mode == 0) {
               gpsWakeEn = 0;
 #if GPS_PWR_CTRL_EN
-              HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin,
-                                GPIO_PIN_RESET);   /* 低: Standby */
-              printf("[指令] sendmode=0 : PB1=低 , GPS 进入 Standby(停止搜星)\r\n");
+              HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);
+              printf("[指令] sendmode=0 : PB15=高 , GPS 断电(停止搜星)\r\n");
 #else
-              printf("[指令] sendmode=0 : 停用 GPS 搜星(核对阶段: PB1 电平不动)\r\n");
+              printf("[指令] sendmode=0 : 停用 GPS 搜星(核对阶段: PB15 电平不动)\r\n");
 #endif
             } else if (mode == 1) {
               gpsWakeEn = 1;
 #if GPS_PWR_CTRL_EN
-              HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin,
-                                GPIO_PIN_SET);     /* 高: Full on */
-              printf("[指令] sendmode=1 : PB1=高 , GPS 恢复 Full on(正常搜星)\r\n");
+              HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);
+              printf("[指令] sendmode=1 : PB15=低 , GPS 上电(正常搜星)\r\n");
 #else
-              printf("[指令] sendmode=1 : 启用 GPS 搜星(核对阶段: PB1 电平不动)\r\n");
+              printf("[指令] sendmode=1 : 启用 GPS 搜星(核对阶段: PB15 电平不动)\r\n");
 #endif
             }
           }
@@ -2072,25 +2125,14 @@ static void OnMaster(void)
              MSG_TYPE_TIME, deviceName,
              (unsigned long)today_sec, cachedBatteryPercent, (unsigned long)tx_count);
 
-    /* 发送前 LED 闪 3 次，每次 200ms */
-    for (uint8_t i = 0; i < 3; i++) {
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-      HAL_Delay(100);
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-      HAL_Delay(100);
-    }
-
     /* 发送数据 */
-    if (rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time) != RF_OK) {
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-    }
+    rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
 
     /* 等待发送完成标志 */
     while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
       ;
     rf_set_transmit_flag(RADIO_FLAG_IDLE);
 
-    LedToggle();
     printf("发送成功 -> \"%s\"\r\n", tx_msg);
   }
 
@@ -2402,50 +2444,40 @@ static void MX_USART3_UART_Init(void)
 /**
   * @brief  GPIO 初始化函数
   * @note   配置说明：
-  *         1. LED 指示灯：LED1(PB15)
-  *         2. LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1
-  *         3. LoRa 控制引脚：CSN(PB0), RST(PA1)
-  *         4. LoRa 中断引脚：IRQ(PA2) - 上升沿触发，下拉
+  *         1. LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1
+  *         2. LoRa 控制引脚：CSN(PB0), RST(PA1)
+  *         3. LoRa 中断引脚：IRQ(PA2) - 上升沿触发，下拉
+  *         4. PB15：控制引脚，推挽输出，保持低电平
   */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* USER CODE BEGIN MX_GPIO_Init_1 */
-
-  /* USER CODE END MX_GPIO_Init_1 */
 
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /* LED1 (PB15) 默认灭 */
-  HAL_GPIO_WritePin(GPIOB, LED1_Pin, GPIO_PIN_RESET);
-
-  /* 配置 LED1 引脚 (PB15) */
-  GPIO_InitStruct.Pin = LED1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  /* PB15 = GPS 电源开关：推挽输出，默认高电平 = GPS 断电（已实测验证：
+   * 低=上电模块工作，高=断电关机。开机供电由 gpsPowerOn() 拉低，
+   * 关机由 gpsPowerOff() 拉高） */
+  GPIO_InitStruct.Pin   = GPS_PWR_Pin;
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPS_PWR_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* GNSS 唤醒脚 (PB1 → 模块 WAKE_UP) */
+  /* GNSS 唤醒脚 (PB1 → 模块 WAKE_UP)：
+   * 已弃用休眠模式（改由 PB15 直接控制电源），配为高阻输入不驱动，
+   * 由模块内部上拉决定 → 模块上电即为 Full on */
   GPIO_InitStruct.Pin   = GNSS_WAKE_Pin;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-#if GPS_PWR_CTRL_EN
-  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
-  HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);  /* 默认低 = Standby */
-#else
-  /* 核对阶段：配成高阻输入，MCU 不驱动 WAKE_UP，
-   * 由模块内部上拉/外部电平决定它处于 Full on 还是 Standby */
   GPIO_InitStruct.Mode  = GPIO_MODE_INPUT;
   HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
-#endif
 
   /* LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
   GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
@@ -2646,11 +2678,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 /**
- * @brief  GPS 唤醒：PB1(WAKE_UP) 置高 → 模块回到 Full on，开始搜星
- * @note   1) 置高后等 GPS_PWR_ON_DELAY_MS：模块从 Standby 回到 Full on
- *            需要一点时间才会重新输出 NMEA
- *         2) 清掉休眠期间环形缓冲里可能残留的半截语句，避免解析出错
- *         3) Standby 只停内核/RF，RTC 域保持，故恢复是热启动级（秒级定位）
+ * @brief  GPS 上电：PB15 置低 → 模块开机开始搜星
+ * @note   1) 电源是冷启动（不使用 WAKE_UP 休眠模式），上电到输出 NMEA
+ *            需要 GPS_PWR_ON_DELAY_MS（断电重启比 Standby 唤醒更久）
+ *         2) 清掉环形缓冲里可能残留的半截语句，避免解析出错
+ *         3) 每次上电模块时钟域都是冷的，首次定位时间比热启动长，属正常
  */
 static void gpsPowerOn(void)
 {
@@ -2658,35 +2690,31 @@ static void gpsPowerOn(void)
   gpsLineLen = 0;
   gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数据 */
 
-  /* sendmode=0 时云端要求 GPS 休眠：这一轮不唤醒 */
+  /* sendmode=0 时云端要求不搜星：这一轮保持断电 */
   if (!gpsWakeEn) {
-#if GPS_PWR_CTRL_EN
-    HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
-    printf("[GPS] sendmode=0, 本轮不唤醒(保持 Standby)\r\n");
-#else
-    printf("[GPS] sendmode=0, 本轮不搜星(核对阶段: 不驱动 PB1)\r\n");
-#endif
+    HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);   /* 高 = 断电 */
+    printf("[GPS] sendmode=0, 本轮不搜星(保持断电)\r\n");
     return;
   }
 
 #if GPS_PWR_CTRL_EN
-  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET);  /* 高: Full on */
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);   /* 低 = 上电 */
   HAL_Delay(GPS_PWR_ON_DELAY_MS);
-  printf("[GPS] Wake ON (PB1=高, Full on)\r\n");
+  printf("[GPS] Power ON (PB15=低, 开机搜星)\r\n");
 #else
-  printf("[GPS] 开始搜星(核对阶段: PB1 未驱动, 由外部电平决定模块状态)\r\n");
+  printf("[GPS] 开始搜星(核对阶段: PB15 未驱动, 由外部电源决定模块状态)\r\n");
 #endif
 }
 
 /**
- * @brief  GPS 休眠：PB1(WAKE_UP) 置低 → 模块进入 Standby，停止搜星
- * @note   休眠后旧坐标立即失效：下一轮不能把上次的定位当成有效坐标上报，
+ * @brief  GPS 断电：PB15 置高 → 模块完全关机
+ * @note   断电后旧坐标立即失效：下一轮不能把上次的定位当成有效坐标上报，
  *         否则 GPS_FIX_TTL_MS 内会误判成"已定位"而跳过真正的新一轮搜星
  */
 static void gpsPowerOff(void)
 {
 #if GPS_PWR_CTRL_EN
-  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);  /* 低: Standby */
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);     /* 高 = 断电 */
 #endif
 
   gpsFixValid = 0;
@@ -2694,9 +2722,9 @@ static void gpsPowerOff(void)
   gpsLineLen = 0;
 
 #if GPS_PWR_CTRL_EN
-  printf("[GPS] Wake OFF (PB1=低, Standby)\r\n");
+  printf("[GPS] Power OFF (PB15=高, 断电)\r\n");
 #else
-  printf("[GPS] 本轮搜星结束(核对阶段: PB1 未驱动, 模块状态不变)\r\n");
+  printf("[GPS] 本轮搜星结束(核对阶段: PB15 未驱动, 模块状态不变)\r\n");
 #endif
 }
 

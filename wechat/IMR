@@ -1,0 +1,9 @@
+1143: * @note  系统复位或 STOP 唤醒后必须先等 RSF，否则读 RTC 计数得到 0！ */
+1147:  while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
+1243:  while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
+1247:  EXTI->PR  = EXTI_PR_PR17;             /* 清挂起 */
+1248:  EXTI->IMR |= EXTI_IMR_MR17;
+1249:  EXTI->RTSR |= EXTI_RTSR_TR17;
+1262:static void enterStopUntil(uint32_t wakeTs)
+1280:  HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+2343:        enterStopUntil(wakeTime);

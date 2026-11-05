@@ -245,13 +245,21 @@ void USART3_IRQHandler(void)
 /* USER CODE BEGIN 1 */
 
 /**
-  * @brief RTC 闹钟中断：STOP 深度休眠的唤醒源（EXTI line 17）
+  * @brief RTC 中断（SECIF/ALRF 共用本向量）
+  * @note  当前方案 STOP 唤醒走 WFE+EXTI17 事件（EMR），NVIC 未使能，
+  *        本函数正常不会进入；保留兜底实现（万一 IMR 被打开也不违规写）。
+  *        清 RTC 标志必须等 RTOFF=1，且写后必须跟一次读（RM0008）。
   */
 void RTC_Alarm_IRQHandler(void)
 {
-  if (RTC->CRL & RTC_CRL_ALRF)
-    RTC->CRL &= (uint16_t)~RTC_CRL_ALRF;  /* 清闹钟标志（写 0） */
   EXTI->PR = EXTI_PR_PR17;                /* 清 EXTI 挂起 */
+  if (RTC->CRL & (RTC_CRL_SECF | RTC_CRL_ALRF)) {
+    uint32_t g = 1000;
+    while (!(RTC->CRL & RTC_CRL_RTOFF) && --g)
+      ;
+    RTC->CRL &= (uint16_t)~(RTC_CRL_SECF | RTC_CRL_ALRF);
+    (void)RTC->CRL;
+  }
 }
 
 /* USER CODE END 1 */

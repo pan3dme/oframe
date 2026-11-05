@@ -57,8 +57,6 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define LED1_Pin GPIO_PIN_15
-#define LED1_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 /* --- LoRa (PAN3029) 硬件 SPI1 引脚 --- */
@@ -74,10 +72,16 @@ void Error_Handler(void);
 #define LORA_RST_GPIO_Port GPIOA
 
 /* --- GNSS 唤醒脚 (PB1 → GPS 模块 WAKE_UP) ---
- * 高电平 = Full on（正常工作、搜星）
- * 低电平 = Standby（停止搜星，约 0.3~1mA，RTC 域保持 → 热启动级恢复） */
+ * @note  已弃用休眠模式：模块改由 PB15 直接控制电源通断，
+ *        此脚配为高阻输入不驱动（模块内部上拉决定，上电即 Full on） */
 #define GNSS_WAKE_Pin        GPIO_PIN_1
 #define GNSS_WAKE_GPIO_Port  GPIOB
+
+/* --- GPS 电源开关 (PB15) ---
+ * 低电平 = GPS 上电（开机、搜星）
+ * 高电平 = GPS 断电（完全关机，0 电流） */
+#define GPS_PWR_Pin          GPIO_PIN_15
+#define GPS_PWR_GPIO_Port    GPIOB
 
 /* ONLY_SEND 项目使用低功率 (16 dBm) */
 #define DEFAULT_PWR            16
