@@ -340,8 +340,10 @@ page {
 }
 
 /* 定位记录但坐标无效（0,0）：空心圆点，border-color 由 inline style 动态设置 */
-/* 描边比原来加粗 1px（2rpx ≈ 1px → 4rpx ≈ 2px），空心更醒目 */
+/* 描边加粗到 4rpx(≈2px)，外径比实心点大 2px（14rpx → 18rpx），更醒目 */
 .item-type-dot-invalid {
+  width: 18rpx;
+  height: 18rpx;
   background: transparent;
   border: 4rpx solid #999999;
   box-sizing: border-box;

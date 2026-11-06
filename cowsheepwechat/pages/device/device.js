@@ -218,12 +218,12 @@ Page({
         lastRaw = bleRec.rawTime
         lastLorastr = bleRec.lorastr || ''
         const bleType = bleRec.type
-        lastType = (bleType === '1' || bleType === '5') ? 'gps' : (bleType === '2' ? 'time' : '')
+        lastType = bleType === '1' ? 'gps' : (bleType === '5' ? 'track' : (bleType === '2' ? 'time' : ''))
       }
 
-      // 定位记录坐标有效性：坐标段为 0,0（含 0.0,0.0）视为"定位无效"，
+      // 定位/跟踪记录坐标有效性：坐标段为 0,0（含 0.0,0.0）视为"定位无效"，
       // 列表里该设备的圆点用空心样式区分（直观看出这次定位没拿到坐标）
-      const gpsInvalid = (lastType === 'gps') && this._isInvalidGpsLorastr(lastLorastr)
+      const gpsInvalid = (lastType === 'gps' || lastType === 'track') && this._isInvalidGpsLorastr(lastLorastr)
 
       const hasReport = !isNaN(lastTs)
       let lastDate = '-'
@@ -468,7 +468,8 @@ Page({
     if (!lorastr) return ''
     const segs = String(lorastr).split(/[｜|]/)
     const t = (segs[0] || '').trim()
-    if (t === '1' || t === '5') return 'gps'
+    if (t === '1') return 'gps'
+    if (t === '5') return 'track'   // 跟踪记录：图标用紫色区分
     if (t === '2') return 'time'
     return ''
   },

@@ -135,7 +135,7 @@ static uint32_t gpsPreBytes    = 0;    /* 预搜期间 GPS 串口字节数，无
                                         * 好处是帧里这一字段恒为 1~3 位数字，
                                         * 帧长稳定，也不用担心 uint32 溢出(约 49 天后) */
 
-static uint32_t tx_count = 0;          /* 上报帧计数（所有帧类型共用，每周期自增一次）
+static uint32_t tx_count = 0;          /* 上报帧计数（每发一帧 LoRa +1，见 txCountNext()）
                                         * 放在文件作用域：配置帧/中心坐标帧/定位帧
                                         * 也都要带这个计数，便于云端判重和算丢包 */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
@@ -637,6 +637,17 @@ static void loraInitFirstTime(void)
 }
 
 /**
+ * @brief  上报计数 +1（每发一帧 LoRa 都调一次），1 ~ TX_COUNT_MAX 回绕
+ * @note   必须在组帧(snprintf)之前调用，帧里带的是递增后的值
+ */
+static void txCountNext(void)
+{
+  tx_count++;
+  if (tx_count > TX_COUNT_MAX)
+    tx_count = 1;
+}
+
+/**
   * @brief  发送配置消息（重启后只发一次）
   * @note   格式: MSG_TYPE_CONFIG|deviceName|config_str|计数|
   */
@@ -645,6 +656,7 @@ static void loraInitFirstTime(void)
    char tx_msg[TX_LEN];
    uint32_t tx_time = 1000;
 
+   txCountNext();
    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
             MSG_TYPE_CONFIG, deviceName, configStr, (unsigned long)tx_count);
 
@@ -667,6 +679,7 @@ static void sendReadInfoMessage(void)
   char tx_msg[TX_LEN];
   uint32_t tx_time = 1000;
 
+  txCountNext();
   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%u|%d|%lu|",
            MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
            (int)currentTxPower, (unsigned long)tx_count);
@@ -691,6 +704,7 @@ static void sendCenterMessage(void)
   uint32_t tx_time = 1000;
   const char *coord = (centerStr[0] != '\0') ? centerStr : "0,0";
 
+  txCountNext();
   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
            MSG_TYPE_GPS, deviceName, coord, (unsigned long)tx_count);
 
@@ -744,6 +758,8 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
   char tx_msg[TX_LEN];
   uint32_t tx_time = 1000;
   int      msgType = useGpsType ? MSG_TYPE_GPS : MSG_TYPE_UP_GPS;
+
+  txCountNext();   /* 每发一帧 LoRa 计数 +1（类型 1/5 都算一帧） */
 
   if (hasFix) {
     char latBuf[16], lngBuf[16];
@@ -1001,8 +1017,25 @@ static void calcNextTxTime(void)
 static uint32_t getConfigIntervalSec(void)
 {
   uint32_t min = (uint32_t)atoi(configStr);
-  if (min == 0) min = 1;    /* 最小 1 分钟 */
-  if (min > 60) min = 60;   /* 最大 60 分钟 */
+  static uint8_t warned = 0;   /* 容错钳位只提示一次，避免刷屏 */
+
+  /* 容错保护：上报周期必须在 1~60 分钟（工作时内的上报节奏不允许超过 1 小时）。
+   * A 指令写入端会拒绝超范围值，这里再兜底一层：
+   * Flash 里的历史数据 / 手工改写 / 字段损坏都钳到合法范围 */
+  if (min == 0) {
+    min = 1;                    /* 非数字或 0 → 按 1 分钟执行 */
+    if (!warned) {
+      warned = 1;
+      printf("[配置] 上报周期非法(0 或非数字), 实际按 1 分钟执行\r\n");
+    }
+  } else if (min > 60) {
+    if (!warned) {
+      warned = 1;
+      printf("[配置] 上报周期 %lu 分钟超上限(60), 实际按 60 分钟执行\r\n",
+             (unsigned long)min);
+    }
+    min = 60;
+  }
   return min * 60;
 }
 
@@ -1026,9 +1059,10 @@ static const char TIME_DICT[] =
   * @brief  取 configStr 第 idx 段的原始字符串（到下一个 ',' 为止，idx 从 0 起）
   * @note   时间段字段是 "0M" 这种双字符编码，不能用 atoi（会被截断成 0）
   */
-static void getConfigFieldStr(uint8_t idx, char *out, uint8_t outLen)
+static void getConfigFieldStrFrom(const char *src, uint8_t idx,
+                                  char *out, uint8_t outLen)
 {
-  const char *p   = configStr;
+  const char *p   = src;
   const char *end;
   uint8_t i;
 
@@ -1048,6 +1082,11 @@ static void getConfigFieldStr(uint8_t idx, char *out, uint8_t outLen)
   out[end - p] = '\0';
 }
 
+static void getConfigFieldStr(uint8_t idx, char *out, uint8_t outLen)
+{
+  getConfigFieldStrFrom(configStr, idx, out, outLen);
+}
+
 /**
   * @brief  双字符 → 索引（base62 解码）
   * @retval 0~275；字符不在字典中或长度不足 2 时返回 -1
@@ -1063,6 +1102,25 @@ static int16_t twoCharToIndex(const char *s)
   if (p0 == NULL || p1 == NULL)
     return -1;
   return (int16_t)((p0 - TIME_DICT) * 62 + (p1 - TIME_DICT));
+}
+
+/**
+ * @brief  校验配置里的时间段字段（工作时段 / GPS 时段）是否合法
+ * @param  f: 单个字段字符串（由 getConfigFieldStr 按逗号切出）
+ * @retval 1=合法, 0=非法
+ * @note   合法 = 恰好 2 个字符，且都在 base62 字典内。
+ *         LoRa 空中乱码可能把 "0M" 变成 "0"、"0Mx"、"0?" 之类，
+ *         必须在写入 Flash 前拦下，否则时段判断永远失效还难以排查
+ */
+static uint8_t configTimeFieldValid(const char *f)
+{
+  if (f == NULL)
+    return 0;
+  if (f[0] == '\0' || f[1] == '\0' || f[2] != '\0')
+    return 0;                        /* 空 / 1 位 / 3 位以上 都非法 */
+  if (strchr(TIME_DICT, f[0]) == NULL || strchr(TIME_DICT, f[1]) == NULL)
+    return 0;                        /* 字符不在 base62 字典内 */
+  return 1;
 }
 
 /**
@@ -1503,6 +1561,22 @@ static void formatTimestamp(uint32_t ts, char *buf, uint8_t len)
 }
 
 /**
+ * @brief  Unix 时间戳 → 年份（用于对时有效性校验）
+ * @note   ts=0 → 1970；uint32 最大值约对应 2106 年，循环不会死
+ */
+static uint16_t timestampYear(uint32_t ts)
+{
+  uint32_t days = ts / 86400u;
+  uint16_t year = 1970;
+
+  while (days >= (isLeapYear(year) ? 366u : 365u)) {
+    days -= isLeapYear(year) ? 366u : 365u;
+    year++;
+  }
+  return year;
+}
+
+/**
  * @brief  NMEA 坐标 ddmm.mmmm / dddmm.mmmm → 十进制度 ×1e5
  * @param  v:   原始字段，如 "2629.5800"
  * @param  dir: 'N'/'S'/'E'/'W'，南纬和西经取负
@@ -1800,6 +1874,8 @@ static void gpsTrySyncFromSat(void)
     return;                         /* 没定位：日期不可信 */
   if (gpsFix.year <= 2025)
     return;                         /* 年份不对：模块日期未同步 */
+  if (gpsFix.year > 2032)
+    return;                         /* 年份越界：与对时校验规则一致，视为无效 */
   if (gpsFix.month < 1 || gpsFix.month > 12 || gpsFix.day < 1 || gpsFix.day > 31)
     return;                         /* 日期非法 */
 
@@ -2005,6 +2081,16 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         uint32_t recvTs = (uint32_t)atoi(fields[1]);
         uint32_t nowTick = rtc_read_counter();  /* RTC 秒（STOP 期间连续） */
 
+        /* 无效对时防护：年份必须在 1970~2032 之间，否则视为无效对时信息，
+         * 不同步本机时间（已对时保持原样，未对时继续等有效值）。
+         * 覆盖场景：atoi 解析失败(=0→1970 之前按无效算不上,但 0 明显错)、
+         * 下发错误值、时间戳字段损坏等 */
+        if (recvTs == 0 || timestampYear(recvTs) > 2032u) {
+          printf("[对时] 无效时间戳 ts=%lu(年份越界), 忽略, 本机时间保持不变\r\n",
+                 (unsigned long)recvTs);
+          break;   /* 丢弃这条对时，锚点/晶振偏差都不动 */
+        }
+
         /* 晶振偏差计算（首次对时设为锚点，后续每次对时输出偏差）。
          * 本地间隔用 RTC 秒：STOP 休眠期间 RTC 继续走，测的才是真实钟差 */
         if (timeSynced) {
@@ -2173,9 +2259,21 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         /* A: 9|v3-17|A|10,0M,3t,6  →  更新配置并标记上报 */
         else if (strcmp(fields[2], "A") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
-            /* 合法性检查：上报周期必须在 1~60 分钟之间 */
+            /* 合法性检查 1：时间段字段（第 2/3 段）必须是 2 位 base62 字符
+             * （LoRa 乱码防护：位数不对或字符越界一律拒绝，不写入 Flash） */
+            char wf[8], gf[8];
+
+            getConfigFieldStrFrom(fields[3], 1, wf, sizeof(wf));
+            getConfigFieldStrFrom(fields[3], 2, gf, sizeof(gf));
+
+            /* 合法性检查 2：上报周期必须在 1~60 分钟之间 */
             uint32_t newMin = (uint32_t)atoi(fields[3]);
-            if (newMin >= 1 && newMin <= 60) {
+
+            if (!configTimeFieldValid(wf) || !configTimeFieldValid(gf)) {
+              /* 中文值不写三元表达式（ARMCC5 GBK 吞引号），用 if/else */
+              printf("[指令] A: 时间段字段非法, 应为2位base62, 拒绝\r\n");
+              printf("[指令]   工作时段=\"%s\"  GPS时段=\"%s\"\r\n", wf, gf);
+            } else if (newMin >= 1 && newMin <= 60) {
               strncpy(configStr, fields[3], sizeof(configStr) - 1);
               configStr[sizeof(configStr) - 1] = '\0';
               saveConfigToFlash(configStr);
@@ -2300,11 +2398,6 @@ static void OnMaster(void)
   uint32_t today_sec = getTodaySecond();
   uint32_t tx_time = 1000;
 
-  /* 计数自增并回绕，取值恒为 1 ~ TX_COUNT_MAX(999)，绝不会出现 0 或 1000 */
-  tx_count++;
-  if (tx_count > TX_COUNT_MAX)
-    tx_count = 1;
-
   /* 上轮失败的重试只在"工作时间段内"继续：已离开工作时间段就放弃重试，
    * 否则会出现"跳过定时帧、又不搜星"的空转轮次，设备整轮什么都不上报
    * @note 未对时(timeSynced=0)时两个时段判断都恒为 0，此时**不能**放弃重试：
@@ -2333,6 +2426,7 @@ static void OnMaster(void)
   } else {
     /* 组包：2|v0-0|当天秒数|电量|计数
      * 周期上报固定发时间帧，不管有没有定位 —— 定位由 UPGPS 流程单独触发上报 */
+    txCountNext();   /* 每发一帧 LoRa 计数 +1 */
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%lu|%d|%lu",
              MSG_TYPE_TIME, deviceName,
              (unsigned long)today_sec, cachedBatteryPercent, (unsigned long)tx_count);
