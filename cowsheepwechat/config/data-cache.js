@@ -485,6 +485,8 @@ function _parseDeviceConfigFull(configLorastr) {
 
 // 解析设备配置记录，返回 deviceId → { lorastr, reportInterval, mainPeriodMin, isDormant, powerOnTime, powerWin, gpsWin }
 // 该结构既供 device.js 设备列表使用，也供 dtu-cmd / relay-dtu-cmd 弹框预填使用
+// 同一 deviceId 有多条记录时不再"后写覆盖"（返回顺序不稳定会导致 upgps value 来回跳），
+// 而是固定选择：① 第3段含逗号的真配置格式优先 ② 时间最新的优先
 function _parseDeviceConfigRecords(data) {
   let rawList = []
   if (data && data.data && Array.isArray(data.data)) {
@@ -506,9 +508,22 @@ function _parseDeviceConfigRecords(data) {
     if (!deviceId) return
     const configLorastr = attr.lorastr || record.lorastr || ''
     const parsed = _parseDeviceConfigFull(configLorastr)
-    map[deviceId] = Object.assign({
-      lorastr: configLorastr
-    }, parsed)
+    // 候选记录的两个稳定度指标：
+    //   cfgFormat - lorastr 第3段含逗号才算真配置（如 "30,0M,3t,6"），对时/定位记录不算
+    //   ts        - 记录时间，越新越可信
+    const parts = String(configLorastr).split(/[｜|]/)
+    const cfgFormat = parts.length >= 3 && String(parts[2] || '').indexOf(',') >= 0
+    const ts = _parseTimeToTs(attr.time || record.time || '')
+    const existing = map[deviceId]
+    if (!existing) {
+      map[deviceId] = Object.assign({ lorastr: configLorastr, _cfgFormat: cfgFormat, _ts: ts }, parsed)
+      return
+    }
+    const better = (cfgFormat && !existing._cfgFormat) ||
+      (cfgFormat === existing._cfgFormat && ts > existing._ts)
+    if (better) {
+      map[deviceId] = Object.assign({ lorastr: configLorastr, _cfgFormat: cfgFormat, _ts: ts }, parsed)
+    }
   })
   return map
 }
@@ -784,7 +799,7 @@ function getUpgpsValue(deviceId, callback) {
   if (cached && cached.lorastr) {
     const v = calcUpgpsValue(cached.lorastr)
     if (v > 0) {
-      console.log('[upgps] 设备 ' + deviceId + ' 上报间隔(缓存): ' + v + ' 分钟')
+      console.log('[upgps] 设备 ' + deviceId + ' 上报间隔(缓存): ' + v + ' 分钟, 配置=' + cached.lorastr)
       if (callback) callback(v)
       return
     }
@@ -793,7 +808,7 @@ function getUpgpsValue(deviceId, callback) {
     const map = (data && data.configMap) || {}
     const cfg = map[deviceId]
     const v = calcUpgpsValue((cfg && cfg.lorastr) || '')
-    console.log('[upgps] 设备 ' + deviceId + ' 上报间隔: ' + v + ' 分钟(工作周期/大周期判定)')
+    console.log('[upgps] 设备 ' + deviceId + ' 上报间隔: ' + v + ' 分钟(工作周期/大周期判定), 配置=' + ((cfg && cfg.lorastr) || '无'))
     if (callback) callback(v)
   }, false)
 }

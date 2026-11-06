@@ -61,6 +61,7 @@ Page({
       { id: 'records',  label: '数据列表', color: '#00ACC1', icon: '📋' },
       { id: 'setcoord', label: '中继坐标', color: '#8E24AA', icon: '📌' },
       { id: 'setting',  label: '设备设置', color: '#26A69A', icon: '⚙' },
+      { id: 'battery',  label: '电量走势', color: '#1E88E5', icon: '🔋' },
       { id: 'password', label: '修改密码', color: '#5C6BC0', icon: '🔑' },
       { id: 'logout',   label: '注销登入', color: '#EF5350', icon: '🚪' }
     ]

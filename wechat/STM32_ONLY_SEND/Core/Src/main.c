@@ -139,6 +139,10 @@ static uint32_t tx_count = 0;          /* 上报帧计数（所有帧类型共�
                                         * 放在文件作用域：配置帧/中心坐标帧/定位帧
                                         * 也都要带这个计数，便于云端判重和算丢包 */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
+/* 开机前 5 轮快速上报配额：配置周期 > 5 分钟时，前 5 轮先用 5 分钟
+ * （让设备尽快对时、收配置、进入正常时隙节奏），5 轮后恢复配置周期。
+ * 每完成一轮 OnMaster 递减一次；掉电重启重新计 5 轮 */
+static uint8_t  fastStartRounds = 5;
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  deviceCount    = 30;  /* 分时隙上报的子设备总台数（默认 30，可由
                                        * devicecount 指令下发并持久化到 Flash） */
@@ -279,7 +283,7 @@ static uint8_t timeIdxToRange(int16_t idx, uint8_t *startHour, uint8_t *endHour)
 static int16_t getConfigWorkStartIdx(void);      /* 工作时间段(第2段 "0M") */
 static int16_t getConfigGpsEndIdx(void);         /* GPS 上报时间段(第3段 "3t") */
 static uint8_t  getDeviceIndex(void);
-static uint32_t getSlotOffsetSec(void);
+static uint32_t getSlotOffsetSec(uint32_t intervalSec);
 static void calcNextTxTime(void);
 static void MX_USART3_UART_Init(void);
 static void gpsTask(void);
@@ -936,10 +940,19 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
 static void calcNextTxTime(void)
 {
   uint32_t intervalSec = getConfigIntervalSec();
+  uint8_t  fastMode = 0;
+
+  /* 开机前 5 轮快速上报：配置周期 > 5 分钟时先压到 5 分钟，
+   * 让设备尽快完成对时 / 收配置 / 进入正常时隙节奏；5 轮后恢复配置周期。
+   * @note  时隙偏移也必须按压缩后的周期算，否则各设备的错峰位置会乱 */
+  if ((fastStartRounds > 0) && (intervalSec > 300u)) {
+    intervalSec = 300u;
+    fastMode = 1;
+  }
 
   if (timeSynced) {
     /* 已对时：基于当天 00:00 的时隙调度 */
-    uint32_t slotOffset = getSlotOffsetSec();
+    uint32_t slotOffset = getSlotOffsetSec(intervalSec);
     uint32_t nowSec = getTodaySecond();
     uint32_t currentSlot = nowSec / intervalSec;
     uint32_t nextSlotTime = (currentSlot + 1) * intervalSec + slotOffset;
@@ -974,6 +987,10 @@ static void calcNextTxTime(void)
            (unsigned long)(intervalSec / 60), (unsigned long)(intervalSec % 60),
            (unsigned long)nextTxTimestamp);
   }
+
+  if (fastMode)
+    printf("[调度] 开机快速上报: 前 5 轮用 5 分钟(本机剩余 %u 轮)\r\n",
+           (unsigned)fastStartRounds);
 }
 
 /**
@@ -1221,9 +1238,8 @@ static uint8_t getDeviceIndex(void)
   * @note   序号超出总台数时按 deviceCount 取模绕回，保证偏移仍落在本周期内，
   *         否则 offset 会超过 intervalSec，时隙滑到下一个周期去
   */
-static uint32_t getSlotOffsetSec(void)
+static uint32_t getSlotOffsetSec(uint32_t intervalSec)
 {
-  uint32_t intervalSec = getConfigIntervalSec();
   uint8_t  index = getDeviceIndex();
 
   if (deviceCount == 0)          /* 防御：不会发生（加载/指令都已保证 >=1） */
@@ -2016,8 +2032,16 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         syncedTimestamp = recvTs;
         syncedRtcSec = nowTick;
         timeSynced = 1;
-        printf("[对时] ts=%lu 当天秒=%lu\r\n",
-               (unsigned long)syncedTimestamp, (unsigned long)getTodaySecond());
+
+        {
+          char tsBuf[24];
+
+          /* 本机此刻的时间（含日期），对时完成后立即生效 */
+          formatTimestamp(getCurrentTimestamp(), tsBuf, sizeof(tsBuf));
+          printf("[对时] ts=%lu 当天秒=%lu 本机=%s\r\n",
+                 (unsigned long)syncedTimestamp,
+                 (unsigned long)getTodaySecond(), tsBuf);
+        }
         /* 对时成功后重新计算下次上报时间（基于真实时间） */
         calcNextTxTime();
       }
@@ -2090,7 +2114,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               deviceCount = (uint8_t)cnt;
               saveDeviceCountToFlash(deviceCount);
               printf("[指令] devicecount=%d 台, 时隙偏移改为 %lu 秒\r\n",
-                     deviceCount, (unsigned long)getSlotOffsetSec());
+                     deviceCount,
+                     (unsigned long)getSlotOffsetSec(
+                         ((fastStartRounds > 0) && (getConfigIntervalSec() > 300u))
+                             ? 300u : getConfigIntervalSec()));
             } else {
               printf("[指令] devicecount: %d 超范围(1~60), 拒绝\r\n", cnt);
             }
@@ -2432,6 +2459,11 @@ static void OnMaster(void)
     }
   }
 
+  /* 开机前 5 轮快速上报：本轮已上报完成，消耗一次配额
+   * （先递减再算下次时间：轮1~轮5 都是 5 分钟，轮6 起恢复配置周期） */
+  if (fastStartRounds > 0)
+    fastStartRounds--;
+
   /* 计算下次上报时间（配置更新后间隔可能变化） */
   calcNextTxTime();
 
@@ -2439,13 +2471,24 @@ static void OnMaster(void)
   {
     uint32_t nowTs = getCurrentTimestamp();
     uint32_t waitSec = (nextTxTimestamp > nowTs) ? (nextTxTimestamp - nowTs) : 0;
+    char     nextBuf[24];
+
+    /* 下次发送的绝对时间点（HH:MM:SS）。
+     * 格式化结果是 "YYYY-MM-DD HH:MM:SS"，+11 直接指向时分秒；
+     * 未对时时是 1970 起递增的本机时钟，一样能看出节奏 */
+    formatTimestamp(nextTxTimestamp, nextBuf, sizeof(nextBuf));
+
     if (waitSec > 10) {
       /* 下次上报 > 10 秒后 → PAN3029 进入深度休眠省电 */
-      printf("[休眠] 下次发送 %lu 秒后, LoRa进入深度休眠...\r\n", (unsigned long)waitSec);
+      printf("[休眠] LoRa进入深度休眠...下次发送 %lu分%lu秒后, %s\r\n",
+             (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
+             nextBuf + 11);
       rf_deepsleep();
       loraInitialized = 0;  /* 标记需要唤醒后重新初始化 */
     } else {
-      printf("[活跃] 下次发送 %lu 秒后, LoRa保持就绪\r\n", (unsigned long)waitSec);
+      printf("[活跃] LoRa保持就绪...下次发送 %lu分%lu秒后, %s\r\n",
+             (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
+             nextBuf + 11);
     }
   }
 }
@@ -2497,7 +2540,7 @@ int main(void)
   printf("时隙  : 序号=%d, 总台数=%d, 间隔=%lu秒, 偏移=%lu秒\r\n",
          getDeviceIndex(), deviceCount,
          (unsigned long)getConfigIntervalSec(),
-         (unsigned long)getSlotOffsetSec());
+         (unsigned long)getSlotOffsetSec(getConfigIntervalSec()));
   printTimeWindows("时段  : ");   /* 工作时间段 + GPS 上报时间段 */
 
   /* 首次 TX 延迟到主循环中执行（LoRa 在首次 TX 前才初始化） */

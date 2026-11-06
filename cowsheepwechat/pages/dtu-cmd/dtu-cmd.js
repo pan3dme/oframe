@@ -30,6 +30,7 @@ Page({
     cmdText: '',
     quickSelected: 0,  // 当前选中快捷按钮
     sendmodeValue: 0,  // 上报模式当前值（0/1 循环切换）
+    upgpsIndex: 0,     // 上报GPS循环取值索引（0→10→59→0 循环）
 
     // 发送日志
     sendLog: [],
@@ -161,17 +162,16 @@ Page({
   },
 
   // ========== 快捷按钮 ==========
-  // 上报GPS：value 填目标设备当前应生效的上报间隔（工作周期用上报周期，大周期用主周期），取不到配置保持 0
+  // 上报GPS：每点一次循环取值 0 → 10 → 59，再回 0（与"上报模式"的切换玩法一致）
   onQuickReportGps() {
-    const device = this.data.deviceList && this.data.deviceList[this.data.deviceIndex]
-    const that = this
-    if (device && device.deviceId) {
-      dataCache.resolveUpgpsCmdText(device.deviceId, '', (cmdText) => {
-        that.setData({ cmdText, quickSelected: 5 })
-      })
-    } else {
-      this.setData({ cmdText: JSON.stringify({ cmd: 'upgps', value: 0 }), quickSelected: 5 })
-    }
+    const CYCLE = [0, 10, 59]
+    const idx = this.data.upgpsIndex % CYCLE.length
+    const val = CYCLE[idx]
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'upgps', value: val }),
+      quickSelected: 5,
+      upgpsIndex: idx + 1
+    })
   },
 
   onQuickNormalMode() {
