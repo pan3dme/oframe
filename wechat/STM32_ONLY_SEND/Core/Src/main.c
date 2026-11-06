@@ -172,11 +172,13 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
                                     * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收，
                                     *       发太快大概率丢帧。即使立刻就有坐标，也要至少等够这 10 秒 */
 /* 连续定位模式：每一轮**最少**占用的时间（搜星 + 等待）
- * 直接取"搜星上限"而不是固定 3 分钟：一轮搜星最坏就要 GPS_WAIT_TIMEOUT_MS，
- * 间隔若比它小，会出现上一轮还没搜完就催下一轮；
- * 搜星提前结束（如 10 秒定位）时也要把这个间隔占满，避免 1 分钟的指令里
- * 连着上报 5 次。搜星耗时更长时，本轮时长自然以搜星耗时为准 */
-#define GPS_CONT_INTERVAL_SEC ((GPS_WAIT_TIMEOUT_MS) / 1000)
+ * 跟踪上报间隔 = 设置的搜星最大时间(GPS_WAIT_TIMEOUT_MS)，但下限 3 分钟：
+ *   - 搜星上限调大/调小时，跟踪间隔自动跟随（间隔与单轮最坏耗时一致，
+ *     搜星慢的轮本轮时长自然以搜星耗时为准，不会叠加催下一轮）；
+ *   - 再设 180 秒下限，防止把搜星上限改小后跟踪上报过密。
+ * 跟踪期间 GPS 一直保持供电、不进休眠；类型 5 上报不开接收窗口 */
+#define GPS_CONT_INTERVAL_SEC \
+    (((GPS_WAIT_TIMEOUT_MS) / 1000) > 180 ? ((GPS_WAIT_TIMEOUT_MS) / 1000) : 180)
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
 /* 需要搜星的上报轮：提前唤醒量 = 搜星上限 + 5 秒（LoRa 初始化倒计时）
  * 醒来先搜星，搜到就把 GPS 断电再睡到上报点前 5 秒，到点准点发帧；
@@ -890,16 +892,18 @@ static void gpsPreSearch(void)
  */
 static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
 {
-  uint32_t totalSec  = (uint32_t)totalMin * 60u;
-  uint32_t startSec  = getCurrentTimestamp();
-  uint32_t rounds    = 0;
-  uint8_t  everFixed = 0;
+  uint32_t totalSec   = (uint32_t)totalMin * 60u;
+  uint32_t startTick  = HAL_GetTick();   /* 计时基准用开机 tick（毫秒）：
+   * 连续定位期间常会发生卫星授时/服务器对时，绝对时间戳会被整体平移，
+   * 用时间戳差值会把"已用时"算成天文数字，导致第 1 轮后就被误判超时结束 */
+  uint32_t rounds     = 0;
+  uint8_t  everFixed  = 0;
 
   printf("[连续定位] 开始: 时长=%u 分钟, 每轮至少 %u 秒(剩余不足则提前结束)\r\n",
          (unsigned int)totalMin, (unsigned int)GPS_CONT_INTERVAL_SEC);
 
   while (1) {
-    uint32_t slotStart = getCurrentTimestamp();
+    uint32_t slotStart = HAL_GetTick();
     uint32_t elapsed;
     uint32_t remain;
     uint8_t  hasFix;
@@ -915,7 +919,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     else
       printf("[连续定位] 第 %lu 轮无坐标已上报 0.0,0.0\r\n", (unsigned long)rounds);
 
-    elapsed = (uint32_t)(getCurrentTimestamp() - startSec);
+    elapsed = (HAL_GetTick() - startTick) / 1000u;   /* 毫秒 → 秒 */
     if (elapsed >= totalSec)
       break;                                   /* 总时长已用完 */
 
@@ -931,8 +935,8 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     /* 把本轮补齐到 GPS_CONT_INTERVAL_SEC 秒：搜星只用 10 秒也要占满，
      * 搜星耗时超过它则本轮自然以搜星耗时为准，不再额外等待。
      * 期间不休眠，但必须持续跑 gpsTask()，否则 512 字节环形缓冲会堆满丢句 */
-    while ((uint32_t)(getCurrentTimestamp() - slotStart) <
-           (uint32_t)GPS_CONT_INTERVAL_SEC) {
+    while ((HAL_GetTick() - slotStart) <
+           (uint32_t)GPS_CONT_INTERVAL_SEC * 1000u) {
       gpsTask();
       HAL_Delay(100);
     }
