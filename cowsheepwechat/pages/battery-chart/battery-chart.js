@@ -281,9 +281,11 @@ Page({
         if (!isNaN(n) && n > 0) t = n < 1e10 ? n * 1000 : n
       }
       if (!t) {
+        // 兜底：服务器接收时间（如 "2026/8/10 23:13:33"）。按墙面时间用 Date.UTC 编码，
+        // 与设备时间戳同口径（都用 UTC 方法显示），避免两套时间源差 8 小时
         const rt = attr.time || record.time || ''
-        const dt = new Date(rt).getTime()
-        if (!isNaN(dt) && dt > 0) t = dt
+        const dt = this._parseWallTime(rt)
+        if (dt > 0) t = dt
       }
       if (!t || isNaN(t)) return
 
@@ -367,10 +369,21 @@ Page({
     return String(n).padStart(2, '0')
   },
 
+  // 时间字符串 → 毫秒（墙面时间口径）：用 Date.UTC 编码，显示时用 getUTC* 才能还原原样
+  // 兼容 "2026/8/10 23:13:33" / "2026-8-10 23:13" 等；解析失败返回 0
+  _parseWallTime(s) {
+    const m = String(s || '').match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/)
+    if (!m) return 0
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))
+  },
+
   _fmtTime(t) {
+    // 注意：对时记录 lorastr 的时间戳是"设备把北京时间墙面时间直接编码成的 Unix 秒"，
+    // 与项目其它地方一致（如 device-detail._formatTsToDateTime）必须用 UTC 方法显示，
+    // 不能用本地时区（+8）格式化，否则会多加 8 小时（23:22 显示成次日 07:22）
     const d = new Date(t)
-    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
-      this._pad2(d.getHours()) + ':' + this._pad2(d.getMinutes())
+    return (d.getUTCMonth() + 1) + '/' + d.getUTCDate() + ' ' +
+      this._pad2(d.getUTCHours()) + ':' + this._pad2(d.getUTCMinutes())
   },
 
   _fmtSpan(ms) {

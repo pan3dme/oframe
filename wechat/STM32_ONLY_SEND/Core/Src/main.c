@@ -2641,11 +2641,18 @@ static void OnMaster(void)
 
         /* GPS 打印的开关与恢复由 gpsSearchAndReport() 内部逐轮处理 */
         if (gpsContTotalMin > 0) {
-          /* 连续定位模式：时长内不休眠，每 3 分钟上报一次坐标。
-           * 全程无坐标 → 返回 0 → gpsNeedRetry 置 1，下轮继续重试；
-           * 但 gpsContTotalMin 已清零，所以下轮只是单次搜星（不再拉长） */
-          gpsNeedRetry = gpsRunContinuous(gpsContTotalMin, useType1) ? 0U : 1U;
+          /* 连续定位模式（upgps|N 跟踪）：时长内不休眠，
+           * 每 GPS_CONT_INTERVAL_SEC 秒上报一次坐标；
+           * 无坐标时跟踪期限自动保底延长到 60 分钟（定位成功导向）。
+           * 跟踪结束后一律恢复正常定时上报 —— 不再置 gpsNeedRetry：
+           *   60 分钟、16 轮搜星都拿不到坐标说明环境确实无信号，
+           *   再让下轮提前 245 秒搜星重试只是白白烧电（旧逻辑是跟踪
+           *   只有 1~4 分钟时才用它补偿）。同时顺带清掉进入跟踪前
+           *   可能残留的旧标志，保证下轮回到纯 2| 定时帧 */
+          gpsRunContinuous(gpsContTotalMin, useType1);
           gpsContTotalMin = 0;
+          gpsNeedRetry = 0;
+          printf("[GPS] 跟踪结束, 不再自动安排下轮重试\r\n");
         } else {
           /* 单次搜星上报（参数为 0 的 upgps 指令，或失败后的自动重试） */
           hasFix = gpsSearchAndReport(useType1);

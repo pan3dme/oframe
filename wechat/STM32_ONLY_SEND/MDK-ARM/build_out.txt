@@ -233,43 +233,43 @@ compiling main.c...
             printf("[GPS] 使用预搜结果上报: 未定�?(耗时 %lu �?)\r\n",
 ../Core/Src/main.c(2623): warning:  #870-D: invalid multibyte character sequence
             printf("[GPS] 使用预搜结果上报: 未定�?(耗时 %lu �?)\r\n",
-../Core/Src/main.c(2701): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2708): warning:  #870-D: invalid multibyte character sequence
         printf("[休眠] LoRa进入深度休眠...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2701): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2708): warning:  #870-D: invalid multibyte character sequence
         printf("[休眠] LoRa进入深度休眠...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2707): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2714): warning:  #870-D: invalid multibyte character sequence
         printf("[活跃] LoRa保持就绪...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2707): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2714): warning:  #870-D: invalid multibyte character sequence
         printf("[活跃] LoRa保持就绪...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2754): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2761): warning:  #870-D: invalid multibyte character sequence
     printf("\r\n===== LoRa 仅发送模式启�? =====\r\n");
-../Core/Src/main.c(2758): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2765): warning:  #870-D: invalid multibyte character sequence
     printf("时隙  : 序号=%d, 总台�?=%d, 间隔=%lu�?, 偏移=%lu秒\r\n",
-../Core/Src/main.c(2758): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2765): warning:  #870-D: invalid multibyte character sequence
     printf("时隙  : 序号=%d, 总台�?=%d, 间隔=%lu�?, 偏移=%lu秒\r\n",
-../Core/Src/main.c(2767): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2774): warning:  #870-D: invalid multibyte character sequence
     printf("[调度] 就绪, 首次立即发�?...\r\n");
-../Core/Src/main.c(2820): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2827): warning:  #870-D: invalid multibyte character sequence
           printf("[WAKE] LoRa 唤醒�?, 5秒倒计�?...\r\n");
-../Core/Src/main.c(2820): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2827): warning:  #870-D: invalid multibyte character sequence
           printf("[WAKE] LoRa 唤醒�?, 5秒倒计�?...\r\n");
-../Core/Src/main.c(2835): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2842): warning:  #870-D: invalid multibyte character sequence
               printf("[GPS] 上报周期小于搜星上限: 提前量压缩为 %lu �?, 尽力搜星(到点必发)\r\n",
-../Core/Src/main.c(2847): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2854): warning:  #870-D: invalid multibyte character sequence
                 printf("[调度] 预搜完成, 距上报还�? %lu �?, 再休眠到点前 5 秒\r\n",
-../Core/Src/main.c(2847): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2854): warning:  #870-D: invalid multibyte character sequence
                 printf("[调度] 预搜完成, 距上报还�? %lu �?, 再休眠到点前 5 秒\r\n",
-../Core/Src/main.c(3238): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3245): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power ON (PB15=低上�?, PB1=�? Full on)\r\n");
-../Core/Src/main.c(3238): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3245): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power ON (PB15=低上�?, PB1=�? Full on)\r\n");
-../Core/Src/main.c(3267): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3274): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power OFF (PB15=高断�?, PB1=�? Standby)\r\n");
-../Core/Src/main.c(3267): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3274): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power OFF (PB15=高断�?, PB1=�? Standby)\r\n");
 ../Core/Src/main.c: 133 warnings, 0 errors
 linking...
-Program Size: Code=27864 RO-data=4284 RW-data=252 ZI-data=3340  
+Program Size: Code=27920 RO-data=4284 RW-data=252 ZI-data=3340  
 FromELF: creating hex file...
 "LY-020-software\LY-020-software.axf" - 0 Error(s), 133 Warning(s).
-Build Time Elapsed:  00:00:01
+Build Time Elapsed:  00:00:02
