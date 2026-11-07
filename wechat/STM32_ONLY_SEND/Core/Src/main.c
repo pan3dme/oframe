@@ -180,6 +180,9 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 #define GPS_CONT_INTERVAL_SEC \
     (((GPS_WAIT_TIMEOUT_MS) / 1000) > 180 ? ((GPS_WAIT_TIMEOUT_MS) / 1000) : 180)
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上限 = 60 分钟 */
+#define GPS_CONT_MAX_SEC      ((uint32_t)GPS_CONT_MAX_MIN * 60u)   /* 60 分钟的秒数：
+   * 跟踪目标就是定位成功 —— 一直拿不到有效坐标时，跟踪期限自动保底延长
+   * 到这里（期间每轮照常上报 0.0,0.0），拿到坐标后恢复参数设定的时长 */
 /* 需要搜星的上报轮：提前唤醒量 = 搜星上限 + 5 秒（LoRa 初始化倒计时）
  * 醒来先搜星，搜到就把 GPS 断电再睡到上报点前 5 秒，到点准点发帧；
  * 搜不到也到点发 "0.0,0.0|串口字节数|"，保证上报时间点不后移 */
@@ -189,7 +192,7 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
                                     *       比Standby热唤醒慢，给足 1 秒 */
 
 /* GPS 电源控制总开关 (PB15): 1=由 MCU 控制电源通断, 0=不动电平（核对阶段）
- * 置 1 时的行为（当前生效）:
+ * 置 1 时的行为（当前生效，极性: 低=上电, 高=断电）:
  *   - 上电 PB15 默认高 → GPS 断电（完全关机，0 电流）
  *   - 搜星前 gpsPowerOn() 置低 → 上电开机，搜完 gpsPowerOff() 置高 → 断电
  *   - 深度休眠等待期模块始终断电，不耗任何电流
@@ -220,6 +223,8 @@ static const uint8_t gpsDaysInMonth[12] =   /* 平年每月天数（闰年 2 月
 
 static GpsFix_t     gpsFix;
 static uint8_t      gpsFixValid = 0;   /* 最近一帧 GGA 是否有效定位 */
+static uint8_t      gpsPowerState = 0; /* 当前 PB15 状态：1=上电搜星, 0=断电
+                                        * （断电诊断用：断电时不该有串口数据） */
 static uint32_t     gpsRxCount = 0;    /* 收到的字节数（诊断用） */
 static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时刻（HAL_GetTick） */
 static uint8_t      gpsPrintEn = 0;    /* GPS 打印总开关（1=打印, 0=静默）
@@ -887,19 +892,26 @@ static void gpsPreSearch(void)
  *           第 1 轮收到指令就立刻执行；之后每轮开始**前**先看剩余时间，
  *           不足一轮的最短占用就提前结束，回到正常定时逻辑（该休眠就休眠）
  *         —— 这样"upgps 1 分钟 + 10 秒搜到星"只上报 1 次，不会在剩下 50 秒里连报 5 次
+ * @note   定位成功导向：跟踪的目标是拿到有效坐标 ——
+ *           - 只要还没拿到过坐标，期限自动保底延长到 GPS_CONT_MAX_SEC(60 分钟)，
+ *             期间每轮照常上报 0.0,0.0（让云端知道设备仍在跟踪中）；
+ *           - 一旦拿到坐标，期限立刻收回参数设定的 totalSec：
+ *             若已超时则本轮（刚报出坐标的这帧）就是最后一帧，正常收工；
+ *           - 参数是 60 的失败场景天然就是 60 分钟，无需再延长
  * @warning MCU 与射频全程全速工作，分钟数直接线性影响耗电
  * @retval 1=期间至少有一轮拿到有效坐标, 0=全程都没有有效坐标
  */
 static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
 {
-  uint32_t totalSec   = (uint32_t)totalMin * 60u;
-  uint32_t startTick  = HAL_GetTick();   /* 计时基准用开机 tick（毫秒）：
+  uint32_t totalSec    = (uint32_t)totalMin * 60u;
+  uint32_t deadlineSec = totalSec;     /* 实际结束期限：无坐标时延长到 60 分钟 */
+  uint32_t startTick   = HAL_GetTick();   /* 计时基准用开机 tick（毫秒）：
    * 连续定位期间常会发生卫星授时/服务器对时，绝对时间戳会被整体平移，
    * 用时间戳差值会把"已用时"算成天文数字，导致第 1 轮后就被误判超时结束 */
-  uint32_t rounds     = 0;
-  uint8_t  everFixed  = 0;
+  uint32_t rounds      = 0;
+  uint8_t  everFixed   = 0;
 
-  printf("[连续定位] 开始: 时长=%u 分钟, 每轮至少 %u 秒(剩余不足则提前结束)\r\n",
+  printf("[连续定位] 开始: 时长=%u 分钟, 每轮至少 %u 秒(无坐标则跟踪保底 60 分钟)\r\n",
          (unsigned int)totalMin, (unsigned int)GPS_CONT_INTERVAL_SEC);
 
   while (1) {
@@ -914,16 +926,29 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     if (hasFix)
       everFixed = 1;
 
-    if (hasFix)
+    if (hasFix) {
       printf("[连续定位] 第 %lu 轮已上报真实坐标\r\n", (unsigned long)rounds);
-    else
+
+      /* 拿到坐标：期限收回参数设定值。若已超时，下面的判断会正常结束，
+       * 刚报出坐标的这一帧就是最后一帧 —— 参数语义保持不变 */
+      if (deadlineSec > totalSec)
+        deadlineSec = totalSec;
+    } else {
       printf("[连续定位] 第 %lu 轮无坐标已上报 0.0,0.0\r\n", (unsigned long)rounds);
+    }
+
+    /* 定位成功导向：至今没有有效坐标 → 跟踪期限保底延长到 60 分钟，
+     * 继续按原间隔每轮上报（每帧 +1 计数），直到定位成功或到上限 */
+    if (!everFixed && (deadlineSec < GPS_CONT_MAX_SEC)) {
+      deadlineSec = GPS_CONT_MAX_SEC;
+      printf("[连续定位] 尚无有效坐标, 跟踪期限延长到 60 分钟(每轮照常上报)\r\n");
+    }
 
     elapsed = (HAL_GetTick() - startTick) / 1000u;   /* 毫秒 → 秒 */
-    if (elapsed >= totalSec)
-      break;                                   /* 总时长已用完 */
+    if (elapsed >= deadlineSec)
+      break;                                   /* 期限已用完 */
 
-    remain = totalSec - elapsed;
+    remain = deadlineSec - elapsed;
     if (remain < (uint32_t)GPS_CONT_INTERVAL_SEC) {
       /* 剩下的时间凑不满一轮（一轮最短也要 GPS_CONT_INTERVAL_SEC 秒），
        * 不再空等，直接结束连续定位，回到正常定时调度（该休眠就休眠） */
@@ -1011,6 +1036,25 @@ static void calcNextTxTime(void)
   if (fastMode)
     printf("[调度] 开机快速上报: 前 5 轮用 5 分钟(本机剩余 %u 轮)\r\n",
            (unsigned)fastStartRounds);
+}
+
+/**
+ * @brief  对时成功后的调度决策（卫星授时 / SYN_TIME 两条路径共用）
+ * @note   首次开机场景：本机还没发过任何 LoRa 帧（tx_count==0）时，
+ *         开机的"立即上报"会被授时抢先重算掉（授时发生在首次上报之前，
+ *         calcNextTxTime 把 nextTxTimestamp 推到了一个周期之后）。
+ *         这里补救：立即补报一次时间帧，让云端第一时间拿到本机时间状态；
+ *         上报完 OnMaster 末尾再正常消耗快速轮配额并计算休眠时间。
+ *         非首次（tx_count>0，如等待期收到对时）→ 按原逻辑重算下次时间
+ */
+static void scheduleAfterSync(void)
+{
+  if (tx_count == 0) {
+    nextTxTimestamp = getCurrentTimestamp();   /* 立即 → 主循环下一圈就上报 */
+    printf("[调度] 首次对时完成, 立即补报一次时间帧\r\n");
+  } else {
+    calcNextTxTime();
+  }
 }
 
 /**
@@ -1807,6 +1851,16 @@ static uint8_t gpsFixFresh(void)
  */
 static void gpsTask(void)
 {
+  /* 只在搜星(上电)期间处理 GPS 串口数据：
+   * 断电状态下模块本应静默；当前硬件存在人为上拉常供电，
+   * 这里统一丢弃字节，保证授时/定位解析只发生在搜星窗口内
+   * （之后 PB15 电源通路接好，断电即真静默，此逻辑天然兼容） */
+  if (!gpsPowerState) {
+    gpsRd = gpsWr;        /* 丢弃断电期间收到的所有字节 */
+    gpsLineLen = 0;
+    return;
+  }
+
   while (gpsRd != gpsWr) {
     uint8_t b = gpsRing[gpsRd];
     gpsRd = (gpsRd + 1u) % GPS_RING_LEN;
@@ -1828,7 +1882,8 @@ static void gpsTask(void)
   /* 未定位时的心跳提示已取消：搜星期间的观察统一由 gpsPrintSearchStatus()
    * 每秒一行状态取代，不再刷"等待定位...已收 xxx 字节" */
 
-  /* 卫星授时兜底：本机还没对时且 GPS 给出可信日期 → 用一次卫星时间 */
+  /* 卫星授时兜底：本机还没对时且 GPS 给出可信日期 → 用一次卫星时间
+   * （能走到这里必然处于搜星窗口，授时天然只发生在搜星过程中） */
   gpsTrySyncFromSat();
 }
 
@@ -1896,12 +1951,19 @@ static void gpsTrySyncFromSat(void)
   syncedRtcSec    = nowTick;
   timeSynced      = 1;
 
-  printf("[对时] 卫星授时(本机首次): %04u/%02u/%02u %02u:%02u:%02u UTC+8, ts=%lu\r\n",
-         gpsFix.year, gpsFix.month, gpsFix.day,
-         gpsFix.hour, gpsFix.minute, gpsFix.second, (unsigned long)ts);
+  {
+    char cstBuf[20];
 
-  /* 对时成功后按真实时间重算下次上报时间（与 SYN_TIME 路径一致） */
-  calcNextTxTime();
+    /* 打印 UTC 原始时间和换算后的北京时间，两者并排避免混淆
+     * （旧打印标着 UTC+8 却输出 UTC 字段，看日志容易误判成时间错了 8 小时） */
+    formatTimestamp(ts, cstBuf, sizeof(cstBuf));
+    printf("[对时] 卫星授时(本机首次): UTC=%04u-%02u-%02u %02u:%02u:%02u, 北京时间=%s, ts=%lu\r\n",
+           gpsFix.year, gpsFix.month, gpsFix.day,
+           gpsFix.hour, gpsFix.minute, gpsFix.second, cstBuf, (unsigned long)ts);
+  }
+
+  /* 对时成功后按真实时间重算下次上报时间（首次开机则立即补报一次） */
+  scheduleAfterSync();
 }
 
 /**
@@ -2132,8 +2194,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                  (unsigned long)syncedTimestamp,
                  (unsigned long)getTodaySecond(), tsBuf);
         }
-        /* 对时成功后重新计算下次上报时间（基于真实时间） */
-        calcNextTxTime();
+        /* 对时成功后重新计算下次上报时间（首次开机则立即补报一次） */
+        scheduleAfterSync();
       }
       break;
     case MSG_TYPE_COM: /* 9: 指令  9|deviceId|cmd|value */
@@ -2866,9 +2928,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /* PB15 = GPS 电源开关：推挽输出，默认高电平 = GPS 断电（已实测验证：
-   * 低=上电模块工作，高=断电关机。开机供电由 gpsPowerOn() 拉低，
-   * 关机由 gpsPowerOff() 拉高） */
+  /* PB15 = GPS 电源开关：推挽输出，默认高电平 = GPS 断电（极性: 低=上电）。
+   * 搜星时 gpsPowerOn() 拉低上电，搜完 gpsPowerOff() 拉高断电 */
   GPIO_InitStruct.Pin   = GPS_PWR_Pin;
   GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
@@ -2878,14 +2939,17 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* GNSS 唤醒脚 (PB1 → 模块 WAKE_UP)：
-   * 已弃用休眠模式（改由 PB15 直接控制电源），配为高阻输入不驱动，
-   * 由模块内部上拉决定 → 模块上电即为 Full on */
+  /* GNSS 唤醒脚 (PB1 → 模块 WAKE_UP)：搜星状态同步控制
+   *   搜星时   gpsPowerOn()  拉高 → Full on（先拉高再上电，见该函数时序说明）
+   *   非搜星时 gpsPowerOff() 拉低 → Standby(20uA)，RTC 域保持可热启动
+   * 初始为低：开机即"非搜星"状态（此时 PB15 也是断电，低电平无副作用；
+   * 若模块因硬件过渡期常供电，则进 Standby 省电，等第一次搜星拉高唤醒） */
   GPIO_InitStruct.Pin   = GNSS_WAKE_Pin;
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Mode  = GPIO_MODE_INPUT;
   HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET); /* 低 = Standby */
 
   /* LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
   GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
@@ -3099,10 +3163,18 @@ static void gpsPowerOn(void)
   gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数据 */
 
 #if GPS_PWR_CTRL_EN
+  /* 顺序关键：先把 WAKE_UP(PB1) 拉高，再上电 ——
+   * 若上电瞬间 WAKE_UP 为低，模块会直接进 Standby 而不搜星。
+   * 两种起始状态都覆盖：
+   *   - 模块此前被断电(PB15=高)：上电时读到 WAKE_UP=高 → 直接 Full on；
+   *   - 模块此前在 Standby(PB1=低保持)：拉高即完成唤醒（热启动 ~2 秒） */
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET); /* 高 = Full on */
   HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);   /* 低 = 上电 */
   HAL_Delay(GPS_PWR_ON_DELAY_MS);
-  printf("[GPS] Power ON (PB15=低, 开机搜星)\r\n");
+  gpsPowerState = 1;
+  printf("[GPS] Power ON (PB15=低上电, PB1=高 Full on)\r\n");
 #else
+  gpsPowerState = 1;   /* 核对阶段：PB15 未驱动，模块由外部电源供电 */
   printf("[GPS] 开始搜星(核对阶段: PB15 未驱动, 由外部电源决定模块状态)\r\n");
 #endif
 }
@@ -3116,14 +3188,20 @@ static void gpsPowerOff(void)
 {
 #if GPS_PWR_CTRL_EN
   HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);     /* 高 = 断电 */
+  /* WAKE_UP(PB1) 拉低 → 模块进 Standby(20uA)：
+   *   - 若模块已断电：低电平被保持，下次上电前 PowerOn 会先拉高；
+   *   - 若模块仍供电（硬件过渡期常供电）：进入 Standby 低功耗待机，
+   *     RTC 域保持，下次拉高即热启动(~2 秒)，比冷启动省大量搜星电流 */
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET); /* 低 = Standby */
 #endif
 
   gpsFixValid = 0;
+  gpsPowerState = 0;   /* 断电后串口数据一律在 gpsTask 里丢弃 */
   gpsRd = gpsWr;
   gpsLineLen = 0;
 
 #if GPS_PWR_CTRL_EN
-  printf("[GPS] Power OFF (PB15=高, 断电)\r\n");
+  printf("[GPS] Power OFF (PB15=高断电, PB1=低 Standby)\r\n");
 #else
   printf("[GPS] 本轮搜星结束(核对阶段: PB15 未驱动, 模块状态不变)\r\n");
 #endif
