@@ -475,21 +475,21 @@ static void OnSlave(void) {
     }
 
 
-    rf_enter_single_timeout_rx(15000); // 重新进入接收模式，超时 15 秒
+    rf_enter_continous_rx(); // 重新进入连续接收模式（一直监听，不再有超时空隙）
   }
 
   // 处理 CRC 校验错误
   if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
     printf("crc error\r\n");
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    rf_enter_single_timeout_rx(5000); // 重新进入接收模式，超时 5 秒
+    rf_enter_continous_rx(); // 重新进入连续接收模式
   }
 
-  // 处理接收超时
+  // 处理接收超时（连续接收模式下不会再产生 RX_TIMEOUT，此分支保留作兜底）
   if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
     printf(".");
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    rf_enter_single_timeout_rx(5000); // 重新进入接收模式，超时 5 秒
+    rf_enter_continous_rx(); // 重新进入连续接收模式
   }
 }
 
@@ -506,7 +506,7 @@ static void enter_rx_mode(void) {
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // 关闭 LED1
   led1On = 0; // 同步 LED1 状态变量
   printf("\r\n>> Switch to RX mode\r\n");
-  rf_enter_single_timeout_rx(5000); // 进入接收模式，超时 5 秒
+  rf_enter_continous_rx(); // 进入连续接收模式（一直监听）
 }
 
 /* =====================================================================
@@ -554,7 +554,7 @@ static uint8_t lora_rf_wake(void) {
   }
 
   rf_set_default_para();          // 恢复频率/SF/BW/功率等参数
-  rf_enter_single_timeout_rx(5000); // 立即进入接收
+  rf_enter_continous_rx(); // 立即进入连续接收
   loraSwOn = 1;
   printf("[LoRa开关] 射频已开启, 恢复接收\r\n");
   return 1;

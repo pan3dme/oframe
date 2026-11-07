@@ -126,6 +126,10 @@ static uint8_t  gpsNeedRetry = 0;      /* 上一轮搜星失败(已上报 0.0,0.
                                         *   成功拿到坐标后自动清零，恢复定时上报
                                         * @note  RAM 在 deepsleep 期间保持，故跨休眠有效；
                                         *        但真正掉电重启会丢失(回到0)，这是可接受的 */
+static uint32_t lastLoRaRxTs = 0;      /* 最近一次收到 LoRa 数据的时刻(绝对时间戳)
+                                        * 0=尚未初始化(开机后首次检查时取当前值)。
+                                        * 链路沉默看门狗用：工作时间内 2 小时没收到
+                                        * 任何 LoRa 信息 → NVIC_SystemReset 真复位 */
 /* 提前搜星结果（需要 GPS 的上报轮，唤醒后先搜星再等到点上报，保证时间点不后移） */
 static uint8_t  gpsPreSearched = 0;    /* 1=本轮已提前搜过星，OnMaster 直接取结果上报 */
 static uint8_t  gpsPreFixOk    = 0;    /* 预搜结果：1=拿到有效坐标 */
@@ -199,6 +203,11 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
  * 置 0 时为核对模式：PB15 高阻、不翻转，模块状态由外部电源决定
  */
 #define GPS_PWR_CTRL_EN  1
+
+/* 链路沉默看门狗：工作时间内连续这么久没收到任何 LoRa 信息 → 真复位自恢复
+ * （2 小时。跨 STOP 深度休眠连续计时——用 RTC 时间戳，休眠机制完全不变；
+ *   连续定位跟踪期间不检查，避免打断主动任务） */
+#define LINK_SILENCE_REBOOT_SEC  (2u * 3600u)
 
 
 
@@ -300,6 +309,7 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
 static int32_t nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
 static uint8_t isInWorkWindow(void);      /* 当前是否在工作时间段内(config 第2段) */
+static void linkSilenceCheck(void);       /* 链路沉默看门狗(2小时无LoRa→真复位) */
 static void    printTimeWindows(const char *tag);   /* 打印当前生效的两个时间段 */
 static uint8_t isInGpsWorkWindow(void);   /* 当前是否在 GPS 工作时间段内(config 第3段) */
 static uint8_t isInGpsWorkWindowAt(uint32_t ts);  /* 指定时刻是否在 GPS 时间段内 */
@@ -687,9 +697,12 @@ static void sendReadInfoMessage(void)
   uint32_t tx_time = 1000;
 
   txCountNext();
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%u|%d|%lu|",
+  /* 8|设备名|设备数T|频率HZ|功率dbm|固件版本|计数 —— 各段带单位，云端展示直读；
+   * 版本号来自 DEMO_VER，升级固件时改它即可知道设备是否更新到位 */
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%uT|%luHZ|%ddbm|%s|%lu|",
            MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
-           (int)currentTxPower, (unsigned long)tx_count);
+           (unsigned long)(DEFAULT_FREQ / 1000000u),
+           (int)currentTxPower, DEMO_VER, (unsigned long)tx_count);
 
   rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
@@ -1049,6 +1062,10 @@ static void calcNextTxTime(void)
  */
 static void scheduleAfterSync(void)
 {
+  /* 对时使 RTC 时间基准整体跳变：链路看门狗的活性时刻必须同步刷新，
+   * 否则"已用时"会被算成天文数字，对时后第一次检查就误重启 */
+  lastLoRaRxTs = getCurrentTimestamp();
+
   if (tx_count == 0) {
     nextTxTimestamp = getCurrentTimestamp();   /* 立即 → 主循环下一圈就上报 */
     printf("[调度] 首次对时完成, 立即补报一次时间帧\r\n");
@@ -1291,6 +1308,43 @@ static uint8_t isInWorkWindow(void)
 
   hour = getTodaySecond() / 3600u;
   return ((hour >= s) && (hour < e)) ? 1U : 0U;
+}
+
+/**
+ * @brief  链路沉默看门狗检查：工作时间内 2 小时没收到任何 LoRa 信息 → 真复位
+ * @note   - 计时基准是 RTC 绝对时间戳，跨 STOP 深度休眠连续 —— 深度休眠机制
+ *           完全不变，睡 30 分钟醒来这轮检查照样能覆盖休眠期（醒来必过这里）
+ *         - lastLoRaRxTs==0 表示开机后还没初始化：取当前时刻起算
+ *         - 对时成功会使时间基准跳变，scheduleAfterSync() 里同步刷新，防误判
+ *         - 连续定位(upgps 跟踪)期间跳过：跟踪是主动任务，类型 5 本来就不
+ *           开接收窗口，60 分钟 < 2 小时也不会触发，跳过保证绝不打断跟踪
+ *         - 触发动作是 NVIC_SystemReset() 真复位（不是 STOP 唤醒）：
+ *           快速上报 5 轮、配置上报、对时全部重走一遍，相当于设备自愈
+ */
+static void linkSilenceCheck(void)
+{
+  uint32_t now;
+  uint32_t silent;
+
+  if (gpsContTotalMin > 0)
+    return;                              /* 跟踪中不检查 */
+
+  if (!isInWorkWindow())
+    return;                              /* 只在工作时间内生效 */
+
+  now = getCurrentTimestamp();
+  if (lastLoRaRxTs == 0) {
+    lastLoRaRxTs = now;                  /* 开机首次检查：从当前时刻起算 */
+    return;
+  }
+
+  silent = now - lastLoRaRxTs;           /* 无符号差值，回绕安全 */
+  if (silent >= LINK_SILENCE_REBOOT_SEC) {
+    printf("[看门狗] 工作时间内 %lu分%lu秒 未收到任何LoRa信息, 系统重启自恢复\r\n",
+           (unsigned long)(silent / 60u), (unsigned long)(silent % 60u));
+    HAL_Delay(100);                      /* 让日志从串口发完 */
+    NVIC_SystemReset();
+  }
 }
 
 /**
@@ -2125,6 +2179,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   char *fields[8] = {0};
   uint8_t field_count = 0;
 
+  /* 收到任何 LoRa 数据（含乱码）都刷新链路活性 —— 哪怕解析失败，
+   * 也说明中继/信道在工作，链路沉默看门狗不应对这种情况重启 */
+  lastLoRaRxTs = getCurrentTimestamp();
+
   fields[field_count++] = str;
   for (uint8_t i = 0; i < len && field_count < 8; i++) {
     if (str[i] == '|') {
@@ -2718,6 +2776,11 @@ int main(void)
     uint32_t nowTs = getCurrentTimestamp();
 
     if (loraInitialized) {
+      /* 链路沉默看门狗：工作时间内 2 小时没收到任何 LoRa 信息 → 真复位。
+       * 活跃期间每圈(100ms)查一次，开销可忽略；深度休眠期间 RTC 时间戳
+       * 照样连续计时，醒来必过这里，所以休眠多久都不会漏检 */
+      linkSilenceCheck();
+
       /* LoRa 已激活：检查是否到达发送时间 */
       if (nowTs >= nextTxTimestamp) {
         OnMaster();  /* 内部会处理发送、接收窗口、以及发送后的休眠判断 */

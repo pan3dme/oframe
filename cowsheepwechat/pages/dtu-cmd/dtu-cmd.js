@@ -30,7 +30,8 @@ Page({
     cmdText: '',
     quickSelected: 0,  // 当前选中快捷按钮
     sendmodeValue: 0,  // 上报模式当前值（0/1 循环切换）
-    upgpsIndex: 0,     // 上报GPS循环取值索引（0→10→59→0 循环）
+    upgpsIndex: 0,     // 上报GPS循环取值索引（0→1→10→59→0 循环）
+    readinfoIndex: 0,  // 获取信息循环取值索引（"0"→"1"→"2"→"0" 循环）
 
     // 发送日志
     sendLog: [],
@@ -162,9 +163,9 @@ Page({
   },
 
   // ========== 快捷按钮 ==========
-  // 上报GPS：每点一次循环取值 0 → 10 → 59，再回 0（与"上报模式"的切换玩法一致）
+  // 上报GPS：每点一次循环取值 0 → 1 → 10 → 59，再回 0（与"上报模式"的切换玩法一致）
   onQuickReportGps() {
-    const CYCLE = [0, 10, 59]
+    const CYCLE = [0, 1, 10, 59]
     const idx = this.data.upgpsIndex % CYCLE.length
     const val = CYCLE[idx]
     this.setData({
@@ -185,6 +186,18 @@ Page({
 
   onQuickSyncTime() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'B', value: '30,5' }), quickSelected: 15 })
+  },
+
+  // 获取信息：每点一次循环 value "0" → "1" → "2"，再回 "0"
+  onQuickReadInfo() {
+    const CYCLE = ['0', '1', '2']
+    const idx = this.data.readinfoIndex % CYCLE.length
+    const val = CYCLE[idx]
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'readinfo', value: val }),
+      quickSelected: 21,
+      readinfoIndex: idx + 1
+    })
   },
 
   onQuickTxPower() {
