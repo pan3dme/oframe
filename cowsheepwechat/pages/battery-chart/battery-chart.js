@@ -311,6 +311,12 @@ Page({
       pts.push(p)
     })
     pts.sort((a, b) => a.t - b.t)
+    // 过滤 LORA 失真导致的明显跳跃时间点（年份/月份不在收敛区间的）
+    const filtered = this._filterAbnormalTime(pts)
+    if (filtered.dropped > 0) {
+      console.log('[电量走势] 已过滤异常时间点 ' + filtered.dropped + ' 个（年份/月份不在收敛区间）')
+    }
+    pts = filtered.pts
     // 只保留最新的 need 个点
     if (pts.length > need) pts = pts.slice(pts.length - need)
 
@@ -367,6 +373,40 @@ Page({
   // ============ 格式化 ============
   _pad2(n) {
     return String(n).padStart(2, '0')
+  },
+
+  // ============ 异常时间过滤 ============
+  // LORA 数据可能失真，对时记录的时间戳偶发明显跳跃（如 1970 / 2099 年）。
+  // 两级过滤：
+  //   ① 绝对范围：早于 2020-01-01 或晚于"当前时间+2天"的直接丢弃（墙面时间口径）
+  //   ② 月份跨度收敛：以剩余点"年-月"的中位数为锚点，与锚点相差超过 1 个自然月的丢弃
+  //      （相邻月保留，如 10/31→11/1 都显示；跨 2 个月以上的视为失真）
+  _filterAbnormalTime(pts) {
+    if (!pts || pts.length < 3) return { pts: pts || [], dropped: 0 }
+    const MIN_T = Date.UTC(2020, 0, 1)
+    const MAX_T = Date.now() + 2 * 86400000
+    let dropped = 0
+    const kept = []
+    pts.forEach(p => {
+      if (p.t < MIN_T || p.t > MAX_T) { dropped++; return }
+      kept.push(p)
+    })
+    if (kept.length >= 3) {
+      const sorted = kept.slice().sort((a, b) => a.t - b.t)
+      const mid = sorted[Math.floor(sorted.length / 2)]
+      const ad = new Date(mid.t)
+      // 月份序号 = 年*12 + 月，用于跨年相邻月比较（2025-12 与 2026-01 相差 1）
+      const anchorMi = ad.getUTCFullYear() * 12 + ad.getUTCMonth()
+      const converged = kept.filter(p => {
+        const d = new Date(p.t)
+        const mi = d.getUTCFullYear() * 12 + d.getUTCMonth()
+        if (Math.abs(mi - anchorMi) > 1) { dropped++; return false }
+        return true
+      })
+      // 收敛后至少还剩 2 个点才采用，否则认为锚点不可靠，退回只做绝对范围过滤
+      if (converged.length >= 2) return { pts: converged, dropped: dropped }
+    }
+    return { pts: kept, dropped: dropped }
   },
 
   // 时间字符串 → 毫秒（墙面时间口径）：用 Date.UTC 编码，显示时用 getUTC* 才能还原原样
