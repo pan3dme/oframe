@@ -447,11 +447,20 @@ static void OnSlave(void) {
 					}
 					rf_set_transmit_flag(RADIO_FLAG_IDLE);
 				} else {
-					// 构造下发数据: 4|deviceName|timestamp| （使用 STM32 实时时间戳）
+					// 构造下发数据: 4|timestamp|NN|deviceName
+					// 验证码算法（必须与子设备 ONLY_SEND 端完全一致）：
+					//   NN = timestamp 各位数字之和的个位+十位（即 数位和 % 100）
+					//   例: 1794048626 → 1+7+9+4+0+4+8+6+2+6=47 → "47"
+					// 子设备重算比对，不匹配拒绝本次对时 —— 排除干扰帧/ts 损坏的大多数情况
+					uint32_t syncTs = getCurrentTimestamp();
+					uint32_t digitSum = 0u, t = syncTs;
+					while (t) { digitSum += t % 10u; t /= 10u; }
+					uint32_t syncCode = digitSum % 100u;
 					char txData[64];
 					int txLen =
-							snprintf(txData, sizeof(txData), "%d|%lu|%s", MSG_TYPE_SYN_TIME,
-											 (unsigned long)getCurrentTimestamp(), deviceName);
+							snprintf(txData, sizeof(txData), "%d|%lu|%02lu|%s", MSG_TYPE_SYN_TIME,
+											 (unsigned long)syncTs, (unsigned long)syncCode, deviceName);
+					(void)txLen;
 
 					// 发送 LoRa 数据
 					uint32_t tx_time = 0;

@@ -2200,10 +2200,28 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   uint8_t msg_type = atoi(fields[0]);
 
   switch (msg_type) {
-    case MSG_TYPE_SYN_TIME: /* 4: 下发对时信息 4|timestamp|xxx */
-      if (field_count >= 2) {
+    case MSG_TYPE_SYN_TIME:
+      /* 4|timestamp|NN|中结名 —— 验证码算法与 CENTEN 中继端完全一致：
+       *   NN = timestamp 各位数字之和的个位+十位（数位和 % 100，2 位）
+       *   例: 1794048626 → 数位和 47 → "47"
+       * 子设备用收到的 timestamp 重算比对，不匹配视为干扰帧/损坏帧，
+       * 直接丢弃本次对时（时间、锚点、晶振偏差全都不动） */
+      if (field_count >= 3) {
         uint32_t recvTs = (uint32_t)atoi(fields[1]);
+        uint32_t recvCode = (uint32_t)atoi(fields[2]);
+        uint32_t digitSum = 0u, t = recvTs;
+        uint32_t wantCode;
         uint32_t nowTick = rtc_read_counter();  /* RTC 秒（STOP 期间连续） */
+
+        while (t) { digitSum += t % 10u; t /= 10u; }
+        wantCode = digitSum % 100u;
+
+        /* 验证码不匹配 → 拒绝本次对时 */
+        if (recvCode != wantCode) {
+          printf("[对时] 验证码不匹配(收=%02lu 算=%02lu), 拒绝本次对时, 时间保持不变\r\n",
+                 (unsigned long)recvCode, (unsigned long)wantCode);
+          break;
+        }
 
         /* 无效对时防护：年份必须在 1970~2032 之间，否则视为无效对时信息，
          * 不同步本机时间（已对时保持原样，未对时继续等有效值）。
