@@ -143,10 +143,10 @@ static uint32_t tx_count = 0;          /* 上报帧计数（每发一帧 LoRa +1
                                         * 放在文件作用域：配置帧/中心坐标帧/定位帧
                                         * 也都要带这个计数，便于云端判重和算丢包 */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
-/* 开机前 5 轮快速上报配额：配置周期 > 5 分钟时，前 5 轮先用 5 分钟
- * （让设备尽快对时、收配置、进入正常时隙节奏），5 轮后恢复配置周期。
- * 每完成一轮 OnMaster 递减一次；掉电重启重新计 5 轮 */
-static uint8_t  fastStartRounds = 5;
+/* 开机前 3 轮快速上报配额：配置周期 > 1 分钟时，前 3 轮先用 1 分钟
+ * （让设备尽快对时、收配置、进入正常时隙节奏），3 轮后恢复配置周期。
+ * 每完成一轮 OnMaster 递减一次；掉电重启重新计 3 轮 */
+static uint8_t  fastStartRounds = 3;
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  deviceCount    = 30;  /* 分时隙上报的子设备总台数（默认 30，可由
                                        * devicecount 指令下发并持久化到 Flash） */
@@ -1000,11 +1000,11 @@ static void calcNextTxTime(void)
   uint32_t intervalSec = getConfigIntervalSec();
   uint8_t  fastMode = 0;
 
-  /* 开机前 5 轮快速上报：配置周期 > 5 分钟时先压到 5 分钟，
+  /* 开机前 3 轮快速上报：配置周期 > 1 分钟时先压到 1 分钟，
    * 让设备尽快完成对时 / 收配置 / 进入正常时隙节奏；5 轮后恢复配置周期。
    * @note  时隙偏移也必须按压缩后的周期算，否则各设备的错峰位置会乱 */
-  if ((fastStartRounds > 0) && (intervalSec > 300u)) {
-    intervalSec = 300u;
+  if ((fastStartRounds > 0) && (intervalSec > 60u)) {
+    intervalSec = 60u;
     fastMode = 1;
   }
 
@@ -1047,7 +1047,7 @@ static void calcNextTxTime(void)
   }
 
   if (fastMode)
-    printf("[调度] 开机快速上报: 前 5 轮用 5 分钟(本机剩余 %u 轮)\r\n",
+    printf("[调度] 开机快速上报: 前 3 轮用 1 分钟(本机剩余 %u 轮)\r\n",
            (unsigned)fastStartRounds);
 }
 
@@ -1319,7 +1319,7 @@ static uint8_t isInWorkWindow(void)
  *         - 连续定位(upgps 跟踪)期间跳过：跟踪是主动任务，类型 5 本来就不
  *           开接收窗口，60 分钟 < 2 小时也不会触发，跳过保证绝不打断跟踪
  *         - 触发动作是 NVIC_SystemReset() 真复位（不是 STOP 唤醒）：
- *           快速上报 5 轮、配置上报、对时全部重走一遍，相当于设备自愈
+ *           快速上报 3 轮、配置上报、对时全部重走一遍，相当于设备自愈
  */
 static void linkSilenceCheck(void)
 {
@@ -2326,8 +2326,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               printf("[指令] devicecount=%d 台, 时隙偏移改为 %lu 秒\r\n",
                      deviceCount,
                      (unsigned long)getSlotOffsetSec(
-                         ((fastStartRounds > 0) && (getConfigIntervalSec() > 300u))
-                             ? 300u : getConfigIntervalSec()));
+                         ((fastStartRounds > 0) && (getConfigIntervalSec() > 60u))
+                             ? 60u : getConfigIntervalSec()));
             } else {
               printf("[指令] devicecount: %d 超范围(1~60), 拒绝\r\n", cnt);
             }
@@ -2411,6 +2411,18 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               printf("[指令] A: 间隔=%lu 超范围(1~60), 拒绝\r\n",
                      (unsigned long)newMin);
             }
+          }
+        }
+        /* relayreboot: 9|v0-0|relayreboot|  →  远程重启设备
+         * @note NVIC_SystemReset() 真复位（等同断电重启）：
+         *       RAM 全部清零（fastStartRounds/对时状态/重试标志都回到初始），
+         *       不是 STOP 深度休眠那种"睡一觉继续"，重新走完整开机流程：
+         *       快速上报 3 轮 → 等对时 → 恢复正常调度 */
+        else if (strcmp(fields[2], "relayreboot") == 0) {
+          if (cmdIsForMe(fields)) {
+            printf("[指令] relayreboot: 收到远程重启指令, 系统即将重启\r\n");
+            HAL_Delay(100);            /* 让日志从串口发完 */
+            NVIC_SystemReset();
           }
         } else {
           printf("[指令] 未知指令: %s\r\n", fields[2]);

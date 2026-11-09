@@ -88,11 +88,11 @@ compiling main.c...
 ../Core/Src/main.c(987): warning:  #870-D: invalid multibyte character sequence
       printf("[连续定位] 结束: �? %lu �?, 期间始终没有有效坐标\r\n",
 ../Core/Src/main.c(1050): warning:  #870-D: invalid multibyte character sequence
-      printf("[调度] 开机快速上�?: �? 5 轮用 5 分钟(本机剩余 %u �?)\r\n",
+      printf("[调度] 开机快速上�?: �? 3 轮用 1 分钟(本机剩余 %u �?)\r\n",
 ../Core/Src/main.c(1050): warning:  #870-D: invalid multibyte character sequence
-      printf("[调度] 开机快速上�?: �? 5 轮用 5 分钟(本机剩余 %u �?)\r\n",
+      printf("[调度] 开机快速上�?: �? 3 轮用 1 分钟(本机剩余 %u �?)\r\n",
 ../Core/Src/main.c(1050): warning:  #870-D: invalid multibyte character sequence
-      printf("[调度] 开机快速上�?: �? 5 轮用 5 分钟(本机剩余 %u �?)\r\n",
+      printf("[调度] 开机快速上�?: �? 3 轮用 1 分钟(本机剩余 %u �?)\r\n",
 ../Core/Src/main.c(1094): warning:  #870-D: invalid multibyte character sequence
         printf("[配置] 上报周期非法(0 或非数字), 实际�? 1 分钟执行\r\n");
 ../Core/Src/main.c(1099): warning:  #870-D: invalid multibyte character sequence
@@ -211,65 +211,65 @@ compiling main.c...
                 printTimeWindows("[指令] 新时�? : ");
 ../Core/Src/main.c(2411): warning:  #870-D: invalid multibyte character sequence
                 printf("[指令] A: 间隔=%lu 超范�?(1~60), 拒绝\r\n",
-../Core/Src/main.c(2532): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2544): warning:  #870-D: invalid multibyte character sequence
       printf("[调度] 已离开工作时间�?, 放弃 GPS 重试, 恢复正常定时上报\r\n");
-../Core/Src/main.c(2547): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2559): warning:  #870-D: invalid multibyte character sequence
         printf("[调度] 上轮无有效坐�?(已上�? 0.0,0.0), 本轮跳过定时上报, �? MSG_TYPE_GPS 重试\r\n");
-../Core/Src/main.c(2547): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2559): warning:  #870-D: invalid multibyte character sequence
         printf("[调度] 上轮无有效坐�?(已上�? 0.0,0.0), 本轮跳过定时上报, �? MSG_TYPE_GPS 重试\r\n");
-../Core/Src/main.c(2547): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2559): warning:  #870-D: invalid multibyte character sequence
         printf("[调度] 上轮无有效坐�?(已上�? 0.0,0.0), 本轮跳过定时上报, �? MSG_TYPE_GPS 重试\r\n");
-../Core/Src/main.c(2566): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2578): warning:  #870-D: invalid multibyte character sequence
       printf("发送成�? -> \"%s\"\r\n", tx_msg);
-../Core/Src/main.c(2600): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2612): warning:  #870-D: invalid multibyte character sequence
           printf("[GPS] upgps 指令首次: �? MSG_TYPE_UP_GPS(5), 上报后不开接收窗口\r\n");
-../Core/Src/main.c(2602): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2614): warning:  #870-D: invalid multibyte character sequence
           printf("[GPS] �? MSG_TYPE_GPS(1) 上报, 上报后开 3 秒接收窗口\r\n");
-../Core/Src/main.c(2620): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2632): warning:  #870-D: invalid multibyte character sequence
             printf("[GPS] 使用预搜结果上报: 已定�?(耗时 %lu �?)\r\n",
-../Core/Src/main.c(2620): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2632): warning:  #870-D: invalid multibyte character sequence
             printf("[GPS] 使用预搜结果上报: 已定�?(耗时 %lu �?)\r\n",
-../Core/Src/main.c(2623): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2635): warning:  #870-D: invalid multibyte character sequence
             printf("[GPS] 使用预搜结果上报: 未定�?(耗时 %lu �?)\r\n",
-../Core/Src/main.c(2623): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2635): warning:  #870-D: invalid multibyte character sequence
             printf("[GPS] 使用预搜结果上报: 未定�?(耗时 %lu �?)\r\n",
-../Core/Src/main.c(2708): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2720): warning:  #870-D: invalid multibyte character sequence
         printf("[休眠] LoRa进入深度休眠...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2708): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2720): warning:  #870-D: invalid multibyte character sequence
         printf("[休眠] LoRa进入深度休眠...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2714): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2726): warning:  #870-D: invalid multibyte character sequence
         printf("[活跃] LoRa保持就绪...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2714): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2726): warning:  #870-D: invalid multibyte character sequence
         printf("[活跃] LoRa保持就绪...下次发�? %lu�?%lu秒后, %s\r\n",
-../Core/Src/main.c(2761): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2773): warning:  #870-D: invalid multibyte character sequence
     printf("\r\n===== LoRa 仅发送模式启�? =====\r\n");
-../Core/Src/main.c(2765): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2777): warning:  #870-D: invalid multibyte character sequence
     printf("时隙  : 序号=%d, 总台�?=%d, 间隔=%lu�?, 偏移=%lu秒\r\n",
-../Core/Src/main.c(2765): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2777): warning:  #870-D: invalid multibyte character sequence
     printf("时隙  : 序号=%d, 总台�?=%d, 间隔=%lu�?, 偏移=%lu秒\r\n",
-../Core/Src/main.c(2774): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2786): warning:  #870-D: invalid multibyte character sequence
     printf("[调度] 就绪, 首次立即发�?...\r\n");
-../Core/Src/main.c(2827): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2839): warning:  #870-D: invalid multibyte character sequence
           printf("[WAKE] LoRa 唤醒�?, 5秒倒计�?...\r\n");
-../Core/Src/main.c(2827): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2839): warning:  #870-D: invalid multibyte character sequence
           printf("[WAKE] LoRa 唤醒�?, 5秒倒计�?...\r\n");
-../Core/Src/main.c(2842): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2854): warning:  #870-D: invalid multibyte character sequence
               printf("[GPS] 上报周期小于搜星上限: 提前量压缩为 %lu �?, 尽力搜星(到点必发)\r\n",
-../Core/Src/main.c(2854): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2866): warning:  #870-D: invalid multibyte character sequence
                 printf("[调度] 预搜完成, 距上报还�? %lu �?, 再休眠到点前 5 秒\r\n",
-../Core/Src/main.c(2854): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(2866): warning:  #870-D: invalid multibyte character sequence
                 printf("[调度] 预搜完成, 距上报还�? %lu �?, 再休眠到点前 5 秒\r\n",
-../Core/Src/main.c(3245): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3257): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power ON (PB15=低上�?, PB1=�? Full on)\r\n");
-../Core/Src/main.c(3245): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3257): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power ON (PB15=低上�?, PB1=�? Full on)\r\n");
-../Core/Src/main.c(3274): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3286): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power OFF (PB15=高断�?, PB1=�? Standby)\r\n");
-../Core/Src/main.c(3274): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3286): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power OFF (PB15=高断�?, PB1=�? Standby)\r\n");
 ../Core/Src/main.c: 133 warnings, 0 errors
 linking...
-Program Size: Code=27920 RO-data=4284 RW-data=252 ZI-data=3340  
+Program Size: Code=27964 RO-data=4356 RW-data=252 ZI-data=3340  
 FromELF: creating hex file...
 "LY-020-software\LY-020-software.axf" - 0 Error(s), 133 Warning(s).
 Build Time Elapsed:  00:00:02

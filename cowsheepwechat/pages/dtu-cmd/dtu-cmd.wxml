@@ -40,6 +40,7 @@
       <button class="quick-btn {{quickSelected === 12 ? 'quick-active' : ''}}" bindtap="onQuickNormalMode">📶 上报模式({{sendmodeValue}})</button>
       <button class="quick-btn {{quickSelected === 15 ? 'quick-active' : ''}}" bindtap="onQuickSyncTime">📍 位置跟踪</button>
       <button class="quick-btn {{quickSelected === 21 ? 'quick-active' : ''}}" bindtap="onQuickReadInfo">ℹ️ 获取信息</button>
+      <button class="quick-btn {{quickSelected === 22 ? 'quick-active' : ''}}" bindtap="onQuickRelayReboot">🔁 设备重启({{relayrebootValue}})</button>
 
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
       <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickTestGps">🧪 GPS测试</button>

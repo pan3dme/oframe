@@ -32,6 +32,7 @@ Page({
     sendmodeValue: 0,  // 上报模式当前值（0/1 循环切换）
     upgpsIndex: 0,     // 上报GPS循环取值索引（0→1→10→59→0 循环）
     readinfoIndex: 0,  // 获取信息循环取值索引（"0"→"1"→"2"→"0" 循环）
+    relayrebootValue: 0, // 设备重启当前值（0/1 循环切换）
 
     // 发送日志
     sendLog: [],
@@ -197,6 +198,16 @@ Page({
       cmdText: JSON.stringify({ cmd: 'readinfo', value: val }),
       quickSelected: 21,
       readinfoIndex: idx + 1
+    })
+  },
+
+  // 设备重启：每点一次切换 value 0 → 1 → 0 循环（默认先发0；按钮上显示"下一次点击将发送的值"）
+  onQuickRelayReboot() {
+    const val = this.data.relayrebootValue
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'relayreboot', value: val }),
+      quickSelected: 22,
+      relayrebootValue: val === 0 ? 1 : 0
     })
   },
 
