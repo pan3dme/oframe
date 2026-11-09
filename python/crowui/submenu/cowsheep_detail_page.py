@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLa
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPainterPath
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl
 import os
+from crowui import theme
 
 
 class CowSheepDetailPage(QWidget):
@@ -29,35 +30,22 @@ class CowSheepDetailPage(QWidget):
         
         # 返回按钮
         self.back_btn = QPushButton("← 返回")
-        self.back_btn.setFont(QFont("Microsoft YaHei", 11, QFont.Weight.Bold))
+        self.back_btn.setFont(theme.font(11, bold=True))
         self.back_btn.setFixedHeight(40)
-        self.back_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2ecc71;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 15px;
-            }
-            QPushButton:hover {
-                background-color: #27ae60;
-            }
-            QPushButton:pressed {
-                background-color: #1e8449;
-            }
-        """)
+        self.back_btn.setStyleSheet(theme.PRIMARY_BUTTON_QSS)
+        self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.back_btn.clicked.connect(self.on_back_clicked)
         top_layout.addWidget(self.back_btn)
         
         # 标题
         title_label = QLabel("牛羊详情")
-        title_label.setFont(QFont("Microsoft YaHei", 16, QFont.Weight.Bold))
+        title_label.setFont(theme.font(16, bold=True))
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("""
-            QLabel {
-                color: #2c3e50;
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.TEXT_MAIN};
                 padding: 5px;
-            }
+            }}
         """)
         top_layout.addWidget(title_label, stretch=1)
         
@@ -68,26 +56,7 @@ class CowSheepDetailPage(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                border: none;
-                background: #f0f0f0;
-                width: 10px;
-                border-radius: 5px;
-            }
-            QScrollBar::handle:vertical {
-                background: #c0c0c0;
-                border-radius: 5px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #a0a0a0;
-            }
-        """)
+        scroll_area.setStyleSheet(theme.SCROLLBAR_QSS)
         
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
@@ -98,81 +67,75 @@ class CowSheepDetailPage(QWidget):
         self.pic_label = QLabel()
         self.pic_label.setFixedSize(150, 150)
         self.pic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pic_label.setStyleSheet("""
-            QLabel {
-                border: 2px solid #ddd;
+        self.pic_label.setStyleSheet(f"""
+            QLabel {{
+                border: 2px solid {theme.CARD_BORDER};
                 border-radius: 10px;
-                background-color: #f9f9f9;
-            }
+                background-color: {theme.BG};
+            }}
         """)
         content_layout.addWidget(self.pic_label, alignment=Qt.AlignmentFlag.AlignHCenter)
         
         # 牛羊信息卡片容器
         info_card = QFrame()
         info_card.setFrameShape(QFrame.Shape.StyledPanel)
-        info_card.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-            }
-        """)
+        info_card.setStyleSheet(theme.CARD_STATIC_QSS)
         info_layout = QVBoxLayout(info_card)
         info_layout.setContentsMargins(20, 20, 20, 20)
         info_layout.setSpacing(12)
         
         # 牛羊ID
         self.cowsheep_id_label = QLabel()
-        self.cowsheep_id_label.setFont(QFont("Microsoft YaHei", 14, QFont.Weight.Bold))
-        self.cowsheep_id_label.setStyleSheet("color: #2ecc71; padding: 5px 0;")
+        self.cowsheep_id_label.setFont(theme.font(14, bold=True))
+        self.cowsheep_id_label.setStyleSheet(f"color: {theme.PRIMARY}; padding: 5px 0;")
         info_layout.addWidget(self.cowsheep_id_label)
         
         # 分隔线
         line1 = QFrame()
         line1.setFrameShape(QFrame.Shape.HLine)
-        line1.setStyleSheet("background-color: #e0e0e0;")
+        line1.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line1)
         
         # 牛羊名称
         self.rename_label = QLabel()
-        self.rename_label.setFont(QFont("Microsoft YaHei", 11))
-        self.rename_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.rename_label.setFont(theme.font(11))
+        self.rename_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.rename_label)
         
         # 分隔线
         line2 = QFrame()
         line2.setFrameShape(QFrame.Shape.HLine)
-        line2.setStyleSheet("background-color: #e0e0e0;")
+        line2.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line2)
         
         # 性别
         self.gender_label = QLabel()
-        self.gender_label.setFont(QFont("Microsoft YaHei", 11))
-        self.gender_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.gender_label.setFont(theme.font(11))
+        self.gender_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.gender_label)
         
         # 分隔线
         line3 = QFrame()
         line3.setFrameShape(QFrame.Shape.HLine)
-        line3.setStyleSheet("background-color: #e0e0e0;")
+        line3.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line3)
         
         # 生日
         self.birthday_label = QLabel()
-        self.birthday_label.setFont(QFont("Microsoft YaHei", 11))
-        self.birthday_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.birthday_label.setFont(theme.font(11))
+        self.birthday_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.birthday_label)
         
         # 分隔线
         line4 = QFrame()
         line4.setFrameShape(QFrame.Shape.HLine)
-        line4.setStyleSheet("background-color: #e0e0e0;")
+        line4.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line4)
         
         # 绑定设备
         self.devices_label = QLabel()
-        self.devices_label.setFont(QFont("Microsoft YaHei", 11))
-        self.devices_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.devices_label.setFont(theme.font(11))
+        self.devices_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.devices_label)
         
         content_layout.addWidget(info_card)

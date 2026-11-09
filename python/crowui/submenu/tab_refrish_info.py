@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt
 import config
 from config import settings
 from tablestore import INF_MAX, INF_MIN, Direction
+from crowui import theme
 
 
 class TobRefrishInfo(QWidget):
@@ -25,7 +26,9 @@ class TobRefrishInfo(QWidget):
         self.top_layout.setContentsMargins(5, 5, 5, 5)
 
         self.button2 = QPushButton("获取最新数据")
-        self.button2.setFont(QFont("Microsoft YaHei", 10))
+        self.button2.setFont(theme.font(10))
+        self.button2.setStyleSheet(theme.PRIMARY_BUTTON_QSS)
+        self.button2.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button2.clicked.connect(self.loadData)  # 连接按钮点击事件
         self.top_layout.addWidget(self.button2)
 
@@ -35,26 +38,7 @@ class TobRefrishInfo(QWidget):
         self.table.setHorizontalHeaderLabels(['deviceId', 'lorastr', 'time', 'upDateDevice'])
 
         # 设置表格样式
-        self.table.setStyleSheet("""
-            QTableWidget {
-                background-color: white;
-                border: 1px solid #cccccc;
-                gridline-color: #e0e0e0;
-            }
-            QTableWidget::item {
-                padding: 5px;
-            }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                padding: 8px;
-                border: 1px solid #cccccc;
-                font-weight: bold;
-            }
-            QTableWidget::item:selected {
-                background-color: #0078d7;
-                color: white;
-            }
-        """)
+        self.table.setStyleSheet(theme.TABLE_QSS)
 
         # 设置列宽比例为 1:2:2:1
         header = self.table.horizontalHeader()

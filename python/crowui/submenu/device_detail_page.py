@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLa
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QPainterPath
 from PyQt6.QtCore import Qt, pyqtSignal, QUrl
 import os
+from crowui import theme
 
 
 class DeviceDetailPage(QWidget):
@@ -29,35 +30,22 @@ class DeviceDetailPage(QWidget):
         
         # 返回按钮
         self.back_btn = QPushButton("← 返回")
-        self.back_btn.setFont(QFont("Microsoft YaHei", 11, QFont.Weight.Bold))
+        self.back_btn.setFont(theme.font(11, bold=True))
         self.back_btn.setFixedHeight(40)
-        self.back_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 15px;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #21618c;
-            }
-        """)
+        self.back_btn.setStyleSheet(theme.PRIMARY_BUTTON_QSS)
+        self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.back_btn.clicked.connect(self.on_back_clicked)
         top_layout.addWidget(self.back_btn)
         
         # 标题
         title_label = QLabel("设备详情")
-        title_label.setFont(QFont("Microsoft YaHei", 16, QFont.Weight.Bold))
+        title_label.setFont(theme.font(16, bold=True))
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("""
-            QLabel {
-                color: #2c3e50;
+        title_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.TEXT_MAIN};
                 padding: 5px;
-            }
+            }}
         """)
         top_layout.addWidget(title_label, stretch=1)
         
@@ -68,26 +56,7 @@ class DeviceDetailPage(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                border: none;
-                background: #f0f0f0;
-                width: 10px;
-                border-radius: 5px;
-            }
-            QScrollBar::handle:vertical {
-                background: #c0c0c0;
-                border-radius: 5px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #a0a0a0;
-            }
-        """)
+        scroll_area.setStyleSheet(theme.SCROLLBAR_QSS)
         
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
@@ -98,105 +67,99 @@ class DeviceDetailPage(QWidget):
         self.pic_label = QLabel()
         self.pic_label.setFixedSize(150, 150)
         self.pic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pic_label.setStyleSheet("""
-            QLabel {
-                border: 2px solid #ddd;
+        self.pic_label.setStyleSheet(f"""
+            QLabel {{
+                border: 2px solid {theme.CARD_BORDER};
                 border-radius: 10px;
-                background-color: #f9f9f9;
-            }
+                background-color: {theme.BG};
+            }}
         """)
         content_layout.addWidget(self.pic_label, alignment=Qt.AlignmentFlag.AlignHCenter)
         
         # 设备信息卡片容器
         info_card = QFrame()
         info_card.setFrameShape(QFrame.Shape.StyledPanel)
-        info_card.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-            }
-        """)
+        info_card.setStyleSheet(theme.CARD_STATIC_QSS)
         info_layout = QVBoxLayout(info_card)
         info_layout.setContentsMargins(20, 20, 20, 20)
         info_layout.setSpacing(12)
         
         # 设备ID
         self.device_id_label = QLabel()
-        self.device_id_label.setFont(QFont("Microsoft YaHei", 14, QFont.Weight.Bold))
-        self.device_id_label.setStyleSheet("color: #1a73e8; padding: 5px 0;")
+        self.device_id_label.setFont(theme.font(14, bold=True))
+        self.device_id_label.setStyleSheet(f"color: {theme.PRIMARY}; padding: 5px 0;")
         info_layout.addWidget(self.device_id_label)
         
         # 分隔线
         line1 = QFrame()
         line1.setFrameShape(QFrame.Shape.HLine)
-        line1.setStyleSheet("background-color: #e0e0e0;")
+        line1.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line1)
         
         # 设备编号
         self.device_key_label = QLabel()
-        self.device_key_label.setFont(QFont("Microsoft YaHei", 11))
-        self.device_key_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.device_key_label.setFont(theme.font(11))
+        self.device_key_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.device_key_label)
         
         # 分隔线
         line2 = QFrame()
         line2.setFrameShape(QFrame.Shape.HLine)
-        line2.setStyleSheet("background-color: #e0e0e0;")
+        line2.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line2)
         
         # 设备名称
         self.rename_label = QLabel()
-        self.rename_label.setFont(QFont("Microsoft YaHei", 11))
-        self.rename_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.rename_label.setFont(theme.font(11))
+        self.rename_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.rename_label)
         
         # 分隔线
         line3 = QFrame()
         line3.setFrameShape(QFrame.Shape.HLine)
-        line3.setStyleSheet("background-color: #e0e0e0;")
+        line3.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line3)
         
         # 链接牛羊
         self.link_cowsheep_label = QLabel()
-        self.link_cowsheep_label.setFont(QFont("Microsoft YaHei", 11))
-        self.link_cowsheep_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.link_cowsheep_label.setFont(theme.font(11))
+        self.link_cowsheep_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.link_cowsheep_label)
         
         # 分隔线
         line4 = QFrame()
         line4.setFrameShape(QFrame.Shape.HLine)
-        line4.setStyleSheet("background-color: #e0e0e0;")
+        line4.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line4)
         
         # GPS位置
         self.gps_label = QLabel()
-        self.gps_label.setFont(QFont("Microsoft YaHei", 11))
-        self.gps_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.gps_label.setFont(theme.font(11))
+        self.gps_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.gps_label)
         
         # 分隔线
         line5 = QFrame()
         line5.setFrameShape(QFrame.Shape.HLine)
-        line5.setStyleSheet("background-color: #e0e0e0;")
+        line5.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line5)
         
         # 时间
         self.time_label = QLabel()
-        self.time_label.setFont(QFont("Microsoft YaHei", 11))
-        self.time_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.time_label.setFont(theme.font(11))
+        self.time_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.time_label)
         
         # 分隔线
         line6 = QFrame()
         line6.setFrameShape(QFrame.Shape.HLine)
-        line6.setStyleSheet("background-color: #e0e0e0;")
+        line6.setStyleSheet(f"background-color: {theme.DIVIDER};")
         info_layout.addWidget(line6)
         
         # 更新时间
         self.update_label = QLabel()
-        self.update_label.setFont(QFont("Microsoft YaHei", 11))
-        self.update_label.setStyleSheet("color: #5f6368; padding: 5px 0;")
+        self.update_label.setFont(theme.font(11))
+        self.update_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px 0;")
         info_layout.addWidget(self.update_label)
         
         content_layout.addWidget(info_card)

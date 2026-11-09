@@ -7,6 +7,7 @@ from crowui.submenu.device_detail_page import DeviceDetailPage
 from crowui.submenu.tab_allcorw_list import TobAllcorwList
 from crowui.submenu.cowsheep_detail_page import CowSheepDetailPage
 from crowui.submenu.tab_refrish_info import TobRefrishInfo
+from crowui import theme
 
 
 class RightPanelContainer(QWidget):
@@ -20,7 +21,7 @@ class RightPanelContainer(QWidget):
         # 设置背景色
         self.setAutoFillBackground(True)
         palette = self.palette()
-        palette.setColor(self.backgroundRole(), QColor("#f5f5f5"))
+        palette.setColor(self.backgroundRole(), QColor(theme.BG))
         self.setPalette(palette)
         
         # 创建主布局
@@ -29,76 +30,40 @@ class RightPanelContainer(QWidget):
         main_layout.setSpacing(15)
         
         # ==================== 按钮区域 ====================
+        # 统一导航按钮：白底卡片式，选中（checked）变主色填充，指示当前页面
         button_widget = QWidget()
         button_layout = QHBoxLayout(button_widget)
         button_layout.setContentsMargins(0, 0, 0, 10)
         button_layout.setSpacing(8)
-        
-        # 创建统一的按钮样式
-        button_style = """
-            QPushButton {
-                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 %s,
-                    stop:1 %s);
-                color: white;
-                border: none;
-                border-radius: 6px;
-                font-size: 13px;
-                font-weight: bold;
-                padding: 8px 12px;
-                min-height: 40px;
-            }
-            QPushButton:hover {
-                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 %s,
-                    stop:1 %s);
-            }
-            QPushButton:pressed {
-                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 %s,
-                    stop:1 %s);
-            }
-        """
-        
+
         # 创建设备列表按钮
         self.btn_device_list = QPushButton("📱 设备列表")
-        self.btn_device_list.setStyleSheet(button_style % (
-            "#3498db", "#2980b9",  # normal
-            "#5dade2", "#3498db",  # hover
-            "#2874a6", "#1f618d"   # pressed
-        ))
-        
+        self.btn_device_list.setCheckable(True)
+
         # 牛羊管理按钮
         self.btn_cow_sheep = QPushButton("🐄 牛羊管理")
-        self.btn_cow_sheep.setStyleSheet(button_style % (
-            "#2ecc71", "#27ae60",
-            "#58d68d", "#2ecc71",
-            "#1e8449", "#196f3d"
-        ))
-        
+        self.btn_cow_sheep.setCheckable(True)
+
         # 最新数据按钮
         self.btn_latest_data = QPushButton("📊 最新数据")
-        self.btn_latest_data.setStyleSheet(button_style % (
-            "#e74c3c", "#c0392b",
-            "#ec7063", "#e74c3c",
-            "#922b21", "#7b241c"
-        ))
-        
+        self.btn_latest_data.setCheckable(True)
+
         # 巡航画面按钮
         self.btn_cruise = QPushButton("🎥 巡航画面")
-        self.btn_cruise.setStyleSheet(button_style % (
-            "#f39c12", "#d68910",
-            "#f5b041", "#f39c12",
-            "#af601a", "#935116"
-        ))
-        
+        self.btn_cruise.setCheckable(True)
+
         # 切换位置按钮
         self.btn_toggle = QPushButton("🔄 切换地图")
-        self.btn_toggle.setStyleSheet(button_style % (
-            "#9b59b6", "#8e44ad",
-            "#af7ac5", "#9b59b6",
-            "#6c3483", "#5b2c6f"
-        ))
+        self.btn_toggle.setCheckable(True)
+
+        # 统一应用导航样式
+        for btn in (self.btn_device_list, self.btn_cow_sheep, self.btn_latest_data,
+                    self.btn_cruise, self.btn_toggle):
+            btn.setStyleSheet(theme.NAV_BUTTON_QSS)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # 记录页面导航按钮（用于激活态高亮）
+        self._nav_buttons = [self.btn_device_list, self.btn_cow_sheep, self.btn_latest_data]
         
         # 添加按钮到布局（使用stretch使按钮均匀分布）
         button_layout.addWidget(self.btn_device_list, stretch=1)
@@ -112,13 +77,7 @@ class RightPanelContainer(QWidget):
         # ==================== 页面堆叠区域 ====================
         # 创建堆叠窗口用于管理多个页面
         self.stacked_widget = QStackedWidget()
-        self.stacked_widget.setStyleSheet("""
-            QStackedWidget {
-                background-color: white;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-            }
-        """)
+        self.stacked_widget.setStyleSheet(theme.STACK_QSS)
         
         # 创建默认欢迎页面
         self.welcome_page = self._create_welcome_page()
@@ -147,23 +106,34 @@ class RightPanelContainer(QWidget):
         self.btn_latest_data.clicked.connect(self.show_latest_data_page)
         self.btn_cruise.clicked.connect(lambda: print("巡航画面按钮被点击"))
 
+        # 统一处理导航按钮的激活态高亮
+        for btn in (self.btn_device_list, self.btn_cow_sheep, self.btn_latest_data,
+                    self.btn_cruise, self.btn_toggle):
+            btn.clicked.connect(lambda checked, b=btn: self._highlight_nav(b))
+
         
         print("✅ 右侧面板容器初始化完成")
     
+    def _highlight_nav(self, clicked_btn):
+        """导航按钮激活态：仅当前点击的按钮保持 checked（主色填充）"""
+        for btn in (self.btn_device_list, self.btn_cow_sheep, self.btn_latest_data,
+                    self.btn_cruise, self.btn_toggle):
+            btn.setChecked(btn is clicked_btn)
+
     def _create_welcome_page(self):
         """创建欢迎页面"""
         welcome_widget = QWidget()
         welcome_layout = QVBoxLayout(welcome_widget)
         welcome_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        welcome_label = QLabel("欢迎使用\n\n请点击左侧按钮选择功能")
-        welcome_label.setFont(QFont("Microsoft YaHei", 16))
+        welcome_label = QLabel("欢迎使用\n\n请点击上方按钮选择功能")
+        welcome_label.setFont(theme.font(16, bold=True))
         welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        welcome_label.setStyleSheet("""
-            QLabel {
-                color: #7f8c8d;
+        welcome_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.TEXT_MUTED};
                 padding: 20px;
-            }
+            }}
         """)
         
         welcome_layout.addWidget(welcome_label)

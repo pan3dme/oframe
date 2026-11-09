@@ -11,6 +11,7 @@ from PyQt6.QtCore import QUrl
 from tablestore import INF_MAX, INF_MIN, Direction
 
 from config import settings
+from crowui import theme
 
 
 class CowSheepCard(QFrame):
@@ -27,17 +28,7 @@ class CowSheepCard(QFrame):
     def setup_ui(self):
         """初始化UI"""
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-            }
-            QFrame:hover {
-                background-color: #f5f9ff;
-                border: 2px solid #0078d7;
-            }
-        """)
+        self.setStyleSheet(theme.CARD_QSS)
         
         # 设置鼠标指针为手型，提示可点击
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -80,19 +71,19 @@ class CowSheepCard(QFrame):
         
         # 牛羊ID（cowsheep_id + rename）- 最大最醒目
         self.cowsheep_id_label = QLabel()
-        self.cowsheep_id_label.setFont(QFont("Microsoft YaHei", 12, QFont.Weight.Bold))
+        self.cowsheep_id_label.setFont(theme.font(12, bold=True))
         self.cowsheep_id_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.cowsheep_id_label.setStyleSheet("""
-            QLabel {
-                color: #1a73e8;
+        self.cowsheep_id_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.PRIMARY};
                 padding: 2px 0px;
                 background-color: transparent;
                 border: none;
-            }
-            QLabel:hover {
+            }}
+            QLabel:hover {{
                 background-color: transparent;
                 border: none;
-            }
+            }}
         """)
         self.cowsheep_id_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.cowsheep_id_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
@@ -100,19 +91,19 @@ class CowSheepCard(QFrame):
         
         # 性别 - 中等大小
         self.gender_label = QLabel()
-        self.gender_label.setFont(QFont("Microsoft YaHei", 10))
+        self.gender_label.setFont(theme.font(10))
         self.gender_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.gender_label.setStyleSheet("""
-            QLabel {
-                color: #5f6368;
+        self.gender_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.TEXT_SECONDARY};
                 padding: 1px 0px;
                 background-color: transparent;
                 border: none;
-            }
-            QLabel:hover {
+            }}
+            QLabel:hover {{
                 background-color: transparent;
                 border: none;
-            }
+            }}
         """)
         self.gender_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.gender_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
@@ -120,19 +111,19 @@ class CowSheepCard(QFrame):
         
         # 生日 - 最小
         self.birthday_label = QLabel()
-        self.birthday_label.setFont(QFont("Microsoft YaHei", 9))
+        self.birthday_label.setFont(theme.font(9))
         self.birthday_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.birthday_label.setStyleSheet("""
-            QLabel {
-                color: #80868b;
+        self.birthday_label.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.TEXT_MUTED};
                 padding: 1px 0px;
                 background-color: transparent;
                 border: none;
-            }
-            QLabel:hover {
+            }}
+            QLabel:hover {{
                 background-color: transparent;
                 border: none;
-            }
+            }}
         """)
         self.birthday_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.birthday_label.setAttribute(Qt.WidgetAttribute.WA_Hover, False)
@@ -148,23 +139,9 @@ class CowSheepCard(QFrame):
         
         # 编辑按钮
         self.edit_btn = QPushButton("编辑")
-        self.edit_btn.setFont(QFont("Microsoft YaHei", 9))
+        self.edit_btn.setFont(theme.font(9))
         self.edit_btn.setFixedWidth(100)
-        self.edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1a73e8;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 5px;
-            }
-            QPushButton:hover {
-                background-color: #1557b0;
-            }
-            QPushButton:pressed {
-                background-color: #0d47a1;
-            }
-        """)
+        self.edit_btn.setStyleSheet(theme.PRIMARY_BUTTON_QSS)
         self.edit_btn.clicked.connect(self.on_edit_clicked)
         button_layout.addWidget(self.edit_btn)
         
@@ -281,7 +258,9 @@ class TobAllcorwList(QWidget):
 
         self.button2 = QPushButton("获取所有牛羊数据")
 
-        self.button2.setFont(QFont("Microsoft YaHei", 10))
+        self.button2.setFont(theme.font(10))
+        self.button2.setStyleSheet(theme.PRIMARY_BUTTON_QSS)
+        self.button2.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button2.clicked.connect(self.loadData)  # 连接按钮点击事件
         self.top_layout.addWidget(self.button2)
 
@@ -290,26 +269,7 @@ class TobAllcorwList(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                border: none;
-                background: #f0f0f0;
-                width: 10px;
-                border-radius: 5px;
-            }
-            QScrollBar::handle:vertical {
-                background: #c0c0c0;
-                border-radius: 5px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #a0a0a0;
-            }
-        """)
+        scroll_area.setStyleSheet(theme.SCROLLBAR_QSS)
         
         # 创建容器widget用于放置卡片
         self.cards_container = QWidget()

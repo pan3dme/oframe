@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 from tablestore import OTSClient, INF_MAX, INF_MIN, Direction, SingleColumnCondition, ComparatorType
 from display3d.google_scene3d import GoogleScene3D
 from crowui.right_panel_container import RightPanelContainer
+from crowui import theme
 from config import settings
 
 
@@ -68,21 +69,9 @@ class MainWindow(QMainWindow):
         self.show_place_btn.setFixedSize(80, 28)
         self.show_place_btn.move(95, 10)
         self.show_place_btn.clicked.connect(self._show_places_on_3d)
-        
-        btn_style = """
-            QPushButton {
-                background-color: rgba(0, 120, 215, 200);
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 120, 215, 255);
-            }
-        """
-        self.show_road_btn.setStyleSheet(btn_style)
-        self.show_place_btn.setStyleSheet(btn_style)
+
+        self.show_road_btn.setStyleSheet(theme.OVERLAY_BUTTON_QSS)
+        self.show_place_btn.setStyleSheet(theme.OVERLAY_BUTTON_QSS)
         
         left_layout.addWidget(scene_container)
         
