@@ -32,7 +32,8 @@ Page({
     showConfigModal: false,
     hourRange: (() => { const arr = []; for (let i = 0; i <= 24; i++) arr.push(i); return arr })(),      // 结束时间可选 0-24
     startHourRange: (() => { const arr = []; for (let i = 0; i <= 23; i++) arr.push(i); return arr })(),  // 开始时间可选 0-23
-    configPeriod: '10',          // 上报周期（5-60）
+    configPeriodRange: [5, 10, 15, 30, 60], // 上报周期可选档位（分钟）
+    configPeriodIndex: 1,        // 上报周期滚轮索引（默认10分钟）
     configWorkStart: 0,          // 开机时间开始（小时索引）
     configWorkEnd: 24,           // 开机时间结束（24=23:59）
 
@@ -162,10 +163,25 @@ Page({
 
   // 打开配置下发弹框，defaults 为空时使用默认值 10,0-24
   _openConfigModal(defaults) {
+    // iOS：弹框会盖住页面但不会自动收起输入框键盘，先主动收一次，
+    // 否则点弹框内 picker 时键盘会跟着弹出来挡住界面
+    try { wx.hideKeyboard({}) } catch (e) { /* 无键盘时忽略 */ }
     const d = defaults || {}
+    // 上报周期转为滚轮索引：精确匹配档位，匹配不到（旧配置如20分钟）取最接近的档位
+    const p = parseInt(d.configPeriod !== undefined ? d.configPeriod : '10', 10)
+    const range = this.data.configPeriodRange
+    let pIdx = range.indexOf(isNaN(p) ? 10 : p)
+    if (pIdx < 0) {
+      pIdx = 0
+      let best = Infinity
+      range.forEach((v, i) => {
+        const diff = Math.abs(v - (isNaN(p) ? 10 : p))
+        if (diff < best) { best = diff; pIdx = i }
+      })
+    }
     this.setData({
       showConfigModal: true,
-      configPeriod: d.configPeriod !== undefined ? d.configPeriod : '10',
+      configPeriodIndex: pIdx,
       configWorkStart: d.configWorkStart !== undefined ? d.configWorkStart : 0,
       configWorkEnd: d.configWorkEnd !== undefined ? d.configWorkEnd : 24
     })
@@ -192,8 +208,9 @@ Page({
   },
 
   // ===== 配置下发弹框交互 =====
-  onConfigPeriodInput(e) {
-    this.setData({ configPeriod: e.detail.value })
+  // 上报周期用滚轮选择（不用键盘，iOS 上键盘会干扰后续 picker 操作）
+  onConfigPeriodChange(e) {
+    this.setData({ configPeriodIndex: parseInt(e.detail.value, 10) })
   },
 
   onConfigWorkStartChange(e) {
@@ -208,14 +225,16 @@ Page({
     this.setData({ showConfigModal: false })
   },
 
+  // 弹框内任意点按都收一次键盘（iOS 残留键盘会盖住 picker 滚轮）
+  onConfigModalTap() {
+    try { wx.hideKeyboard({}) } catch (e) { /* ignore */ }
+  },
+
   // 确定：时间窗口编码为两位代号，生成指令内容并填入 cmdText
   // 中继无GPS/主周期，value 只含: 周期,开机代号 （如 10,0K）
   onConfigModalConfirm() {
-    const period = parseInt(this.data.configPeriod, 10)
-    if (isNaN(period) || period < 5 || period > 60) {
-      wx.showToast({ title: '上报周期需在5-60之间', icon: 'none' })
-      return
-    }
+    // 滚轮选择的周期恒定在 5-60 之间，无需再校验
+    const period = this.data.configPeriodRange[this.data.configPeriodIndex]
 
     const workCode = timeWindowCodec.encodeTimeWindow(this.data.configWorkStart, this.data.configWorkEnd)
     if (!workCode) {

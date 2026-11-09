@@ -43,7 +43,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define EXAMPLE_NAME "LoRa Only Send"
-#define DEMO_VER     "V1.0"
+#define DEMO_VER     "V1.1"
 #define EXAMPLE_DATE "2026/10/18"
 
 #define TX_LEN       64

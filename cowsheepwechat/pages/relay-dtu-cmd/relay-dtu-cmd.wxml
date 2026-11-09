@@ -13,7 +13,8 @@
   <!-- 指令输入 -->
   <view class="section-card">
     <view class="section-title">⚡ 指令内容</view>
-    <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令JSON或文本..." bindinput="onCmdInput" auto-height maxlength="-1" />
+    <!-- 配置下发弹框打开期间禁用：iOS 上弹框内点 picker 会穿透聚焦到这里弹键盘 -->
+    <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令JSON或文本..." bindinput="onCmdInput" auto-height maxlength="-1" disabled="{{showConfigModal}}" />
     
     <!-- 快捷按钮 -->
     <view class="quick-label">快捷指令</view>
@@ -55,14 +56,17 @@
 
   <!-- 配置下发弹框 -->
   <view class="modal-overlay" wx:if="{{showConfigModal}}">
-    <view class="modal-container config-modal">
+    <view class="modal-container config-modal" bindtap="onConfigModalTap">
       <view class="modal-title">⚙️ 配置下发</view>
 
       <view class="config-scroll">
         <!-- ① 上报周期（输入框 5-60） -->
         <view class="config-group">
           <view class="config-group-title">① 上报周期（秒）<text class="config-group-range">5-60</text></view>
-          <input class="config-input" type="number" value="{{configPeriod}}" bindinput="onConfigPeriodInput" placeholder="请输入5-60" />
+          <!-- 滚轮选择（iOS 上 input 数字键盘会干扰后续 picker，改用滚轮免键盘） -->
+        <picker mode="selector" range="{{configPeriodRange}}" value="{{configPeriodIndex}}" bindchange="onConfigPeriodChange">
+          <view class="time-picker-value">{{configPeriodRange[configPeriodIndex]}} 分钟</view>
+        </picker>
         </view>
 
         <!-- ② 开机时间（小时 0-24） -->
