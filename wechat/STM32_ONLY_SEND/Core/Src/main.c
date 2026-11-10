@@ -43,7 +43,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define EXAMPLE_NAME "LoRa Only Send"
-#define DEMO_VER     "V1.1"
+#define DEMO_VER     "V1.2"
 #define EXAMPLE_DATE "2026/10/18"
 
 #define TX_LEN       64
@@ -84,7 +84,9 @@ char centerStr[64] = "";
 #define CENTER_FLASH_ADDR   0x0800EC00  /* 农场中心坐标存储（倒数第五页） */
 #define CENTER_MAGIC        0xA5A55A5D  /* 中心坐标魔术字 */
 #define DEVCNT_FLASH_ADDR   0x0800E800  /* 子设备总台数存储（倒数第六页） */
+#define DRIFT_FLASH_ADDR    0x0800E400  /* 晶振补偿值存储（倒数第七页） */
 #define DEVCNT_MAGIC        0xA5A55A5E  /* 设备台数魔术字 */
+#define DRIFT_MAGIC         0xA5A55A5F  /* 晶振补偿值魔术字 */
 
 /* 上报间隔：由 configStr 第 1 段决定（分钟），如 "30,0M,3t,6" = 30 分钟
  * configStr 四段含义:
@@ -117,6 +119,13 @@ static uint16_t gpsContTotalMin = 0;   /* upgps 指令带的分钟数参数：
                                         *         每 GPS_CONT_INTERVAL_SEC 秒上报一次坐标
                                         * 用完即清零，故失败重试时只会走单次逻辑 */
 static uint32_t anchorTimestamp = 0;  /* 首次对时的 Unix 时间戳基准 */
+/* --- 晶振偏差补偿（收敛后才启用）---
+ * 每次对时测出偏差(秒/小时, 负=本地慢)；连续两次测量相差 ≤ DRIFT_CONVERGE_TOL
+ * 才视为收敛并启用补偿：休眠闹钟按偏差换算（准点），本机时间也回到真实轴。
+ * 未收敛时两值均为 0 → 所有换算退化成原行为，零风险 */
+static int32_t  rtcDriftPerHour = 0;  /* 当前采用的晶振偏差（秒/小时） */
+static uint8_t  driftConverged = 0;   /* 1=偏差已收敛, 补偿生效 */
+static int32_t  lastDriftSample = 0;  /* 上一次对时测得的偏差（收敛判定用） */
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0） */
 static uint8_t  readInfoNeedReport = 0;/* 设备信息需要上报（收到 readinfo 指令=1，上报后=0） */
@@ -126,6 +135,10 @@ static uint8_t  gpsNeedRetry = 0;      /* 上一轮搜星失败(已上报 0.0,0.
                                         *   成功拿到坐标后自动清零，恢复定时上报
                                         * @note  RAM 在 deepsleep 期间保持，故跨休眠有效；
                                         *        但真正掉电重启会丢失(回到0)，这是可接受的 */
+static uint8_t  upgpsRetryOneShot = 0; /* UPGPS 跟踪失败结束后的一次性重试许可：
+                                        * 只允许下轮做一次类型 1 搜星上报，
+                                        * 这次仍无坐标就清零，之后不再重试
+                                        * （60 分钟穷尽+1 次重试都失败=环境真无信号） */
 static uint32_t lastLoRaRxTs = 0;      /* 最近一次收到 LoRa 数据的时刻(绝对时间戳)
                                         * 0=尚未初始化(开机后首次检查时取当前值)。
                                         * 链路沉默看门狗用：工作时间内 2 小时没收到
@@ -209,6 +222,14 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
  *   连续定位跟踪期间不检查，避免打断主动任务） */
 #define LINK_SILENCE_REBOOT_SEC  (2u * 3600u)
 
+/* 晶振偏差收敛阈值（秒/小时）：连续两次对时测得的偏差相差 ≤ 此值视为收敛。
+ * 30 分钟对时区间内 1 秒的测量误差 ≈ 12 秒/小时，取 15 留裕量 */
+#define DRIFT_CONVERGE_TOL      15
+/* 偏差样本剔除上限（秒/小时）：LSI 晶振最差约 ±5%（±180秒/h），
+ * 超过 ±300 视为中继自身授时错误（中继时间跳变导致），样本直接丢弃——
+ * 不参与收敛、不污染补偿值，收敛结果只由可信样本决定 */
+#define DRIFT_SAMPLE_MAX        300
+
 
 
 typedef struct {
@@ -271,6 +292,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len);
 static uint8_t cmdIsForMe(char *fields[]);   /* 指令目标校验(统一跳过打印) */
 static void loadDeviceNameFromFlash(void);
 static void saveDeviceNameToFlash(const char *name);
+static void loadDriftFromFlash(void);
+static void saveDriftIfChanged(int32_t d);
 static void loadConfigFromFlash(void);
 static void saveConfigToFlash(const char *str);
 static void loadTxPowerFromFlash(void);
@@ -488,6 +511,53 @@ static void saveDeviceCountToFlash(uint8_t count)
 }
 
 /**
+  * @brief  从 Flash 加载收敛后的晶振补偿值
+  * @note   真复位/断电重启后 RAM 清零 —— 从 Flash 恢复后补偿立即生效，
+  *         不用重新等 3 次对时收敛；没有保存记录则走正常收敛流程
+  */
+static void loadDriftFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)DRIFT_FLASH_ADDR;
+
+  if (magic == DRIFT_MAGIC) {
+    int32_t d = (int32_t)(*(volatile uint32_t *)(DRIFT_FLASH_ADDR + 4));
+
+    rtcDriftPerHour = d;
+    lastDriftSample = d;
+    driftConverged  = 1;
+    printf("[Flash] 补偿已加载: %d秒/h\r\n", (int)d);
+  }
+}
+
+/**
+  * @brief  保存晶振补偿值到 Flash（变化 ≤10秒/h 不写，防页磨损）
+  * @note   F1 页擦写寿命约 1 万次：若每次对时都写（48 次/天）100 天就磨穿。
+  *         晶振特性稳定，收敛后采用值抖动 ±几秒/h，设 10秒/h 死区后
+  *         实际写入频率极低（数天~数周一次），寿命以年计
+  */
+static void saveDriftIfChanged(int32_t d)
+{
+  static int32_t saved = 10000;   /* 初值必不等于真实偏差 → 首次必写 */
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+
+  if (d > saved - 10 && d < saved + 10)
+    return;
+
+  saved = d;
+  eraseInit.TypeErase  = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = DRIFT_FLASH_ADDR;
+  eraseInit.NbPages    = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DRIFT_FLASH_ADDR, DRIFT_MAGIC);
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DRIFT_FLASH_ADDR + 4, (uint32_t)d);
+  HAL_FLASH_Lock();
+  printf("[Flash] 补偿值已存: %d秒/h\r\n", (int)d);
+}
+
+/**
   * @brief  从 Flash 加载发射功率
   */
 static void loadTxPowerFromFlash(void)
@@ -499,7 +569,7 @@ static void loadTxPowerFromFlash(void)
       currentTxPower = saved;
       printf("[Flash] 发射功率已加载: %d dBm\r\n", currentTxPower);
     } else {
-      printf("[Flash] 发射功率超范围(%d), 使用默认: %d\r\n",
+      printf("[Flash] 功率%d超范围, 默认%d\r\n",
              saved, DEFAULT_PWR);
     }
   } else {
@@ -874,7 +944,7 @@ static void gpsPreSearch(void)
   maxMs = (availMs > GPS_WAIT_TIMEOUT_MS) ? GPS_WAIT_TIMEOUT_MS : availMs;
   minMs = (maxMs > GPS_WAIT_MIN_MS) ? GPS_WAIT_MIN_MS : maxMs;
 
-  printf("[GPS] 提前搜星: 窗口 %lu 秒(上限 %lu 秒), 到点前 5 秒截止\r\n",
+  printf("[GPS] 预搜窗%lus(限%lus)\r\n",
          (unsigned long)(availMs / 1000u), (unsigned long)(maxMs / 1000u));
 
   savedPrint = gpsPrintEn;
@@ -1047,8 +1117,7 @@ static void calcNextTxTime(void)
   }
 
   if (fastMode)
-    printf("[调度] 开机快速上报: 前 3 轮用 1 分钟(本机剩余 %u 轮)\r\n",
-           (unsigned)fastStartRounds);
+    printf("[调度] 快速上报: 3轮1分(剩%u)\r\n", (unsigned)fastStartRounds);
 }
 
 /**
@@ -1068,7 +1137,7 @@ static void scheduleAfterSync(void)
 
   if (tx_count == 0) {
     nextTxTimestamp = getCurrentTimestamp();   /* 立即 → 主循环下一圈就上报 */
-    printf("[调度] 首次对时完成, 立即补报一次时间帧\r\n");
+    printf("[调度] 首次对时, 立即补报\r\n");
   } else {
     calcNextTxTime();
   }
@@ -1340,7 +1409,7 @@ static void linkSilenceCheck(void)
 
   silent = now - lastLoRaRxTs;           /* 无符号差值，回绕安全 */
   if (silent >= LINK_SILENCE_REBOOT_SEC) {
-    printf("[看门狗] 工作时间内 %lu分%lu秒 未收到任何LoRa信息, 系统重启自恢复\r\n",
+    printf("[看门狗] %lu分%lu秒无LoRa, 重启自恢复\r\n",
            (unsigned long)(silent / 60u), (unsigned long)(silent % 60u));
     HAL_Delay(100);                      /* 让日志从串口发完 */
     NVIC_SystemReset();
@@ -1571,8 +1640,20 @@ static void enterStopUntil(uint32_t wakeTs)
   uint32_t rtcNow  = rtc_read_counter();
   uint32_t wakeRtc = wakeTs;
 
-  if (timeSynced)
-    wakeRtc = syncedRtcSec + (wakeTs - syncedTimestamp);
+  if (timeSynced) {
+    uint32_t realDelta = wakeTs - syncedTimestamp;
+    uint32_t localDelta = realDelta;
+
+    /* 晶振偏差补偿（收敛后生效）：目标是真实时刻 wakeTs，
+     * 本地 RTC 慢 d 秒/小时 → 本地计数只需走
+     * realDelta*(3600+d)/3600 就能到达对应的真实时刻。
+     * 例: d=-216, 真实睡 1800 秒 → 本地闹钟只设 1692 秒, 醒来正好准点 */
+    if (driftConverged && rtcDriftPerHour != 0 &&
+        realDelta > 0 && realDelta < 1000000)
+      localDelta = realDelta * (3600u + (uint32_t)rtcDriftPerHour) / 3600u;
+
+    wakeRtc = syncedRtcSec + localDelta;
+  }
 
   /* 到点保护：唤醒时刻已过就直接返回，绝不能把闹钟设在过去
    * （F1 闹钟设在过去要等计数回绕 136 年才触发 = 永久沉睡） */
@@ -1609,7 +1690,11 @@ static uint32_t getTodaySecond(void)
 /**
   * @brief  获取当前完整时间戳（基准 = RTC 秒计数器）
   * @note   未同步时返回 RTC 计数本身（开机秒数）；
-  *         已同步后 = 对时时间戳 + RTC 走过的秒数（STOP 期间也连续）
+  *         已同步后 = 对时时间戳 + RTC 走过的秒数（STOP 期间也连续）；
+  *         偏差收敛后（driftConverged）再做晶振补偿：本地走了 L 秒、
+  *         偏差 d 秒/小时时真实过了 L*3600/(3600+d) 秒 —— 本机时间
+  *         回到真实轴，帧内时间戳/时段判定/网格计算全部自动正确。
+  *         int64 中间量：RTC 累计可达数百万秒，×3600 会超 uint32
   */
 static uint32_t getCurrentTimestamp(void)
 {
@@ -1617,6 +1702,15 @@ static uint32_t getCurrentTimestamp(void)
 
   if (!timeSynced)
     return rtcNow;
+  if (driftConverged && rtcDriftPerHour != 0) {
+    /* int32 运算即可：RTC 累计秒受链路看门狗(2小时重启)约束，
+     * ×3600 ≈ 3×10^7 远小于 2^31；M3 硬件除法，体积几乎为零 */
+    int32_t localDelta = (int32_t)(rtcNow - syncedRtcSec);
+    if (localDelta > 0 && localDelta < 1000000) {   /* ~11 天内有效 */
+      int32_t realDelta = localDelta * 3600 / (3600 + rtcDriftPerHour);
+      return syncedTimestamp + (uint32_t)realDelta;
+    }
+  }
   return syncedTimestamp + (rtcNow - syncedRtcSec);
 }
 
@@ -2218,7 +2312,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
         /* 验证码不匹配 → 拒绝本次对时 */
         if (recvCode != wantCode) {
-          printf("[对时] 验证码不匹配(收=%02lu 算=%02lu), 拒绝本次对时, 时间保持不变\r\n",
+          printf("[对时] 码错(%02lu/%02lu), 拒绝对时\r\n",
                  (unsigned long)recvCode, (unsigned long)wantCode);
           break;
         }
@@ -2228,7 +2322,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          * 覆盖场景：atoi 解析失败(=0→1970 之前按无效算不上,但 0 明显错)、
          * 下发错误值、时间戳字段损坏等 */
         if (recvTs == 0 || timestampYear(recvTs) > 2032u) {
-          printf("[对时] 无效时间戳 ts=%lu(年份越界), 忽略, 本机时间保持不变\r\n",
+          printf("[对时] ts=%lu 年份越界, 忽略\r\n",
                  (unsigned long)recvTs);
           break;   /* 丢弃这条对时，锚点/晶振偏差都不动 */
         }
@@ -2243,18 +2337,66 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           int32_t  driftPerHour = (remoteElapsedSec > 0)
               ? (driftSec * 3600 / (int32_t)remoteElapsedSec)
               : 0;
-          printf("[晶振] 偏差=%d秒 / %lu秒 => %d秒/小时  本地=%lu 服务器=%lu\r\n",
+          printf("[晶振] 偏差=%d/%lu秒=%d秒/h 本地=%lu 服务=%lu\r\n",
                  (int)driftSec,
                  (unsigned long)localElapsedSec,
                  (int)driftPerHour,
                  (unsigned long)localElapsedSec,
                  (unsigned long)remoteElapsedSec);
+
+          /* 收敛判定（含异常剔除）：
+           * ① 区间过短(<10分钟)不采样 —— 上报周期可设（含 1 分钟快速轮），
+           *   区间越短测量噪声越大：1 秒对时抖动在 1 分钟区间=360秒/h，
+           *   会淹没 15秒/h 收敛阈并误触剔除线；且短周期漂移累积本来就小
+           *   （1 分钟才 3.6 秒），无需补偿。短区间对时仍校准时间轴、
+           *   刷新锚点，只是不产生偏差样本、不动补偿值；
+           * ② 偏差绝对值超 DRIFT_SAMPLE_MAX 视为中继自身授时错误，剔除；
+           * ③ 连续两次可信样本差 ≤ DRIFT_CONVERGE_TOL 才启用补偿；
+           * ④ 收敛后：小变化静默更新，大变化暂不采用、等下次对时确认 */
+          if (localElapsedSec < 600u) {
+            printf("[晶振] 区间%lu秒短, 不采样\r\n",
+                   (unsigned long)localElapsedSec);
+          } else if (driftPerHour > DRIFT_SAMPLE_MAX ||
+                     driftPerHour < -DRIFT_SAMPLE_MAX) {
+            printf("[晶振] 偏差%d秒/h异常, 剔除\r\n", (int)driftPerHour);
+          } else if (!driftConverged) {
+            int32_t diff = driftPerHour - lastDriftSample;
+
+            if (diff < 0) diff = -diff;
+            if (diff <= DRIFT_CONVERGE_TOL) {
+              rtcDriftPerHour = driftPerHour;
+              driftConverged  = 1;
+              printf("[晶振] 已收敛, 启用补偿 %d秒/h\r\n", (int)rtcDriftPerHour);
+              saveDriftIfChanged(rtcDriftPerHour);
+            } else {
+              lastDriftSample = driftPerHour;
+              printf("[晶振] 采样=%d差%d 未收敛\r\n", (int)driftPerHour, (int)diff);
+            }
+          } else {
+            int32_t diff = driftPerHour - rtcDriftPerHour;
+
+            if (diff < 0) diff = -diff;
+            if (diff <= DRIFT_CONVERGE_TOL) {
+              rtcDriftPerHour = driftPerHour;   /* 静默滑动更新 */
+              saveDriftIfChanged(rtcDriftPerHour);
+            } else
+              lastDriftSample = driftPerHour;   /* 变化大: 暂不采用, 等下次确认 */
+          }
         } else {
           /* 首次对时：记录锚点 */
           anchorRtcSec = nowTick;
           anchorTimestamp = recvTs;
           printf("[晶振] 锚点已设置  ts=%lu rtc=%lu\r\n",
                  (unsigned long)recvTs, (unsigned long)nowTick);
+        }
+
+        /* 补偿残差验证：本机(含补偿)时间 vs 中绷新下发对时的差值。
+         * 补偿正确时应接近 0~2 秒（链路延迟）——这就是补偿值的实时体检；
+         * 且每次对时（含类型 1 GPS 轮接收窗里的对时）都会用锚点间隔
+         * 重测偏差并更新补偿值，补偿值随每次对时持续趋向正确 */
+        if (timeSynced) {
+          int32_t syncErr = (int32_t)(getCurrentTimestamp() - recvTs);
+          printf("[对时] 补偿残差=%d秒\r\n", (int)syncErr);
         }
 
         syncedTimestamp = recvTs;
@@ -2276,7 +2418,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
       break;
     case MSG_TYPE_COM: /* 9: 指令  9|deviceId|cmd|value */
       if (field_count >= 3) {
-        printf("[指令] 设备=%s, 命令=%s, 值=%s\r\n",
+        printf("[指令] %s %s %s\r\n",
                fields[1], fields[2], field_count > 3 ? fields[3] : "");
         /* realyname: 9|v3-10|realyname|v3-11  →  本机改名 */
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
@@ -2438,7 +2580,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          *       快速上报 3 轮 → 等对时 → 恢复正常调度 */
         else if (strcmp(fields[2], "relayreboot") == 0) {
           if (cmdIsForMe(fields)) {
-            printf("[指令] relayreboot: 收到远程重启指令, 系统即将重启\r\n");
+            printf("[指令] relayreboot, 即将重启\r\n");
             HAL_Delay(100);            /* 让日志从串口发完 */
             NVIC_SystemReset();
           }
@@ -2559,7 +2701,8 @@ static void OnMaster(void)
    *       未对时一律继续重试，等到对上时间后再按时段判定 */
   if (gpsNeedRetry && timeSynced && !isInWorkWindow() && !isInGpsWorkWindow()) {
     gpsNeedRetry = 0;
-    printf("[调度] 已离开工作时间段, 放弃 GPS 重试, 恢复正常定时上报\r\n");
+    upgpsRetryOneShot = 0;
+    printf("[调度] 离开工作时段, 放弃重试\r\n");
   }
 
   /* 下列两种情况不发定时帧 MSG_TYPE_TIME，把这一轮让给 GPS：
@@ -2574,9 +2717,9 @@ static void OnMaster(void)
 
   if (skipTimeFrame) {
     if (gpsNeedRetry)
-      printf("[调度] 上轮无有效坐标(已上报 0.0,0.0), 本轮跳过定时上报, 用 MSG_TYPE_GPS 重试\r\n");
+      printf("[调度] 上轮无坐标, 本轮GPS重试\r\n");
     else
-      printf("[调度] GPS 工作时间段内, 本轮跳过 MSG_TYPE_TIME, 改由 MSG_TYPE_GPS 上报并对时\r\n");
+      printf("[调度] GPS时段内, 本轮走GPS帧\r\n");
   } else {
     /* 组包：2|v0-0|当天秒数|电量|计数
      * 周期上报固定发时间帧，不管有没有定位 —— 定位由 UPGPS 流程单独触发上报 */
@@ -2627,16 +2770,16 @@ static void OnMaster(void)
       gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿等 */
 
       if (firstCmd)
-        printf("[GPS] upgps 指令首次: 用 MSG_TYPE_UP_GPS(5), 上报后不开接收窗口\r\n");
+        printf("[GPS] upgps首次: 类型5不开窗\r\n");
       else
-        printf("[GPS] 用 MSG_TYPE_GPS(1) 上报, 上报后开 3 秒接收窗口\r\n");
+        printf("[GPS] 类型1上报, 后开窗\r\n");
 
       /* 类型5(upgps) 不受时间约束：一律现场搜星，搜完再发（时间可后移）。
        * 万一有残留的预搜标志（例如上一轮被指令打断），在这里清掉，避免误用 */
       if (firstCmd && gpsPreSearched) {
         gpsPreSearched = 0;
         gpsPreFixOk    = 0;
-        printf("[GPS] 类型5 不受时间约束: 忽略残留预搜结果, 现场搜星后上报\r\n");
+        printf("[GPS] 忽略残留预搜, 现场搜星\r\n");
       }
 
       if (gpsPreSearched) {
@@ -2647,14 +2790,20 @@ static void OnMaster(void)
 
         /* 中文值不要写进三元表达式：ARMCC5 按 GBK 解析会吞掉引号 */
         if (preOk)
-          printf("[GPS] 使用预搜结果上报: 已定位(耗时 %lu 秒)\r\n",
-                 (unsigned long)gpsPreSec);
+          printf("[GPS] 预搜: 已定位(%lus)\r\n", (unsigned long)gpsPreSec);
         else
-          printf("[GPS] 使用预搜结果上报: 未定位(耗时 %lu 秒)\r\n",
-                 (unsigned long)gpsPreSec);
+          printf("[GPS] 预搜: 未定位(%lus)\r\n", (unsigned long)gpsPreSec);
 
         sendGpsPositionMessage(preOk, useType1, gpsPreSec, gpsPreBytes);
         gpsNeedRetry = preOk ? 0U : 1U;
+        if (upgpsRetryOneShot) {
+          /* UPGPS 结束后的一次性重试已用掉：这次仍无坐标就不再延续 */
+          upgpsRetryOneShot = 0;
+          if (gpsNeedRetry) {
+            gpsNeedRetry = 0;
+            printf("[GPS] 一次性重试用完\r\n");
+          }
+        }
 
         gpsPreSearched = 0;
         gpsPreFixOk    = 0;
@@ -2674,19 +2823,31 @@ static void OnMaster(void)
           /* 连续定位模式（upgps|N 跟踪）：时长内不休眠，
            * 每 GPS_CONT_INTERVAL_SEC 秒上报一次坐标；
            * 无坐标时跟踪期限自动保底延长到 60 分钟（定位成功导向）。
-           * 跟踪结束后一律恢复正常定时上报 —— 不再置 gpsNeedRetry：
-           *   60 分钟、16 轮搜星都拿不到坐标说明环境确实无信号，
-           *   再让下轮提前 245 秒搜星重试只是白白烧电（旧逻辑是跟踪
-           *   只有 1~4 分钟时才用它补偿）。同时顺带清掉进入跟踪前
-           *   可能残留的旧标志，保证下轮回到纯 2| 定时帧 */
-          gpsRunContinuous(gpsContTotalMin, useType1);
+           * 跟踪结束：成功 → 恢复定时上报；失败 → 只保留**一次**
+           * 类型 1 重试机会（下轮对时点搜星上报一次），这次仍无坐标
+           * 就彻底清零不再延续 —— 60 分钟+1 次重试都失败说明环境
+           * 真无信号，无限延续只是每轮白烧 4 分钟搜星电 */
+          uint8_t contOk = gpsRunContinuous(gpsContTotalMin, useType1);
+
           gpsContTotalMin = 0;
-          gpsNeedRetry = 0;
-          printf("[GPS] 跟踪结束, 不再自动安排下轮重试\r\n");
+          gpsNeedRetry = contOk ? 0U : 1U;
+          upgpsRetryOneShot = contOk ? 0U : 1U;
+          if (contOk)
+            printf("[GPS] 跟踪结束\r\n");
+          else
+            printf("[GPS] 跟踪结束,留1次重试\r\n");
         } else {
           /* 单次搜星上报（参数为 0 的 upgps 指令，或失败后的自动重试） */
           hasFix = gpsSearchAndReport(useType1);
           gpsNeedRetry = hasFix ? 0U : 1U;
+          if (upgpsRetryOneShot) {
+            /* UPGPS 结束后的一次性重试已用掉：这次仍无坐标就不再延续 */
+            upgpsRetryOneShot = 0;
+            if (gpsNeedRetry) {
+              gpsNeedRetry = 0;
+              printf("[GPS] 一次性重试用完\r\n");
+            }
+          }
         }
 
         /* GPS 用完：PB15 置高断电
@@ -2735,7 +2896,7 @@ static void OnMaster(void)
 
     if (waitSec > 10) {
       /* 下次上报 > 10 秒后 → PAN3029 进入深度休眠省电 */
-      printf("[休眠] LoRa进入深度休眠...下次发送 %lu分%lu秒后, %s\r\n",
+      printf("[休眠] 深睡%lu分%lu秒后, %s\r\n",
              (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
              nextBuf + 11);
       rf_deepsleep();
@@ -2782,6 +2943,7 @@ int main(void)
 
   /* 从 Flash 加载设备名、配置、发射功率、农场中心坐标和设备台数 */
   loadDeviceNameFromFlash();
+  loadDriftFromFlash();
   loadConfigFromFlash();
   loadTxPowerFromFlash();
   loadCenterFromFlash();
@@ -2854,7 +3016,7 @@ int main(void)
         /* STOP 醒来时钟回落 HSI 8MHz，先恢复 72MHz（SysTick 随之恢复） */
         SystemClock_Config();
         /* 唤醒 LoRa 并执行 5 秒倒计时 */
-        printf("[WAKE] LoRa 唤醒中, 5秒倒计时...\r\n");
+        printf("[WAKE] 5秒倒计时\r\n");
         loraInitFirstTime();
         /* 读取电量并缓存（每轮上报前刷新一次，上报帧里带的就是它） */
         cachedBatteryPercent = GetBatteryPercent();
