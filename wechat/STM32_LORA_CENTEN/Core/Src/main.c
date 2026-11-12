@@ -142,6 +142,7 @@ static uint8_t dtuTimeValid = 0;     // 网络时间是否已获取成功
 static int dtuCsqRssi = 0;           // DTU CSQ 信号强度值
 static uint8_t dtuNetTimeFailCount = 0;  // DTU 网络时间连续失败计数器（达到 3 次复位 DTU）
 static uint32_t rtcSendCount = 0;    // 对时上报计数器
+static uint8_t localTxPower = DEFAULT_PWR; // 中继当前发射功率（txpower 指令修改，不落盘，重启恢复默认）
 static int batteryValue = 85;        // 电池电量（%）
 static char configStr[32] = "30,0M"; // 配置信息字符串（可通过DTU修改）
 static char centerStr[32] = "";      // 农场中心坐标 "lat,lng"（空=未设置）
@@ -179,6 +180,7 @@ typedef struct {
   char deviceId[32]; // 目标设备 ID
   char cmd[32];      // 指令内容
   char val[32];      // 指令参数
+  uint32_t expireTick; // 0=永久缓存；非0=到期时刻（JSON "time" 分钟数，超时不再下发）
 } PendingCmd_t;
 
 static PendingCmd_t pendingCmdCache[PENDING_CMD_MAX_SLOTS];
@@ -251,7 +253,7 @@ static uint8_t getWorkClockHour(void);        // 工作时钟：取当天小时(
 static uint8_t isInWorkWindow(void);          // 当前是否处于工作区间内
 static void printWorkTimeDebug(void);      // 打印工作时间解码过程（调试用）
 static void cachePendingCommand(const char *deviceId, const char *cmd,
-                                const char *val); // 缓存待执行指令
+                                const char *val, uint32_t timeMin); // 缓存待执行指令
 static uint8_t
 checkPendingCommand(const char *deviceId); // 检查是否有缓存指令，返回1=有,0=无
 static uint8_t sendPendingCommand(
@@ -1052,22 +1054,32 @@ static void sendCenterToDtu(void) {
  * @param  deviceId: 目标设备 ID
  * @param  cmd:      指令内容
  * @param  val:      指令参数
+ * @param  timeMin:  时效分钟数（JSON "time" 字段；0=永久缓存）
+ * @note   timeMin>0 时缓存 expireTick=now+time 分钟，到期未下发则清除
  */
 static void cachePendingCommand(const char *deviceId, const char *cmd,
-                                const char *val) {
+                                const char *val, uint32_t timeMin) {
   int freeSlot = -1;
+
+  /* 时效上限 120 分钟：云端传更大值按 120 处理；0=无时效永久缓存 */
+  if (timeMin > 120)
+    timeMin = 120;
+
+  uint32_t expire =
+      timeMin ? (HAL_GetTick() + timeMin * 60000UL) : 0;
 
   /* 先查找是否已有该设备的缓存槽位 */
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used &&
         strcmp(pendingCmdCache[i].deviceId, deviceId) == 0) {
-      /* 已有该设备的缓存，直接替换 */
+      /* 已有该设备的缓存，直接替换（时效同时刷新） */
       strncpy(pendingCmdCache[i].cmd, cmd, sizeof(pendingCmdCache[i].cmd) - 1);
       pendingCmdCache[i].cmd[sizeof(pendingCmdCache[i].cmd) - 1] = '\0';
       strncpy(pendingCmdCache[i].val, val, sizeof(pendingCmdCache[i].val) - 1);
       pendingCmdCache[i].val[sizeof(pendingCmdCache[i].val) - 1] = '\0';
-      printf("[PENDING CMD] Replaced: device=%s, cmd=%s, val=%s\r\n", deviceId,
-             cmd, val);
+      pendingCmdCache[i].expireTick = expire;
+      printf("[PENDING CMD] Replaced %s: %s,%s t=%lu\r\n", deviceId, cmd, val,
+             (unsigned long)timeMin);
       return;
     }
     if (!pendingCmdCache[i].used && freeSlot < 0)
@@ -1077,6 +1089,7 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
   /* 未找到已有槽位，使用空闲槽位 */
   if (freeSlot >= 0) {
     pendingCmdCache[freeSlot].used = 1;
+    pendingCmdCache[freeSlot].expireTick = expire;
     strncpy(pendingCmdCache[freeSlot].deviceId, deviceId,
             sizeof(pendingCmdCache[freeSlot].deviceId) - 1);
     pendingCmdCache[freeSlot]
@@ -1089,11 +1102,34 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
             sizeof(pendingCmdCache[freeSlot].val) - 1);
     pendingCmdCache[freeSlot].val[sizeof(pendingCmdCache[freeSlot].val) - 1] =
         '\0';
-    printf("[PENDING CMD] Cached: device=%s, cmd=%s, val=%s\r\n", deviceId, cmd,
-           val);
+    printf("[PENDING CMD] Cach %s:%s,%s t%lu\r\n", deviceId, cmd, val,
+           (unsigned long)timeMin);
   } else {
-    printf("[PENDING CMD] Cache full! Cannot cache cmd for device=%s\r\n",
-           deviceId);
+    printf("[PENDING CMD] full, drop=%s\r\n", deviceId);
+  }
+}
+
+/**
+ * @brief  清理超时的缓存指令（每 30 秒扫一遍）
+ * @note   JSON 带 "time" 分钟时效的指令，到期未匹配到下发对象即清除，
+ *         不再下发给子设备；time=0 的永久缓存不受影响
+ */
+static void cleanupExpiredPendingCmds(void) {
+  static uint32_t lastCleanTick = 0;
+  uint32_t now = HAL_GetTick();
+
+  if (now - lastCleanTick < 30000)
+    return;
+  lastCleanTick = now;
+
+  for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
+    if (pendingCmdCache[i].used && pendingCmdCache[i].expireTick != 0 &&
+        (int32_t)(now - pendingCmdCache[i].expireTick) >= 0) {
+      printf("[PENDING CMD] expired: %s %s\r\n", pendingCmdCache[i].deviceId,
+             pendingCmdCache[i].cmd);
+      pendingCmdCache[i].used = 0;
+      memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
+    }
   }
 }
 
@@ -1106,9 +1142,17 @@ static uint8_t checkPendingCommand(const char *deviceId) {
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used &&
         strcmp(pendingCmdCache[i].deviceId, deviceId) == 0) {
-      printf(
-          "[PENDING CMD] Found pending cmd for device=%s: cmd=%s, val=%s\r\n",
-          deviceId, pendingCmdCache[i].cmd, pendingCmdCache[i].val);
+      /* 时效已过：清除且不下发 */
+      if (pendingCmdCache[i].expireTick != 0 &&
+          (int32_t)(HAL_GetTick() - pendingCmdCache[i].expireTick) >= 0) {
+        printf("[PENDING CMD] expired: %s %s\r\n", deviceId,
+               pendingCmdCache[i].cmd);
+        pendingCmdCache[i].used = 0;
+        memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
+        continue;
+      }
+      printf("[PENDING CMD] hit %s: %s,%s\r\n", deviceId,
+             pendingCmdCache[i].cmd, pendingCmdCache[i].val);
       return 1; /* 有缓存指令 */
     }
   }
@@ -1144,8 +1188,7 @@ static uint8_t sendPendingCommand(const char *deviceId) {
       /* 清除该缓存槽位 */
       pendingCmdCache[i].used = 0;
       memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
-      printf("[PENDING CMD] Cache cleared for device=%s, cmd delivered\r\n",
-             deviceId);
+      printf("[PENDING CMD] delivered %s\r\n", deviceId);
       return 1;
     }
   }
@@ -1252,18 +1295,20 @@ static void parseDtuCommand(char *buf) {
       val[--vlen] = '\0';
   }
 
-  printf("[DTU JSON] cmd=%s, deviceId=%s, value=%s\r\n", cmd, devId, val);
+  // 提取 time（指令缓存时效分钟数；0 或缺省 = 永久缓存）
+  uint32_t timeMin = 0;
+  p = strstr(unescaped, "\"time\":");
+  if (p)
+    timeMin = (uint32_t)atoi(p + 7);
 
-  /* debug 指令特殊处理：无论 deviceId 是否匹配都打印调试信息 */
-  if (strcmp(cmd, "debug") == 0) {
-    printf("[DTU CMD] 接收到了 debug 命令 (deviceId=%s, value=%s)\r\n", devId, val);
-  }
+  printf("[DTU JSON] %s dev=%s val=%s\r\n", cmd, devId, val);
+
+  /* debug 指令特殊处理：无论 deviceId 是否匹配都执行（复位 DTU） */
 
   /* Step 3: 检查 deviceId 是否为本机 */
   if (strcmp(devId, (char *)deviceName) != 0) {
-    printf("[DTU CMD] Not this device (target=%s, local=%s), cache it\r\n",
-           devId, deviceName);
-    cachePendingCommand(devId, cmd, val);
+    printf("[DTU CMD] cache %s t%lu\r\n", devId, (unsigned long)timeMin);
+    cachePendingCommand(devId, cmd, val, timeMin);
     return;
   }
 
@@ -1282,11 +1327,10 @@ static void parseDtuCommand(char *buf) {
        * JSON 拼接的字符 */
       snprintf(centerStr, sizeof(centerStr), "%.5f,%.5f", la, lo);
       flash_save_all();
-      printf("[DTU CMD] 中心坐标已永久保存: %s\r\n", centerStr);
+      printf("[DTU CMD] 坐标已存 %s\r\n", centerStr);
     } else {
       /* 非法：不写内存、不写 Flash，保持上一次的合法值 */
-      printf("[DTU CMD] mapcenter: 坐标非法已拒绝(原值=%s 保持): %s\r\n",
-             centerStr, val);
+      printf("[DTU CMD] 坐标非法,保持原值\r\n");
     }
     /* 无论本次是否合法，都上报当前内存中的坐标：
      * 合法  -> 回新坐标；非法 -> 回上一个合法值（未设过则 "0,0"）
@@ -1298,7 +1342,7 @@ static void parseDtuCommand(char *buf) {
     if (debugVal == 2) {
       dtuHardwareReset();
     } else {
-      printf("[DTU CMD] debug=%d 不复位\r\n", debugVal);
+      printf("[DTU CMD] dbg=%d\r\n", debugVal);
     }
   } else if (strcmp(cmd, "A") == 0) {
     if (val[0] != '\0') {
@@ -1316,8 +1360,7 @@ static void parseDtuCommand(char *buf) {
   } else if (strcmp(cmd, "gpstm") == 0) {
     /* gpstm 中继指令：仅当 deviceId 匹配本机时激活，记录当前时间和有效时长 */
     if (strcmp(devId, (char *)deviceName) != 0) {
-      printf("[DTU CMD] gpstm 目标设备不匹配(目标=%s, 本机=%s)，忽略\r\n",
-             devId, deviceName);
+      printf("[DTU CMD] gpstm 忽略(%s)\r\n", devId);
       return;
     }
     gpstmActive = 1;
@@ -1325,8 +1368,7 @@ static void parseDtuCommand(char *buf) {
     gpstmTimeoutMin = (uint32_t)atoi(val);
     if (gpstmTimeoutMin == 0)
       gpstmTimeoutMin = 30; // 默认 30 分钟
-    printf("[DTU CMD] gpstm 中继已记录: device=%s, timeout=%lu min\r\n",
-           deviceName, (unsigned long)gpstmTimeoutMin);
+    printf("[DTU CMD] gpstm %lu min\r\n", (unsigned long)gpstmTimeoutMin);
   } else if (strcmp(cmd, "lorasw") == 0) {
     /* lorasw 中继 LoRa 射频开关
      *   value=1 → 开启射频，恢复收发
@@ -1335,8 +1377,7 @@ static void parseDtuCommand(char *buf) {
      * 重启后同样回到可收发（掉电/复位相当于自动恢复）
      * 云端可经 4G 下发 lorasw|1 远程唤醒 */
     if (strcmp(devId, (char *)deviceName) != 0) {
-      printf("[DTU CMD] lorasw 目标设备不匹配(目标=%s, 本机=%s)，忽略\r\n",
-             devId, deviceName);
+      printf("[DTU CMD] lorasw 忽略(%s)\r\n", devId);
       return;
     }
 
@@ -1345,34 +1386,28 @@ static void parseDtuCommand(char *buf) {
        * @warning 工作时间优先：不在工作区间内时一律拒绝开启，
        *          lorasw 只能在区间内生效，不能越权把区间外的射频打开 */
       if (!isInWorkWindow()) {
-        printf("[DTU CMD] lorasw: 当前不在工作区间内, 拒绝开启射频\r\n");
+        printf("[DTU CMD] lorasw 区间外拒绝\r\n");
       } else if (loraSwOn) {
-        printf("[DTU CMD] lorasw: 当前已是收发状态, 无需重复开启\r\n");
+        printf("[DTU CMD] lorasw 已开启\r\n");
       } else {
         lora_rf_wake();
       }
     } else {
       /* 0 → 休眠（任何时候都允许关闭，不受工作区间限制） */
       if (!loraSwOn) {
-        printf("[DTU CMD] lorasw: 当前已是休眠状态, 无需重复关闭\r\n");
+        printf("[DTU CMD] lorasw 已休眠\r\n");
       } else {
         lora_rf_sleep();
       }
     }
   } else if (strcmp(cmd, "txpower") == 0) {
-    /* txpower: 缓存指令给目标设备，并立即重新获取信号强度和网络时间 */
-    printf("[DTU CMD] txpower: target=%s, value=%s, cache it\r\n", devId, val);
-    cachePendingCommand(devId, cmd, val);
-    /* 将查询命令加入 DTU 发送队列（由 processDtuQueue 每 500ms 发送一条） */
-    {
-      const char *csqCmd = "config,get,csq";
-      const char *nettimeCmd = "config,get,nettime";
-      enqueueDtuMsg(csqCmd, strlen(csqCmd));
-      enqueueDtuMsg(nettimeCmd, strlen(nettimeCmd));
-      printf("[DTU CMD] csq+nettime 已入队\r\n");
-    }
-    /* 重置查询定时器，后续按正常间隔查询 */
-    dtuCsqTick = HAL_GetTick();
+    /* txpower: 走到这里必是本机（子设备目标已在 Step 3 缓存）——
+     * 只做一件事：改中继自己的发射功率。不缓存自己（避免死缓存占槽），
+     * 不重查 CSQ/nettime（旧逻辑遗留）；功率不落盘，重启恢复默认 */
+    uint8_t p = (uint8_t)atoi(val);
+    localTxPower = p;
+    rf_set_tx_power(p);
+    printf("[DTU CMD] txpower=%d\r\n", p);
     return;
   } else if (strcmp(cmd, "realyname") == 0) {
     /* realyname 更换设备名字 */
@@ -1382,16 +1417,34 @@ static void parseDtuCommand(char *buf) {
       *eq = '\0';
       char *targetDevId = val;
       char *newName = eq + 1;
-      printf("[DTU CMD] realyname: target=%s, newName=%s, cache it\r\n",
-             targetDevId, newName);
-      cachePendingCommand(targetDevId, cmd, newName);
+      printf("[DTU CMD] realyname %s=%s\r\n", targetDevId, newName);
+      cachePendingCommand(targetDevId, cmd, newName, timeMin);
     } else {
-      printf("[DTU CMD] realyname: value 格式错误 (缺少 '=')\r\n");
+      printf("[DTU CMD] realyname 格式错\r\n");
     }
 
 
+  } else if (strcmp(cmd, "readinfo") == 0) {
+    /* readinfo: 拆三条上报，避免服务器单条接收过长
+     * 帧A 主信息(参考 ONLY_SEND): 8|名|设备数T|频率HZ|功率dbm|版本|计数|
+     *     中继不维护子设备数，设备数段固定填 0
+     * 帧B ICCID: 8|deviceName|ICCID|
+     * 帧C IMSI:  8|deviceName|IMSI|
+     * 注: 开机后 ICCID/IMSI 尚未查到时对应段为空，重发 readinfo 即可 */
+    char infoStr[48];
+    snprintf(infoStr, sizeof(infoStr), "%d|%s|%dT|%luHZ|%ddbm|%s|%lu|",
+             MSG_TYPE_READINFO, deviceName, 0,
+             (unsigned long)(DEFAULT_FREQ / 1000000u),
+             (int)localTxPower, DEMO_VER, (unsigned long)rtcSendCount);
+    sendToDtu(infoStr, dtuCsqRssi, 0);
+    snprintf(infoStr, sizeof(infoStr), "%d|%s|%s|", MSG_TYPE_READINFO,
+             deviceName, dtuIccidStr);
+    sendToDtu(infoStr, dtuCsqRssi, 0);
+    snprintf(infoStr, sizeof(infoStr), "%d|%s|%s|", MSG_TYPE_READINFO,
+             deviceName, dtuImsiStr);
+    sendToDtu(infoStr, dtuCsqRssi, 0);
   } else {
-    printf("[DTU CMD] 未知指令: %s\r\n", cmd);
+    printf("[DTU CMD] ? %s\r\n", cmd);
   }
 }
 
@@ -1515,19 +1568,10 @@ int main(void) {
    * 此函数还会打印: FREQ= xxx  SF=x   BW=x  CR=x */
   rf_set_default_para();
 
-  // 打印 LoRa 配置信息（读取 radio.h 实际配置）
-  printf("===== LoRa Ready =====\r\n");
-  printf("  Freq    : %d MHz\r\n", DEFAULT_FREQ / 1000000);
-  printf("  SF      : %d\r\n", DEFAULT_SF);
-  printf("  BW      : 125 kHz\r\n");
-  printf("  CR      : 4/5\r\n");
-  printf("  Power   : %d dBm\r\n", DEFAULT_PWR);
-  printf("  CRC     : OFF\r\n");
-  printf("  SyncWord: 0x12\r\n");
-  printf("----------------------------\r\n");
-  printf("  K1 -> RX mode (LED 500ms blink)\r\n");        // 按键 K1 功能说明
-  printf("  K2 -> TX mode (send 'I LOVE YOU' / 3s)\r\n"); // 按键 K2 功能说明
-  printf("----------------------------\r\n");
+  // 打印 LoRa 配置摘要（K1/K2 按键说明已随按键移除，rf_set_default_para
+  // 内部还会打印 FREQ/SF/BW/CR 明细）
+  printf("===== LoRa Ready %dMHz SF%d =====\r\n", DEFAULT_FREQ / 1000000,
+         DEFAULT_SF);
 
   /* LoRa 射频开关不落盘，开机恒为"可收发"，
    * 任何掉电/复位都自动恢复收发，无需远程唤醒 */
@@ -1578,6 +1622,9 @@ int main(void) {
         sendConfigToDtu();
       }
     }
+
+    /* 过期缓存指令清理（每 30 秒扫一遍，time 时效到期不再下发） */
+    cleanupExpiredPendingCmds();
 
     /* DTU 发送队列处理：每 2 秒从队列取出一条消息发送 */
     processDtuQueue();
@@ -1644,8 +1691,7 @@ int main(void) {
         int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
         if (sscanf(pNet, "config,nettime,ok,%d,%d,%d,%d,%d,%d,%d", &y, &mo, &d,
                    &h, &mi, &s, &ms) >= 6) {
-          printf("[DTU] 网络时间: %04d/%02d/%02d %02d:%02d:%02d\r\n", y, mo, d,
-                 h, mi, s);
+          printf("[DTU] %04d-%02d-%02d %02d:%02d:%02d\r\n", y, mo, d, h, mi, s);
           /* 保存时间戳供 LoRa 上报使用 */
           snprintf(dtuNetTimeStr, sizeof(dtuNetTimeStr),
                    "%04d%02d%02d%02d%02d%02d", y, mo, d, h, mi, s);

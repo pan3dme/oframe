@@ -15,11 +15,18 @@
     <view class="section-title">⚡ 指令内容</view>
     <!-- 配置下发弹框打开期间禁用：iOS 上弹框内点 picker 会穿透聚焦到这里弹键盘 -->
     <textarea class="cmd-input" value="{{cmdText}}" placeholder="输入指令JSON或文本..." bindinput="onCmdInput" auto-height maxlength="-1" disabled="{{showConfigModal}}" />
+
+    <!-- time 参数：发送时自动附加到指令JSON，默认0 -->
+    <view class="cmd-time-row">
+      <text class="cmd-time-label">⏱ time参数</text>
+      <input class="cmd-time-input" type="number" value="{{cmdTime}}" bindinput="onCmdTimeInput" placeholder="0" />
+    </view>
     
     <!-- 快捷按钮 -->
     <view class="quick-label">快捷指令</view>
     <view class="quick-row">
       <button class="quick-btn {{quickSelected === 14 ? 'quick-active' : ''}}" bindtap="onQuickWorkTime">🕐 工作时间</button>
+      <button class="quick-btn {{quickSelected === 21 ? 'quick-active' : ''}}" bindtap="onQuickReadInfo">ℹ️ 获取信息</button>
       <button class="quick-btn {{quickSelected === 16 ? 'quick-active' : ''}}" bindtap="onQuickTxPower">📡 发射功率</button>
       <button class="quick-btn {{quickSelected === 17 ? 'quick-active' : ''}}" bindtap="onQuickLoraSw">🔘 开关LORA({{loraSwValue}})</button>
       <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickRelayReboot">🔄 重启中继</button>

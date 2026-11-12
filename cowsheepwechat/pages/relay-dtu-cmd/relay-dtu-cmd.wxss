@@ -386,3 +386,27 @@ page {
   font-size: 28rpx;
   padding: 10rpx 0;
 }
+
+/* ========== time 参数行 ========== */
+.cmd-time-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 12rpx 0 4rpx;
+}
+
+.cmd-time-label {
+  font-size: 26rpx;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.cmd-time-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333;
+  padding: 10rpx 20rpx;
+  border: 1rpx solid #ddd;
+  border-radius: 10rpx;
+  background: #fafafa;
+}

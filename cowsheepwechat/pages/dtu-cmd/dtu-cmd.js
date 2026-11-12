@@ -28,6 +28,7 @@ Page({
 
     // 指令内容
     cmdText: '',
+    cmdTime: '0',      // 随指令发送的 time 参数（默认0，发送时自动注入到JSON）
     quickSelected: 0,  // 当前选中快捷按钮
     sendmodeValue: 0,  // 上报模式当前值（0/1 循环切换）
     upgpsIndex: 0,     // 上报GPS循环取值索引（0→1→10→59→0 循环）
@@ -164,6 +165,11 @@ Page({
     this.setData({ cmdText: e.detail.value, quickSelected: 0 })
   },
 
+  // time 参数输入（发送时自动注入到指令JSON）
+  onCmdTimeInput(e) {
+    this.setData({ cmdTime: e.detail.value })
+  },
+
   // ========== 快捷按钮 ==========
   // 上报GPS：每点一次循环取值 0 → 1 → 10 → 59，再回 0（与"上报模式"的切换玩法一致）
   onQuickReportGps() {
@@ -171,7 +177,7 @@ Page({
     const idx = this.data.upgpsIndex % CYCLE.length
     const val = CYCLE[idx]
     this.setData({
-      cmdText: JSON.stringify({ cmd: 'upgps', value: val }),
+      cmdText: JSON.stringify({ cmd: 'upgps', value: val, time: Number(this.data.cmdTime) || 0 }),
       quickSelected: 5,
       upgpsIndex: idx + 1
     })
@@ -180,14 +186,14 @@ Page({
   onQuickNormalMode() {
     const newVal = this.data.sendmodeValue === 0 ? 1 : 0
     this.setData({
-      cmdText: JSON.stringify({ cmd: 'sendmode', value: newVal }),
+      cmdText: JSON.stringify({ cmd: 'sendmode', value: newVal, time: Number(this.data.cmdTime) || 0 }),
       quickSelected: 12,
       sendmodeValue: newVal
     })
   },
 
   onQuickSyncTime() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'B', value: '30,5' }), quickSelected: 15 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'B', value: '30,5', time: Number(this.data.cmdTime) || 0 }), quickSelected: 15 })
   },
 
   // 获取信息：每点一次循环 value "0" → "1" → "2"，再回 "0"
@@ -196,7 +202,7 @@ Page({
     const idx = this.data.readinfoIndex % CYCLE.length
     const val = CYCLE[idx]
     this.setData({
-      cmdText: JSON.stringify({ cmd: 'readinfo', value: val }),
+      cmdText: JSON.stringify({ cmd: 'readinfo', value: val, time: Number(this.data.cmdTime) || 0 }),
       quickSelected: 21,
       readinfoIndex: idx + 1
     })
@@ -206,17 +212,17 @@ Page({
   onQuickRelayReboot() {
     const val = this.data.relayrebootValue
     this.setData({
-      cmdText: JSON.stringify({ cmd: 'relayreboot', value: val }),
+      cmdText: JSON.stringify({ cmd: 'relayreboot', value: val, time: Number(this.data.cmdTime) || 0 }),
       quickSelected: 22,
       relayrebootValue: val === 0 ? 1 : 0
     })
   },
 
   onQuickTxPower() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'txpower', value: 20 }), quickSelected: 16 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'txpower', value: 20, time: Number(this.data.cmdTime) || 0 }), quickSelected: 16 })
   },
   onQuickTestGps() {
-    this.setData({ cmdText: JSON.stringify({ cmd: 'test_gps', value: 1 }), quickSelected: 19 })
+    this.setData({ cmdText: JSON.stringify({ cmd: 'test_gps', value: 1, time: Number(this.data.cmdTime) || 0 }), quickSelected: 19 })
   },
 
   // 快捷指令：设置农场中心位置 — 从登录信息中读取 mapcenter
@@ -257,7 +263,7 @@ Page({
     // 保留 5 位小数，英文逗号分隔（与示例格式 "26.52958,109.39087" 一致）
     const value = lat.toFixed(5) + ',' + lng.toFixed(5)
     this.setData({
-      cmdText: JSON.stringify({ cmd: 'C', value }),
+      cmdText: JSON.stringify({ cmd: 'C', value, time: Number(this.data.cmdTime) || 0 }),
       quickSelected: 20
     })
     this.addLog('info', '已生成农场中心指令: ' + value)
@@ -417,7 +423,7 @@ Page({
     const value = period + ',' + workCode + ',' + gpsCode + ',' + mainPeriod
 
     this.setData({
-      cmdText: JSON.stringify({ cmd: 'A', value }),
+      cmdText: JSON.stringify({ cmd: 'A', value, time: Number(this.data.cmdTime) || 0 }),
       showConfigModal: false
     })
     this.addLog('info', '已生成配置指令: ' + value)
@@ -445,6 +451,12 @@ Page({
         cmdText = JSON.stringify(cmdObj)
         this.addLog('info', 'tm超限，已自动调整为60')
         wx.showToast({ title: 'tm不能超过60，已自动调整', icon: 'none', duration: 2000 })
+      }
+      // 指令JSON里没有 time 字段时才注入默认值（快捷按钮已带time；手动改过以手改的为准）
+      if (cmdObj.time === undefined) {
+        const tNum = Number(this.data.cmdTime)
+        cmdObj.time = isNaN(tNum) ? 0 : tNum
+        cmdText = JSON.stringify(cmdObj)
       }
     } catch (e) {
       // 非JSON或解析失败，跳过校验
