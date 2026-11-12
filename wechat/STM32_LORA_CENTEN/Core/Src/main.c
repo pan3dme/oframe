@@ -131,7 +131,8 @@ static uint8_t  dtuIccidGot = 0;     // 1=已获取到 ICCID，不再重复查�
 static char     dtuImsiStr[24] = ""; // SIM 卡 IMSI（15 位，用户识别码）
 static uint8_t  dtuImsiGot = 0;      // 1=已获取到 IMSI，不再重复查询
 static uint32_t dtuIccidTick = 0;    // ICCID/IMSI 查询独立定时器（拿到网络时间后才启动）
-static uint8_t  dtuRstFailCount = 0; // DTU 硬复位后仍拿不到时间的轮数（>=3 → 重启 MCU）
+static uint32_t dtuCsqAnswerTick = 0; // 最近一次收到 CSQ 应答的时刻（0=还没收到过）
+static uint8_t  dtuRstByCsq = 0;     // 1=因 CSQ 死机复位过 DTU，恢复联网后上报一次告知服务器
 static char dtuNetTimeStr[32] = "0"; // DTU 网络时间戳（秒），用于上报
 static uint32_t dtuTimestamp = 0;    // DTU 网络时间 Unix 时间戳（秒）
 static uint32_t dtuSyncTick = 0;     // 对时时的 HAL_GetTick() 值，用于实时计算
@@ -998,7 +999,7 @@ static void sendToDtu(const char *loraStr, int rssi, int snr) {
 
   if (len > 0 && len < (int)sizeof(txBuf)) {
     enqueueDtuMsg(txBuf, len);
-    printf("[DTU 入队] 队列=%d/%d\r\n", dtuQueueCount, DTU_QUEUE_SIZE);
+    printf("[DTU 入队]%d/%d\r\n", dtuQueueCount, DTU_QUEUE_SIZE);
   }
 }
 
@@ -1264,7 +1265,7 @@ static void parseDtuCommand(char *buf) {
 
   /* Step 4: 执行指令 */
   if (strcmp(cmd, "relayreboot") == 0) {
-    printf("[DTU CMD] 执行设备重启...\r\n");
+    printf("[DTU CMD] relayreboot\r\n");
     HAL_Delay(500);
     NVIC_SystemReset();
   } else if (strcmp(cmd, "mapcenter") == 0) {
@@ -1609,6 +1610,7 @@ int main(void) {
           int percent = csqVal * 100 / 31;
           printf("[DTU] CSQ:%d(%d%%)\r\n", csqVal, percent);
           dtuCsqRssi = csqVal; // 保存 CSQ 值供对时上报使用
+          dtuCsqAnswerTick = HAL_GetTick(); // CSQ 有应答 = DTU 活着
         }
       }
 
@@ -1633,6 +1635,14 @@ int main(void) {
 
           // 获取到正确时间后，立即上报一次对时信息（入队，由队列控制间隔）
           sendTimeSyncToDtu();
+          /* CSQ 死机复位过 DTU：恢复联网后补发一条告知帧（只发一次）
+           * 格式: 8|deviceName|rst_dtu —— 服务器据此知道中继曾自动恢复过 */
+          if (dtuRstByCsq) {
+            char rstStr[48];
+            snprintf(rstStr, sizeof(rstStr), "8|%s|rst_dtu", (char *)deviceName);
+            sendToDtu(rstStr, dtuCsqRssi, 0);
+            dtuRstByCsq = 0;
+          }
           // 开机后首次获取到网络时间，上报一次配置信息（仅上报一次）
           if (!configBootSent) {
             configBootSent = 1;
@@ -1698,18 +1708,13 @@ int main(void) {
         if (!dtuTimeValid) {
           dtuNetTimeFailCount++;
           printf("[DTU] wait time(%d/5)\r\n", dtuNetTimeFailCount);
-          /* 连续 5 次失败 → 两级恢复：先只复位 DTU（LoRa 中继不断），
-           * DTU 复位 3 次仍拿不到时间才重启整个 MCU */
+          /* 连续 5 次拿不到网络时间 = 断网或 DTU 异常：只复位 DTU。
+           * MCU 不自动重启（常供电设计：只有 relayreboot 指令或断电才重启）。
+           * 纯无信号场景 RST 白打也无害：DTU 重启 ~30 秒注网，LoRa 不中断 */
           if (dtuNetTimeFailCount >= 5) {
-            if (dtuRstFailCount >= 3) {
-              printf("[DTU] DTU复位3次仍失败, 重启MCU\r\n");
-              HAL_Delay(500);
-              NVIC_SystemReset();
-            }
-            printf("[DTU] 5次无网络时间, 复位DTU恢复\r\n");
+            printf("[DTU] 5次无网络时间, 复位DTU\r\n");
             dtuHardwareReset();
             dtuNetTimeFailCount = 0;
-            dtuRstFailCount++;
           }
         }
       }
@@ -1731,6 +1736,17 @@ int main(void) {
         uint8_t cmd4[] = "config,get,imsi\r\n";
         HAL_UART_Transmit(&huart3, cmd4, sizeof(cmd4) - 1, 1000);
       }
+    }
+
+    /* DTU 死机检测：曾经拿到过 CSQ 应答（说明 DTU 活过）之后，
+     * 超过 65 分钟（错过 2 轮 30 分钟周期查询）仍无任何 CSQ 应答
+     * = 模块串口/固件假死 —— RST 复位 DTU，MCU 本身不重启 */
+    if (dtuTimeValid && dtuCsqAnswerTick != 0 &&
+        HAL_GetTick() - dtuCsqAnswerTick > 65UL * 60UL * 1000UL) {
+      printf("[DTU] 无CSQ应答, 复位DTU\r\n");
+      dtuRstByCsq = 1; /* DTU 恢复联网后上报 8|名|rst_dtu 告知服务器 */
+      dtuHardwareReset();
+      dtuCsqAnswerTick = HAL_GetTick(); /* 给 DTU 重启后的注网时间 */
     }
 
     HAL_Delay(1); // 短延时
