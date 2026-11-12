@@ -2779,7 +2779,7 @@ static void OnMaster(void)
       if (firstCmd && gpsPreSearched) {
         gpsPreSearched = 0;
         gpsPreFixOk    = 0;
-        printf("[GPS] 忽略残留预搜, 现场搜星\r\n");
+        printf("[GPS] 忽略预搜,现场搜\r\n");
       }
 
       if (gpsPreSearched) {
@@ -3206,6 +3206,14 @@ static void MX_GPIO_Init(void)
    *   非搜星时 gpsPowerOff() 拉低 → Standby(20uA)，RTC 域保持可热启动
    * 初始为低：开机即"非搜星"状态（此时 PB15 也是断电，低电平无副作用；
    * 若模块因硬件过渡期常供电，则进 Standby 省电，等第一次搜星拉高唤醒） */
+  /* GPS 复位引脚 (PA3 → L76K RESET_N) - 平时高电平(不复位) */
+  GPIO_InitStruct.Pin   = GPS_RST_Pin;
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull  = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPS_RST_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
+
   GPIO_InitStruct.Pin   = GNSS_WAKE_Pin;
   GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;

@@ -126,6 +126,12 @@ static uint8_t dtuRxBuf[DTU_RX_BUF_SIZE]; // DTU 接收缓冲区
 static uint16_t dtuRxLen = 0;             // 当前接收到的数据长度
 static uint32_t dtuLastRxTick = 0;   // 上次收到字节的时间戳（用于超时判断）
 static uint32_t dtuCsqTick = 0;      // nettime 查询定时器：记录上次发送时间
+static char     dtuIccidStr[24] = ""; // SIM 卡 ICCID（20 位，续费/换卡核对用）
+static uint8_t  dtuIccidGot = 0;     // 1=已获取到 ICCID，不再重复查询
+static char     dtuImsiStr[24] = ""; // SIM 卡 IMSI（15 位，用户识别码）
+static uint8_t  dtuImsiGot = 0;      // 1=已获取到 IMSI，不再重复查询
+static uint32_t dtuIccidTick = 0;    // ICCID/IMSI 查询独立定时器（拿到网络时间后才启动）
+static uint8_t  dtuRstFailCount = 0; // DTU 硬复位后仍拿不到时间的轮数（>=3 → 重启 MCU）
 static char dtuNetTimeStr[32] = "0"; // DTU 网络时间戳（秒），用于上报
 static uint32_t dtuTimestamp = 0;    // DTU 网络时间 Unix 时间戳（秒）
 static uint32_t dtuSyncTick = 0;     // 对时时的 HAL_GetTick() 值，用于实时计算
@@ -1154,6 +1160,17 @@ static int center_coord_valid(double lat, double lng) {
 }
 
 /**
+ * @brief  PA3 脉冲复位 DTU 模块（高电平有效：拉高 100ms 后拉回低）
+ * @note   实测确认极性：平时低（不复位），拉高 = 复位脉冲
+ */
+static void dtuHardwareReset(void) {
+  printf("[DTU] RST复位DTU\r\n");
+  HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);
+  HAL_Delay(100);
+  HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET);
+}
+
+/**
  * @brief  JSON 解析 DTU 下发的指令
  * @note   从外层 JSON 提取 cominfo 字段，反转义后解析内部 JSON
  *         内部格式: {"cmd":"xxx","value":"xxx","deviceId":"xxx"}
@@ -1271,17 +1288,12 @@ static void parseDtuCommand(char *buf) {
      * 格式: 1|deviceName|lat,lng| */
     sendCenterToDtu();
   } else if (strcmp(cmd, "debug") == 0) {
-     printf("[DTU CMD] 接收到了debug命令...\r\n");
-    /* debug: value=2 时复位 DTU 模块 */
+    /* debug: value=2 时复位 DTU 模块（远程手动触发异常恢复） */
     int debugVal = atoi(val);
     if (debugVal == 2) {
-      printf("[DTU CMD] debug: 复位 DTU 模块 (PA3 拉低 100ms)\r\n");
-      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET); // 拉低
-      HAL_Delay(100);                                                     // 保持 100ms
-      HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);   // 拉高
-      printf("[DTU CMD] DTU 复位完成\r\n");
+      dtuHardwareReset();
     } else {
-      printf("[DTU CMD] debug: value=%d (非 2，不执行复位)\r\n", debugVal);
+      printf("[DTU CMD] debug=%d 不复位\r\n", debugVal);
     }
   } else if (strcmp(cmd, "A") == 0) {
     if (val[0] != '\0') {
@@ -1352,7 +1364,7 @@ static void parseDtuCommand(char *buf) {
       const char *nettimeCmd = "config,get,nettime";
       enqueueDtuMsg(csqCmd, strlen(csqCmd));
       enqueueDtuMsg(nettimeCmd, strlen(nettimeCmd));
-      printf("[DTU CMD] 已将 CSQ + nettime 查询加入队列\r\n");
+      printf("[DTU CMD] csq+nettime 已入队\r\n");
     }
     /* 重置查询定时器，后续按正常间隔查询 */
     dtuCsqTick = HAL_GetTick();
@@ -1595,7 +1607,7 @@ int main(void) {
         int csqVal = 0;
         if (sscanf(pCsq, "config,csq,ok,%d", &csqVal) == 1) {
           int percent = csqVal * 100 / 31;
-          printf("[DTU] 信号强度: %d (%d%%)\r\n", csqVal, percent);
+          printf("[DTU] CSQ:%d(%d%%)\r\n", csqVal, percent);
           dtuCsqRssi = csqVal; // 保存 CSQ 值供对时上报使用
         }
       }
@@ -1613,10 +1625,10 @@ int main(void) {
                    "%04d%02d%02d%02d%02d%02d", y, mo, d, h, mi, s);
           dtuTimestamp = dateTimeToTimestamp(y, mo, d, h, mi, s);
           dtuSyncTick = HAL_GetTick(); // 记录对时时刻
-          printf("[DTU] Unix timestamp: %lu\r\n", (unsigned long)dtuTimestamp);
+          printf("[DTU] ts=%lu\r\n", (unsigned long)dtuTimestamp);
           dtuTimeValid = 1; // 标记网络时间已获取
           dtuNetTimeFailCount = 0;  /* 重置连续失败计数器 */
-          printf("[DTU] 网络时间获取成功，切换为%lu分钟对时\r\n",
+          printf("[DTU] 时间OK, %lu分钟对时\r\n",
                  (unsigned long)(getConfigIntervalMs() / 60000));
 
           // 获取到正确时间后，立即上报一次对时信息（入队，由队列控制间隔）
@@ -1629,8 +1641,35 @@ int main(void) {
         }
       }
 
-      /* 都没匹配到，原样打印明文 */
-      if (!pCsq && !pNet) {
+      /* 解析 SIM 卡 ICCID: config,iccid,ok,<20位号码> —— 开机查询一次即存 */
+      char *pIccid = strstr(pBuf, "config,iccid,ok,");
+      if (pIccid) {
+        char iccid[24] = {0};
+        if (sscanf(pIccid, "config,iccid,ok,%22s", iccid) == 1 && iccid[0]) {
+          strncpy(dtuIccidStr, iccid, sizeof(dtuIccidStr) - 1);
+          dtuIccidStr[sizeof(dtuIccidStr) - 1] = '\0';
+          dtuIccidGot = 1;
+          printf("[DTU] ICCID:%s\r\n", dtuIccidStr);
+        }
+      }
+
+      /* 解析 SIM 卡 IMSI: config,imsi,ok,<15位> —— 开机查询一次即存 */
+      char *pImsi = strstr(pBuf, "config,imsi,ok,");
+      if (pImsi) {
+        char imsi[24] = {0};
+        if (sscanf(pImsi, "config,imsi,ok,%22s", imsi) == 1 && imsi[0]) {
+          strncpy(dtuImsiStr, imsi, sizeof(dtuImsiStr) - 1);
+          dtuImsiStr[sizeof(dtuImsiStr) - 1] = '\0';
+          dtuImsiGot = 1;
+          printf("[DTU] IMSI:%s\r\n", dtuImsiStr);
+        }
+      }
+
+      /* 都没匹配到，原样打印明文。
+       * config,get, 开头的是 DTU 对配置命令的回显（如 config,get,iccid），
+       * 不是云端 JSON 指令，不能进 parseDtuCommand —— iccid/imsi 的真正
+       * 应答在后续帧里由上面的 pIccid/pImsi 分支处理 */
+      if (!pCsq && !pNet && !pIccid && !pImsi && !strstr(pBuf, "config,get,")) {
         /* 收到 DTU 下发数据：先把当前生效的工作时间打出来，
          * 放在 parseDtuCommand() 之前，方便对照"指令执行前 / 执行后" */
         printWorkTimeDebug();
@@ -1658,15 +1697,39 @@ int main(void) {
         HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
         if (!dtuTimeValid) {
           dtuNetTimeFailCount++;
-          printf("[DTU] Waiting for net time... (retry %lus, fail=%d/5)\r\n",
-                 queryInterval / 1000, dtuNetTimeFailCount);
-          /* 连续 5 次失败，重启 STM32 */
+          printf("[DTU] wait time(%d/5)\r\n", dtuNetTimeFailCount);
+          /* 连续 5 次失败 → 两级恢复：先只复位 DTU（LoRa 中继不断），
+           * DTU 复位 3 次仍拿不到时间才重启整个 MCU */
           if (dtuNetTimeFailCount >= 5) {
-            printf("[DTU] 连续 5 次获取网络时间失败，重启 STM32...\r\n");
-            HAL_Delay(500);
-            NVIC_SystemReset();
+            if (dtuRstFailCount >= 3) {
+              printf("[DTU] DTU复位3次仍失败, 重启MCU\r\n");
+              HAL_Delay(500);
+              NVIC_SystemReset();
+            }
+            printf("[DTU] 5次无网络时间, 复位DTU恢复\r\n");
+            dtuHardwareReset();
+            dtuNetTimeFailCount = 0;
+            dtuRstFailCount++;
           }
         }
+      }
+    }
+
+    /* ICCID/IMSI 查询（独立计时）：只在已拿到网络时间（注网成功）后才查，
+     * 开机抢时间阶段绝不掺和 —— DTU 配置命令一次一条，挤在一起会把
+     * nettime 应答挤丢。两条命令之间留 300ms 让 DTU 处理完上一条。
+     * 各拿到一次即停（SIM 换卡才变） */
+    if (dtuTimeValid && (!dtuIccidGot || !dtuImsiGot) &&
+        HAL_GetTick() - dtuIccidTick >= 5000u) {
+      dtuIccidTick = HAL_GetTick();
+      if (!dtuIccidGot) {
+        uint8_t cmd3[] = "config,get,iccid\r\n";
+        HAL_UART_Transmit(&huart3, cmd3, sizeof(cmd3) - 1, 1000);
+        HAL_Delay(300);
+      }
+      if (!dtuImsiGot) {
+        uint8_t cmd4[] = "config,get,imsi\r\n";
+        HAL_UART_Transmit(&huart3, cmd4, sizeof(cmd4) - 1, 1000);
       }
     }
 
@@ -1755,6 +1818,9 @@ static void MX_USART1_UART_Init(void) {
  *            - RST (PA1) - 输出，推挽，高速，默认高电平（不复位）
  *         5. LoRa 中断引脚：
  *            - IRQ (PA2) - 外部中断，上升沿触发，下拉
+ *         6. DTU 复位引脚：
+ *            - DTU_RST (PA3) - 输出，推挽，默认高电平（不复位），
+ *              拉低 100ms 脉冲复位 DTU 模块（debug|2 指令/注网失败恢复）
  * @param  None
  * @retval None
  */
@@ -1807,13 +1873,15 @@ static void MX_GPIO_Init(void) {
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET); // RST 拉高
 
-  /* 配置 DTU RST 复位引脚 (PA3) - 默认高电平（不复位） */
+  /* 配置 DTU RST 复位引脚 (PA3) - 高电平有效复位！
+   * 实测确认：平时必须拉低（不复位），拉高 = 复位脉冲。
+   * （之前默认高电平曾把 DTU 摁死在复位状态导致无法联网） */
   GPIO_InitStruct.Pin = DTU_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(DTU_RST_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET); // 默认高电平
+  HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET); // 平时低（不复位）
 
   /* 配置 LoRa IRQ 中断引脚 (PA2) - 上升沿触发，下拉 */
   GPIO_InitStruct.Pin = GPIO_PIN_2;

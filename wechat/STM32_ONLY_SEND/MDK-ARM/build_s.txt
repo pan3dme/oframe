@@ -247,17 +247,17 @@ compiling main.c...
                 printf("[调度] 预搜完成, 距上报还�? %lu �?, 再休眠到点前 5 秒\r\n",
 ../Core/Src/main.c(3046): warning:  #870-D: invalid multibyte character sequence
                 printf("[调度] 预搜完成, 距上报还�? %lu �?, 再休眠到点前 5 秒\r\n",
-../Core/Src/main.c(3437): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3445): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power ON (PB15=低上�?, PB1=�? Full on)\r\n");
-../Core/Src/main.c(3437): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3445): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power ON (PB15=低上�?, PB1=�? Full on)\r\n");
-../Core/Src/main.c(3466): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3474): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power OFF (PB15=高断�?, PB1=�? Standby)\r\n");
-../Core/Src/main.c(3466): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(3474): warning:  #870-D: invalid multibyte character sequence
     printf("[GPS] Power OFF (PB15=高断�?, PB1=�? Standby)\r\n");
 ../Core/Src/main.c: 127 warnings, 0 errors
 linking...
-Program Size: Code=29208 RO-data=3276 RW-data=264 ZI-data=3336  
+Program Size: Code=29224 RO-data=3276 RW-data=264 ZI-data=3336  
 FromELF: creating hex file...
 "LY-020-software\LY-020-software.axf" - 0 Error(s), 127 Warning(s).
 Build Time Elapsed:  00:00:02

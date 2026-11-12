@@ -78,7 +78,10 @@ void Error_Handler(void);
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
 
-/* --- DTU 复位引脚 (PA3) --- */
+/* --- DTU 复位引脚 (PA3，高电平有效：拉高 100ms 复位，平时拉低) ---
+ * 实测确认：平时高会把 DTU 摁死在复位态（无法联网）。
+ * 两板统一"外设复位"脚约定：CENTEN=DTU RST（高有效），
+ * ONLY_SEND=GPS RESET_N（低有效，极性相反、代码独立） */
 #define DTU_RST_Pin       GPIO_PIN_3
 #define DTU_RST_GPIO_Port GPIOA
 /* USER CODE END Private defines */
