@@ -1,63 +1,63 @@
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin'
 Build target 'LY-020-software'
 compiling main.c...
-../Core/Src/main.c(542): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(543): warning:  #870-D: invalid multibyte character sequence
     printf("[LoRa开关] 射频已关�?(深度休眠), MCU�?4G仍工作\r\n");
-../Core/Src/main.c(542): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(543): warning:  #870-D: invalid multibyte character sequence
     printf("[LoRa开关] 射频已关�?(深度休眠), MCU�?4G仍工作\r\n");
-../Core/Src/main.c(565): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(566): warning:  #870-D: invalid multibyte character sequence
       printf("[LoRa开关] 初始化失�?, RST复位后重�?(%d)\r\n", retry);
-../Core/Src/main.c(565): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(566): warning:  #870-D: invalid multibyte character sequence
       printf("[LoRa开关] 初始化失�?, RST复位后重�?(%d)\r\n", retry);
-../Core/Src/main.c(575): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(576): warning:  #870-D: invalid multibyte character sequence
     printf("[LoRa开关] 射频已开�?, 恢复接收\r\n");
-../Core/Src/main.c(798): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(799): warning:  #870-D: invalid multibyte character sequence
     printf("[工作时间] 高位 '%c'=�?%d, 低位 '%c'=�?%d, 解码�?=%d\r\n", f[0],
-../Core/Src/main.c(798): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(799): warning:  #870-D: invalid multibyte character sequence
     printf("[工作时间] 高位 '%c'=�?%d, 低位 '%c'=�?%d, 解码�?=%d\r\n", f[0],
-../Core/Src/main.c(798): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(799): warning:  #870-D: invalid multibyte character sequence
     printf("[工作时间] 高位 '%c'=�?%d, 低位 '%c'=�?%d, 解码�?=%d\r\n", f[0],
-../Core/Src/main.c(811): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(812): warning:  #870-D: invalid multibyte character sequence
           printf("[工作时间] 窗口: %02u:00 ~ 24:00 (�? %u 小时)\r\n",
-../Core/Src/main.c(814): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(815): warning:  #870-D: invalid multibyte character sequence
           printf("[工作时间] 窗口: %02u:00 ~ %02u:00 (�? %u 小时)\r\n",
-../Core/Src/main.c(818): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(819): warning:  #870-D: invalid multibyte character sequence
         printf("[工作时间] idx=%d 无对应窗�?(合法范围 0~275)\r\n", wt);
-../Core/Src/main.c(826): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(827): warning:  #870-D: invalid multibyte character sequence
       printf("[工作时间] 当前=%02u �?, 处于工作区间�?=%d (1=�?, 0=�?)\r\n",
-../Core/Src/main.c(826): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(827): warning:  #870-D: invalid multibyte character sequence
       printf("[工作时间] 当前=%02u �?, 处于工作区间�?=%d (1=�?, 0=�?)\r\n",
-../Core/Src/main.c(826): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(827): warning:  #870-D: invalid multibyte character sequence
       printf("[工作时间] 当前=%02u �?, 处于工作区间�?=%d (1=�?, 0=�?)\r\n",
-../Core/Src/main.c(826): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(827): warning:  #870-D: invalid multibyte character sequence
       printf("[工作时间] 当前=%02u �?, 处于工作区间�?=%d (1=�?, 0=�?)\r\n",
-../Core/Src/main.c(829): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(830): warning:  #870-D: invalid multibyte character sequence
       printf("[工作时间] 4G未对�?, 视为全天在区间内(射频常开)\r\n");
-../Core/Src/main.c(896): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(897): warning:  #870-D: invalid multibyte character sequence
     printf("[Flash] 已保�?: config=%s, center=%s\r\n", configStr, centerStr);
-../Core/Src/main.c(1281): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1285): warning:  #870-D: invalid multibyte character sequence
         printf("[DTU CMD] 中心坐标已永久保�?: %s\r\n", centerStr);
-../Core/Src/main.c(1284): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1288): warning:  #870-D: invalid multibyte character sequence
         printf("[DTU CMD] mapcenter: 坐标非法已拒�?(原�?=%s 保持): %s\r\n",
-../Core/Src/main.c(1284): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1288): warning:  #870-D: invalid multibyte character sequence
         printf("[DTU CMD] mapcenter: 坐标非法已拒�?(原�?=%s 保持): %s\r\n",
-../Core/Src/main.c(1315): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1319): warning:  #870-D: invalid multibyte character sequence
         printf("[DTU CMD] gpstm 目标设备不匹�?(目标=%s, 本机=%s)，忽略\r\n",
-../Core/Src/main.c(1324): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1328): warning:  #870-D: invalid multibyte character sequence
       printf("[DTU CMD] gpstm 中继已记�?: device=%s, timeout=%lu min\r\n",
-../Core/Src/main.c(1334): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1338): warning:  #870-D: invalid multibyte character sequence
         printf("[DTU CMD] lorasw 目标设备不匹�?(目标=%s, 本机=%s)，忽略\r\n",
-../Core/Src/main.c(1344): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1348): warning:  #870-D: invalid multibyte character sequence
           printf("[DTU CMD] lorasw: 当前不在工作区间�?, 拒绝开启射频\r\n");
-../Core/Src/main.c(1346): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1350): warning:  #870-D: invalid multibyte character sequence
           printf("[DTU CMD] lorasw: 当前已是收发状�?, 无需重复开启\r\n");
-../Core/Src/main.c(1353): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1357): warning:  #870-D: invalid multibyte character sequence
           printf("[DTU CMD] lorasw: 当前已是休眠状�?, 无需重复关闭\r\n");
-../Core/Src/main.c(1498): warning:  #870-D: invalid multibyte character sequence
+../Core/Src/main.c(1502): warning:  #870-D: invalid multibyte character sequence
         printf("[LoRa] RST 复位后仍初始化失�?! Check wiring.\r\n");
 ../Core/Src/main.c: 27 warnings, 0 errors
 linking...
-Program Size: Code=30088 RO-data=2420 RW-data=244 ZI-data=5052  
+Program Size: Code=30100 RO-data=2420 RW-data=248 ZI-data=5048  
 FromELF: creating hex file...
 "LY-020-software\LY-020-software.axf" - 0 Error(s), 27 Warning(s).
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:01

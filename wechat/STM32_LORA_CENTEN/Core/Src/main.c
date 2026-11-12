@@ -133,6 +133,7 @@ static uint8_t  dtuImsiGot = 0;      // 1=已获取到 IMSI，不再重复查询
 static uint32_t dtuIccidTick = 0;    // ICCID/IMSI 查询独立定时器（拿到网络时间后才启动）
 static uint32_t dtuCsqAnswerTick = 0; // 最近一次收到 CSQ 应答的时刻（0=还没收到过）
 static uint8_t  dtuRstByCsq = 0;     // 1=因 CSQ 死机复位过 DTU，恢复联网后上报一次告知服务器
+static uint32_t syncReportDue = 0;   // 上报到期时刻（nettime 成功后延迟 10 秒，0=无待报）
 static char dtuNetTimeStr[32] = "0"; // DTU 网络时间戳（秒），用于上报
 static uint32_t dtuTimestamp = 0;    // DTU 网络时间 Unix 时间戳（秒）
 static uint32_t dtuSyncTick = 0;     // 对时时的 HAL_GetTick() 值，用于实时计算
@@ -951,14 +952,17 @@ static void enqueueDtuMsg(const char *msg, int len) {
 }
 
 /**
- * @brief  处理 DTU 发送队列：每 1 秒从队头取出一条消息发送
- * @note   在主循环中调用，非阻塞
+ * @brief  处理 DTU 发送队列：每 2 秒从队头取出一条消息发送
+ * @note   在主循环中调用，非阻塞。间隔 2 秒：JSON 上报（对时/配置/
+ *         rst_dtu）相邻发出时 DTU 需要时间转发到服务器——之前 500ms
+ *         间隔曾把前一条挤丢（对时上报失败、配置上报成功）。
+ *         csq/nettime 等短命令 2 秒间隔同样安全
  */
 static void processDtuQueue(void) {
   if (dtuQueueCount == 0)
     return;
 
-  if (HAL_GetTick() - dtuLastSendTick >= 500) {
+  if (HAL_GetTick() - dtuLastSendTick >= 2000) {
     dtuLastSendTick = HAL_GetTick();
 
     // 从队头取出一条消息
@@ -975,7 +979,7 @@ static void processDtuQueue(void) {
 
 /**
  * @brief  统一上报数据给 DTU（JSON格式）
- * @note   数据先入队，由 processDtuQueue() 每秒发送一条
+ * @note   数据先入队，由 processDtuQueue() 每 2 秒发送一条
  * @param  loraStr: lorainfo 字段内容
  * @param  rssi:    RSSI 信号强度
  * @param  snr:     SNR 信噪比
@@ -1555,7 +1559,27 @@ int main(void) {
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
     }
 
-    /* DTU 发送队列处理：每秒从队列取出一条消息发送 */
+    /* 上报到期：nettime 成功后延迟 10 秒，DTU 平台连接已稳定，
+     * 统一入队 对时帧 + rst_dtu 告知（如有）+ 开机配置帧（如有） */
+    if (syncReportDue && HAL_GetTick() >= syncReportDue) {
+      syncReportDue = 0;
+      sendTimeSyncToDtu();
+      /* CSQ 死机复位过 DTU：补发一条告知帧（只发一次）
+       * 格式: 8|deviceName|rst_dtu —— 服务器据此知道中继曾自动恢复过 */
+      if (dtuRstByCsq) {
+        char rstStr[48];
+        snprintf(rstStr, sizeof(rstStr), "8|%s|rst_dtu", (char *)deviceName);
+        sendToDtu(rstStr, dtuCsqRssi, 0);
+        dtuRstByCsq = 0;
+      }
+      // 开机后首次获取到网络时间，上报一次配置信息（仅上报一次）
+      if (!configBootSent) {
+        configBootSent = 1;
+        sendConfigToDtu();
+      }
+    }
+
+    /* DTU 发送队列处理：每 2 秒从队列取出一条消息发送 */
     processDtuQueue();
 
     /* 工作区间自动开关射频（每秒检测一次，只在进出区间的那一刻动作）
@@ -1633,21 +1657,10 @@ int main(void) {
           printf("[DTU] 时间OK, %lu分钟对时\r\n",
                  (unsigned long)(getConfigIntervalMs() / 60000));
 
-          // 获取到正确时间后，立即上报一次对时信息（入队，由队列控制间隔）
-          sendTimeSyncToDtu();
-          /* CSQ 死机复位过 DTU：恢复联网后补发一条告知帧（只发一次）
-           * 格式: 8|deviceName|rst_dtu —— 服务器据此知道中继曾自动恢复过 */
-          if (dtuRstByCsq) {
-            char rstStr[48];
-            snprintf(rstStr, sizeof(rstStr), "8|%s|rst_dtu", (char *)deviceName);
-            sendToDtu(rstStr, dtuCsqRssi, 0);
-            dtuRstByCsq = 0;
-          }
-          // 开机后首次获取到网络时间，上报一次配置信息（仅上报一次）
-          if (!configBootSent) {
-            configBootSent = 1;
-            sendConfigToDtu();
-          }
+          /* 上报延迟 10 秒：拿到 nettime ≠ DTU 已连上服务器——重启后
+           * DTU 注网/建立平台连接有窗口期，立即入队的 JSON 会被挤丢
+           * （实测对时帧丢失、配置帧成功）。到期后由主循环统一入队 */
+          syncReportDue = HAL_GetTick() + 10000;
         }
       }
 
