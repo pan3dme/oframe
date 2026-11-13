@@ -320,11 +320,15 @@ class WxApi:
         """
         设备日志（最新在前）。
         log_type: 1=定位 2=对时 None=全部；offset 跳过前 N 条（类型过滤后）。
+        对标 loadTodayRecords：type 由服务端过滤后再 offset 分页——因此带类型时
+        需扫全窗口过滤完再切片，否则"最新10条无该类型"会误判为没有记录。
         """
-        rows = self._scan_device(device_id, 1, limit=min(offset + limit, 500))  # 1=BACKWARD
         if log_type:
+            rows = self._scan_device(device_id, 1, limit=500)  # 1=BACKWARD
             from crowui import wx_codec
             rows = [r for r in rows if wx_codec.lorastr_type(r.get('lorastr', '')) == log_type]
+        else:
+            rows = self._scan_device(device_id, 1, limit=min(offset + limit, 500))
         return rows[offset:offset + limit]
 
     def getDeviceLogGpsbyId(self, device_id, curdate, limit=99):

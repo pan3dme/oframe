@@ -24,3 +24,129 @@ ValueError: too many values to unpack (expected 2)
     latitude,longitude=gps
 ValueError: too many values to unpack (expected 2)
 
+[2026-11-13 15:46:17] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 366, in <lambda>
+    on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 406, in _on_rows
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:46:17] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 411, in _on_devices_for_rename
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:46:29] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 366, in <lambda>
+    on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 406, in _on_rows
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:47:11] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 366, in <lambda>
+    on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 406, in _on_rows
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:47:11] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 411, in _on_devices_for_rename
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:47:23] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 366, in <lambda>
+    on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 406, in _on_rows
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:48:36] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 366, in <lambda>
+    on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 406, in _on_rows
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:48:36] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 411, in _on_devices_for_rename
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+
+[2026-11-13 15:48:48] 异步回调ok异常: Traceback (most recent call last):
+  File "d:\oframesrc/python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 366, in <lambda>
+    on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 406, in _on_rows
+    self._render()
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 452, in _render
+    self._render_rows(self._tabs[self.active]['rows'])
+  File "d:\oframesrc/python\crowui\leftpages\records_page.py", line 505, in _render_rows
+    self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+    ^^^^^^^^^^^^^^^
+AttributeError: 'RecordsPage' object has no attribute 'page_label'
+

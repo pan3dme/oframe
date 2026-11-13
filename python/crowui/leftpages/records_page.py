@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget,
                              QComboBox, QScrollArea)
 from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
-from PyQt6.QtCore import Qt, QRectF, pyqtSignal
+from PyQt6.QtCore import Qt, QRectF, pyqtSignal, QEvent, QTimer
 
 from crowui import theme, wx_codec
 from crowui.wx_api import WxApi
@@ -58,8 +58,9 @@ class _RecordCard(QWidget):
         super().__init__(parent)
         self.rec = rec
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f'background: {rec["bg"]};'
-                           f'border-bottom: 1px solid rgba(0, 0, 0, 0.04);')
+        # 最后一行不加分隔线（对标 .record-item:last-child { border-bottom: none }）
+        border = '' if rec.get('last') else 'border-bottom: 1px solid rgba(0, 0, 0, 0.04);'
+        self.setStyleSheet(f'background: {rec["bg"]}; {border}')
         if rec['tappable']:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         v = QVBoxLayout(self)
@@ -104,7 +105,7 @@ class _RecordCard(QWidget):
             r2.addWidget(arrow)
         v.addLayout(r2)
 
-        # —— 行3：RSSI（左半） SNR（右半，与小程序两个 flex:1 一致）——
+        # —— 行3：RSSI（左） SNR（右），两端对齐（对标 .rec-row-rssi space-between）——
         if rec['rssi'] or rec['snr']:
             r3 = QHBoxLayout()
             r3.setSpacing(0)
@@ -112,12 +113,13 @@ class _RecordCard(QWidget):
                 rssi_lab = QLabel(f'RSSI: {rec["rssi"]}dBm')
                 rssi_lab.setStyleSheet('color: #333333; font-size: 12px;'
                                        'border: none; background: transparent;')
-                r3.addWidget(rssi_lab, stretch=1)
+                r3.addWidget(rssi_lab)
+            r3.addStretch(1)
             if rec['snr']:
                 snr_lab = QLabel(f'SNR: {rec["snr"]}')
                 snr_lab.setStyleSheet('color: #333333; font-size: 12px;'
                                       'border: none; background: transparent;')
-                r3.addWidget(snr_lab, stretch=1)
+                r3.addWidget(snr_lab)
             v.addLayout(r3)
 
     def mouseReleaseEvent(self, event):
@@ -137,19 +139,24 @@ class RecordsPage(QWidget):
         self.notify = notify or (lambda msg: print('[记录]', msg))
         self._rename_map = {}
         # 三个筛选各自独立的数据与分页状态（对标 recordsByType）
-        self._tabs = {k: {'page': 0, 'rows': [], 'loaded': False}
+        self._tabs = {k: {'page': 0, 'rows': [], 'loaded': False, 'has_more': True}
                       for k in ('all', 'gps', 'sync')}
+        # 设备模式（对标 device-detail?mode=records：详情页"数据列表"→ 该设备的记录）
+        self._device_id = None
+        self._device_tabs = None
         self.active = 'all'
         self._setup_ui()
 
     def _setup_ui(self):
         self.setStyleSheet('background: #f5f5f5;')
+        # 页面左右/上下 12px 边距（对标 .recv-header/.msg-panel 的 margin: 24rpx）
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(0)
 
         # ---- 头部：标题 + chips + 条数（对标 .recv-header）----
         header = QWidget()
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         header.setStyleSheet('background: #FFFFFF; border-bottom: 1px solid #f0f0f0;'
                              'border-radius: 8px 8px 0 0;')
         h = QHBoxLayout(header)
@@ -159,6 +166,7 @@ class RecordsPage(QWidget):
         title.setStyleSheet('color: #555555; font-size: 14px; font-weight: 600;'
                             'border: none; background: transparent;')
         h.addWidget(title)
+        self._title_label = title
         h.addSpacing(4)
         self._chips = {}
         for key, label in (('all', '📋 全部'), ('gps', '📍 GPS'), ('sync', '🕐 对时')):
@@ -183,30 +191,120 @@ class RecordsPage(QWidget):
         panel.setObjectName('recPanel')
         panel.setStyleSheet('QWidget#recPanel { background: #FFFFFF;'
                             'border-radius: 0 0 8px 8px; }')
+        # 面板投影（对标 .msg-panel box-shadow 0 2rpx 16rpx rgba(0,0,0,0.05)）
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        from PyQt6.QtGui import QColor as _QC
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(8)
+        shadow.setOffset(0, 1)
+        shadow.setColor(_QC(0, 0, 0, 15))
+        scroll.setGraphicsEffect(shadow)
         self.list_layout = QVBoxLayout(panel)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_layout.setSpacing(0)
         scroll.setWidget(panel)
         layout.addWidget(scroll, stretch=1)
+        self._scroll = scroll
 
-        # ---- 底部：页码 + 翻页 ----
-        bottom = QHBoxLayout()
-        bottom.setContentsMargins(14, 6, 14, 8)
-        self.page_label = QLabel('第 1 页')
-        self.page_label.setFont(theme.font(10))
-        prev_btn = QPushButton('上一页')
-        next_btn = QPushButton('下一页')
-        for b in (prev_btn, next_btn):
-            b.setStyleSheet(theme.PRIMARY_BUTTON_QSS)
-        prev_btn.clicked.connect(lambda: self._turn_page(-1))
-        next_btn.clicked.connect(lambda: self._turn_page(+1))
-        bottom.addWidget(self.page_label)
-        bottom.addStretch()
-        bottom.addWidget(prev_btn)
-        bottom.addWidget(next_btn)
-        layout.addLayout(bottom)
+        # ---- 下拉刷新（对标 refresher-enabled threshold 60）+ 滚到底自动翻页 ----
+        self._pull = {'active': False, 'start_y': 0, 'dy': 0, 'suppress_click': False}
+        self._refreshing = False
+        self._spinner_chars = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        self._spinner_idx = 0
+        self._pull_overlay = QLabel(scroll)
+        self._pull_overlay.setStyleSheet("""
+            QLabel { background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px;
+                     padding: 5px 14px; border-radius: 14px; border: none; }
+        """)
+        self._pull_overlay.hide()
+        self._spinner_timer = QTimer(self)
+        self._spinner_timer.setInterval(90)
+        self._spinner_timer.timeout.connect(self._tick_spinner)
+        scroll.viewport().installEventFilter(self)
+        panel.installEventFilter(self)
+        # 滚动到距底 80px 自动加载下一页（对标 bindscrolltolower lower-threshold 80），
+        # 上一页/下一页按钮已移除——翻页全由滚动接管
+        scroll.verticalScrollBar().valueChanged.connect(self._on_scroll_near_bottom)
 
         self._apply_chip_styles()
+
+    # ==================== 下拉刷新手势（与设备列表同款） ====================
+
+    _PULL_THRESHOLD = 60
+
+    def eventFilter(self, obj, ev):
+        t = ev.type()
+        if t == QEvent.Type.MouseButtonPress and ev.button() == Qt.MouseButton.LeftButton:
+            self._pull['active'] = self._scroll.verticalScrollBar().value() == 0 \
+                and not self._refreshing
+            self._pull['start_y'] = ev.globalPosition().toPoint().y()
+            self._pull['dy'] = 0
+            self._pull['suppress_click'] = False
+        elif t == QEvent.Type.MouseMove and self._pull['active']:
+            dy = ev.globalPosition().toPoint().y() - self._pull['start_y']
+            self._pull['dy'] = max(0, dy)
+            self._update_pull_overlay()
+        elif t == QEvent.Type.MouseButtonRelease and self._pull['active']:
+            self._pull['active'] = False
+            dy = self._pull['dy']
+            self._pull['dy'] = 0
+            self._pull['suppress_click'] = dy > 10   # 拖拽过的释放不当作卡片点击
+            if dy >= self._PULL_THRESHOLD and self.api.logged_in:
+                self._show_refreshing()
+                self._load(self.active, 1)   # 刷新当前筛选：回到第 1 页替换
+            else:
+                self._hide_pull_overlay()
+        return super().eventFilter(obj, ev)
+
+    def _update_pull_overlay(self):
+        """拖拽中：指示器跟随 + 内容随手指下移"""
+        dy = self._pull['dy']
+        self.list_layout.setContentsMargins(0, min(dy, 80) // 2, 0, 0)
+        if dy < 8:
+            self._pull_overlay.hide()
+            return
+        text = '↑ 释放刷新' if dy >= self._PULL_THRESHOLD else '↓ 下拉刷新'
+        self._pull_overlay.setText(text)
+        self._pull_overlay.adjustSize()
+        self._pull_overlay.move((self._scroll.width() - self._pull_overlay.width()) // 2,
+                                max(-self._pull_overlay.height() + 6,
+                                    10 + int(dy * 0.4) - self._pull_overlay.height() // 2))
+        self._pull_overlay.show()
+        self._pull_overlay.raise_()
+
+    def _show_refreshing(self):
+        """刷新中：顶部固定指示器 + 转圈动画（对标 refresher 持续态）"""
+        self._refreshing = True
+        self._pull['dy'] = 0
+        self._spinner_idx = 0
+        self._spinner_timer.start()
+        self.list_layout.setContentsMargins(0, 40, 0, 0)
+        self._pull_overlay.setText(f'{self._spinner_chars[0]} 刷新中...')
+        self._pull_overlay.adjustSize()
+        self._pull_overlay.move((self._scroll.width() - self._pull_overlay.width()) // 2, 10)
+        self._pull_overlay.show()
+        self._pull_overlay.raise_()
+
+    def _tick_spinner(self):
+        self._spinner_idx = (self._spinner_idx + 1) % len(self._spinner_chars)
+        self._pull_overlay.setText(f'{self._spinner_chars[self._spinner_idx]} 刷新中...')
+
+    def _hide_pull_overlay(self):
+        self._refreshing = False
+        self._spinner_timer.stop()
+        self._pull_overlay.hide()
+        self.list_layout.setContentsMargins(0, 0, 0, 0)   # 内容回弹复位
+
+    def _on_scroll_near_bottom(self, value):
+        """距底 80px 内自动加载下一页（对标 onScrollToLower）"""
+        if self._loading or self._refreshing or not self.api.logged_in:
+            return
+        tab = self._cur[self.active]
+        if not tab['loaded'] or not tab['has_more']:
+            return
+        sb = self._scroll.verticalScrollBar()
+        if sb.maximum() - value <= 80:
+            self._load(self.active, tab['page'] + 1)
 
     def _apply_chip_styles(self):
         """chips：未选白底灰字灰边，选中蓝 #1989fa（对标 .recv-filter-on）"""
@@ -221,26 +319,66 @@ class RecordsPage(QWidget):
                                    'padding: 2px 7px; font-size: 11px; }'
                                    'QPushButton:hover { color: #1989fa; }')
 
+    @property
+    def _cur(self):
+        """当前模式的状态存取（设备模式/云端模式各自独立缓存）"""
+        return self._device_tabs if self._device_id else self._tabs
+
+    def _apply_mode(self):
+        """标题与 chips 文案随模式切换（对标两处导航标题）"""
+        if self._device_id:
+            self._title_label.setText('📊 设备记录')
+            labels = {'all': '📋 全部', 'gps': '📍 定位', 'sync': '🕐 对时'}
+        else:
+            self._title_label.setText('☁️ 云端记录')
+            labels = {'all': '📋 全部', 'gps': '📍 GPS', 'sync': '🕐 对时'}
+        for key, chip in self._chips.items():
+            chip.setText(labels[key])
+
+    def open_for_device(self, device_id):
+        """设备详情"数据列表" → 该设备的记录页（对标 mode=records）"""
+        if not device_id:
+            self.notify('未选择设备')
+            return
+        if self._device_id != device_id or not self._device_tabs:
+            self._device_id = device_id
+            self._device_tabs = {k: {'page': 0, 'rows': [], 'loaded': False,
+                                     'has_more': True}
+                                 for k in ('all', 'gps', 'sync')}
+            self.active = 'all'
+        self._apply_mode()
+        self._apply_chip_styles()
+        if not self._device_tabs['all']['loaded'] and not self._loading:
+            self._render_empty('⏳ 加载中...')
+            self._load('all', 1)
+        else:
+            self._render()
+
+    def open_cloud(self):
+        """功能列表"云端记录" → 全部设备最新日志（保留已有缓存）"""
+        self._device_id = None
+        self._apply_mode()
+        self._apply_chip_styles()
+        if not self._tabs['all']['loaded'] and not self._loading:
+            self._load('all', 1)
+        else:
+            self._render()
+
     def _on_chip(self, key):
         if key == self.active:
             return
         self.active = key
         self._apply_chip_styles()
-        tab = self._tabs[key]
+        tab = self._cur[key]
         if tab['loaded']:
             self._render()
         else:
             self._render_empty('⏳ 加载中...')
             self._load(key, 1)
 
-    def _turn_page(self, delta):
-        tab = self._tabs[self.active]
-        page = max(1, tab['page'] + delta)
-        self._load(self.active, page)
-
     def _ensure_loaded(self, tab_idx=0):
         """首次进入自动拉"全部"第一页（leftpanel 调用）"""
-        if not self._tabs['all']['loaded'] and not self._loading:
+        if not self._cur['all']['loaded'] and not self._loading:
             self._load('all', 1)
 
     _loading = False
@@ -251,35 +389,54 @@ class RecordsPage(QWidget):
             return
         codes = {'all': None, 'gps': 1, 'sync': 2}
         self._loading = True
-        self.api.run_async(
-            lambda: self.api.getlastlog(page=page, limit=10, log_type=codes[key]),
-            on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
-            on_err=lambda m, k=key: (self._loading_done(),
-                                     self.notify(f'加载失败: {m}')),
-        )
+        if self._device_id:
+            # 设备模式：getDeviceLogbyId 按 offset 翻页（对标 loadTodayRecords）
+            offset = (page - 1) * 10
+            self.api.run_async(
+                lambda: self.api.getDeviceLogbyId(self._device_id, limit=10,
+                                                  offset=offset, log_type=codes[key]),
+                on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                on_err=lambda m, k=key: (self._loading_done(), self._hide_pull_overlay(),
+                                         self.notify(f'加载失败: {m}')),
+            )
+        else:
+            self.api.run_async(
+                lambda: self.api.getlastlog(page=page, limit=10, log_type=codes[key]),
+                on_ok=lambda rows, k=key, p=page: self._on_rows(k, p, rows),
+                on_err=lambda m, k=key: (self._loading_done(), self._hide_pull_overlay(),
+                                         self.notify(f'加载失败: {m}')),
+            )
 
     def _loading_done(self):
         self._loading = False
 
     def _on_rows(self, key, page, rows):
         self._loading = False
+        # 是否还有下一页：整页拉满 10 条才可能还有更多（对标 hasMore = length >= pageSize）
+        self._cur[key]['has_more'] = len(rows) >= 10
         if not rows and page > 1:
-            self.notify('没有更多记录')
+            if key == self.active:
+                self._render()   # 补"没有更多了"提示
             return
         if not rows and page == 1:
-            self._tabs[key].update({'page': 1, 'rows': [], 'loaded': True})
+            self._cur[key].update({'page': 1, 'rows': [], 'loaded': True})
             if key == self.active:
                 self._render()
             return
-        # 翻页去重（同 rawTime+lorastr 不重复追加）
+        # 翻页去重（同 rawTime+lorastr 不重复追加）；整页全是重复 → 视为没有更多
         if page > 1:
-            exist = {(r.get('time'), r.get('lorastr')) for r in self._tabs[key]['rows']}
+            exist = {(r.get('time'), r.get('lorastr')) for r in self._cur[key]['rows']}
             rows = [r for r in rows if (r.get('time'), r.get('lorastr')) not in exist]
-            self._tabs[key]['rows'].extend(rows)
+            if not rows:
+                self._cur[key]['has_more'] = False
+                if key == self.active:
+                    self._render()
+                return
+            self._cur[key]['rows'].extend(rows)
         else:
-            self._tabs[key]['rows'] = list(rows)
-        self._tabs[key]['page'] = page
-        self._tabs[key]['loaded'] = True
+            self._cur[key]['rows'] = list(rows)
+        self._cur[key]['page'] = page
+        self._cur[key]['loaded'] = True
         # 首次拉数据时顺带构建 设备别名映射（对标 onLoad 的 renameMap）
         if not self._rename_map and self.api.logged_in:
             self.api.run_async(
@@ -288,6 +445,8 @@ class RecordsPage(QWidget):
                 on_err=lambda m: None,
             )
         if key == self.active:
+            if self._refreshing:
+                self._hide_pull_overlay()   # 下拉刷新完成：收指示器 + 内容回弹
             self._render()
 
     def _on_devices_for_rename(self, rows):
@@ -334,7 +493,7 @@ class RecordsPage(QWidget):
         }
 
     def _render(self):
-        self._render_rows(self._tabs[self.active]['rows'])
+        self._render_rows(self._cur[self.active]['rows'])
 
     def _render_empty(self, text):
         while self.list_layout.count():
@@ -349,7 +508,6 @@ class RecordsPage(QWidget):
         self.list_layout.addWidget(tip)
         self.list_layout.addStretch(1)
         self.count_label.setText('0 条')
-        self.page_label.setText(f'第 {self._tabs[self.active]["page"] or 1} 页')
 
     def _render_rows(self, rows):
         while self.list_layout.count():
@@ -364,15 +522,40 @@ class RecordsPage(QWidget):
         if not recs:
             self._render_empty('暂无记录')
             return
+        recs[-1]['last'] = True
         for rec in recs:
             if rec['tappable']:
                 rec['lat'], rec['lng'] = self._extract_coord(rec['lorastr'])
             card = _RecordCard(rec)
+            card.installEventFilter(self)   # 卡片上捕获下拉拖拽
             card.clicked.connect(self._on_card_click)
             self.list_layout.addWidget(card)
         self.list_layout.addStretch(1)
+        # 末尾状态提示（对标 load-more-tip / empty-tip）
+        tab = self._cur[self.active]
+        tip_text = None
+        if not tab['has_more'] and tab['rows']:
+            tip_text = '— 没有更多了 —'
+        elif self._loading and tab['page'] > 1:
+            tip_text = '加载中...'
+        if tip_text:
+            tip = QLabel(tip_text)
+            tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            tip.setStyleSheet('color: #999999; font-size: 13px; background: transparent;'
+                              'padding: 12px 0; border: none;')
+            self.list_layout.addWidget(tip)
         self.count_label.setText(f'{len(recs)} 条')
-        self.page_label.setText(f'第 {self._tabs[self.active]["page"]} 页')
+        # 内容不足一屏时滚到底事件永远不会触发 → 主动补拉下一页直到铺满或没有更多
+        QTimer.singleShot(0, self._fill_if_short)
+
+    def _fill_if_short(self):
+        if self._loading or self._refreshing or not self.api.logged_in:
+            return
+        tab = self._cur[self.active]
+        if not tab['loaded'] or not tab['has_more']:
+            return
+        if self._scroll.verticalScrollBar().maximum() == 0:
+            self._load(self.active, tab['page'] + 1)
 
     @staticmethod
     def _extract_coord(lorastr):
@@ -392,6 +575,10 @@ class RecordsPage(QWidget):
         return lat, lng
 
     def _on_card_click(self, rec):
+        # 拖拽刷新的释放不当作点击（与下拉刷新互斥）
+        if self._pull.get('suppress_click'):
+            self._pull['suppress_click'] = False
+            return
         if rec['lat'] is None:
             self.notify('该记录无有效坐标')
             return

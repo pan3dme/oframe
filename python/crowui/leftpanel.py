@@ -109,7 +109,8 @@ class LeftPanel(QWidget):
         self.list_page.loaded.connect(self._maybe_restore_last_device)
         self.detail_page.back_requested.connect(lambda: self._select_page(PAGE_LIST))
         self.detail_page.logout_requested.connect(self._on_logout)
-        self.detail_page.open_records.connect(self._open_records_page)
+        self.detail_page.open_records.connect(
+            lambda: self._open_records_page(self.detail_page.current_device_id))
         self.detail_page.open_battery.connect(self._open_battery_page)
         self.features_page.feature_selected.connect(self._on_feature_selected)
         self.records_page._inner_page.locate_requested.connect(self._locate_from_record)
@@ -180,7 +181,10 @@ class LeftPanel(QWidget):
         top.setContentsMargins(10, 8, 10, 8)
         back_btn = QPushButton("← 功能列表")
         back_btn.setStyleSheet(theme.PRIMARY_BUTTON_QSS)
-        back_btn.clicked.connect(lambda: self._select_page(PAGE_FEATURES))
+        # 返回目标可被子页改写（如设备记录模式 → 返回设备详情）；点击时读当前值
+        wrapper._back_target = PAGE_FEATURES
+        back_btn.clicked.connect(
+            lambda: self._select_page(getattr(wrapper, '_back_target', PAGE_FEATURES)))
         title_label = QLabel(title)
         title_label.setFont(theme.font(13, bold=True))
         title_label.setStyleSheet(f"color: {theme.PRIMARY};")
@@ -189,6 +193,8 @@ class LeftPanel(QWidget):
         layout.addLayout(top)
         layout.addWidget(page, stretch=1)
         wrapper._inner_page = page
+        wrapper._title_label = title_label
+        wrapper._back_btn = back_btn
         return wrapper
 
     # ==================== 启动登录流程 ====================
@@ -300,12 +306,21 @@ class LeftPanel(QWidget):
                                          self.list_page._sync_map)
             self._notify(f'已恢复上次选中的设备 {last_id}')
 
-    def _open_records_page(self):
-        """设备详情"数据列表" → 云端记录页（进入即加载）"""
+    def _open_records_page(self, device_id=None):
+        """详情页"数据列表" → 该设备记录（对标 device-detail?mode=records）；
+        功能列表入口传 None → 全局云端记录"""
+        inner = self.records_page._inner_page
+        if device_id:
+            self.records_page._title_label.setText('设备记录')
+            self.records_page._back_target = PAGE_DETAIL   # 从设备进入 → 返回详情
+            self.records_page._back_btn.setText('← 设备详情')
+            inner.open_for_device(device_id)
+        else:
+            self.records_page._title_label.setText('云端记录')
+            self.records_page._back_target = PAGE_FEATURES
+            self.records_page._back_btn.setText('← 功能列表')
+            inner.open_cloud()
         self._select_page(PAGE_RECORDS)
-        ensure = getattr(self.records_page._inner_page, '_ensure_loaded', None)
-        if callable(ensure):
-            ensure(0)
 
     def _open_battery_page(self):
         """设备详情"电量走势" → 电量走势页"""
@@ -314,6 +329,9 @@ class LeftPanel(QWidget):
 
     def _on_feature_selected(self, key):
         """功能列表入口 → 子功能页（进入时刷新数据）；insert/bluetooth/optimize 在功能页内处理"""
+        if key == 'records':
+            self._open_records_page()   # 统一走入口：重置标题/返回目标为云端模式
+            return
         idx, page_wrapper = {
             'livestock': (PAGE_LIVESTOCK, self.livestock_page),
             'records': (PAGE_RECORDS, self.records_page),
