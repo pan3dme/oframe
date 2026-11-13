@@ -42,9 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define EXAMPLE_NAME "LoRa Only Send"
 #define DEMO_VER     "V1.2"
-#define EXAMPLE_DATE "2026/10/18"
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -55,10 +53,9 @@
 #define MSG_TYPE_COM      9   /* 指令消息 */
 #define MSG_TYPE_CONFIG   6   /* 配置消息 */
 #define MSG_TYPE_SYN_TIME 4   /* 下发对时信息（中继→本设备） */
-#define MSG_TYPE_WARN     8   /* 告警消息（预留，当前未使用；类型 8 已给 READINFO） */
 #define MSG_TYPE_READINFO 8   /* 设备信息上报（readinfo 指令回复）
                                * 帧格式: 8|设备名|设备数量|发射功率(dBm)|保留(当前填计数)|
-                               * @note 与 MSG_TYPE_WARN 同值 8：告警消息从未实现过，
+                               * @note 类型 8 曾预留给告警（WARN），告警从未实现，
                                *       若将来要做告警，必须换一个类型号 */
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
@@ -175,9 +172,8 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
  */
 
 /* --- GPS 模块（USART3, PB11 RX, 9600）---
- * @note  本版本不做 GPS 电源三级管/复位控制，模块常供电，直接接收 NMEA
- *        设计要点：中断里只做"塞入环形缓冲"这个最轻的动作，
- *        解析和打印全部放在主循环，避免在 ISR 里跑串处理和 printf
+ * @note  电源由 PB15/PB1 双脚控制（gpsPowerOn/Off），中断里只做
+ *        "塞入环形缓冲"这个最轻的动作，解析和打印全放主循环
  */
 #define GPS_RING_LEN   512   /* 环形缓冲：主循环被 LoRa 收发阻塞时先攒着 */
 #define GPS_LINE_LEN   128   /* 单条 NMEA 语句上限 */
@@ -233,7 +229,6 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 
 
 typedef struct {
-  uint8_t  valid;   /* 已定位 */
   int32_t  lat;     /* 纬度 ×1e5（北纬为正），如 26.52958 → 2652958 */
   int32_t  lng;     /* 经度 ×1e5（东经为正） */
   uint8_t  sats;    /* 参与定位的卫星数 */
@@ -245,7 +240,6 @@ typedef struct {
   uint8_t  hour;
   uint8_t  minute;
   uint8_t  second;
-  uint16_t msec;
 } GpsFix_t;
 
 static const uint8_t gpsDaysInMonth[12] =   /* 平年每月天数（闰年 2 月单独修正） */
@@ -281,7 +275,6 @@ static void MX_NVIC_Init(void);
 static void MX_ADC1_Init(void);
 
 /* USER CODE BEGIN PFP */
-static void printf_logo(void);
 static uint32_t getTodaySecond(void);
 static uint32_t getCurrentTimestamp(void);
 static uint8_t isLeapYear(uint16_t year);
@@ -362,14 +355,6 @@ PUTCHAR_PROTOTYPE
 {
   HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
   return ch;
-}
-
-/**
-  * @brief  打印工程信息 Logo
-  */
-static void printf_logo(void)
-{
-  /* @note logo 已裁掉以省 Flash（MDK Lite 32KB 限制），保留空函数避免改调用处 */
 }
 
 /**
@@ -735,23 +720,33 @@ static void txCountNext(void)
 }
 
 /**
+ * @brief  LoRa 单发一帧（阻塞等发送完成），所有上行帧共用
+ * @param  msg: 以 '\0' 结尾的帧字符串（连同结束符一起发送）
+ * @note   原本 5 处上行帧各自复制同一段三行发送样板，统一收敛于此
+ */
+static void loraTx(const char *msg)
+{
+  uint32_t tx_time = 1000;
+
+  rf_single_tx_data((uint8_t *)msg, strlen(msg) + 1, &tx_time);
+  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
+    ;
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+}
+
+/**
   * @brief  发送配置消息（重启后只发一次）
   * @note   格式: MSG_TYPE_CONFIG|deviceName|config_str|计数|
   */
   static void sendConfigMessage(void)
   {
    char tx_msg[TX_LEN];
-   uint32_t tx_time = 1000;
 
    txCountNext();
    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
             MSG_TYPE_CONFIG, deviceName, configStr, (unsigned long)tx_count);
 
-  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
-  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-    ;
-  rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
+  loraTx(tx_msg);
   printf("[配置] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
@@ -764,7 +759,6 @@ static void txCountNext(void)
 static void sendReadInfoMessage(void)
 {
   char tx_msg[TX_LEN];
-  uint32_t tx_time = 1000;
 
   txCountNext();
   /* 8|设备名|设备数T|频率HZ|功率dbm|固件版本|计数 —— 各段带单位，云端展示直读；
@@ -774,11 +768,7 @@ static void sendReadInfoMessage(void)
            (unsigned long)(DEFAULT_FREQ / 1000000u),
            (int)currentTxPower, DEMO_VER, (unsigned long)tx_count);
 
-  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
-  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-    ;
-  rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
+  loraTx(tx_msg);
   printf("[设备信息] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
@@ -791,18 +781,13 @@ static void sendReadInfoMessage(void)
 static void sendCenterMessage(void)
 {
   char tx_msg[TX_LEN];
-  uint32_t tx_time = 1000;
   const char *coord = (centerStr[0] != '\0') ? centerStr : "0,0";
 
   txCountNext();
   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
            MSG_TYPE_GPS, deviceName, coord, (unsigned long)tx_count);
 
-  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
-  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-    ;
-  rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
+  loraTx(tx_msg);
   printf("[中心坐标] 发送  -> \"%s\"\r\n", tx_msg);
 }
 
@@ -846,7 +831,6 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
                                    uint32_t searchSec, uint32_t rxBytes)
 {
   char tx_msg[TX_LEN];
-  uint32_t tx_time = 1000;
   int      msgType = useGpsType ? MSG_TYPE_GPS : MSG_TYPE_UP_GPS;
 
   txCountNext();   /* 每发一帧 LoRa 计数 +1（类型 1/5 都算一帧） */
@@ -873,12 +857,25 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
              msgType, deviceName, bytesBuf, (unsigned long)tx_count);
   }
 
-  rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
-  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-    ;
-  rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
+  loraTx(tx_msg);
   printf("[定位上报] 发送  -> \"%s\"\r\n", tx_msg);
+}
+
+/**
+ * @brief  消耗 UPGPS 结束后的一次性重试许可
+ * @param  fixed: 本轮上报是否拿到真实坐标
+ * @note   upgps 跟踪失败后只保留一次类型 1 重试：这次仍无坐标就彻底清零
+ *         不再延续。原本预搜/单次两条路径各复制一份相同判断，统一收敛于此
+ */
+static void consumeUpgpsRetryOneShot(uint8_t fixed)
+{
+  if (!upgpsRetryOneShot)
+    return;
+  upgpsRetryOneShot = 0;
+  if (!fixed) {
+    gpsNeedRetry = 0;
+    printf("[GPS] 一次性重试用完\r\n");
+  }
 }
 
 /**
@@ -994,8 +991,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
   uint32_t rounds      = 0;
   uint8_t  everFixed   = 0;
 
-  printf("[连续定位] 开始: 时长=%u 分钟, 每轮至少 %u 秒(无坐标则跟踪保底 60 分钟)\r\n",
-         (unsigned int)totalMin, (unsigned int)GPS_CONT_INTERVAL_SEC);
+  printf("[连续定位] 开始 %u分钟\r\n", (unsigned int)totalMin);
 
   while (1) {
     uint32_t slotStart = HAL_GetTick();
@@ -1010,22 +1006,26 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
       everFixed = 1;
 
     if (hasFix) {
-      printf("[连续定位] 第 %lu 轮已上报真实坐标\r\n", (unsigned long)rounds);
+      printf("[连续定位] 第%lu轮 有坐标\r\n", (unsigned long)rounds);
 
       /* 拿到坐标：期限收回参数设定值。若已超时，下面的判断会正常结束，
        * 刚报出坐标的这一帧就是最后一帧 —— 参数语义保持不变 */
       if (deadlineSec > totalSec)
         deadlineSec = totalSec;
     } else {
-      printf("[连续定位] 第 %lu 轮无坐标已上报 0.0,0.0\r\n", (unsigned long)rounds);
+      printf("[连续定位] 第%lu轮 0.0,0.0\r\n", (unsigned long)rounds);
     }
 
     /* 定位成功导向：至今没有有效坐标 → 跟踪期限保底延长到 60 分钟，
      * 继续按原间隔每轮上报（每帧 +1 计数），直到定位成功或到上限 */
     if (!everFixed && (deadlineSec < GPS_CONT_MAX_SEC)) {
       deadlineSec = GPS_CONT_MAX_SEC;
-      printf("[连续定位] 尚无有效坐标, 跟踪期限延长到 60 分钟(每轮照常上报)\r\n");
+      printf("[连续定位] 无坐标, 期限延至60分钟\r\n");
     }
+
+    /* upgps 跟踪不受工作时段/GPS 时段约束：云端主动指令，
+     * 任何时间收到都执行到期限（"进入 GPS 时段一直无坐标、离开后
+     * 不强制再报"只约束自动重试路径 —— OnMaster 开头已放弃重试） */
 
     elapsed = (HAL_GetTick() - startTick) / 1000u;   /* 毫秒 → 秒 */
     if (elapsed >= deadlineSec)
@@ -1035,8 +1035,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     if (remain < (uint32_t)GPS_CONT_INTERVAL_SEC) {
       /* 剩下的时间凑不满一轮（一轮最短也要 GPS_CONT_INTERVAL_SEC 秒），
        * 不再空等，直接结束连续定位，回到正常定时调度（该休眠就休眠） */
-      printf("[连续定位] 剩余 %lu 秒 < 一轮最短 %u 秒, 结束(回到正常定时逻辑)\r\n",
-             (unsigned long)remain, (unsigned int)GPS_CONT_INTERVAL_SEC);
+      printf("[连续定位] 剩%lu秒<一轮, 结束\r\n", (unsigned long)remain);
       break;
     }
 
@@ -1922,7 +1921,6 @@ static void parseNmeaLine(char *line)
 
     /* qual: 0=无效, 1=单点定位, 2=差分, 4=RTK固定, 5=RTK浮点 */
     if (atoi(qual) > 0 && lat[0] != '\0' && lng[0] != '\0') {
-      gpsFix.valid = 1;
       gpsFix.lat   = nmeaToDeg(lat, latDir[0]);
       gpsFix.lng   = nmeaToDeg(lng, lngDir[0]);
       gpsFix.sats  = (uint8_t)atoi(sats);
@@ -1930,9 +1928,7 @@ static void parseNmeaLine(char *line)
       gpsFixTick   = HAL_GetTick();   /* 刷新定位时间戳，供新鲜度判断 */
       (void)utc;                      /* 时间统一取 RMC 的，这里不用 */
     } else {
-      gpsFix.valid = 0;
       gpsFixValid  = 0;
-      //printf("[GPS] 未定位 (quality=%s sat=%s)\r\n", qual, sats);
     }
   }
   /* ---- RMC: 日期、地面速度（GGA 里没有） ---- */
@@ -1950,20 +1946,6 @@ static void parseNmeaLine(char *line)
       gpsFix.hour   = (uint8_t)((utc[0] - '0') * 10 + (utc[1] - '0'));
       gpsFix.minute = (uint8_t)((utc[2] - '0') * 10 + (utc[3] - '0'));
       gpsFix.second = (uint8_t)((utc[4] - '0') * 10 + (utc[5] - '0'));
-
-      /* 小数部分 → 毫秒（最多取 3 位） */
-      gpsFix.msec = 0;
-      if (utc[6] == '.') {
-        uint8_t i;
-        uint16_t mul = 100;
-
-        for (i = 7; (i < strlen(utc)) && (mul > 0); i++) {
-          if ((utc[i] >= '0') && (utc[i] <= '9')) {
-            gpsFix.msec += (uint16_t)((utc[i] - '0') * mul);
-            mul = (uint16_t)(mul / 10);
-          }
-        }
-      }
     }
     if (strlen(date) == 6) {
       gpsFix.day   = (uint8_t)((date[0] - '0') * 10 + (date[1] - '0'));
@@ -2123,14 +2105,6 @@ static void gpsTrySyncFromSat(void)
  * @param  timeoutMs: 最长等待时间；HAL_GetTick 差值用无符号运算，
  *                    49 天回绕也能正确计算
  * @retval 1=拿到有效定位, 0=超时仍未定位
- */
-/**
- * @brief  搜星期间的状态行（每 1 秒一行，取代原来的 NMEA 原始打印）
- * @param  elapsedMs: 本轮已搜星时长（毫秒）
- * @note   一行给出：坐标是否有效 / GPS 年份是否可信(>2025) / 定位是否可靠(新鲜) /
- *         参与定位的卫星数 / 已搜星时长 / 当前北京时间（GPS UTC + 8 小时）
- * @warning 三元里的对勾/叉号后面留一个空格：多字节字符紧贴闭合引号时
- *          ARMCC5 可能吞掉那个引号（missing closing quote）
  */
 static void gpsPrintSearchStatus(uint32_t elapsedMs)
 {
@@ -2596,18 +2570,6 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 }
 
 /**
-  * @brief  Master（主机/发射端）流程
-  * @note   1. 组包并发送时间帧 MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
-  *            @warning 这里固定发时间帧，不再按定位状态切换！
-  *                    定位坐标统一由 UPGPS 流程上报（见末段 gpsSearchAndReport）
-  *            例外：若上一轮搜星失败（发了 0.0,0.0），本轮跳过这一帧，
-  *                  直接重试搜星，把这次机会留给拿坐标
-  *         2. 发送完成后开启 3 秒接收窗口，解析对时消息
-  *            @note  接收窗口两种周期都开，保证节点始终可被下发指令
-  *         3. 计算下次上报时间并保存到 Flash
-  */
-
-/**
   * @brief  开启 3 秒接收窗口（single 模式，最多只收一条），收到则解析
   * @note   抽成函数的原因：MSG_TYPE_GPS(1) 上报之后还要再开一次窗口，
   *         保证节点报完定位后仍处于可被下发指令的状态；
@@ -2692,7 +2654,6 @@ static void OnMaster(void)
 {
   char tx_msg[TX_LEN];
   uint32_t today_sec = getTodaySecond();
-  uint32_t tx_time = 1000;
 
   /* 上轮失败的重试只在"工作时间段内"继续：已离开工作时间段就放弃重试，
    * 否则会出现"跳过定时帧、又不搜星"的空转轮次，设备整轮什么都不上报
@@ -2728,14 +2689,7 @@ static void OnMaster(void)
              MSG_TYPE_TIME, deviceName,
              (unsigned long)today_sec, cachedBatteryPercent, (unsigned long)tx_count);
 
-    /* 发送数据 */
-    rf_single_tx_data((uint8_t *)tx_msg, strlen(tx_msg) + 1, &tx_time);
-
-    /* 等待发送完成标志 */
-    while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-      ;
-    rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
+    loraTx(tx_msg);
     printf("发送成功 -> \"%s\"\r\n", tx_msg);
   }
 
@@ -2796,14 +2750,7 @@ static void OnMaster(void)
 
         sendGpsPositionMessage(preOk, useType1, gpsPreSec, gpsPreBytes);
         gpsNeedRetry = preOk ? 0U : 1U;
-        if (upgpsRetryOneShot) {
-          /* UPGPS 结束后的一次性重试已用掉：这次仍无坐标就不再延续 */
-          upgpsRetryOneShot = 0;
-          if (gpsNeedRetry) {
-            gpsNeedRetry = 0;
-            printf("[GPS] 一次性重试用完\r\n");
-          }
-        }
+        consumeUpgpsRetryOneShot(preOk);
 
         gpsPreSearched = 0;
         gpsPreFixOk    = 0;
@@ -2840,14 +2787,7 @@ static void OnMaster(void)
           /* 单次搜星上报（参数为 0 的 upgps 指令，或失败后的自动重试） */
           hasFix = gpsSearchAndReport(useType1);
           gpsNeedRetry = hasFix ? 0U : 1U;
-          if (upgpsRetryOneShot) {
-            /* UPGPS 结束后的一次性重试已用掉：这次仍无坐标就不再延续 */
-            upgpsRetryOneShot = 0;
-            if (gpsNeedRetry) {
-              gpsNeedRetry = 0;
-              printf("[GPS] 一次性重试用完\r\n");
-            }
-          }
+          consumeUpgpsRetryOneShot(hasFix);
         }
 
         /* GPS 用完：PB15 置高断电
@@ -2951,7 +2891,6 @@ int main(void)
 
   /* 打印启动信息 */
   printf("\r\n===== LoRa 仅发送模式启动 =====\r\n");
-  printf_logo();
   printf("设备: %s\r\n", deviceName);
   printf("配置: %s\r\n", configStr);
   printf("时隙  : 序号=%d, 总台数=%d, 间隔=%lu秒, 偏移=%lu秒\r\n",
