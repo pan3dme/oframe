@@ -52,10 +52,27 @@
         bindtouchend="onChartTouchEnd"></canvas>
     </view>
 
+    <!-- 时间偏差独立图表 -->
+    <view class="chart-panel delta-panel">
+      <view class="chart-header">
+        <text class="chart-title">⏱ 时间偏差（TIME vs 设备时间）</text>
+        <text class="chart-count">最大 {{summary.deltaMaxText}}</text>
+      </view>
+      <view class="chart-hover" wx:if="{{hoverText}}">{{hoverText}}</view>
+      <canvas
+        type="2d"
+        id="deltaCanvas"
+        class="delta-canvas"
+        bindtouchstart="onDeltaTouch"
+        bindtouchmove="onDeltaTouch"
+        bindtouchend="onDeltaTouchEnd"></canvas>
+    </view>
+
     <!-- 时间跨度说明 -->
     <view class="tip-panel">
       <text class="tip-text">时间跨度：{{summary.firstTime}} → {{summary.lastTime}}（{{summary.spanText}}）</text>
       <text class="tip-text tip-text-sub">橙色圆圈 = 电量回升≥15%（疑似换电/重新上电）</text>
+      <text class="tip-text tip-text-sub">下图紫虚线 = TIME与设备时间偏差（按最大偏差开方压缩，偏差越大波峰越高）；偏差超过上报周期一半的点已剔除</text>
     </view>
   </block>
 </view>

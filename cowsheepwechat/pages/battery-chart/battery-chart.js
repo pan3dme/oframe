@@ -274,19 +274,17 @@ Page({
       const matchDevice = innerDevice || recDevice
       if (deviceId && matchDevice && matchDevice !== deviceId) return
 
-      // 时间：优先 lorastr 内的时间戳
+      // 时间：优先 lorastr 内的时间戳（设备时间），TIME=服务器接收时间，两者偏差单独记录
       let t = 0
       if (parts.length >= 3) {
         const n = parseInt(parts[2], 10)
         if (!isNaN(n) && n > 0) t = n < 1e10 ? n * 1000 : n
       }
-      if (!t) {
-        // 兜底：服务器接收时间（如 "2026/8/10 23:13:33"）。按墙面时间用 Date.UTC 编码，
-        // 与设备时间戳同口径（都用 UTC 方法显示），避免两套时间源差 8 小时
-        const rt = attr.time || record.time || ''
-        const dt = this._parseWallTime(rt)
-        if (dt > 0) t = dt
-      }
+      // TIME：服务器接收时间字符串，按墙面时间口径解析（与设备时间戳同口径，可直接比较）
+      const timeMs = this._parseWallTime(attr.time || record.time || '')
+      // 偏差(ms)：两者都有才计算；缺设备时间回退TIME时偏差记 0（无偏差信息）
+      const delta = (t > 0 && timeMs > 0) ? Math.abs(t - timeMs) : 0
+      if (!t && timeMs > 0) t = timeMs
       if (!t || isNaN(t)) return
 
       // 电量在 parts[3]
@@ -294,7 +292,7 @@ Page({
       if (b === null) b = parseBatteryValue(attr.battery != null ? attr.battery : record.battery)
       if (b === null || b < MIN_VALID) return
 
-      out.push({ t: t, pct: Math.round(b * 1000) / 10 })
+      out.push({ t: t, pct: Math.round(b * 1000) / 10, delta: delta })
     })
     return out
   },
@@ -317,6 +315,20 @@ Page({
       console.log('[电量走势] 已过滤异常时间点 ' + filtered.dropped + ' 个（年份/月份不在收敛区间）')
     }
     pts = filtered.pts
+    // 时间偏差过滤：TIME(服务器接收时间)与 lorastr 内设备时间的偏差
+    // 超过"上报周期一半"的点视为失真，剔除
+    let intervalMin = 30
+    try {
+      const cfg = dataCache.getCachedDeviceConfig(this.data.selectedDeviceId)
+      if (cfg && cfg.reportInterval > 0) intervalMin = cfg.reportInterval
+    } catch (e) { /* 取不到配置用默认30分钟 */ }
+    const deltaLimitMs = intervalMin * 60000 / 2
+    const beforeDelta = pts.length
+    pts = pts.filter(p => !(p.delta !== undefined && p.delta > deltaLimitMs))
+    if (beforeDelta - pts.length > 0) {
+      console.log('[电量走势] 已剔除时间偏差超限 ' + (beforeDelta - pts.length) +
+        ' 个点（偏差>' + (intervalMin / 2) + '分钟）')
+    }
     // 只保留最新的 need 个点
     if (pts.length > need) pts = pts.slice(pts.length - need)
 
@@ -342,6 +354,16 @@ Page({
       if (i > 0 && (p.pct - pts[i - 1].pct) >= JUMP_DELTA) jumpCount++
     }
 
+    // 时间偏差统计（供图例/说明用），小于1分钟显示秒
+    let dMaxMs = 0
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].delta > dMaxMs) dMaxMs = pts[i].delta
+    }
+    const dMaxSec = dMaxMs / 1000
+    const dMaxText = dMaxSec < 60
+      ? (Math.round(dMaxSec * 10) / 10) + '秒'
+      : (Math.round(dMaxSec / 60 * 10) / 10) + '分钟'
+
     const first = pts[0]
     const last = pts[pts.length - 1]
     const summary = {
@@ -354,6 +376,7 @@ Page({
       minTime: minP.timeStr,
       spanText: this._fmtSpan(last.t - first.t),
       jumpCount: jumpCount,
+      deltaMaxText: dMaxText,
       firstTime: first.timeStr,
       lastTime: last.timeStr
     }
@@ -366,7 +389,10 @@ Page({
       scannedRaw: rawCount
     }, () => {
       // 等布局完成后再取 canvas 尺寸
-      setTimeout(() => this._drawChart(), 50)
+      setTimeout(() => {
+        this._drawChart()
+        this._drawDeltaChart()
+      }, 50)
     })
   },
 
@@ -460,10 +486,12 @@ Page({
 
       const padL = 42
       const padR = 14
-      const padT = 24
+      const padT = 26
       const padB = 30
       const plotW = W - padL - padR
       const plotH = H - padT - padB
+      // 电量占满绘图区（时间偏差已拆到下方独立图表 _drawDeltaChart）
+      const batH = plotH
 
       // ---- Y 轴固定 0%~100%（直观，不随数据区间缩放） ----
       const yMin = 0
@@ -479,7 +507,7 @@ Page({
       for (let i = 0; i < pts.length; i++) {
         const p = pts[i]
         const x = padL + (pts.length === 1 ? plotW / 2 : ((p.t - t0) / tSpan) * plotW)
-        const y = padT + plotH - ((p.pct - yMin) / (yMax - yMin)) * plotH
+        const y = padT + batH - ((p.pct - yMin) / (yMax - yMin)) * batH
         xs.push(x)
         ys.push(y)
       }
@@ -496,7 +524,7 @@ Page({
       ctx.lineWidth = 1
       for (let i = 0; i <= 4; i++) {
         const v = yMin + (yMax - yMin) * i / 4
-        const y = padT + plotH - (plotH * i / 4)
+        const y = padT + batH - (batH * i / 4)
         ctx.strokeStyle = '#eeeeee'
         ctx.beginPath()
         ctx.moveTo(padL, y)
@@ -507,13 +535,13 @@ Page({
       }
 
       // ---- 折线下方填充 ----
-      const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH)
+      const grad = ctx.createLinearGradient(0, padT, 0, padT + batH)
       grad.addColorStop(0, 'rgba(7, 193, 96, 0.28)')
       grad.addColorStop(1, 'rgba(7, 193, 96, 0.02)')
       ctx.beginPath()
-      ctx.moveTo(xs[0], padT + plotH)
+      ctx.moveTo(xs[0], padT + batH)
       for (let i = 0; i < xs.length; i++) ctx.lineTo(xs[i], ys[i])
-      ctx.lineTo(xs[xs.length - 1], padT + plotH)
+      ctx.lineTo(xs[xs.length - 1], padT + batH)
       ctx.closePath()
       ctx.fillStyle = grad
       ctx.fill()
@@ -550,6 +578,19 @@ Page({
           ctx.stroke()
         }
       }
+
+      // ---- 图例 ----
+      ctx.textBaseline = 'middle'
+      ctx.lineWidth = 2
+      ctx.strokeStyle = '#07c160'
+      ctx.beginPath()
+      ctx.moveTo(padL + 4, padT - 11)
+      ctx.lineTo(padL + 22, padT - 11)
+      ctx.stroke()
+      ctx.fillStyle = '#666666'
+      ctx.textAlign = 'left'
+      ctx.font = '10px sans-serif'
+      ctx.fillText('电量%', padL + 26, padT - 11)
 
       // ---- X 轴时间标签（首、中、尾） ----
       ctx.fillStyle = '#999999'
@@ -591,7 +632,177 @@ Page({
     })
   },
 
-  // ============ 触摸查看某点 ============
+  // ============ 时间偏差图（独立 canvas，电量走势下方） ============
+  // 每个点高度 = √(偏差 / 最大偏差)：偏差越大越高（波浪），小偏差也有可见起伏
+  _drawDeltaChart() {
+    const pts = this.data.points
+    if (!pts || !pts.length) return
+    const query = wx.createSelectorQuery()
+    query.select('#deltaCanvas').fields({ node: true, size: true }).exec((res) => {
+      if (!res || !res[0] || !res[0].node) {
+        console.warn('[电量走势] 偏差图 canvas 未就绪')
+        return
+      }
+      const canvas = res[0].node
+      const ctx = canvas.getContext('2d')
+      const dpr = (wx.getSystemInfoSync().pixelRatio) || 2
+      const W = res[0].width
+      const H = res[0].height
+      if (!W || !H) return
+
+      canvas.width = W * dpr
+      canvas.height = H * dpr
+      ctx.scale(dpr, dpr)
+      ctx.clearRect(0, 0, W, H)
+
+      // 最大偏差（满量程基准）
+      let dMaxMs = 0
+      for (let i = 0; i < pts.length; i++) {
+        if (pts[i].delta > dMaxMs) dMaxMs = pts[i].delta
+      }
+
+      const padL = 42
+      const padR = 46
+      const padT = 14
+      const padB = 24
+      const plotW = W - padL - padR
+      const plotH = H - padT - padB
+
+      // ---- 量程：最大偏差向上取整档（秒），高度开方压缩 ----
+      const SECS = [5, 10, 20, 30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, 86400]
+      let dTopS = SECS[SECS.length - 1]
+      const dMaxS = dMaxMs / 1000
+      for (let si = 0; si < SECS.length; si++) {
+        if (dMaxS <= SECS[si]) { dTopS = SECS[si]; break }
+      }
+      const dFrac = (ms) => {
+        const s = (ms || 0) / 1000
+        if (s <= 0) return 0
+        return Math.sqrt(Math.min(s / dTopS, 1))
+      }
+      const fmtDelta = (sec) => sec < 60
+        ? (Math.round(sec * 10) / 10) + '秒'
+        : (Math.round(sec / 60 * 10) / 10) + '分'
+
+      // ---- X 坐标 ----
+      const t0 = pts[0].t
+      const t1 = pts[pts.length - 1].t
+      const tSpan = (t1 - t0) || 1
+      const xs = []
+      for (let i = 0; i < pts.length; i++) {
+        xs.push(padL + (pts.length === 1 ? plotW / 2 : ((pts[i].t - t0) / tSpan) * plotW))
+      }
+      // 缓存坐标与量程，供触摸定位使用
+      this._dxs = xs
+      this._dMeta = { padL, plotW, plotH, dTopS }
+
+      // ---- 基线（偏差=0）----
+      const baseY = padT + plotH
+      ctx.strokeStyle = '#eeeeee'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(padL, baseY)
+      ctx.lineTo(padL + plotW, baseY)
+      ctx.stroke()
+
+      // ---- 偏差波浪线（紫色虚线）----
+      ctx.strokeStyle = 'rgba(142, 36, 170, 0.85)'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([5, 4])
+      ctx.beginPath()
+      ctx.moveTo(xs[0], baseY - dFrac(pts[0].delta) * plotH)
+      for (let i = 1; i < xs.length; i++) {
+        ctx.lineTo(xs[i], baseY - dFrac(pts[i].delta) * plotH)
+      }
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // ---- 右侧刻度（0 / 半程 / 满程，秒或分自动）----
+      ctx.fillStyle = '#8E24AA'
+      ctx.textAlign = 'left'
+      ctx.font = '10px sans-serif'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('0', padL + plotW + 4, baseY)
+      ctx.fillText(fmtDelta(dTopS / 2), padL + plotW + 4, padT + plotH / 2)
+      ctx.fillText(fmtDelta(dTopS), padL + plotW + 4, padT)
+
+      // ---- X 轴时间标签（首、尾）----
+      ctx.fillStyle = '#999999'
+      ctx.textBaseline = 'top'
+      const labelY = baseY + 6
+      ctx.textAlign = 'left'
+      ctx.fillText(pts[0].timeStr, padL, labelY)
+      if (pts.length > 1) {
+        ctx.textAlign = 'right'
+        ctx.fillText(pts[pts.length - 1].timeStr, padL + plotW, labelY)
+      }
+
+      // ---- 触摸指示（竖线 + 紫色高亮点） ----
+      const dHover = this.data.hoverIndex
+      if (dHover >= 0 && dHover < xs.length) {
+        ctx.strokeStyle = 'rgba(25, 137, 250, 0.6)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([3, 3])
+        ctx.beginPath()
+        ctx.moveTo(xs[dHover], padT)
+        ctx.lineTo(xs[dHover], baseY)
+        ctx.stroke()
+        ctx.setLineDash([])
+
+        ctx.beginPath()
+        ctx.arc(xs[dHover], baseY - dFrac(pts[dHover].delta) * plotH, 4, 0, Math.PI * 2)
+        ctx.fillStyle = '#8E24AA'
+        ctx.fill()
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+      }
+    })
+  },
+
+  // ============ 偏差图触摸查看某点（与主图联动高亮） ============
+  onDeltaTouch(e) {
+    const pts = this.data.points
+    if (!pts || !pts.length || !this._dxs) return
+    const x = (e.touches && e.touches[0]) ? e.touches[0].x : 0
+    let best = 0
+    let bestD = Infinity
+    for (let i = 0; i < this._dxs.length; i++) {
+      const d = Math.abs(this._dxs[i] - x)
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    if (this.data.hoverIndex === best) return
+    this._setHover(best)
+  },
+
+  onDeltaTouchEnd() {
+    if (this.data.hoverIndex < 0) return
+    this._setHover(-1)
+  },
+
+  // 统一设置触摸选中点：更新提示文字并重绘两张图（竖线联动）
+  _setHover(idx) {
+    const pts = this.data.points
+    let hoverText = ''
+    if (idx >= 0 && idx < pts.length) {
+      const p = pts[idx]
+      // 偏差提示：小于1分钟显示秒，否则显示分
+      const dSec = (p.delta || 0) / 1000
+      const deltaText = dSec < 60
+        ? (Math.round(dSec * 10) / 10) + '秒'
+        : (Math.round(dSec / 60 * 10) / 10) + '分'
+      hoverText = p.timeStr + '  ' + p.pct + '%  偏差' + deltaText
+    }
+    this.setData({ hoverIndex: idx, hoverText: hoverText }, () => {
+      this._drawChart()
+      this._drawDeltaChart()
+    })
+  },
+
+  // ============ 触摸查看某点（主图） ============
   onChartTouch(e) {
     const pts = this.data.points
     if (!pts || !pts.length || !this._xs) return
@@ -605,16 +816,12 @@ Page({
         best = i
       }
     }
-    const p = pts[best]
     if (this.data.hoverIndex === best) return
-    this.setData({
-      hoverIndex: best,
-      hoverText: p.timeStr + '  ' + p.pct + '%'
-    }, () => this._drawChart())
+    this._setHover(best)
   },
 
   onChartTouchEnd() {
     if (this.data.hoverIndex < 0) return
-    this.setData({ hoverIndex: -1, hoverText: '' }, () => this._drawChart())
+    this._setHover(-1)
   }
 })

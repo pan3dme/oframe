@@ -170,3 +170,14 @@ page {
   color: #aaa;
   font-size: 22rpx;
 }
+
+/* ========== 时间偏差独立图表 ========== */
+.delta-panel {
+  margin-top: 16rpx;
+}
+
+.delta-canvas {
+  width: 100%;
+  height: 220rpx;
+  display: block;
+}
