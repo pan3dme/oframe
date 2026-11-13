@@ -17,6 +17,8 @@ _FIXED_COLS = ('lorastr', 'rssi', 'snr', 'time', 'type', 'upDateDevice')
 _PAGE_LIMIT = 100     # getlastlog 每页条数
 _OTS_PAGE = 1000      # OTS get_range 每页条数
 
+SYNC_DONE_CALLBACKS = []   # 同步完成回调（工作线程中调用，UI 方自行派发主线程）
+
 
 class DeviceLogSyncer:
     """devicelog001 本机缓存：同步 + 本地查询"""
@@ -146,6 +148,153 @@ class DeviceLogSyncer:
             pts = pts[::step]
         return pts
 
+    # ---------- 数据分析聚合 ----------
+
+    # type 含义（据数据实测与小程序端）
+    TYPE_NAMES = {2: '心跳/电量', 1: '定位', 5: '跟踪', 8: '设备参数',
+                  6: '配置上报', 9: '模式配置', 4: '杂讯'}
+    _ONLINE_SEC = 2 * 3600      # 2h 内有心跳=在线
+    _LAG_SEC = 24 * 3600        # 24h 内=迟滞，更久=失联
+
+    def analyze(self, days=None):
+        """全库一次扫描聚合：设备健康、数据构成、每日趋势。
+        days=N 时只统计最近 N 天（过老数据不参与分析）。
+        返回 {'types', 'daily', 'devices', 'summary', 'days'}"""
+        import datetime
+        from crowui import wx_codec
+        now = time.time()
+        today = datetime.date.today()
+        min_ts = now - days * 86400 if days else None
+        trend_days = min(14, days) if days else 14
+        with self._connect() as conn:
+            rows_all = conn.execute(
+                'SELECT deviceId, type, lorastr, time FROM devicelog '
+                'ORDER BY auto_id ASC').fetchall()
+            daily = []
+            for i in range(trend_days - 1, -1, -1):
+                d = today - datetime.timedelta(days=i)
+                c = conn.execute(
+                    'SELECT COUNT(*) FROM devicelog WHERE time LIKE ?',
+                    (f'{d.year}/{d.month}/{d.day} %',)).fetchone()[0]
+                daily.append((f'{d.month}/{d.day}', c))
+
+        type_counts = {}
+        dev = {}
+        for did, typ, lorastr, tm in rows_all:
+            try:
+                ts = wx_codec.parse_time_to_ts(str(tm or ''))
+            except (ValueError, OSError):
+                ts = None
+            valid_ts = ts is not None and 1577836800 < ts <= now + 86400
+            if min_ts is not None and (not valid_ts or ts < min_ts):
+                continue     # 时间窗过滤：过老/无时间的数据不参与分析
+            type_counts[typ] = type_counts.get(typ, 0) + 1
+            d = dev.setdefault(did, {'count': 0, 'last_ts': None,
+                                     'battery': None, 'gps_ok': 0,
+                                     'gps_total': 0, 'tmap': {}})
+            d['count'] += 1
+            d['tmap'][typ] = d['tmap'].get(typ, 0) + 1
+            if valid_ts and (d['last_ts'] is None or ts > d['last_ts']):
+                d['last_ts'] = ts
+            segs = str(lorastr).split('|')
+            if typ == 2 and len(segs) > 3:
+                try:
+                    bv = int(segs[3])
+                except ValueError:
+                    bv = None
+                if bv is not None and 0 <= bv <= 100:
+                    d['battery'] = bv          # 最新心跳的电量
+            elif typ in (1, 5):
+                d['gps_total'] += 1
+                ok = False
+                if len(segs) >= 3 and segs[2]:
+                    p = segs[2].replace('，', ',').split(',')
+                    if len(p) >= 2:
+                        try:
+                            la, ln = float(p[0]), float(p[1])
+                            ok = 3.0 <= la <= 54.0 and 73.0 <= ln <= 136.0
+                        except ValueError:
+                            pass
+                if ok:
+                    d['gps_ok'] += 1
+
+        devices = []
+        for did, v in dev.items():
+            dd = dict(v)
+            dd['id'] = did
+            devices.append(dd)
+        devices.sort(key=lambda x: -(x['last_ts'] or 0))
+
+        summary = {
+            'online': sum(1 for d in devices if d['last_ts'] and
+                          now - d['last_ts'] <= self._ONLINE_SEC),
+            'lag': sum(1 for d in devices if d['last_ts'] and
+                       self._ONLINE_SEC < now - d['last_ts'] <= self._LAG_SEC),
+            'offline': sum(1 for d in devices if not d['last_ts'] or
+                           now - d['last_ts'] > self._LAG_SEC),
+            'lowbat': sum(1 for d in devices if d['battery'] is not None and
+                          d['battery'] < 20),
+            'gps_total': sum(d['gps_total'] for d in devices),
+            'gps_ok': sum(d['gps_ok'] for d in devices),
+        }
+        return {'types': type_counts, 'daily': daily,
+                'devices': devices, 'summary': summary, 'days': days}
+
+    def battery_devices(self):
+        """有心跳电量(type=2)记录的设备 → [(deviceId, 次数)] 按次数降序"""
+        with self._connect() as conn:
+            return conn.execute(
+                'SELECT deviceId, COUNT(*) FROM devicelog WHERE type=2 '
+                'GROUP BY deviceId ORDER BY 2 DESC').fetchall()
+
+    def device_battery(self, device_id, days=None):
+        """某设备心跳电量序列（type=2，时间正序）
+        → [(time_str, ts, battery%)]；已剔除解析失败/0-100 外的值"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT lorastr, time FROM devicelog '
+                'WHERE deviceId=? AND type=2 ORDER BY auto_id DESC LIMIT 30000',
+                (device_id,)).fetchall()
+        from crowui import wx_codec
+        min_ts = time.time() - days * 86400 if days else None
+        out = []
+        for lorastr, tm in rows:
+            segs = str(lorastr).split('|')
+            if len(segs) <= 3:
+                continue
+            try:
+                bv = int(segs[3])
+            except ValueError:
+                continue
+            if not 0 <= bv <= 100:
+                continue
+            try:
+                ts = wx_codec.parse_time_to_ts(str(tm or ''))
+            except Exception:      # 脏时间格式一律剔除，不外抛
+                ts = None
+            if ts is None or not 1577836800 < ts <= time.time() + 86400:
+                continue
+            if min_ts is not None and ts < min_ts:
+                continue
+            out.append((str(tm), ts, bv))
+        out.reverse()
+        return out
+
+    def device_status(self, d, now=None):
+        """单个设备聚合结果 → (状态文本, 是否在线, 是否低电量)"""
+        now = now or time.time()
+        if not d['last_ts']:
+            return ('无上报', False, d['battery'] is not None and d['battery'] < 20)
+        gap = now - d['last_ts']
+        if gap <= self._ONLINE_SEC:
+            st = '在线'
+        elif gap <= self._LAG_SEC:
+            st = '迟滞'
+        else:
+            st = '失联'
+        return (st, st == '在线',
+                d['battery'] is not None and d['battery'] < 20)
+
     # ---------- 同步入口 ----------
 
     def sync(self, progress=None, full=False):
@@ -165,6 +314,11 @@ class DeviceLogSyncer:
                          (time.strftime('%Y-%m-%d %H:%M:%S'),))
         result['total'] = self.stats()['total']
         result['elapsed'] = round(time.time() - t0, 1)
+        for cb in list(SYNC_DONE_CALLBACKS):     # 通知分析页自动刷新
+            try:
+                cb(result)
+            except Exception:
+                pass
         return result
 
     # ---------- 全量：OTS 整表直扫 ----------
