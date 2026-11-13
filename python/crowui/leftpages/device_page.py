@@ -834,6 +834,7 @@ class DeviceDetailPage(QWidget):
     logout_requested = pyqtSignal()
     open_records = pyqtSignal()
     open_battery = pyqtSignal()
+    open_cmd = pyqtSignal()
 
     def __init__(self, api: WxApi, scene, notify=None, parent=None):
         super().__init__(parent)
@@ -1203,7 +1204,7 @@ class DeviceDetailPage(QWidget):
         elif key == 'track':
             self._show_track()
         elif key == 'setting':
-            self.notify("设备设置开发中")
+            self.open_cmd.emit()
         elif key == 'battery':
             self.open_battery.emit()
         elif key == 'password':

@@ -91,7 +91,7 @@ class LeftPanel(QWidget):
         self.content.addWidget(self.records_page)                     # 5
         self.battery_page = self._wrap_sub(BatteryPage(self.api, notify=self._notify), "电量走势")
         self.content.addWidget(self.battery_page)                     # 6
-        self.cmd_page = self._wrap_sub(CmdPage(self.api, notify=self._notify), "DTU指令")
+        self.cmd_page = self._wrap_sub(CmdPage(self.api, notify=self._notify), "设备DTU指令")
         self.content.addWidget(self.cmd_page)                         # 7
         self.roads_page = self._wrap_sub(RoadsPlacesPage(self.api, self.scene, notify=self._notify), "道路地名")
         self.content.addWidget(self.roads_page)                       # 8
@@ -112,6 +112,9 @@ class LeftPanel(QWidget):
         self.detail_page.open_records.connect(
             lambda: self._open_records_page(self.detail_page.current_device_id))
         self.detail_page.open_battery.connect(self._open_battery_page)
+        self.detail_page.open_cmd.connect(
+            lambda: self._open_cmd_page(self.detail_page.current_device_id))
+        self.cmd_page._inner_page.mode_changed.connect(self._on_cmd_mode_changed)
         self.features_page.feature_selected.connect(self._on_feature_selected)
         self.records_page._inner_page.locate_requested.connect(self._locate_from_record)
         self.settings_page._inner_page.logout_requested.connect(self._on_logout)
@@ -323,14 +326,38 @@ class LeftPanel(QWidget):
         self._select_page(PAGE_RECORDS)
 
     def _open_battery_page(self):
-        """设备详情"电量走势" → 电量走势页"""
+        """设备详情"电量走势" → 电量走势页（自动选中当前设备并查询，返回目标=详情）"""
+        self.battery_page._back_target = PAGE_DETAIL   # 从设备进入 → 返回设备详情
+        self.battery_page._back_btn.setText('← 设备详情')
         self._select_page(PAGE_BATTERY)
-        self.battery_page._inner_page.refresh_devices()
+        self.battery_page._inner_page.refresh_devices(
+            preset_id=self.detail_page.current_device_id)
+
+    def _open_cmd_page(self, device_id=None):
+        """设备详情"设备设置" → DTU指令页（预选设备，按 ProductKey 分流普通/中继）；
+        功能列表入口传 None → 普通模式"""
+        inner = self.cmd_page._inner_page
+        if device_id:
+            self.cmd_page._back_target = PAGE_DETAIL
+            self.cmd_page._back_btn.setText('← 设备详情')
+            inner.open_for_device(device_id)
+        else:
+            self.cmd_page._back_target = PAGE_FEATURES
+            self.cmd_page._back_btn.setText('← 功能列表')
+            inner.refresh_devices()
+        self._select_page(PAGE_CMD)
+
+    def _on_cmd_mode_changed(self, is_relay):
+        """目标设备是中继 → 标题"中继DTU指令"，普通 → "设备DTU指令"（对标 navTitle 分流）"""
+        self.cmd_page._title_label.setText('中继DTU指令' if is_relay else '设备DTU指令')
 
     def _on_feature_selected(self, key):
         """功能列表入口 → 子功能页（进入时刷新数据）；insert/bluetooth/optimize 在功能页内处理"""
         if key == 'records':
             self._open_records_page()   # 统一走入口：重置标题/返回目标为云端模式
+            return
+        if key == 'cmd':
+            self._open_cmd_page()   # 统一走入口：重置返回目标为功能列表
             return
         idx, page_wrapper = {
             'livestock': (PAGE_LIVESTOCK, self.livestock_page),
