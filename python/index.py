@@ -3,7 +3,8 @@ import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
+    QTabWidget
 )
 
 from tablestore import OTSClient
@@ -46,14 +47,21 @@ class MainWindow(QMainWindow):
         # 左右可拖动分割器：场景 | 功能侧栏
         left_splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # --- 2D/3D 场景 ---
+        # --- 2D/3D 场景 + 数据分析 双页签 ---
+        from crowui.leftpages.analysis_page import AnalysisPage
+        self.scene_tabs = QTabWidget()
+        self.scene_tabs.setDocumentMode(True)   # 无边框页签条，贴合场景区
+
         self.googleMapScene3D = GoogleScene3D()
         self.googleMapScene3D.setAutoFillBackground(True)
         palette_3d = self.googleMapScene3D.palette()
         palette_3d.setColor(self.googleMapScene3D.backgroundRole(), QColor("#2C3E50"))
         self.googleMapScene3D.setPalette(palette_3d)
         self.googleMapScene3D.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        left_splitter.addWidget(self.googleMapScene3D)
+        self.scene_tabs.addTab(self.googleMapScene3D, '🗺 3D 场景')
+        self.analysis_page = AnalysisPage(self.wx_api)
+        self.scene_tabs.addTab(self.analysis_page, '📊 数据分析')
+        left_splitter.addWidget(self.scene_tabs)
 
         # --- 功能侧栏（微信小程序功能移植） ---
         self.left_panel = LeftPanel(self.wx_api, self.googleMapScene3D)

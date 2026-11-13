@@ -64,8 +64,12 @@ class MapPanel(QWidget):
         self.place_check = QCheckBox("地名图层")
         self.place_check.setFont(theme.font(10))
         self.place_check.stateChanged.connect(self._toggle_places)
+        self.google3d_check = QCheckBox("Google 3D 地图")
+        self.google3d_check.setFont(theme.font(10))
+        self.google3d_check.stateChanged.connect(self._toggle_google3d)
         layer_row.addWidget(self.road_check)
         layer_row.addWidget(self.place_check)
+        layer_row.addWidget(self.google3d_check)
         layer_row.addStretch()
         layout.addLayout(layer_row)
 
@@ -233,6 +237,51 @@ class MapPanel(QWidget):
             self.scene.receive_place_to_scene3d((lat, lng), str(row.get('name', '')))
             count += 1
         self.notify(f"地名图层: 已显示 {count} 个")
+
+    # ==================== Google 3D 瓦片 ====================
+
+    def _toggle_google3d(self, state):
+        if not self.scene:
+            return
+        if state == Qt.CheckState.Checked.value:
+            self._load_google3d()
+        else:
+            self.scene.clear_google_tiles()
+
+    def _load_google3d(self):
+        """以当前选中设备（或农场中心）为圆心拉取摄影测量 3D 瓦片"""
+        from config import settings
+        api_key = getattr(settings, 'GOOGLE_MAPS_API_KEY', '')
+        if not api_key:
+            self.notify('未配置 GOOGLE_MAPS_API_KEY（config.py），无法加载 Google 3D 瓦片')
+            self.google3d_check.setChecked(False)
+            return
+        device_id = self.focus_combo.currentData()
+        if device_id:
+            gps_row = next((g for g in self._gps_list
+                            if g['deviceId'] == device_id), None)
+            lat, lng = (gps_row['lat'], gps_row['lng']) if gps_row else settings.centenGps
+        else:
+            lat, lng = settings.centenGps
+        self.notify(f'Google 3D 瓦片下载中...（中心 {lat:.5f},{lng:.5f}）')
+
+        def load():
+            from display3d.google3d.tiles_api import GoogleTilesSession
+            session = GoogleTilesSession(api_key)
+            tiles = session.select_tiles(
+                lat, lng, settings.GOOGLE_3D_RADIUS_DEG,
+                max_tiles=settings.GOOGLE_3D_MAX_TILES,
+                max_geometric_error=settings.GOOGLE_3D_GE_ERROR)
+            items = []
+            for uri, transform in tiles:
+                items.append((session.download_glb(uri), transform))
+            return items
+
+        def on_ok(items):
+            count = self.scene.receive_google_tiles(items, lat, lng)
+            self.notify(f'Google 3D 瓦片: 已加载 {count} 个图元（{len(items)} 瓦片）')
+
+        self.api.run_async(load, on_ok, self._on_error)
 
     # ==================== 中继广播 ====================
 

@@ -38,6 +38,7 @@ class GoogleScene3D(GoogleBaseScene3D):
 
 
         self.google_map_model = None
+        self.google_tile_sprites = []   # Google 3D 瓦片精灵（receive_google_tiles）
 
 
         # 设置初始旋转状态
@@ -238,6 +239,64 @@ class GoogleScene3D(GoogleBaseScene3D):
 
         if self.is_rotating:
             self.gl_widget.update()  # 触发重绘
+
+    # ==================== Google 3D 瓦片 ====================
+
+    def receive_google_tiles(self, tile_items, lat0, lng0):
+        """构建 Google 摄影测量瓦片精灵（主线程调用，先 makeCurrent）
+        tile_items: [(glb_bytes, transform列主序16元组)] —— 由 GoogleTilesSession.select_tiles
+                    + download_glb 产生（建议在后台线程下载，主线程只建 GL 资源）
+        """
+        import numpy as np
+        from display3d.google3d.glb_parse import parse_glb, GlbError
+        from display3d.sprite.tile_mesh_sprite import TileMeshSprite3D
+
+        self.makeCurrent()
+        try:
+            # 清旧瓦片
+            self.clear_google_tiles()
+            # 先离线解析出世界坐标图元，再统一建 GL 资源（一次 context 切换）
+            prims, heights = [], []
+            sx, sz = settings.scaleSceneX, settings.scaleSceneZ
+            hscale = sx / 111320.0     # 米 → 世界单位（与水平缩放一致）
+            for glb_bytes, transform in tile_items:
+                try:
+                    mesh = parse_glb(glb_bytes, transform, lat0, lng0, sx, sz,
+                                     height_scale=hscale, height_offset=0.0)
+                except GlbError as e:
+                    print(f'[Google3D] 瓦片解析失败: {e}')
+                    continue
+                for p in mesh.primitives:
+                    prims.append(p)
+                    heights.append(float(np.median(p['positions'][:, 1])))
+            if not prims:
+                return 0
+            # 自动对地：以批量中位高度为地面基准，让瓦片与现有 y≈0 地面对齐
+            h0 = float(np.median(heights))
+            for p in prims:
+                p['positions'][:, 1] -= h0 * hscale
+                sprite = TileMeshSprite3D(self.scene3D, p['positions'], p['uvs'],
+                                          p['indices'], p['tex'])
+                self.scene3D.addDisplay(sprite)
+                self.google_tile_sprites.append(sprite)
+            return len(prims)
+        finally:
+            self.doneCurrent()
+            self.update()
+
+    def clear_google_tiles(self):
+        """清除瓦片精灵并释放 GPU 资源"""
+        if not self.google_tile_sprites:
+            return
+        self.makeCurrent()
+        try:
+            for sprite in self.google_tile_sprites:
+                sprite.destroy()
+                self.scene3D.removeDisplay(sprite)
+            self.google_tile_sprites = []
+        finally:
+            self.doneCurrent()
+            self.update()
 
     def getPosinMapHeightByVec4(self, world_x: float, world_z: float) -> Optional[float]:
 

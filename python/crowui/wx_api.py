@@ -41,6 +41,7 @@ ROAD_TABLE = 'routetabel001'
 PLACE_TABLE = 'placetable001'
 
 API_SEND_DTU_CMD_URL = "https://gpsmoveinfo.cn/fc/sendtodtucmd"
+API_DEVICE_URL = "https://gpsmoveinfo.cn/fc/device"   # 云函数入口（getlastlog 等）
 SEND_CMD_TIMEOUT = 15
 
 
@@ -172,6 +173,10 @@ class WxApi:
                 hub._done.emit(('ok', on_ok, res))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def report(self, fn, arg):
+        """工作线程中调用：把中间结果（如同步进度）按 run_async 同款机制派发回主线程"""
+        self._hub._done.emit(('ok', fn, arg))
 
     def require_login(self):
         if not self.logged_in:
@@ -360,6 +365,33 @@ class WxApi:
             if len(result) >= limit:
                 break
         return result
+
+    def getlastlog_page(self, page0, limit=100, log_type=None, prefix=None):
+        """HTTP 云函数 getlastlog（Search 索引，deviceId 前缀过滤，auto_id 降序）
+        page0: 0 起始页（服务器 offset=page0*limit）→ [扁平 dict 行]
+        prefix: deviceId 前缀（默认本账号 wechatid+'-'）
+        """
+        info = {'page': page0, 'limit': limit,
+                'wechatid': prefix if prefix is not None
+                else self.wechatid + '-'}
+        if log_type is not None:
+            info['type'] = log_type
+        body = {'action': 'getlastlog', 'info': info,
+                'time': time.strftime('%Y-%m-%d %H:%M:%S')}
+        resp = requests.post(API_DEVICE_URL, json=body, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get('status') != 'success':
+            raise RuntimeError(f"getlastlog 失败: {data.get('msg')}")
+        rows = []
+        for rec in (data.get('data') or []):
+            d = {}
+            for item in (rec.get('attributes') or []):
+                d[item.get('columnName')] = item.get('columnValue')
+            for item in (rec.get('primaryKey') or []):
+                d[item.get('name')] = item.get('value')
+            rows.append(d)
+        return rows
 
     def getlastlog(self, page=1, limit=10, log_type=None):
         """云端记录（全部设备最新日志，最新在前）"""

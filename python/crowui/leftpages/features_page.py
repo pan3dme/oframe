@@ -28,6 +28,7 @@ FEATURES = [
     (8,  '道路优化',      1, 'optimize'),
     (9,  'DTU发送指令',   1, 'cmd'),
     (10, '电量走势',      1, 'battery'),
+    (11, '同步数据',      1, 'sync'),
 ]
 
 _FEATURE_BTN_QSS = f"""
@@ -124,6 +125,12 @@ class FeaturesPage(QWidget):
             return
         if key == 'insert':
             self._open_insert_dialog()
+            return
+        if key == 'sync':
+            from crowui.leftpages.sync_dialog import SyncDialog
+            dlg = SyncDialog(self.api, self.notify, self)
+            dlg.setWindowModality(Qt.WindowModality.NonModal)   # 独立窗口，不阻塞主界面
+            dlg.show()
             return
         self.feature_selected.emit(key)
 
