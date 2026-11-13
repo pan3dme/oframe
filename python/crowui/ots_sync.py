@@ -96,6 +96,56 @@ class DeviceLogSyncer:
             'VALUES (?,?,?,?,?,?,?,?,?)', payloads)
         return conn.total_changes - before
 
+    # ---------- 分析查询 ----------
+
+    def gps_devices(self):
+        """有定位/跟踪记录的设备 → [(deviceId, 点数)] 按点数降序"""
+        with self._connect() as conn:
+            return conn.execute(
+                'SELECT deviceId, COUNT(*) FROM devicelog '
+                'WHERE type IN (1,5) GROUP BY deviceId ORDER BY 2 DESC'
+            ).fetchall()
+
+    def device_gps_points(self, device_id, days=None, max_points=4000):
+        """某设备定位/跟踪坐标（时间正序，已抽稀到 max_points 内）
+        → [(lat, lng, time_str)]；days=N 只取最近 N 天
+        坐标过滤：丢弃测试垃圾值（限中国范围）"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT lorastr, time FROM devicelog '
+                'WHERE deviceId=? AND type IN (1,5) '
+                'ORDER BY auto_id DESC LIMIT 20000',
+                (device_id,)).fetchall()
+        from crowui import wx_codec
+        pts = []
+        min_ts = time.time() - days * 86400 if days else None
+        for lorastr, t in rows:
+            segs = str(lorastr).split('|')
+            if len(segs) < 3 or not segs[2]:
+                continue
+            parts = segs[2].replace('，', ',').split(',')
+            if len(parts) < 2:
+                continue
+            try:
+                lat, lng = float(parts[0]), float(parts[1])
+            except ValueError:
+                continue
+            if not (3.0 <= lat <= 54.0 and 73.0 <= lng <= 136.0):
+                continue     # 中国范围外的视为无效/测试数据
+            if min_ts is not None:
+                try:
+                    ts = wx_codec.parse_time_to_ts(str(t or ''))
+                except (ValueError, OSError):
+                    ts = None
+                if ts is None or ts < min_ts:
+                    continue
+            pts.append((lat, lng, str(t or '')))
+        pts.reverse()     # 时间正序
+        if len(pts) > max_points:      # 均匀抽稀
+            step = -(-len(pts) // max_points)
+            pts = pts[::step]
+        return pts
+
     # ---------- 同步入口 ----------
 
     def sync(self, progress=None, full=False):

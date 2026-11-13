@@ -156,10 +156,10 @@ class GoogleScene3D(GoogleBaseScene3D):
 
         pass
 
-    def receive_load_to_scene(self, value):
+    def receive_load_to_scene(self, value, color='red', width=3):
         result = [obj for obj in self.scene3D.displayList if isinstance(obj, AreaMapDisplay3DSprite)]
         for dis in result:
-            dis.receive_load_to_scene(value)
+            dis.receive_load_to_scene(value, color=color, width=width)
 
     def clear_all_load_line(self):
         result = [obj for obj in self.scene3D.displayList if isinstance(obj, AreaMapDisplay3DSprite)]

@@ -112,7 +112,7 @@ class AreaMapDisplay3DSprite(Display3D):
         white_image_data = np.asarray(self.white_image, dtype=np.uint8)
         self.loadMapTexture.imageToTexTure(white_image_data, self.imWidth, self.imHeight)
         pass
-    def receive_load_to_scene(self,gps_coords):
+    def receive_load_to_scene(self,gps_coords, color='red', width=3):
         lastPos:Vector3D=None
         arr=[]
         for coord in gps_coords:
@@ -138,7 +138,7 @@ class AreaMapDisplay3DSprite(Display3D):
                 if self.test_pos_in_model_rect(a) or self.test_pos_in_model_rect(b):
                     cx,cy = postoUv(a)
                     dx,dy = postoUv(b)
-                    draw.line((cx, cy, dx, dy), fill='red', width=3)
+                    draw.line((cx, cy, dx, dy), fill=color, width=width)
 
             white_image_data = np.asarray(self.white_image, dtype=np.uint8)
             self.loadMapTexture.imageToTexTure(white_image_data, self.imWidth, self.imHeight)

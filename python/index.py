@@ -58,9 +58,10 @@ class MainWindow(QMainWindow):
         palette_3d.setColor(self.googleMapScene3D.backgroundRole(), QColor("#2C3E50"))
         self.googleMapScene3D.setPalette(palette_3d)
         self.googleMapScene3D.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.scene_tabs.addTab(self.googleMapScene3D, '🗺 3D 场景')
+        # 3D 场景页签暂时不显示（实例保留，相关功能调用不受影响）
         self.analysis_page = AnalysisPage(self.wx_api)
         self.scene_tabs.addTab(self.analysis_page, '📊 数据分析')
+        self.scene_tabs.tabBar().setVisible(False)   # 单页签隐藏页签条
         left_splitter.addWidget(self.scene_tabs)
 
         # --- 功能侧栏（微信小程序功能移植） ---
