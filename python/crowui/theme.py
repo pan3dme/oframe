@@ -5,27 +5,56 @@
 整个项目的颜色 / 字体 / 控件样式都从这里取，禁止在业务代码里硬编码色值。
 改配色只需要改这一个文件。
 
-设计风格：现代扁平风（Flat Design）
-- 主色：蓝 #2563EB（交互、选中、强调）
+设计风格：对齐微信小程序 cowsheepwechat（rpx 按 2rpx=1px 折算）
+- 操作按钮主色：Google 蓝 #1A73E8（小程序 index.wxss）
+- Tab 栏 / 功能网格 / 登录按钮：微信绿 #07C160（custom-tab-bar / features.wxss / login.wxss）
 - 中性色：浅灰背景 + 白色卡片 + 深灰文字
 """
 
-from PyQt6.QtGui import QFont
+import os
+
+from PyQt6.QtGui import QFont, QIcon
 
 # ==================== 色板 ====================
 
-# 主色（蓝色系）
-PRIMARY          = "#2563EB"   # 主色：按钮、选中、强调
-PRIMARY_HOVER    = "#1D4ED8"   # 主色悬停
-PRIMARY_PRESSED  = "#1E40AF"   # 主色按下
-PRIMARY_LIGHT    = "#EFF6FF"   # 主色浅底（悬停高亮底色）
+# 主色（Google 蓝，操作按钮；小程序 index.wxss #1a73e8）
+PRIMARY          = "#1A73E8"   # 主色：按钮、选中、强调
+PRIMARY_HOVER    = "#1765CC"   # 主色悬停
+PRIMARY_PRESSED  = "#1558B0"   # 主色按下
+PRIMARY_LIGHT    = "#E8F0FE"   # 主色浅底（悬停高亮底色）
+
+# 微信绿（Tab 栏选中 / 功能网格 / 登录与确认按钮；小程序 #07c160）
+GREEN            = "#07C160"
+GREEN_HOVER      = "#06AD56"
+GREEN_DISABLED   = "#A8E6C0"   # 登录按钮禁用态（login.wxss）
+GREEN_BORDER     = "#D4EDDA"   # 功能网格按钮描边（features.wxss）
+GREEN_BG_A       = "#F0FAF5"   # 功能网格渐变起点
+GREEN_BG_B       = "#E8F8EF"   # 功能网格渐变终点
+
+# Tab 栏（custom-tab-bar 规格）
+TAB_TEXT         = "#999999"   # 未选中文字
+TAB_SELECTED     = GREEN       # 选中文字（selectedColor #07c160）
+TAB_BORDER       = "#EEEEEE"   # 顶部分隔线
 
 # 背景与卡片
-BG               = "#F1F5F9"   # 面板/窗口背景
+BG               = "#F0F2F5"   # 面板/窗口背景（小程序 index.wxss #f0f2f5）
 CARD_BG          = "#FFFFFF"   # 卡片背景
 CARD_BORDER      = "#E2E8F0"   # 卡片描边
 CARD_HOVER_BG    = "#F8FAFF"   # 卡片悬停底色
 CARD_HOVER_BORDER = PRIMARY    # 卡片悬停描边
+
+# 危险操作（注销登入）
+DANGER           = "#EF5350"
+DANGER_HOVER     = "#E53935"
+
+# 图标目录（小程序 images/ 下复制的 tabBar 图标）
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icons')
+
+
+def tab_icon(name):
+    """取 tabBar 图标（如 'tab_home'）"""
+    path = os.path.join(ICON_DIR, name + '.png')
+    return QIcon(path) if os.path.exists(path) else QIcon()
 
 # 文字
 TEXT_MAIN        = "#1E293B"   # 标题 / 主要文字
@@ -80,7 +109,7 @@ NAV_BUTTON_QSS = f"""
     }}
 """
 
-# 主操作按钮（编辑 / 获取数据 / 返回 等）
+# 主操作按钮（编辑 / 获取数据 / 返回 等，Google 蓝）
 PRIMARY_BUTTON_QSS = f"""
     QPushButton {{
         background-color: {PRIMARY};
@@ -94,6 +123,53 @@ PRIMARY_BUTTON_QSS = f"""
     }}
     QPushButton:pressed {{
         background-color: {PRIMARY_PRESSED};
+    }}
+"""
+
+# 绿色确认按钮（登录 / 弹窗确认，微信绿胶囊，对标 login.wxss: 高80rpx 圆角46rpx）
+GREEN_BUTTON_QSS = f"""
+    QPushButton {{
+        background-color: {GREEN};
+        color: white;
+        border: none;
+        border-radius: 23px;
+        padding: 8px 24px;
+        min-height: 30px;
+    }}
+    QPushButton:hover {{
+        background-color: {GREEN_HOVER};
+    }}
+    QPushButton:disabled {{
+        background-color: {GREEN_DISABLED};
+    }}
+"""
+
+# 灰色次要按钮（弹窗"取消"等，对标 features.wxss .track-btn-gray #999）
+GRAY_BUTTON_QSS = f"""
+    QPushButton {{
+        background-color: #999999;
+        color: white;
+        border: none;
+        border-radius: 23px;
+        padding: 8px 24px;
+        min-height: 30px;
+    }}
+    QPushButton:hover {{
+        background-color: #8A8A8A;
+    }}
+"""
+
+# 危险操作按钮（注销登入，红色）
+DANGER_BUTTON_QSS = f"""
+    QPushButton {{
+        background-color: {DANGER};
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 5px 14px;
+    }}
+    QPushButton:hover {{
+        background-color: {DANGER_HOVER};
     }}
 """
 

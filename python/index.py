@@ -3,13 +3,14 @@ import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
 )
 
-from tablestore import OTSClient, INF_MAX, INF_MIN, Direction, SingleColumnCondition, ComparatorType
+from tablestore import OTSClient
 from display3d.google_scene3d import GoogleScene3D
 from crowui.right_panel_container import RightPanelContainer
-from crowui import theme
+from crowui.leftpanel import LeftPanel
+from crowui.wx_api import WxApi
 from config import settings
 
 
@@ -17,218 +18,88 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.client = None
+        self.wx_api = WxApi()
         settings.current_mode = "small_2d"  # 跟踪当前模式："small_2d" 或 "large_2d"
-        self.setWindowTitle("高德地图应用")
-        # self.setGeometry(0, 0, 1900, 1000)
-        self.setGeometry(200, 50, 1700, 750)
+        self.setWindowTitle("牛羊GPS管理")
+        self.setGeometry(200, 50, 1500, 750)
 
-        # 初始化OTS客户端
+        # 初始化OTS客户端（右侧面板用；左侧走小程序HTTP API）
         if not self.initTabelClient():
             print("警告: OTS客户端初始化失败，部分功能可能不可用")
-        
+
         # 创建中心部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         # 创建水平布局（左右分布）
         main_layout = QHBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         central_widget.setLayout(main_layout)
-        
-        # ==================== 左侧区域 - 3D场景 ====================
+
+        # ==================== 左侧区域 - 2D/3D场景 + 功能侧栏 ====================
         left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
+        left_layout = QHBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
-        
-        # 创建3D场景容器（用于按钮覆盖层）
-        scene_container = QWidget()
-        scene_layout = QVBoxLayout(scene_container)
-        scene_layout.setContentsMargins(0, 0, 0, 0)
-        scene_layout.setSpacing(0)
-        
-        # 创建GoogleScene3D实例（左侧全屏）
+
+        # 左右可拖动分割器：场景 | 功能侧栏
+        left_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # --- 2D/3D 场景 ---
         self.googleMapScene3D = GoogleScene3D()
         self.googleMapScene3D.setAutoFillBackground(True)
         palette_3d = self.googleMapScene3D.palette()
         palette_3d.setColor(self.googleMapScene3D.backgroundRole(), QColor("#2C3E50"))
         self.googleMapScene3D.setPalette(palette_3d)
         self.googleMapScene3D.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
-        scene_layout.addWidget(self.googleMapScene3D)
-        
-        # 覆盖按钮 - 显示道路和地名（位于3D场景左上角）
-        self._roads_shown = False  # 道路显示状态，用于按钮点击切换
-        self.show_road_btn = QPushButton("显示道路", scene_container)
-        self.show_road_btn.setFixedSize(80, 28)
-        self.show_road_btn.move(10, 10)
-        self.show_road_btn.clicked.connect(self._show_roads_on_3d)
-        
-        self.show_place_btn = QPushButton("显示地名", scene_container)
-        self.show_place_btn.setFixedSize(80, 28)
-        self.show_place_btn.move(95, 10)
-        self.show_place_btn.clicked.connect(self._show_places_on_3d)
+        left_splitter.addWidget(self.googleMapScene3D)
 
-        self.show_road_btn.setStyleSheet(theme.OVERLAY_BUTTON_QSS)
-        self.show_place_btn.setStyleSheet(theme.OVERLAY_BUTTON_QSS)
-        
-        left_layout.addWidget(scene_container)
-        
-        # 将左侧部件添加到主布局，设置拉伸因子为5
-        main_layout.addWidget(left_widget, stretch=5)
-        
-        # ==================== 右侧区域 - 按钮面板（独立组件）====================
-        right_widget = RightPanelContainer(ots_client=self.client)
-        
-        # 将右侧部件添加到主布局，设置拉伸因子为3
-        main_layout.addWidget(right_widget, stretch=3)
-        
-        print("✅ 窗口初始化完成，3D场景和2D地图已添加")
+        # --- 功能侧栏（微信小程序功能移植） ---
+        self.left_panel = LeftPanel(self.wx_api, self.googleMapScene3D)
+        left_splitter.addWidget(self.left_panel)
+
+        # 场景占大部分，侧栏固定宽度可拖动调整
+        left_splitter.setStretchFactor(0, 1)
+        left_splitter.setStretchFactor(1, 0)
+        left_splitter.setCollapsible(0, False)
+
+        left_layout.addWidget(left_splitter)
+        main_layout.addWidget(left_widget, stretch=1)
+
+        # 右侧面板已下线：其全部功能（设备/牛羊/记录）已由左侧功能侧栏承接
+        # 需要恢复时取消下面注释即可
+        # right_widget = RightPanelContainer(ots_client=self.client)
+        # main_layout.addWidget(right_widget, stretch=3)
+
+        print("✅ 窗口初始化完成：左侧 2D/3D场景 + 小程序功能侧栏，右侧数据面板")
 
     def initTabelClient(self):
-        """初始化阿里云表格存储客户端"""
+        """初始化阿里云表格存储客户端（右侧面板数据源）"""
         try:
             access_key_id = os.getenv("ALIYUN_ACCESS_KEY_ID")
             access_key_secret = os.getenv("ALIYUN_ACCESS_KEY_SECRET")
-            
-            # TODO: 根据实例信息修改以下配置
+
             instance_name = "tabel001"  # 填写实例名称
             endpoint = "https://tabel001.cn-shanghai.ots.aliyuncs.com"  # 填写实例访问地址
-            
-            # 创建客户端实例
+
             self.client = OTSClient(endpoint, access_key_id, access_key_secret, instance_name)
-            
-            # 列举数据表
+
             resp = self.client.list_table()
-            
             print(f"在实例 '{instance_name}' 中共找到 {len(resp)} 个数据表:")
             for table_name in resp:
                 print(f"  - {table_name}")
-            
-            # 列举时序表
+
             resp = self.client.list_timeseries_table()
-            
             print(f"\n在实例 '{instance_name}' 中共找到 {len(resp)} 个时序表:")
             for tableMeta in resp:
                 print(f"  - {tableMeta.timeseries_table_name}")
-            
+
             return True
-        
+
         except Exception as e:
             print(f"操作失败: {str(e)}")
             return False
-    
-    def _show_roads_on_3d(self):
-        """点击切换道路显示：未显示时读取道路数据显示，已显示时清除"""
-        if self._roads_shown:
-            self.googleMapScene3D.clear_all_load_line()
-            self.googleMapScene3D.gl_widget.update()
-            self._roads_shown = False
-            self.show_road_btn.setText("显示道路")
-            print("已清除道路显示")
-            return
-
-        # 从数据库读取道路数据并显示在3D地图上
-        columns_to_get = ['route_id', 'roadinfo', 'roadname']
-        inclusive_start_primary_key = [('route_id', INF_MAX)]
-        exclusive_end_primary_key = [('route_id', INF_MIN)]
-
-        try:
-            consumed, next_start_primary_key, route_list, next_token = self.client.get_range(
-                table_name=settings.ROUTETABLE_NAME,
-                direction=Direction.BACKWARD,
-                inclusive_start_primary_key=inclusive_start_primary_key,
-                exclusive_end_primary_key=exclusive_end_primary_key,
-                columns_to_get=columns_to_get,
-                limit=10
-            )
-            
-            print(f"成功读取 {len(route_list)} 条道路记录")
-            displayed_count = 0
-            for row in route_list:
-                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
-                roadinfo = attr_dict.get('roadinfo', '')
-                roadname = attr_dict.get('roadname', '')
-                
-                if not roadinfo:
-                    continue
-                
-                # 解析坐标: 新格式 "lat0,lon0,dLat1,dLon1,dLat2,dLon2,..."
-                #26.52919,109.39053,
-                # 第一组是起点完整坐标，小数点左移5位（除以100000）；
-                # 后面每一组都是相对前一个点的位移，累加后得到当前点坐标
-                arr = [int(x.strip()) for x in roadinfo.split(',')]
-                if len(arr) < 2:
-                    continue
-                cur_lat = arr[0] / 100000.0
-                cur_lon = arr[1] / 100000.0
-                gps_coords = [(cur_lat, cur_lon)]
-                for i in range(2, len(arr) - 1, 2):
-                    cur_lat += arr[i] / 100000.0
-                    cur_lon += arr[i + 1] / 100000.0
-                    gps_coords.append((cur_lat, cur_lon))
-                
-                # 显示到3D场景
-                print(gps_coords)
-                self.googleMapScene3D.receive_load_to_scene(gps_coords)
-                displayed_count += 1
-                print(f"  显示道路: {roadname}, 坐标点: {len(gps_coords)}个")
-            
-            print(f"共显示 {displayed_count} 条道路")
-            if displayed_count > 0:
-                self.googleMapScene3D.gl_widget.update()
-            self._roads_shown = True
-            self.show_road_btn.setText("隐藏道路")
-            
-        except Exception as e:
-            print(f"查询道路数据失败: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def _show_places_on_3d(self):
-        """从数据库读取地名数据并显示在3D地图上"""
-        columns_to_get = ['placeid', 'gps', 'name', 'wechatid']
-        inclusive_start_primary_key = [('placeid', INF_MAX)]
-        exclusive_end_primary_key = [('placeid', INF_MIN)]
-        # 只返回 wechatid == "v4" 的记录，字段需加入columns_to_get才能参与判断
-        
-        try:
-            consumed, next_start_primary_key, place_list, next_token = self.client.get_range(
-                table_name=settings.PLACETABLE_NAME,
-                direction=Direction.BACKWARD,
-                inclusive_start_primary_key=inclusive_start_primary_key,
-                exclusive_end_primary_key=exclusive_end_primary_key,
-                columns_to_get=columns_to_get,
-                column_filter=SingleColumnCondition('wechatid', 'v4', ComparatorType.EQUAL),
-                limit=50
-            )
-            
-            print(f"成功读取 {len(place_list)} 条地名记录")
-            displayed_count = 0
-            for row in place_list:
-                attr_dict = {attr[0]: attr[1] for attr in row.attribute_columns}
-                gps_str = attr_dict.get('gps', '')
-                name = attr_dict.get('name', '')
-                
-                if not gps_str or ',' not in gps_str:
-                    continue
-                
-                # 解析GPS坐标
-                lat_str, lon_str = gps_str.split(',')
-                gps_coord = (float(lat_str.strip()), float(lon_str.strip()))
-                
-                # 显示到3D场景
-                self.googleMapScene3D.receive_place_to_scene3d(gps_coord, name)
-                displayed_count += 1
-                print(f"  显示地名: {name}, gps={gps_coord}")
-            
-            print(f"共显示 {displayed_count} 个地名")
-            
-        except Exception as e:
-            print(f"查询地名数据失败: {e}")
-            import traceback
-            traceback.print_exc()
 
     def keyPressEvent(self, event):
         """键盘事件处理"""

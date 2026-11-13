@@ -1,0 +1,26 @@
+[2026-11-13 13:29:11] 异步回调ok异常: Traceback (most recent call last):
+  File "D:\oframesrc\python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "D:\oframesrc\python\crowui\leftpages\map_panel.py", line 119, in _on_loaded
+    self._render_devices()
+  File "D:\oframesrc\python\crowui\leftpages\map_panel.py", line 144, in _render_devices
+    self.scene.receive_device_to_scene3d(device_id, f"{gps_row['lat']},{gps_row['lng']}", label)
+  File "D:\oframesrc\python\display3d\google_scene3d.py", line 130, in receive_device_to_scene3d
+    vPos = settings.gps_to_world_pos(gps)
+  File "D:\oframesrc\python\config.py", line 31, in gps_to_world_pos
+    latitude,longitude=gps
+ValueError: too many values to unpack (expected 2)
+
+[2026-11-13 13:34:21] 异步回调ok异常: Traceback (most recent call last):
+  File "D:\oframesrc\python\crowui\wx_api.py", line 100, in _dispatch
+    callback(arg)
+  File "D:\oframesrc\python\crowui\leftpages\map_panel.py", line 119, in _on_loaded
+    self._render_devices()
+  File "D:\oframesrc\python\crowui\leftpages\map_panel.py", line 144, in _render_devices
+    self.scene.receive_device_to_scene3d(device_id, f"{gps_row['lat']},{gps_row['lng']}", label)
+  File "D:\oframesrc\python\display3d\google_scene3d.py", line 130, in receive_device_to_scene3d
+    vPos = settings.gps_to_world_pos(gps)
+  File "D:\oframesrc\python\config.py", line 31, in gps_to_world_pos
+    latitude,longitude=gps
+ValueError: too many values to unpack (expected 2)
+
