@@ -58,7 +58,9 @@ typedef struct {
 #define EXAMPLE_DATE "2026/10/04"      // 工程日期
 
 #define RX_LEN 36             // LoRa 接收缓冲区最大长度（字节）
-#define LORA_TX_DELAY_MS 1500 // LoRa 接收后延时发送时间（ms）
+/* LoRa 接收后延时下发时间（ms）：指令和 upgps 用 1000，对时帧用 1500 */
+#define LORA_CMD_DELAY_MS      800  // 有缓存指令或 gpstm 有效时，收到上行后延时下发指令
+#define LORA_SYNCTIME_DELAY_MS 1200 // 无指令时，收到上行后延时回对时帧
 
 /* Work mode - 工作模式定义 */
 #define MODE_IDLE 0 // 空闲模式
@@ -434,14 +436,16 @@ static void OnSlave(void) {
       }
 		  if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
 
-				/* 统一延时后下发：有缓存指令则下发指令，否则检查 gpstm 中继或对时 */
-				HAL_Delay(LORA_TX_DELAY_MS);
+				/* 三选一下发：有缓存指令→指令；gpstm 有效→upgps；否则回对时。
+				 * 延时在各自分支里：指令与对时的下发延时分开可调 */
 
 				if (hasPendingCmd) {
+					HAL_Delay(LORA_CMD_DELAY_MS);
 					sendPendingCommand(loraDevId);
 				} else if (gpstmActive && (HAL_GetTick() - gpstmRecvTick) <
 																			gpstmTimeoutMin * 60 * 1000) {
 					/* gpstm 中继有效：在有效期内，任意设备上报时下发 upgps 指令 */
+					HAL_Delay(LORA_CMD_DELAY_MS);
 					char txData[64];
 					int txLen = snprintf(txData, sizeof(txData), "%d|%s|upgps|0",
 															 MSG_TYPE_COM, loraDevId);
@@ -462,6 +466,7 @@ static void OnSlave(void) {
 					//   NN = timestamp 各位数字之和的个位+十位（即 数位和 % 100）
 					//   例: 1794048626 → 1+7+9+4+0+4+8+6+2+6=47 → "47"
 					// 子设备重算比对，不匹配拒绝本次对时 —— 排除干扰帧/ts 损坏的大多数情况
+					HAL_Delay(LORA_SYNCTIME_DELAY_MS);
 					uint32_t syncTs = getCurrentTimestamp();
 					uint32_t digitSum = 0u, t = syncTs;
 					while (t) { digitSum += t % 10u; t /= 10u; }
