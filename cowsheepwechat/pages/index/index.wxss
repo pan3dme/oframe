@@ -116,3 +116,10 @@ page {
   pointer-events: none;
 }
 
+
+/* 设备名后的固件版本小字（来自type=8缓存） */
+.header-version {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 400;
+}

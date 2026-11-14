@@ -110,6 +110,8 @@ Page({
       },
       success: (res) => {
         console.log('云端记录返回(type=' + tabKey + ', page=' + page + '):', JSON.stringify(res.data))
+        // 顺手扫描 type=8 记录（发射功率/固件版本），更新各设备缓存
+        dataCache.cacheType8FromRecords(res.data)
         const records = this.parseRecordList(res.data)
         const hasMore = records.length >= this.data.pageSize
         const tab = this.data.recordsByType[tabKey]

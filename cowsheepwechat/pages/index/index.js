@@ -18,6 +18,7 @@ Page({
     hasSelected: false,
     selectedDeviceId: '',
     deviceInfo: null,
+  type8Info: null,   // 发射功率/固件版本（type=8 记录缓存，有才显示）
     loading: false,
     // 数据记录列表
     showRecordTable: false,
@@ -81,6 +82,9 @@ Page({
     }
     if (!this._checkLogin()) return
     this._readSettings()
+    // 每次展示都刷新功率/版本显示（tab 页 onLoad 只执行一次，缓存可能在此期间被其它页面更新）
+    const t8Device = this.data.selectedDeviceId || dataCache.getHomeSelectedDevice()
+    if (t8Device) this._refreshType8Info(t8Device)
     // 从地图选点页返回：读取中继设置坐标结果，确认后 insertlog 提交
     const pickedGps = getApp().globalData._placePickedGps
     if (pickedGps) {
@@ -240,6 +244,27 @@ Page({
 
   // ========== 设备信息 ==========
   loadDeviceInfo(deviceId, force, done) {
+    // 先用已缓存的功率/版本即时显示（无缓存则等记录加载后更新）
+    this._refreshType8Info(deviceId)
+    // 专项预取：与设备记录页相同的请求形态（type:0 混合记录），保证 type=8 缓存有数据
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'getDeviceLogbyId',
+        info: { limit: 20, deviceId: deviceId, type: 0, offset: 0, wechatid: getApp().getWechatId() },
+        time: getApp().formatTime()
+      },
+      timeout: 8000,
+      success: (res) => {
+        console.log('[type8] 首页预取返回:', JSON.stringify(res.data).slice(0, 200))
+        dataCache.cacheType8FromRecords(res.data)
+        this._refreshType8Info(deviceId)
+      },
+      fail: (err) => {
+        console.error('[type8] 首页预取失败:', err)
+      }
+    })
     let deviceItem = null
     const merge = () => {
       if (!deviceItem) {
@@ -436,6 +461,8 @@ Page({
       },
       success: (res) => {
         const newRecords = this._parseRecords(res.data)
+        // 记录返回后 type=8 缓存可能已更新（_parseRecords 内扫描），刷新功率/版本显示
+        this._refreshType8Info()
         if (offset > 0) {
           const merged = this.data.recordList.concat(newRecords)
           this.setData({
@@ -684,8 +711,21 @@ Page({
     })
   },
 
+  // 功率/版本展示（type=8 缓存，每台设备一条，有缓存才显示）
+  _refreshType8Info(deviceId) {
+    const id = deviceId || this.data.selectedDeviceId
+    if (!id) return
+    const info = dataCache.getType8Info(id)
+    console.log('[type8] 首页刷新显示 device=' + id + ' 缓存=' + JSON.stringify(info))
+    if (info) {
+      this.setData({ type8Info: { txPower: info.txPower || '', version: info.version || '' } })
+    }
+  },
+
   // ========== 记录解析（与 device-detail 一致） ==========
   _parseRecords(data) {
+    // 顺手扫描 type=8 记录（发射功率/固件版本），更新每台设备的缓存
+    dataCache.cacheType8FromRecords(data)
     let rawList = []
     if (data && data.data && Array.isArray(data.data)) {
       rawList = data.data

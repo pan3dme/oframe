@@ -15,7 +15,7 @@
     <!-- 右边：基本信息 -->
     <view class="header-info">
       <view class="header-title-row">
-        <text class="header-title">{{deviceInfo.deviceid || deviceInfo.deviceId}}<block wx:if="{{deviceInfo.rename}}"> ({{deviceInfo.rename}})</block></text>
+        <text class="header-title">{{deviceInfo.deviceid || deviceInfo.deviceId}}<block wx:if="{{deviceInfo.rename}}"> ({{deviceInfo.rename}})</block><block wx:if="{{type8Info && type8Info.version}}"> <text class="header-version">{{type8Info.version}}</text></block></text>
       </view>
       <view class="header-info-grid">
         <view class="hi-item">
@@ -27,6 +27,11 @@
             </block>
           </text>
           <text class="hi-value-abnormal" wx:if="{{reportIntervalAbnormal}}">{{reportActualInterval}}</text>
+        </view>
+        <!-- 发射功率/固件版本（来自 type=8 记录缓存；版本号已显示在标题别名后，这里只显示功率） -->
+        <view class="hi-item" wx:if="{{type8Info && type8Info.txPower}}">
+          <text class="hi-label">发射功率</text>
+          <text class="hi-value">{{type8Info.txPower}}</text>
         </view>
         <view class="hi-item">
           <text class="hi-label">开机时间</text>

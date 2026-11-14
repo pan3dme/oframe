@@ -62,7 +62,9 @@ const _STORAGE_KEYS = {
   roadCache: 'cache_road_list',
   placeCache: 'cache_place_list',
   // 每台设备最近一次成功的电量（来自对时/定位/蓝牙），断网或同步表丢失时兜底显示
-  deviceLastBattery: 'cache_device_last_battery'
+  deviceLastBattery: 'cache_device_last_battery',
+  // 每台设备最近一条 type=8 记录解析出的 发射功率/固件版本
+  deviceType8Cache: 'cache_device_type8'
 }
 
 // 从本地存储读缓存（任何异常都返回 null，绝不抛错）
@@ -1180,6 +1182,109 @@ function restoreFromStorage(target) {
   })
 }
 
+// ============ 设备功率/版本缓存（type=8 记录） ============
+// type=8 是通用信息通道，不是每条 type=8 都和版本相关！
+// 只有 lorastr 中含 "dbm" 段的才是功率/版本报文，格式：8|v3-10|15T|16dbm|V1.4|3|
+//   段0=类型  段1=设备ID  含"dbm"的段=发射功率  V+数字开头的段=固件版本
+// 其余内容的 type=8（其它通用信息）一律不缓存
+// 每台设备只保留最新一条；记录时间远大于当前时间（>2天）视为脏数据直接忽略
+function _parseRecordTimeTs(s) {
+  const t = new Date(String(s || '').replace(/-/g, '/')).getTime()
+  return isNaN(t) ? 0 : t
+}
+
+/**
+ * 从设备记录原始返回中扫描 type=8 记录，更新功率/版本缓存
+ * @param {*} data - getDeviceLogbyId / getlastlog 的原始返回（含 data 数组或直接数组）
+ * 任何设备重复出现时保留时间最新的一条；时间异常的记录跳过不覆盖
+ */
+function cacheType8FromRecords(data) {
+  let rawList = []
+  if (data && data.data && Array.isArray(data.data)) rawList = data.data
+  else if (Array.isArray(data)) rawList = data
+  if (!rawList.length) return
+  const g = gd()
+  const map = g.deviceType8Cache || {}
+  let changed = false
+  rawList.forEach(record => {
+    try {
+      const attr = {}
+      if (record.attributes) {
+        record.attributes.forEach(item => { attr[item.columnName] = item.columnValue })
+      }
+      if (record.primaryKey) {
+        record.primaryKey.forEach(item => { attr[item.name] = item.value })
+      }
+      if (record.lorastr) attr.lorastr = record.lorastr
+      const lorastr = attr.lorastr || ''
+      if (!lorastr) return
+      const segs = String(lorastr).split(/[｜|]/)
+      if ((segs[0] || '').trim() !== '8') return
+      // 提取发射功率（如 16dbm）与固件版本（如 V1.4）
+      let txPower = ''
+      let version = ''
+      for (let i = 2; i < segs.length; i++) {
+        const seg = String(segs[i] || '').trim()
+        if (!seg) continue
+        const m = seg.match(/^(\d+(?:\.\d+)?)\s*dbm$/i)
+        if (m && !txPower) { txPower = m[1] + 'dbm'; continue }
+        if (/^v\d/i.test(seg) && !version) { version = seg }
+      }
+      // 内容核对：type=8 是通用信息通道，只有含 dbm 的记录才是功率/版本报文，
+      // 没有 dbm 段的（其它通用信息）直接跳过，绝不缓存
+      if (!txPower) return
+      // 版本号格式核对（V1.4 / V2 这类）；格式不符就当没有版本号，功率仍有效
+      if (version && !/^v\d+(\.\d+)*$/i.test(version)) version = ''
+      // 设备归属：只按记录归属字段（primaryKey/attributes 的 deviceId）缓存——
+      // 每台设备只存自己的一条，详情页只显示自己的功率/版本
+      // （lorastr 第2段仅在没有归属字段时兜底，不作为独立 key）
+      const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || (segs[1] || '').trim()
+      if (!deviceId || deviceId === '-') return
+      // 时间核对：记录时间远大于当前时间（>2天）说明数据有错，忽略
+      const ts = _parseRecordTimeTs(attr.time || record.time || '')
+      if (!ts) return
+      if (ts - Date.now() > 2 * 86400000) {
+        console.log('[type8缓存] 记录时间异常，忽略:', attr.time || record.time)
+        return
+      }
+      // 新旧判断用 auto_id（primaryKey 里的数据库自增id，严格递增，比时间字符串准确）
+      // 没有auto_id时回退用解析时间比较
+      const autoIdRaw = Number(attr.auto_id || attr.autoId || record.auto_id || 0)
+      const autoId = (!isNaN(autoIdRaw) && autoIdRaw > 0) ? autoIdRaw : 0
+      // 每台设备只缓存一条：已有更新的就跳过
+      const existing = map[deviceId]
+      if (existing) {
+        if (autoId > 0 || existing.autoId > 0) {
+          // 有auto_id → 按auto_id比；新记录没有auto_id → 不覆盖已有
+          if (autoId <= (existing.autoId || 0)) return
+        } else {
+          // 都没有auto_id → 回退按时间比
+          if (existing.ts >= ts) return
+        }
+      }
+      map[deviceId] = { txPower: txPower, version: version, ts: ts, autoId: autoId }
+      changed = true
+      console.log('[type8缓存] ' + deviceId + ' → ' + txPower + ' ' + version + ' (auto_id=' + autoId + ')')
+    } catch (e) { /* 单条解析失败不影响其它 */ }
+  })
+  if (changed) {
+    g.deviceType8Cache = map
+    _saveToStorage(_STORAGE_KEYS.deviceType8Cache, map)
+  }
+}
+
+/**
+ * 取设备的功率/版本缓存：{ txPower, version, ts }，无则 null
+ */
+function getType8Info(deviceId) {
+  if (!deviceId) return null
+  const g = gd()
+  if (!g.deviceType8Cache) {
+    g.deviceType8Cache = _loadFromStorage(_STORAGE_KEYS.deviceType8Cache) || {}
+  }
+  return g.deviceType8Cache[deviceId] || null
+}
+
 module.exports = {
   getDeviceList,
   refreshDeviceList,
@@ -1193,6 +1298,8 @@ module.exports = {
   getCachedDeviceGps,
   getCachedDeviceLastBattery,
   setCachedDeviceLastBattery,
+  cacheType8FromRecords,
+  getType8Info,
   getDeviceConfigAll,
   refreshDeviceConfigAll,
   getCachedDeviceConfig,
