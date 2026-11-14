@@ -42,7 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V1.2"
+#define DEMO_VER     "V1.3"
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -727,10 +727,18 @@ static void txCountNext(void)
 static void loraTx(const char *msg)
 {
   uint32_t tx_time = 1000;
+  uint32_t start = HAL_GetTick();
 
   rf_single_tx_data((uint8_t *)msg, strlen(msg) + 1, &tx_time);
-  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE)
-    ;
+  /* TX_DONE 由 EXTI2 中断 rf_irq_process() 置位。若模块半死/IRQ 脉冲丢失，
+   * 这里会永久空转 → 整机死机（现场死机最大嫌疑点）。5 秒超时复位自愈 */
+  while (rf_get_transmit_flag() == RADIO_FLAG_IDLE) {
+    if (HAL_GetTick() - start > 5000u) {
+      printf("[LoRa] TX wait timeout! reset in 3s\r\n");
+      HAL_Delay(3000);
+      NVIC_SystemReset();            /* 复位重跑初始化，等价断电重启 */
+    }
+  }
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 }
 
@@ -2580,9 +2588,16 @@ static void openRxWindow3000(void)
   rf_enter_single_timeout_rx(3000);
   printf("[接收窗口] 3秒监听中...\r\n");
 
-  /* 等待接收完成或超时 */
-  while (rf_get_recv_flag() == RADIO_FLAG_IDLE)
-    ;
+  /* 等待接收完成或超时（芯片侧 3 秒 RX 超时本应产生 RX_TIMEOUT 中断置标志；
+   * 若模块半死/中断丢失标志停在 IDLE，5 秒兜底超时复位自愈，防整机卡死） */
+  uint32_t rxStart = HAL_GetTick();
+  while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
+    if (HAL_GetTick() - rxStart > 5000u) {
+      printf("[LoRa] RX wait timeout! reset in 3s\r\n");
+      HAL_Delay(3000);
+      NVIC_SystemReset();
+    }
+  }
 
   if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) {
     uint8_t local_buf[RX_LEN];
@@ -3354,6 +3369,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       gpsRxCount++;
     }
 
+    HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
+  }
+}
+
+/**
+ * @brief  UART 错误回调（GPS 串口出错自愈）
+ * @note   GPS 上电瞬间的波特率毛刺/EMI 会触发 ORE/NE/FE 错误，HAL 会中止
+ *         接收；不重新武装的话 GPS 此后永远无数据（表现为搜星必失败）。
+ *         这里清标志并重启逐字节接收。
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3)
+  {
     HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
   }
 }
