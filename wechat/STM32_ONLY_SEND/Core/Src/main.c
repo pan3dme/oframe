@@ -60,7 +60,7 @@
 #define MSG_TYPE_UP_GPS   5   /* GPS 上传 */
 
 /* 设备信息 */
-#define DEFAULT_DEVICE_NAME  "v3-1"
+#define DEFAULT_DEVICE_NAME  "v3-0"
 char deviceName[32] = DEFAULT_DEVICE_NAME;  /* 可变设备名，从 Flash 加载 */
 #define BATTERY_VAL  99   /* 电量默认值（%）：ADC 取到值前的兜底，上电即被刷新 */
 
@@ -152,6 +152,9 @@ static uint32_t gpsPreBytes    = 0;    /* 预搜期间 GPS 串口字节数，无
 static uint32_t tx_count = 0;          /* 上报帧计数（每发一帧 LoRa +1，见 txCountNext()）
                                         * 放在文件作用域：配置帧/中心坐标帧/定位帧
                                         * 也都要带这个计数，便于云端判重和算丢包 */
+#define WINDOW_PRINT_MAX_ROUNDS 20     /* 上报超过此次数后停止所有接收窗口打印 */
+static uint8_t windowPrintOff = 0;     /* 一次性标记：置 1 后窗口静默（回绕也不恢复，
+                                        * 断电重启才复位）——长期部署减少串口日志噪音 */
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒） */
 /* 开机前 3 轮快速上报配额：配置周期 > 1 分钟时，前 3 轮先用 1 分钟
  * （让设备尽快对时、收配置、进入正常时隙节奏），3 轮后恢复配置周期。
@@ -550,7 +553,7 @@ static void loadTxPowerFromFlash(void)
   uint32_t magic = *(volatile uint32_t *)TXPWR_FLASH_ADDR;
   if (magic == TXPWR_MAGIC) {
     uint8_t saved = (uint8_t)(*(volatile uint32_t *)(TXPWR_FLASH_ADDR + 4));
-    if (saved >= 4 && saved <= 20) {
+    if (saved >= 10 && saved <= 20) {
       currentTxPower = saved;
       printf("[Flash] 发射功率已加载: %d dBm\r\n", currentTxPower);
     } else {
@@ -717,6 +720,9 @@ static void txCountNext(void)
   tx_count++;
   if (tx_count > TX_COUNT_MAX)
     tx_count = 1;
+  /* 上报次数超过阈值：一次性置位窗口静默标记 */
+  if (tx_count > WINDOW_PRINT_MAX_ROUNDS)
+    windowPrintOff = 1;
 }
 
 /**
@@ -2484,14 +2490,20 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             printf("[指令] readinfo: 已标记上报设备信息\r\n");
           }
         }
-        /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率 */
+        /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率
+         * @note 范围 10~20 dBm（保证接收范围下限/模块上限）；乱码 atoi=0 也被拒 */
         else if (strcmp(fields[2], "txpower") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
-            uint8_t newPwr = (uint8_t)atoi(fields[3]);
-            currentTxPower = newPwr;
-            rf_set_tx_power(newPwr);
-            saveTxPowerToFlash(newPwr);
-            printf("[指令] 发射功率已设置: %d dBm\r\n", newPwr);
+            int newPwr = atoi(fields[3]);
+
+            if (newPwr < 10 || newPwr > 20) {
+              printf("[指令] txpower: %d 超范围(10~20), 拒绝\r\n", newPwr);
+            } else {
+              currentTxPower = (uint8_t)newPwr;
+              rf_set_tx_power((uint8_t)newPwr);
+              saveTxPowerToFlash((uint8_t)newPwr);
+              printf("[指令] 发射功率已设置: %d dBm\r\n", newPwr);
+            }
           }
         }
         /* C: 9|v0-0|C|26.52958,109.39087  →  设置农场中心坐标并持久化 */
@@ -2586,7 +2598,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 static void openRxWindow3000(void)
 {
   rf_enter_single_timeout_rx(3000);
-  printf("[接收窗口] 3秒监听中...\r\n");
+  if (!windowPrintOff)
+    printf("[接收窗口] 3秒监听中...\r\n");
 
   /* 等待接收完成或超时（芯片侧 3 秒 RX 超时本应产生 RX_TIMEOUT 中断置标志；
    * 若模块半死/中断丢失标志停在 IDLE，5 秒兜底超时复位自愈，防整机卡死） */
@@ -2620,17 +2633,20 @@ static void openRxWindow3000(void)
     else
       local_buf[RX_LEN - 1] = '\0';
 
-    printf("[接收] len=%d rssi=%d snr=%d data=%s\r\n",
-           local_size, local_rssi - 256, local_snr, (char *)local_buf);
+    if (!windowPrintOff)
+      printf("[接收] len=%d rssi=%d snr=%d data=%s\r\n",
+             local_size, local_rssi - 256, local_snr, (char *)local_buf);
 
     /* 解析消息 */
     parse_rx_message(local_buf, local_size);
   } else if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    printf("[接收窗口] 超时, 无数据\r\n");
+    if (!windowPrintOff)
+      printf("[接收窗口] 超时, 无数据\r\n");
   } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    printf("[接收窗口] CRC校验错误\r\n");
+    if (!windowPrintOff)
+      printf("[接收窗口] CRC校验错误\r\n");
   }
 }
 
