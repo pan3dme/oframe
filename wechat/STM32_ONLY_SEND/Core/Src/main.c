@@ -42,7 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V1.3"
+#define DEMO_VER     "V1.4"
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -713,7 +713,7 @@ static void loraInitFirstTime(void)
 
  
   /* @note 合并成一行：MDK Lite 32KB 限制，Flash 余额紧张，长横幅打印已精简 */
-  printf("[LoRa] 就绪: %d MHz SF%d BW125 CR4/5 CRC-off SW0x12 PWR=%d dBm\r\n",
+  printf("[LoRa] %dM SF%d PWR=%d\r\n",
          DEFAULT_FREQ / 1000000, DEFAULT_SF, currentTxPower);
 }
 
@@ -2435,13 +2435,19 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
       if (field_count >= 3) {
         printf("[指令] %s %s %s\r\n",
                fields[1], fields[2], field_count > 3 ? fields[3] : "");
-        /* realyname: 9|v3-10|realyname|v3-11  →  本机改名 */
+        /* realyname: 9|v3-10|realyname|v3-11  →  本机改名
+         * @note 新名最长 5 字符（前缀2字符 + '-' + 2位序号，如 v3-23）：
+         *       设备名嵌在所有上报帧里，长了会把帧推超 32 字节 */
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
-            strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
-            deviceName[sizeof(deviceName) - 1] = '\0';
-            saveDeviceNameToFlash(deviceName);
-            printf("[指令] 设备已改名: %s\r\n", deviceName);
+            if (strlen(fields[3]) > 5) {
+              printf("[CMD] name too long (>5), rejected\r\n");
+            } else {
+              strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
+              deviceName[sizeof(deviceName) - 1] = '\0';
+              saveDeviceNameToFlash(deviceName);
+              printf("[CMD] name: %s\r\n", deviceName);
+            }
           }
         }
         /* upgps: 9|v0-0|upgps|N  →  等待有效定位后上报 GPS 坐标
@@ -2625,7 +2631,7 @@ static void openRxWindow3000(void)
 {
   rf_enter_single_timeout_rx(3000);
   if (!windowPrintOff)
-    printf("[接收窗口] 3秒监听中...\r\n");
+    printf("[RX] 3s listen\r\n");
 
   /* 等待接收完成或超时（芯片侧 3 秒 RX 超时本应产生 RX_TIMEOUT 中断置标志；
    * 若模块半死/中断丢失标志停在 IDLE，5 秒兜底超时复位自愈，防整机卡死） */
@@ -2674,7 +2680,7 @@ static void openRxWindow3000(void)
   } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
     rf_set_recv_flag(RADIO_FLAG_IDLE);
     if (!windowPrintOff)
-      printf("[接收窗口] CRC校验错误\r\n");
+      printf("[RX] CRC err\r\n");
   }
 }
 
