@@ -715,11 +715,16 @@ Page({
   _refreshType8Info(deviceId) {
     const id = deviceId || this.data.selectedDeviceId
     if (!id) return
+    // 竞态防护：只允许刷新"当前选中设备"的显示，防止切换设备后旧请求串台
+    const current = this.data.selectedDeviceId
+    if (current && id !== current) {
+      console.log('[type8] 忽略过期刷新 device=' + id + '（当前已是 ' + current + '）')
+      return
+    }
     const info = dataCache.getType8Info(id)
     console.log('[type8] 首页刷新显示 device=' + id + ' 缓存=' + JSON.stringify(info))
-    if (info) {
-      this.setData({ type8Info: { txPower: info.txPower || '', version: info.version || '' } })
-    }
+    // 无缓存时清空显示：切换设备后不能残留上一台设备的功率/版本
+    this.setData({ type8Info: info ? { txPower: info.txPower || '', version: info.version || '' } : null })
   },
 
   // ========== 记录解析（与 device-detail 一致） ==========
