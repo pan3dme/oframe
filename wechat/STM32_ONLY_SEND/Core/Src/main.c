@@ -126,6 +126,12 @@ static int32_t  lastDriftSample = 0;  /* 上一次对时测得的偏差（收敛
 static uint8_t  configNeedReport = 1;  /* 配置需要上报（开机=1，收到指令更新=1，上报后=0） */
 static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0） */
 static uint8_t  readInfoNeedReport = 0;/* 设备信息需要上报（收到 readinfo 指令=1，上报后=0） */
+/* readinfo 指令的 value 参数（每次只上报一条 8 帧，帧长 ≤32 字节）：
+ *   0=设备概况(默认,无value/乱码)  1=晶振偏差  2=最近收包 RSSI/SNR */
+static uint8_t  readInfoValue = 0;
+static uint8_t  lastRxRssi = 0;        /* 最近一次接收窗口收到的 RSSI 原值(上报时 -256) */
+static uint8_t  lastRxSnr  = 0;        /* 最近一次接收窗口收到的 SNR */
+static uint8_t  lastRxSeen = 0;        /* 1=开机至今收到过包(未收到过上报 noRX) */
 static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自动清零 */
 static uint8_t  gpsNeedRetry = 0;      /* 上一轮搜星失败(已上报 0.0,0.0)=1
                                         * → 本轮跳过定时上报，直接重试搜星上报坐标；
@@ -561,7 +567,7 @@ static void loadTxPowerFromFlash(void)
              saved, DEFAULT_PWR);
     }
   } else {
-    printf("[Flash] 无保存发射功率, 使用默认: %d dBm\r\n", DEFAULT_PWR);
+    printf("[Flash] 功率默认: %d dBm\r\n", DEFAULT_PWR);
   }
 }
 
@@ -765,25 +771,46 @@ static void loraTx(const char *msg)
 }
 
 /**
- * @brief  发送设备信息消息（8|deviceName|设备数量|发射功率(dBm)|保留|）
- * @note   由 readinfo 指令触发：8|设备|设备数量|发射功率dm|保留
- *         最后一段目前填上报计数（与项目其它帧一致，段数固定不为空），
- *         以后要加字段（如固件版本/电量）就替换或追加在这段之后
+ * @brief  发送设备信息消息（readinfo 指令回复，每次只发一条，帧长 ≤32 字节）
+ * @note   按 readInfoValue 组帧：
+ *           0(缺省/乱码): 8|设备|台数T|功率dbm|版本|计数|   (26~29 字节)
+ *           1:            8|设备|偏差s/h|计数|             (19 字节, 偏差范围±300)
+ *           2:            8|设备|Rssi,Snr|计数|            (20 字节; 开机未收过包报 noRX)
+ * @note   概况帧去掉了原 433HZ 段 —— 最坏情况(计数999)原帧 33 字节超 32 上限
  */
 static void sendReadInfoMessage(void)
 {
   char tx_msg[TX_LEN];
 
   txCountNext();
-  /* 8|设备名|设备数T|频率HZ|功率dbm|固件版本|计数 —— 各段带单位，云端展示直读；
-   * 版本号来自 DEMO_VER，升级固件时改它即可知道设备是否更新到位 */
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%uT|%luHZ|%ddbm|%s|%lu|",
-           MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
-           (unsigned long)(DEFAULT_FREQ / 1000000u),
-           (int)currentTxPower, DEMO_VER, (unsigned long)tx_count);
+  if (readInfoValue == 1) {
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ds/h|%lu|",
+             MSG_TYPE_READINFO, deviceName, (int)rtcDriftPerHour,
+             (unsigned long)tx_count);
+  } else if (readInfoValue == 2) {
+    if (lastRxSeen) {
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ddBm,%d|%lu|",
+               MSG_TYPE_READINFO, deviceName,
+               (int)lastRxRssi - 256, (int)lastRxSnr,
+               (unsigned long)tx_count);
+    } else {
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|noRX|%lu|",
+               MSG_TYPE_READINFO, deviceName, (unsigned long)tx_count);
+    }
+  } else if (readInfoValue == 3) {
+    /* 农场中心坐标：未设置过回 "0,0"（与 C 指令回包逻辑一致） */
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
+             MSG_TYPE_READINFO, deviceName,
+             (centerStr[0] != '\0') ? centerStr : "0,0",
+             (unsigned long)tx_count);
+  } else {
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%uT|%ddbm|%s|%lu|",
+             MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
+             (int)currentTxPower, DEMO_VER, (unsigned long)tx_count);
+  }
 
   loraTx(tx_msg);
-  printf("[设备信息] 发送  -> \"%s\"\r\n", tx_msg);
+  printf("[设备信息] -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -2481,13 +2508,12 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             }
           }
         }
-        /* readinfo: 9|v0-0|readinfo|  →  上报设备信息帧
-         * 回复帧: 8|设备名|设备数量(devicecount)|发射功率(dBm)|保留(当前填计数)|
-         * @note 不需要参数值，故只要求 3 段（多带值段也不影响） */
+        /* readinfo: 9|v0-0|readinfo|[value]  →  上报设备信息帧（每次一条，帧长≤32字节）
+         * value: 0/缺省/乱码=设备概况  1=晶振偏差  2=最近收包 RSSI/SNR */
         else if (strcmp(fields[2], "readinfo") == 0 && field_count >= 3) {
           if (cmdIsForMe(fields)) {
-            readInfoNeedReport = 1;
-            printf("[指令] readinfo: 已标记上报设备信息\r\n");
+            readInfoValue = (field_count >= 4) ? (uint8_t)atoi(fields[3]) : 0u;
+            readInfoNeedReport = 1;   /* 触发确认看 [设备信息] 发送日志 */
           }
         }
         /* txpower: 9|v3-3|txpower|15  →  动态修改发射功率
@@ -2623,6 +2649,10 @@ static void openRxWindow3000(void)
     local_rssi = RxDoneParams.Rssi;
     local_snr = RxDoneParams.Snr;
     local_size = RxDoneParams.Size;
+    /* 记录最近收包质量：readinfo value=2 上报用 */
+    lastRxRssi = local_rssi;
+    lastRxSnr  = local_snr;
+    lastRxSeen = 1;
     if (local_size > RX_LEN) local_size = RX_LEN;
     for (uint8_t i = 0; i < local_size; i++)
       local_buf[i] = RxDoneParams.Payload[i];
@@ -2640,9 +2670,7 @@ static void openRxWindow3000(void)
     /* 解析消息 */
     parse_rx_message(local_buf, local_size);
   } else if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
-    rf_set_recv_flag(RADIO_FLAG_IDLE);
-    if (!windowPrintOff)
-      printf("[接收窗口] 超时, 无数据\r\n");
+    rf_set_recv_flag(RADIO_FLAG_IDLE);   /* 空窗是常态, 不打印(省 Flash) */
   } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
     rf_set_recv_flag(RADIO_FLAG_IDLE);
     if (!windowPrintOff)
