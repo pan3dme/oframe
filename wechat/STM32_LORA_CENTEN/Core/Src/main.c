@@ -462,6 +462,8 @@ static void OnSlave(void) {
 					rf_set_transmit_flag(RADIO_FLAG_IDLE);
 				} else {
 					// 构造下发数据: 4|timestamp|NN|deviceName
+					// deviceName = 本中继的中继名，天然就是时间源标识（多中继场景）
+					// 子设备用它识别"哪台中继发来的对时"，换中继自动重设锚点重新收敛
 					// 验证码算法（必须与子设备 ONLY_SEND 端完全一致）：
 					//   NN = timestamp 各位数字之和的个位+十位（即 数位和 % 100）
 					//   例: 1794048626 → 1+7+9+4+0+4+8+6+2+6=47 → "47"
@@ -474,7 +476,7 @@ static void OnSlave(void) {
 					char txData[64];
 					int txLen =
 							snprintf(txData, sizeof(txData), "%d|%lu|%02lu|%s", MSG_TYPE_SYN_TIME,
-											 (unsigned long)syncTs, (unsigned long)syncCode, deviceName);
+												 (unsigned long)syncTs, (unsigned long)syncCode, deviceName);
 					(void)txLen;
 
 					// 发送 LoRa 数据

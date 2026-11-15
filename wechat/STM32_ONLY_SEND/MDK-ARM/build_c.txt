@@ -1,31 +1,13 @@
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin'
 Build target 'LY-020-software'
 compiling main.c...
-../Core/Src/main.c(1038): warning:  #225-D: the format string ends before this argument
-           (unsigned long)(availMs / 1000u), (unsigned long)(maxMs / 1000u));
-../Core/Src/main.c(1102): warning:  #225-D: the format string ends before this argument
-        printf("[连续定位] �?lu�?有坐标\r\n", (unsigned long)rounds);
-../Core/Src/main.c(1109): warning:  #225-D: the format string ends before this argument
-        printf("[连续定位] �?lu�?0.0,0.0\r\n", (unsigned long)rounds);
-../Core/Src/main.c(1131): warning:  #225-D: the format string ends before this argument
-        printf("[连续定位] �?lu�?一�? 结束\r\n", (unsigned long)remain);
-../Core/Src/main.c(1212): warning:  #225-D: the format string ends before this argument
-      printf("[调度] 快速上�? 3�?�?�?u)\r\n", (unsigned)fastStartRounds);
-../Core/Src/main.c(1505): warning:  #225-D: the format string ends before this argument
-             (unsigned long)(silent / 60u), (unsigned long)(silent % 60u));
-../Core/Src/main.c(2440): warning:  #225-D: the format string ends before this argument
-                printf("[晶振] 采样=%d�?d 未收敛\r\n", (int)driftPerHour, (int)diff);
-../Core/Src/main.c(2965): warning:  #181-D: argument is incompatible with corresponding format string conversion
-               (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
-../Core/Src/main.c(2966): warning:  #225-D: the format string ends before this argument
-               nextBuf + 11);
-../Core/Src/main.c(2971): warning:  #181-D: argument is incompatible with corresponding format string conversion
-               (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
-../Core/Src/main.c(2972): warning:  #225-D: the format string ends before this argument
-               nextBuf + 11);
-../Core/Src/main.c: 11 warnings, 0 errors
+../Core/Src/main.c(1171): warning:  #225-D: the format string ends before this argument
+      printf("[SCHED] fast boot 3 rounds\r\n", (unsigned)fastStartRounds);
+../Core/Src/main.c(2415): warning:  #225-D: the format string ends before this argument
+                printf("[DRIFT] sample=%ds/h unconverged\r\n", (int)driftPerHour, (int)diff);
+../Core/Src/main.c: 2 warnings, 0 errors
 linking...
-Program Size: Code=29396 RO-data=2896 RW-data=272 ZI-data=4360  
+Program Size: Code=28884 RO-data=1812 RW-data=276 ZI-data=4356  
 FromELF: creating hex file...
-"LY-020-software\LY-020-software.axf" - 0 Error(s), 11 Warning(s).
+"LY-020-software\LY-020-software.axf" - 0 Error(s), 2 Warning(s).
 Build Time Elapsed:  00:00:02
