@@ -2419,7 +2419,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
             if (diff < 0) diff = -diff;
             if (diff <= DRIFT_CONVERGE_TOL) {
-              rtcDriftPerHour = driftPerHour;   /* 静默滑动更新 */
+              /* EMA smoothing: new=(3*cur+sample+2)/4, noise var /7,
+               * no per-round alarm jump, tracking tau=4 syncs (2h) */
+              rtcDriftPerHour = (3 * rtcDriftPerHour + driftPerHour + 2) / 4;
+              printf("[DRIFT] ema comp %ds/h\r\n", (int)rtcDriftPerHour);
             } else
               lastDriftSample = driftPerHour;   /* 变化�? 暂不采用, 等下次确�?*/
           }

@@ -7,7 +7,7 @@ compiling main.c...
                 printf("[DRIFT] sample=%ds/h unconverged\r\n", (int)driftPerHour, (int)diff);
 ../Core/Src/main.c: 2 warnings, 0 errors
 linking...
-Program Size: Code=28884 RO-data=1812 RW-data=276 ZI-data=4356  
+Program Size: Code=28924 RO-data=1812 RW-data=276 ZI-data=4356  
 FromELF: creating hex file...
 "LY-020-software\LY-020-software.axf" - 0 Error(s), 2 Warning(s).
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:01
