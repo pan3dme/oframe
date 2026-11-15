@@ -28,8 +28,9 @@
 /* USER CODE BEGIN PD */
 #define TX_LEN 64
 
-#define TX_INTERVAL_MIN_SEC 1      /* 随机间隔下限（秒） */
-#define TX_INTERVAL_MAX_SEC 20     /* 随机间隔上限（秒） */
+#define TX_INTERVAL_SEC     5      /* 固定发送间隔（秒） */
+#define TX_PWR_MIN          10     /* 发射功率循环下限（dBm） */
+#define TX_PWR_MAX          20     /* 发射功率循环上限（dBm） */
 /* USER CODE END PD */
 
 /* Private variables ---------------------------------------------------------*/
@@ -115,16 +116,6 @@ static void loraTx(const char *msg)
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 }
 
-/**
-  * @brief  产生下一次发送的随机间隔（1~20 秒）
-  * @note   种子用开机 tick（每次上电时间不同，随机性够测试用）
-  */
-static uint32_t randIntervalSec(void)
-{
-  return (uint32_t)(rand() % (TX_INTERVAL_MAX_SEC - TX_INTERVAL_MIN_SEC + 1))
-         + TX_INTERVAL_MIN_SEC;
-}
-
 /* USER CODE END 0 */
 
 /**
@@ -144,13 +135,12 @@ int main(void)
   MX_USART1_UART_Init();
 
   /* USER CODE BEGIN 2 */
-  srand((unsigned int)HAL_GetTick() | 1u);   /* 随机种子 */
 
   loraInitFirstTime();
 
   printf("===== LoRa jamming test TX =====\r\n");
-  printf("interval: %d~%d s random, TX only\r\n",
-         (int)TX_INTERVAL_MIN_SEC, (int)TX_INTERVAL_MAX_SEC);
+  printf("interval: %d s fixed, tx power %d~%d dBm cycling\r\n",
+         (int)TX_INTERVAL_SEC, (int)TX_PWR_MIN, (int)TX_PWR_MAX);
   /* USER CODE END 2 */
 
   /* 无限循环 */
@@ -158,26 +148,27 @@ int main(void)
   while (1)
   {
     /* USER CODE BEGIN 3 */
-    uint32_t waitSec = randIntervalSec();
+    static uint8_t txPwr = TX_PWR_MIN;   /* 当前发射功率，逐帧递增循环 */
     uint32_t i;
+    char tx_msg[TX_LEN];
 
-    printf("\r\n[Schedule] next TX in %lu s\r\n", (unsigned long)waitSec);
-
-    /* 每秒打印一次倒计时 */
-    for (i = waitSec; i > 0; i--) {
+    /* 固定间隔倒计时 */
+    for (i = TX_INTERVAL_SEC; i > 0; i--) {
       printf("[Countdown] %lu s\r\n", (unsigned long)i);
       HAL_Delay(1000);
     }
 
-    /* 到点发送：干扰测试帧，内容随意，仅带一个递增序号便于日志核对 */
+    /* 每帧先切功率再发送：功率随帧发出便于串口日志核对 */
+    rf_set_tx_power(txPwr);
     txCount++;
-    {
-      char tx_msg[TX_LEN];
+    snprintf(tx_msg, sizeof(tx_msg), "TEST|%lu|%d|",
+             (unsigned long)txCount, (int)txPwr);
+    loraTx(tx_msg);
+    printf("TX OK pwr=%d -> \"%s\"\r\n", (int)txPwr, tx_msg);
 
-      snprintf(tx_msg, sizeof(tx_msg), "TEST|%lu|", (unsigned long)txCount);
-      loraTx(tx_msg);
-      printf("TX OK -> \"%s\"\r\n", tx_msg);
-    }
+    txPwr++;
+    if (txPwr > TX_PWR_MAX)
+      txPwr = TX_PWR_MIN;
     /* USER CODE END 3 */
   }
   /* USER CODE END WHILE */
