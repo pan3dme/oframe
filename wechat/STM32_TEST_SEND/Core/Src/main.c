@@ -158,11 +158,11 @@ int main(void)
       HAL_Delay(1000);
     }
 
-    /* 每帧先切功率再发送：功率随帧发出便于串口日志核对 */
+    /* 每帧先切功率再发送：功率/序号随帧发出，云端可直接核对 */
     rf_set_tx_power(txPwr);
     txCount++;
-    snprintf(tx_msg, sizeof(tx_msg), "TEST|%lu|%d|",
-             (unsigned long)txCount, (int)txPwr);
+    snprintf(tx_msg, sizeof(tx_msg), "8|v3-88|test|%d|%lu|",
+             (int)txPwr, (unsigned long)txCount);
     loraTx(tx_msg);
     printf("TX OK pwr=%d -> \"%s\"\r\n", (int)txPwr, tx_msg);
 
