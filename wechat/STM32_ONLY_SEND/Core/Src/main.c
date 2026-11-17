@@ -42,7 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V1.6"
+#define DEMO_VER     "V1.7"
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -89,6 +89,11 @@ static uint8_t centerValid  = 0;
 #define CENTER_MAGIC        0xA5A55A5D  /* 中心坐标魔术�?*/
 #define DEVCNT_FLASH_ADDR   0x0800E800  /* 子设备总台数存储（倒数第六页） */
 #define DEVCNT_MAGIC        0xA5A55A5E  /* 设备台数魔术�?*/
+#define SRCHTM_FLASH_ADDR   0x0800E400  /* GPS search time storage (7th page from end) */
+#define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
+#define GPS_SEARCH_MIN_MIN  1           /* searchtime cmd: min (minutes) */
+#define GPS_SEARCH_MAX_MIN  10          /* searchtime cmd: max (minutes) */
+#define GPS_SEARCH_DEFAULT_MIN 4       /* default search max (minutes) */
 
 /* 上报间隔：由 configStr �?1 段决定（分钟），�?"30,0M,3t,6" = 30 分钟
  * configStr 四段含义:
@@ -139,6 +144,9 @@ static uint8_t  readInfoNeedReport = 0;/* 设备信息需要上报（收到 read
 /* readinfo 指令�?value 参数（每次只上报一�?8 帧，帧长 �?2 字节）：
  *   0=设备概况(默认,无value/乱码)  1=晶振偏差  2=最近收�?RSSI/SNR */
 static uint8_t  readInfoValue = 0;
+/* readinfo value: 1=drift 2=last rssi/snr 3=farm center 4=device overview
+ * 5=chip UID (tail word, 8 hex) 6=device settings (existing config frame);
+ * 0 (default/missing/garbled) = report all (1..6) back to back */
 static uint8_t  lastRxRssi = 0;        /* 最近一次接收窗口收到的 RSSI 原�?上报�?-256) */
 static uint8_t  lastRxSnr  = 0;        /* 最近一次接收窗口收到的 SNR */
 static uint8_t  lastRxSeen = 0;        /* 1=开机至今收到过�?未收到过上报 noRX) */
@@ -158,6 +166,7 @@ static uint32_t lastLoRaRxTs = 0;      /* 最近一次收�?LoRa 数据的时�?
                                         * 任何 LoRa 信息 �?NVIC_SystemReset 真复�?*/
 /* 提前搜星结果（需�?GPS 的上报轮，唤醒后先搜星再等到点上报，保证时间点不后移�?*/
 static uint8_t  gpsPreSearched = 0;    /* 1=本轮已提前搜过星，OnMaster 直接取结果上�?*/
+static uint32_t gpsSearchMaxMs = GPS_SEARCH_DEFAULT_MIN * 60000UL; /* GPS search max ms; searchtime cmd 1~10 min, flash-saved */
 static uint8_t  gpsPreFixOk    = 0;    /* 预搜结果�?=拿到有效坐标 */
 static uint32_t gpsPreSec      = 0;    /* 预搜耗时（秒），上报帧第 4 段用 */
 static uint32_t gpsPreBytes    = 0;    /* 预搜期间 GPS 串口字节数，无定位时上报帧第 4 段用 */
@@ -200,8 +209,8 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 #define GPS_RING_LEN   512   /* 环形缓冲：主循环�?LoRa 收发阻塞时先攒着 */
 #define GPS_LINE_LEN   128   /* 单条 NMEA 语句上限 */
 #define GPS_FIX_TTL_MS 60000 /* 定位有效�?ms)：超过这么久没刷新就算失�?*/
-#define GPS_WAIT_TIMEOUT_MS 240000 /* upgps 搜星上限 = 4 分钟；超时则上报 0.0,0.0
-                                    * @note 冷启动首次定位最坏要 12.5 分钟�?
+#define GPS_SEARCH_DEFAULT_MIN_MS (GPS_SEARCH_DEFAULT_MIN * 60000UL) /* was GPS_WAIT_TIMEOUT_MS, now runtime var gpsSearchMaxMs */
+                                    /* @note 冷启动首次定位最坏要 12.5 分钟�?
                                     *       天线条件差时 3 分钟不够，先放宽�?4 分钟实测 */
 #define GPS_WAIT_MIN_MS     10000  /* upgps 最短搜星时�?= 10 �?
                                     * @note 收到指令后不能马上发 LoRa：中继此时还没准备好接收�?
@@ -213,7 +222,7 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
  *   - 再设 180 秒下限，防止把搜星上限改小后跟踪上报过密�?
  * 跟踪期间 GPS 一直保持供电、不进休眠；类型 5 上报不开接收窗口 */
 #define GPS_CONT_INTERVAL_SEC \
-    (((GPS_WAIT_TIMEOUT_MS) / 1000) > 180 ? ((GPS_WAIT_TIMEOUT_MS) / 1000) : 180)
+    (((gpsSearchMaxMs) / 1000u) > 180u ? ((gpsSearchMaxMs) / 1000u) : 180u)
 #define GPS_CONT_MAX_MIN      60   /* upgps 分钟数参数上�?= 60 分钟 */
 #define GPS_CONT_MAX_SEC      ((uint32_t)GPS_CONT_MAX_MIN * 60u)   /* 60 分钟的秒数：
    * 跟踪目标就是定位成功 —�?一直拿不到有效坐标时，跟踪期限自动保底延长
@@ -221,7 +230,7 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 /* 需要搜星的上报轮：提前唤醒�?= 搜星上限 + 5 秒（LoRa 初始化倒计时）
  * 醒来先搜星，搜到就把 GPS 断电再睡到上报点�?5 秒，到点准点发帧�?
  * 搜不到也到点�?"0.0,0.0|串口字节数|"，保证上报时间点不后�?*/
-#define GPS_PRESEARCH_LEAD_SEC ((GPS_WAIT_TIMEOUT_MS / 1000) + 5)
+#define GPS_PRESEARCH_LEAD_SEC ((gpsSearchMaxMs / 1000u) + 5u)
 #define GPS_PWR_ON_DELAY_MS  1000  /* PB15 上电后等待模块输�?NMEA 的时�?ms)
                                     * @note 电源冷启动（不用 WAKE_UP 休眠模式），
                                     *       比Standby热唤醒慢，给�?1 �?*/
@@ -562,6 +571,52 @@ static void saveTxPowerToFlash(uint8_t power)
   printf("[FLASH] pwr saved: %d dBm\r\n", power);
 }
 
+
+/**
+  * @brief  Load GPS search max time from flash (searchtime cmd)
+  */
+static void loadSearchTimeFromFlash(void)
+{
+  uint32_t magic = *(volatile uint32_t *)SRCHTM_FLASH_ADDR;
+
+  if (magic == SRCHTM_MAGIC) {
+    uint32_t saved = *(volatile uint32_t *)(SRCHTM_FLASH_ADDR + 4);
+
+    if (saved >= GPS_SEARCH_MIN_MIN * 60000UL &&
+        saved <= GPS_SEARCH_MAX_MIN * 60000UL) {
+      gpsSearchMaxMs = saved;
+      printf("[FLASH] searchtime loaded: %lus\r\n",
+             (unsigned long)(gpsSearchMaxMs / 1000u));
+    } else {
+      printf("[FLASH] searchtime %lu bad, default\r\n",
+             (unsigned long)saved);
+    }
+  } else {
+    printf("[FLASH] no searchtime, default %lus\r\n",
+           (unsigned long)(gpsSearchMaxMs / 1000u));
+  }
+}
+
+/**
+  * @brief  Save GPS search max time to flash
+  */
+static void saveSearchTimeToFlash(uint32_t ms)
+{
+  FLASH_EraseInitTypeDef eraseInit;
+  uint32_t pageError = 0;
+
+  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+  eraseInit.PageAddress = SRCHTM_FLASH_ADDR;
+  eraseInit.NbPages = 1;
+
+  HAL_FLASH_Unlock();
+  HAL_FLASHEx_Erase(&eraseInit, &pageError);
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, SRCHTM_FLASH_ADDR, SRCHTM_MAGIC);
+  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, SRCHTM_FLASH_ADDR + 4, ms);
+
+  HAL_FLASH_Lock();
+  printf("[FLASH] searchtime saved: %lus\r\n", (unsigned long)(ms / 1000u));
+}
 /**
  * @brief  �?Flash 读出一个以 '\0' 结尾的字符串
  */
@@ -768,6 +823,28 @@ static void sendReadInfoMessage(void)
 {
   char tx_msg[TX_LEN];
 
+  /* value 0 (default/missing/garbled): report all 6 kinds back to back,
+   * 2s apart so CENTEN can relay each frame to DTU; then normal sleep flow */
+  if (readInfoValue == 0) {
+    uint8_t v;
+
+    for (v = 1; v <= 6; v++) {
+      readInfoValue = v;
+      sendReadInfoMessage();
+      if (v < 6)
+        HAL_Delay(2000);
+    }
+    readInfoValue = 0;
+    return;
+  }
+
+  /* value 6: device settings = reuse the existing config frame
+   * (6|dev|configStr|cnt|, type MSG_TYPE_CONFIG, cloud already parses it) */
+  if (readInfoValue == 6) {
+    sendConfigMessage();
+    return;
+  }
+
   txCountNext();
   if (readInfoValue == 1) {
 #if TX_COUNT_ENABLE
@@ -810,6 +887,19 @@ static void sendReadInfoMessage(void)
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|",
              MSG_TYPE_READINFO, deviceName,
              (centerStr[0] != '\0') ? centerStr : "0,0");
+#endif
+  } else if (readInfoValue == 5) {
+    /* chip UID: 96-bit unique ID @0x1FFFF7E8, report tail word as 8 hex.
+     * full 24-hex would exceed the 32-byte frame cap (8|dev|24hex|cnt| = 40) */
+    uint32_t uidW = *(volatile uint32_t *)0x1FFFF7F0u;
+
+#if TX_COUNT_ENABLE
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%08lX|%lu|",
+             MSG_TYPE_READINFO, deviceName,
+             (unsigned long)uidW, (unsigned long)tx_count);
+#else
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%08lX|",
+             MSG_TYPE_READINFO, deviceName, (unsigned long)uidW);
 #endif
   } else {
 #if TX_COUNT_ENABLE
@@ -984,7 +1074,7 @@ static uint8_t gpsSearchAndReport(uint8_t useGpsType)
 
   /* 搜星：最�?GPS_WAIT_MIN_MS(给中继留准备时间), 上限 GPS_WAIT_TIMEOUT_MS */
   t0 = HAL_GetTick();
-  hasFix = gpsWaitForFix(GPS_WAIT_MIN_MS, GPS_WAIT_TIMEOUT_MS);
+  hasFix = gpsWaitForFix(GPS_WAIT_MIN_MS, gpsSearchMaxMs);
   searchSec = (HAL_GetTick() - t0 + 999u) / 1000u;   /* 搜星耗时，秒（向上取整） */
   HAL_Delay(1000);
 
@@ -1028,7 +1118,7 @@ static void gpsPreSearch(void)
     return;
   }
 
-  maxMs = (availMs > GPS_WAIT_TIMEOUT_MS) ? GPS_WAIT_TIMEOUT_MS : availMs;
+  maxMs = (availMs > gpsSearchMaxMs) ? gpsSearchMaxMs : availMs;
   minMs = (maxMs > GPS_WAIT_MIN_MS) ? GPS_WAIT_MIN_MS : maxMs;
 
   printf("[GPS] presearch %lus(max %lus)\r\n",
@@ -2547,7 +2637,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                      mins, (unsigned int)GPS_CONT_INTERVAL_SEC);
             else
               printf("[CMD] upgps: single shot(0, max %lus)\r\n",
-                     (unsigned long)(GPS_WAIT_TIMEOUT_MS / 1000));
+                     (unsigned long)(gpsSearchMaxMs / 1000u));
           }
         }
         /* sendmode: 9|v0-0|sendmode|1  �? 预留：原�?GPS 工作模式控制逻辑已移�?
@@ -2679,6 +2769,21 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             printf("[CMD] relayreboot, resetting\r\n");
             HAL_Delay(100);            /* 让日志从串口发完 */
             NVIC_SystemReset();
+          }
+        }
+        /* searchtime: 9|dev|searchtime|N - GPS search max N minutes (1~10),
+         * saved to flash, applied immediately (presearch/tracking follow it) */
+        else if (strcmp(fields[2], "searchtime") == 0 && field_count >= 4) {
+          if (cmdIsForMe(fields)) {
+            int newMin = atoi(fields[3]);
+
+            if (newMin >= GPS_SEARCH_MIN_MIN && newMin <= GPS_SEARCH_MAX_MIN) {
+              gpsSearchMaxMs = (uint32_t)newMin * 60000UL;
+              saveSearchTimeToFlash(gpsSearchMaxMs);
+              printf("[CMD] searchtime: %d min\r\n", newMin);
+            } else {
+              printf("[CMD] searchtime %d OOR(1-10), reject\r\n", newMin);
+            }
           }
         } else {
           printf("[CMD] unknown: %s\r\n", fields[2]);
@@ -3028,6 +3133,7 @@ int main(void)
   loadDeviceNameFromFlash();
   loadConfigFromFlash();
   loadTxPowerFromFlash();
+  loadSearchTimeFromFlash();
   loadCenterFromFlash();
   loadDeviceCountFromFlash();
 

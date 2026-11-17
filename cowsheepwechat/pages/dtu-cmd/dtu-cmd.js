@@ -33,6 +33,7 @@ Page({
     sendmodeValue: 0,  // 上报模式当前值（0/1 循环切换）
     upgpsIndex: 0,     // 上报GPS循环取值索引（0→1→10→59→0 循环）
     readinfoIndex: 0,  // 获取信息循环取值索引（"0"→"1"→"2"→"0" 循环）
+  searchtimeValue: 1, // 搜星时间：下一次点击将发送的 value（1→2→…→10，到顶回1）
     relayrebootValue: 0, // 设备重启当前值（0/1 循环切换）
 
     // 发送日志
@@ -223,6 +224,16 @@ Page({
   },
   onQuickTestGps() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'test_gps', value: 1, time: Number(this.data.cmdTime) || 0 }), quickSelected: 19 })
+  },
+
+  // 搜星时间：每点一次 value +1（1→2→3→…→10），到 10 再点回 1；按钮上显示"下一次点击将发送的值"
+  onQuickSearchTime() {
+    const val = this.data.searchtimeValue
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'searchtime', value: val, time: Number(this.data.cmdTime) || 0 }),
+      quickSelected: 23,
+      searchtimeValue: val >= 10 ? 1 : val + 1
+    })
   },
 
   // 快捷指令：设置农场中心位置 — 从登录信息中读取 mapcenter
