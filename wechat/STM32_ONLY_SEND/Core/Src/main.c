@@ -42,7 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V1.5"
+#define DEMO_VER     "V1.6"
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -70,6 +70,13 @@ char configStr[64] = DEFAULT_CONFIG_STR;
 
 /* 鍐滃満涓績鍧愭爣锟?lat,lng"锛岀┖=鏈缃紝锟?C 鎸囦护涓嬪彂骞舵寔涔呭寲锟?*/
 char centerStr[64] = "";
+
+/* 中心坐标 int32 缓存（1e-5 度）：GPS 上报相对偏移使用。
+ * centerStr 是字符串形式（Flash/上报用），这两个是数值形式（算偏移用），
+ * 两者在 "加载 Flash" 和 "C 指令设置中心" 两处同步更新 */
+static int32_t centerLat1e5 = 0;
+static int32_t centerLng1e5 = 0;
+static uint8_t centerValid  = 0;
 
 /* Flash 瀛樺偍鍦板潃锛圫TM32F103C8T6 64KB锛屾瘡椤圭嫭鍗犱竴椤碉紝鎿﹂櫎浜掍笉骞叉壈锟?*/
 #define DEVNAME_FLASH_ADDR  0x0800F800  /* 璁惧鍚嶅瓨鍌紙鍊掓暟绗簩椤碉級 */
@@ -594,8 +601,20 @@ static void loadCenterFromFlash(void)
   if (magic == CENTER_MAGIC) {
     flashReadString(CENTER_FLASH_ADDR + 4, centerStr, sizeof(centerStr));
     printf("[FLASH] center loaded: %s\r\n", centerStr);
+    /* 同步数值缓存：GPS 上报相对偏移用（解析失败则视为未设中心） */
+    {
+      int32_t la = 0, lo = 0;
+      const char *comma = strchr(centerStr, ',');
+      if (comma != NULL &&
+          parseDeg1e5(centerStr, &la) && parseDeg1e5(comma + 1, &lo)) {
+        centerLat1e5 = la;
+        centerLng1e5 = lo;
+        centerValid  = 1;
+      }
+    }
   } else {
     centerStr[0] = '\0';
+    centerValid = 0;
     printf("[FLASH] no center\r\n");
   }
 }
@@ -878,20 +897,39 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
 
   if (hasFix) {
     char latBuf[16], lngBuf[16];
+    /* 相对中心偏移（1e-5 度即 1e5 倍整数，约 1.1m 分辨率）。
+     * 规则：有中心坐标且偏移在 10km 范围内 -> 上报整数偏移（无小数点，
+     * 中继据此判定"需还原"并加回中心坐标）；否则上报绝对坐标。
+     * 范围近似方形：lat ±0.09°(~10km)，lng ±0.105°(31°纬度折算 ~10km) */
+    int32_t dlat = gpsFix.lat - centerLat1e5;
+    int32_t dlng = gpsFix.lng - centerLng1e5;
 
-    /* 灏忔暟锟?5 浣嶏細绮惧害锟?1.1m锛屽鐢ㄤ笖甯ч暱鏇寸煭 */
-    deg1e5ToStr(gpsFix.lat, latBuf);
-    deg1e5ToStr(gpsFix.lng, lngBuf);
-    /* 鏈夊畾锟? 绫诲瀷|璁惧鍚峾lat,lng|鎼滄槦绉掓暟[|璁℃暟|] */
+    if (centerValid &&
+        dlat <= 9000 && dlat >= -9000 && dlng <= 10500 && dlng >= -10500) {
 #if TX_COUNT_ENABLE
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|%lu|",
-             msgType, deviceName, latBuf, lngBuf,
-             (unsigned long)searchSec, (unsigned long)tx_count);
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ld,%ld|%lu|%lu|",
+               msgType, deviceName, (long)dlat, (long)dlng,
+               (unsigned long)searchSec, (unsigned long)tx_count);
 #else
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|",
-             msgType, deviceName, latBuf, lngBuf,
-             (unsigned long)searchSec);
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ld,%ld|%lu|",
+               msgType, deviceName, (long)dlat, (long)dlng,
+               (unsigned long)searchSec);
 #endif
+    } else {
+      /* 小数保留 5 位：精度 ~1.1m，够用且帧长更短 */
+      deg1e5ToStr(gpsFix.lat, latBuf);
+      deg1e5ToStr(gpsFix.lng, lngBuf);
+      /* 有定位: 类型|设备名|lat,lng|搜星秒数[|计数|] */
+#if TX_COUNT_ENABLE
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|%lu|",
+               msgType, deviceName, latBuf, lngBuf,
+               (unsigned long)searchSec, (unsigned long)tx_count);
+#else
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|",
+               msgType, deviceName, latBuf, lngBuf,
+               (unsigned long)searchSec);
+#endif
+    }
   } else {
     char bytesBuf[12];
 
@@ -2583,6 +2621,9 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               deg1e5ToStr(la, laBuf);
               deg1e5ToStr(lo, loBuf);
               snprintf(centerStr, sizeof(centerStr), "%s,%s", laBuf, loBuf);
+              centerLat1e5 = la;      /* 同步数值缓存：GPS 相对偏移用 */
+              centerLng1e5 = lo;
+              centerValid  = 1;
               saveCenterToFlash(centerStr);
               printf("[CMD] center saved: %s\r\n", centerStr);
             } else {
