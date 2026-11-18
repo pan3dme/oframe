@@ -4,10 +4,10 @@
   * @file           : main.c
   * @brief          : PAN3029 LoRa 随机间隔测试发送节点 - STM32F103C8T6
   * @note           功能说明（简单测试固件）：
-  *                 1. 开机初始化 LoRa 后进入主循环，每次随机等待 1~20 秒
-  *                 2. 等待期间每秒打印一次倒计时
-  *                 3. 到点发送一帧 LoRa（沿用以前定时帧格式）并打印发送内容
-  *                 4. 只发不收，无 GPS / RTC 休眠 / 对时 / 指令解析
+  *                 1. 开机初始化 LoRa，GPS 一次性上电并保持常开（不复电不复位）
+  *                 2. 每 10 秒上报一帧 type=5 GPS 坐标（NMEA 解析参考 ONLY_SEND）
+  *                 3. 发射功率仍按 10~20 dBm 逐帧循环（保留原测试功能）
+  *                 4. 只发不收（LoRa 侧），无 RTC 休眠 / 对时 / 指令解析
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -28,9 +28,14 @@
 /* USER CODE BEGIN PD */
 #define TX_LEN 64
 
-#define TX_INTERVAL_SEC     5      /* 固定发送间隔（秒） */
+#define TX_INTERVAL_SEC     10     /* 固定发送间隔（秒） */
 #define TX_PWR_MIN          10     /* 发射功率循环下限（dBm） */
 #define TX_PWR_MAX          20     /* 发射功率循环上限（dBm） */
+
+#define MSG_TYPE_UP_GPS     5      /* GPS 上传帧类型（与 ONLY_SEND 一致） */
+#define GPS_RING_LEN        512    /* GPS 串口环形缓冲 */
+#define GPS_LINE_LEN        100    /* NMEA 单行缓冲 */
+#define GPS_PWR_ON_DELAY_MS 1000   /* GPS 上电后等待模块起振 (ms) */
 /* USER CODE END PD */
 
 /* Private variables ---------------------------------------------------------*/
@@ -40,6 +45,23 @@ UART_HandleTypeDef huart3;  /* 仅保留定义：stm32f1xx_it.c 的 USART3 中断引用 */
 
 /* USER CODE BEGIN PV */
 static uint32_t txCount = 0;   /* 发送计数，随帧发出便于核对丢帧 */
+
+/* --- GPS 接收/解析（参考 ONLY_SEND，精简版） --- */
+static volatile uint8_t  gpsRing[GPS_RING_LEN];
+static volatile uint16_t gpsWr = 0, gpsRd = 0;
+static uint8_t  gpsByte;
+static char     gpsLine[GPS_LINE_LEN];
+static uint16_t gpsLineLen = 0;
+static uint32_t gpsRxCount = 0;          /* 收到字节总数（诊断用） */
+
+typedef struct {
+  int32_t lat;    /* lat × 1e5 */
+  int32_t lng;    /* lng × 1e5 */
+  uint8_t sats;
+} GpsFix_t;
+
+static GpsFix_t gpsFix;
+static uint8_t  gpsFixValid = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -51,6 +73,13 @@ static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 static void loraInitFirstTime(void);
 static void loraTx(const char *msg);
+static void MX_USART3_UART_Init(void);
+static void gpsTask(void);
+static void parseNmeaLine(char *line);
+static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen);
+static int32_t nmeaToDeg(const char *v, char dir);
+static void deg1e5ToStr(int32_t v, char *buf);
+static void fmtRxBytes(uint32_t bytes, char *buf, uint8_t len);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -116,6 +145,184 @@ static void loraTx(const char *msg)
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
 }
 
+/* =====================================================================
+ * GPS 接收与 NMEA 解析（参考 ONLY_SEND，精简版：只解析 GGA 坐标）
+ * ===================================================================== */
+
+/**
+ * @brief  从 NMEA 行取第 n 个逗号字段（n 从 1 起），截断写入 dst
+ */
+static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
+{
+  const char *p = line;
+  uint8_t i = 0;
+
+  dst[0] = '\0';
+  while (n > 0) {
+    p = strchr(p, ',');
+    if (p == NULL)
+      return 0;
+    p++;
+    n--;
+  }
+  while (*p != '\0' && *p != ',' && *p != '*' && i < dstLen - 1)
+    dst[i++] = *p++;
+  dst[i] = '\0';
+
+  return (i > 0);
+}
+
+/**
+ * @brief  ddmm.mmmmm 经纬度 -> 度 ×1e5 整数；畸形输入一律返回 0
+ * @note   整数部分 >4 位 = 乱码行，拒绝（防 int32 溢出）
+ */
+static int32_t nmeaToDeg(const char *v, char dir)
+{
+  const char *dot = strchr(v, '.');
+  int32_t    deg = 0;
+  uint32_t   minE4 = 0;   /* 分钟 ×1e4，如 29.58 -> 295800 */
+  uint32_t   mul = 100000;
+  int32_t    d;
+  uint8_t    nd = 0;
+
+  if (dot == NULL || dot - v < 3)
+    return 0;
+
+  while (v < dot - 2) {
+    if (*v < '0' || *v > '9' || ++nd > 4)
+      return 0;
+    deg = deg * 10 + (*v++ - '0');
+  }
+  v = dot - 2;          /* 分钟整数 2 位 */
+  for (d = 0; d < 2; d++) {
+    if (*v < '0' || *v > '9')
+      return 0;
+    minE4 += (uint32_t)(*v++ - '0') * mul;
+    mul /= 10;
+  }
+  if (*v == '.')
+    v++;
+  while (mul && *v >= '0' && *v <= '9') {
+    minE4 += (uint32_t)(*v++ - '0') * mul;
+    mul /= 10;
+  }
+
+  d = (int32_t)deg * 100000 + (int32_t)((minE4 + 3) / 6);
+  if (dir == 'S' || dir == 'W')
+    d = -d;
+  return d;
+}
+
+/**
+ * @brief  度×1e5 -> "[-]dd.ddddd"（等价 %.5f）
+ */
+static void deg1e5ToStr(int32_t v, char *buf)
+{
+  uint32_t a = (v < 0) ? (uint32_t)(-v) : (uint32_t)v;
+
+  if (v < 0)
+    *buf++ = '-';
+  snprintf(buf, 14, "%lu.%05lu",
+           (unsigned long)(a / 100000), (unsigned long)(a % 100000));
+}
+
+/**
+ * @brief  串口字节数转紧凑可读格式（与 ONLY_SEND 无定位帧第 4 段一致）
+ * @note   <1024 -> "NByte"；<1M -> "X.XXK"；>=1M -> "X.XXM"，
+ *         两位小数用整数运算（×100/1024），不引入浮点库
+ */
+static void fmtRxBytes(uint32_t bytes, char *buf, uint8_t len)
+{
+  if (bytes < 1024u) {
+    snprintf(buf, len, "%luByte", (unsigned long)bytes);
+  } else if (bytes < 1024u * 1024u) {
+    snprintf(buf, len, "%lu.%02luK",
+             (unsigned long)(bytes / 1024u),
+             (unsigned long)((bytes % 1024u) * 100u / 1024u));
+  } else {
+    snprintf(buf, len, "%lu.%02luM",
+             (unsigned long)(bytes / (1024u * 1024u)),
+             (unsigned long)((bytes % (1024u * 1024u)) * 100u / (1024u * 1024u)));
+  }
+}
+
+/**
+ * @brief  解析一条 NMEA 行（只认 GGA：$GP/$GN/$GB 前缀）
+ */
+static void parseNmeaLine(char *line)
+{
+  if (!strncmp(line, "$GPGGA", 6) || !strncmp(line, "$GNGGA", 6) ||
+      !strncmp(line, "$GBGGA", 6)) {
+    char lat[16], latDir[4], lng[16], lngDir[4];
+    char qual[4], sats[4];
+
+    nmeaField(line, 2, lat, sizeof(lat));
+    nmeaField(line, 3, latDir, sizeof(latDir));
+    nmeaField(line, 4, lng, sizeof(lng));
+    nmeaField(line, 5, lngDir, sizeof(lngDir));
+    nmeaField(line, 6, qual, sizeof(qual));
+    nmeaField(line, 7, sats, sizeof(sats));
+
+    /* qual: 0=无效, 1=单点, 2=差分, 4/5=RTK */
+    if (atoi(qual) > 0 && lat[0] != '\0' && lng[0] != '\0') {
+      gpsFix.lat   = nmeaToDeg(lat, latDir[0]);
+      gpsFix.lng   = nmeaToDeg(lng, lngDir[0]);
+      gpsFix.sats  = (uint8_t)atoi(sats);
+      if (gpsFix.lat != 0 || gpsFix.lng != 0)
+        gpsFixValid = 1;
+    }
+  }
+}
+
+/**
+ * @brief  排空 GPS 环形缓冲并按行解析（主循环每 100ms 调一次）
+ */
+static void gpsTask(void)
+{
+  while (gpsRd != gpsWr) {
+    uint8_t b = gpsRing[gpsRd];
+    gpsRd = (gpsRd + 1u) % GPS_RING_LEN;
+
+    if (b == '\n') {
+      if (gpsLineLen > 0) {
+        gpsLine[gpsLineLen] = '\0';
+        parseNmeaLine(gpsLine);
+        gpsLineLen = 0;
+      }
+    } else if (b != '\r') {
+      if (gpsLineLen < GPS_LINE_LEN - 1)
+        gpsLine[gpsLineLen++] = (char)b;
+      else
+        gpsLineLen = 0;  /* 超长异常，丢弃重同步 */
+    }
+  }
+}
+
+/**
+ * @brief  USART3 初始化（GPS 模块 9600，仅接收 PB11）
+ */
+static void MX_USART3_UART_Init(void)
+{
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 9600;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  HAL_NVIC_SetPriority(USART3_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
+
+  /* 开 GPS 逐字节中断接收 */
+  HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -128,19 +335,22 @@ int main(void)
   HAL_Init();
   SystemClock_Config();
 
-  /* 初始化外设：GPIO(SPI 引脚/CSN/RST/IRQ/GPS 电源保持断电) + SPI1 + printf 串口 */
+  /* 初始化外设：GPIO(GPS 一次性上电) + SPI1 + printf 串口 + GPS 串口 */
   MX_GPIO_Init();
   MX_NVIC_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  HAL_Delay(GPS_PWR_ON_DELAY_MS);   /* 等 GPS 模块上电起振 */
+  MX_USART3_UART_Init();
 
   /* USER CODE BEGIN 2 */
 
   loraInitFirstTime();
 
-  printf("===== LoRa jamming test TX =====\r\n");
-  printf("interval: %d s fixed, tx power %d~%d dBm cycling\r\n",
-         (int)TX_INTERVAL_SEC, (int)TX_PWR_MIN, (int)TX_PWR_MAX);
+  printf("===== LoRa GPS test TX =====\r\n");
+  printf("interval: %d s fixed, type=%d frame, tx power %d~%d dBm cycling\r\n",
+         (int)TX_INTERVAL_SEC, (int)MSG_TYPE_UP_GPS,
+         (int)TX_PWR_MIN, (int)TX_PWR_MAX);
   /* USER CODE END 2 */
 
   /* 无限循环 */
@@ -149,22 +359,46 @@ int main(void)
   {
     /* USER CODE BEGIN 3 */
     static uint8_t txPwr = TX_PWR_MIN;   /* 当前发射功率，逐帧递增循环 */
-    uint32_t i;
+    uint32_t waited = 0;
     char tx_msg[TX_LEN];
 
-    /* 固定间隔倒计时 */
-    for (i = TX_INTERVAL_SEC; i > 0; i--) {
-      printf("[Countdown] %lu s\r\n", (unsigned long)i);
-      HAL_Delay(1000);
+    /* 固定间隔倒计时；期间每 100ms 跑一次 gpsTask 排空 GPS 环形缓冲
+     * （9600bps 下每 100ms 约 96 字节，512 字节缓冲充裕） */
+    while (waited < TX_INTERVAL_SEC * 1000u) {
+      gpsTask();
+      HAL_Delay(100);
+      waited += 100;
+      if (waited % 1000u == 0u) {
+        printf("[Countdown] %lus%s\r\n",
+               (unsigned long)((TX_INTERVAL_SEC * 1000u - waited) / 1000u),
+               gpsFixValid ? " [FIX]" : "");
+      }
     }
 
-    /* 每帧先切功率再发送：功率/序号随帧发出，云端可直接核对 */
+    /* 每帧先切功率再发送：功率仍逐帧循环，帧为 type=5 GPS 坐标 */
+    gpsTask();
     rf_set_tx_power(txPwr);
     txCount++;
-    snprintf(tx_msg, sizeof(tx_msg), "8|v3-88|test|%d|%lu|",
-             (int)txPwr, (unsigned long)txCount);
+    if (gpsFixValid) {
+      char latBuf[16], lngBuf[16];
+
+      deg1e5ToStr(gpsFix.lat, latBuf);
+      deg1e5ToStr(gpsFix.lng, lngBuf);
+      snprintf(tx_msg, sizeof(tx_msg), "%d|v3-88|%s,%s|%u|%lu|",
+               (int)MSG_TYPE_UP_GPS, latBuf, lngBuf,
+               (unsigned)gpsFix.sats, (unsigned long)txCount);
+    } else {
+      /* 无定位：第 4 段 = 累计串口字节数（ONLY_SEND 同款格式），
+       * 诊断"模块没吐数(0Byte)"还是"有输出没定住(数值增长)" */
+      char bytesBuf[12];
+
+      fmtRxBytes(gpsRxCount, bytesBuf, sizeof(bytesBuf));
+      snprintf(tx_msg, sizeof(tx_msg), "%d|v3-88|0.0,0.0|%s|%lu|",
+               (int)MSG_TYPE_UP_GPS, bytesBuf, (unsigned long)txCount);
+    }
     loraTx(tx_msg);
-    printf("TX OK pwr=%d -> \"%s\"\r\n", (int)txPwr, tx_msg);
+    printf("TX OK pwr=%d fix=%d -> \"%s\"\r\n",
+           (int)txPwr, (int)gpsFixValid, tx_msg);
 
     txPwr++;
     if (txPwr > TX_PWR_MAX)
@@ -242,15 +476,15 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /* PB15 = GPS 电源：保持高电平 = 断电（本固件不用 GPS） */
+  /* PB15 = GPS 电源：低电平 = 上电（本固件 GPS 一次性开机，之后保持常开） */
   GPIO_InitStruct.Pin   = GPS_PWR_Pin;
   GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPS_PWR_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);
 
-  /* GPS 复位引脚 (PA3) - 平时高电平(不复位) */
+  /* GPS 复位引脚 (PA3) - 高电平(不复位) */
   GPIO_InitStruct.Pin   = GPS_RST_Pin;
   GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
@@ -258,13 +492,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPS_RST_GPIO_Port, &GPIO_InitStruct);
   HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
 
-  /* GNSS 唤醒脚 (PB1) - 低 = Standby（GPS 断电下的安全态） */
+  /* GNSS 唤醒脚 (PB1) - 高 = Full on（GPS 常开工作态） */
   GPIO_InitStruct.Pin   = GNSS_WAKE_Pin;
   GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET);
 
   /* LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
   GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
@@ -337,6 +571,42 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   if (GPIO_Pin == GPIO_PIN_2)
   {
     rf_irq_process();
+  }
+}
+
+/**
+ * @brief  USART3 接收完成回调（GPS 逐字节入环形缓冲）
+ * @note   ISR 只动写指针、gpsTask 只动读指针（单生产者单消费者）；
+ *         缓冲满时丢弃本字节，下条语句的 '\n' 自动重新同步
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3)
+  {
+    uint16_t next = (gpsWr + 1u) % GPS_RING_LEN;
+
+    if (next != gpsRd)          /* 环形缓冲未满 */
+    {
+      gpsRing[gpsWr] = gpsByte;
+      gpsWr = next;
+      gpsRxCount++;
+    }
+
+    HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
+  }
+}
+
+/**
+ * @brief  UART 错误回调（GPS 串口出错自愈）
+ * @note   GPS 上电瞬间的波形毛刺/EMI 会触发 ORE/NE/FE 错误，HAL 会中断
+ *         接收；不重新武装的话 GPS 此后永远无数据
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART3)
+  {
+    __HAL_UART_CLEAR_OREFLAG(huart);
+    HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
   }
 }
 
