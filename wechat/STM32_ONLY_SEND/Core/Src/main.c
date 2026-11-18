@@ -42,7 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V1.7"
+#define DEMO_VER     "V1.8"
 #define BATTERY_SKIP_PCT 30   /* battery below this: skip LoRa TX/RX, sleep */
 
 #define TX_LEN       64
@@ -333,6 +333,12 @@ static void    deg1e5ToStr(int32_t v, char *buf);
 static uint8_t parseDeg1e5(const char *s, int32_t *out);
 static void loraInitFirstTime(void);
 static void sendConfigMessage(void);
+static void sendResetInfoMessage(void);   /* boot reset cause frame (type 8) */
+
+/* boot reset cause ("POR"/"SW"/"IWDG"), reported once over LoRa after boot:
+ * field deployments have no serial port, so the cloud must see reboots */
+static char    bootRstCause[8] = "POR";
+static uint8_t bootRstPending  = 0;       /* 1 = send the reset report frame */
 static void sendCenterMessage(void);
 static void sendReadInfoMessage(void);  /* 设备信息上报 8|设备|设备数量|发射功率|保留| */
 static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
@@ -358,7 +364,9 @@ static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen)
 static int32_t nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
 static uint8_t isInWorkWindow(void);      /* 当前是否在工作时间段�?config �?�? */
-static void linkSilenceCheck(void);       /* 链路沉默看门�?2小时无LoRa→真复位) */
+static void linkSilenceCheck(void);
+static void wdg_init(void);               /* HW watchdog: ~10s, fed in chunked sleep */
+static void wdg_feed(void);       /* 链路沉默看门�?2小时无LoRa→真复位) */
 static void    printTimeWindows(const char *tag);   /* 打印当前生效的两个时间段 */
 static uint8_t isInGpsWorkWindow(void);   /* 当前是否�?GPS 工作时间段内(config �?�? */
 static uint8_t isInGpsWorkWindowAt(uint32_t ts);  /* 指定时刻是否�?GPS 时间段内 */
@@ -717,39 +725,42 @@ static uint8_t centerCoordValid(int32_t lat, int32_t lng)
   */
 static void loraInitFirstTime(void)
 {
+  uint8_t tries;
+
   printf("LoRa init...\r\n");
 
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
+  /* hard reset pulse on EVERY wake: guarantees the module starts from a
+   * clean chip state after rf_deepsleep / STOP sleep (20ms, negligible) */
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
+  HAL_Delay(20);
   HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
   HAL_Delay(100);
 
-  if (rf_init() != RF_OK) {
-    /* 启动阶段 LoRa 偶尔会初始化不成功（SPI 时序/上电未稳）�?
-     * 以前是死循环闪灯等人工断电，现在改成自动复位 MCU 重跑一遍初始化�?
-     *   - 先给 LoRa 一�?RST 低脉冲，避免模块停在半初始化状态拖累下一�?
-     *   - 延时 3 秒让本次日志从串口吐完，同时等电�?晶振稳定
-     *   - NVIC_SystemReset() 软件复位，等价于重新上电（不经过 NRST 引脚�?*/
-    printf("RF init fail, reset in 3s\r\n");
-
+  /* retry up to 3 times with a fresh RST pulse before giving up */
+  for (tries = 0; tries < 3; tries++) {
+    if (rf_init() == RF_OK)
+      break;
+    printf("RF init fail #%d, rst pulse, retry\r\n", tries + 1);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
     HAL_Delay(20);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
+    HAL_Delay(200);
+  }
+  if (tries >= 3) {
+    /* module dead / power unstable: log, let it settle, reboot like POR */
+    printf("RF init fail x3, reset in 3s\r\n");
     HAL_Delay(3000);
-
     printf("[RST] NVIC_SystemReset() ...\r\n");
-    NVIC_SystemReset();              /* noreturn，不会回�?*/
+    NVIC_SystemReset();              /* noreturn */
   }
   printf("RF init OK\r\n");
 
   rf_set_default_para();
   rf_set_tx_power(currentTxPower);
 
-
-
   loraInitialized = 1;
 
- 
-  /* @note 合并成一行：MDK Lite 32KB 限制，Flash 余额紧张，长横幅打印已精简 */
   printf("[LoRa] %dM SF%d PWR=%d\r\n",
          DEFAULT_FREQ / 1000000, DEFAULT_SF, currentTxPower);
 }
@@ -782,6 +793,7 @@ static void loraTx(const char *msg)
   /* TX_DONE �?EXTI2 中断 rf_irq_process() 置位。若模块半死/IRQ 脉冲丢失�?
    * 这里会永久空�?�?整机死机（现场死机最大嫌疑点）�? 秒超时复位自�?*/
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE) {
+    wdg_feed();   /* TX_DONE wait can stack up to 5s+; feed inside the loop */
     if (HAL_GetTick() - start > 5000u) {
       printf("[LoRa] TX wait timeout! reset in 3s\r\n");
       HAL_Delay(3000);
@@ -831,6 +843,7 @@ static void sendReadInfoMessage(void)
 
     for (v = 1; v <= 6; v++) {
       readInfoValue = v;
+      wdg_feed();   /* 6 frames x (tx~1s + 2s gap) = ~15s total, must feed */
       sendReadInfoMessage();
       if (v < 6)
         HAL_Delay(2000);
@@ -1570,6 +1583,33 @@ static uint8_t isInWorkWindow(void)
  *         - 触发动作�?NVIC_SystemReset() 真复位（不是 STOP 唤醒）：
  *           快速上�?3 轮、配置上报、对时全部重走一遍，相当于设备自�?
  */
+/* =====================================================================
+ * HW watchdog (IWDG): ~10s nominal timeout at 40kHz LSI (6.7~13.3s over
+ * the 30~60kHz LSI spread). IWDG keeps counting in STOP mode, therefore:
+ *   - deep sleep is chunked (WDG_SEG_SEC=5s) and fed between chunks;
+ *   - long busy loops (GPS search etc.) feed inside the loop.
+ * A dog bite = reset = full re-init = self-heal (same as power cycle). */
+#define WDG_SEG_SEC 5u
+
+static void wdg_init(void)
+{
+  uint32_t t0 = HAL_GetTick();
+
+  IWDG->KR = 0xCCCC;   /* start counter (forces LSI on) */
+  IWDG->KR = 0x5555;   /* enable register writes */
+  IWDG->PR = 7;        /* prescaler /256 -> 156 Hz tick @40kHz */
+  IWDG->RLR = 0x0619;  /* 1562 ticks -> ~10s nominal (6.7~13.3s spread) */
+  while (IWDG->SR != 0 && HAL_GetTick() - t0 < 100)
+    ;                  /* wait PR/RL sync, bounded */
+  IWDG->KR = 0xAAAA;   /* first feed */
+}
+
+static void wdg_feed(void)
+{
+  IWDG->KR = 0xAAAA;
+}
+
+
 static void linkSilenceCheck(void)
 {
   uint32_t now;
@@ -1824,10 +1864,7 @@ static void enterStopUntil(uint32_t wakeTs)
     uint32_t realDelta = wakeTs - syncedTimestamp;
     uint32_t localDelta = realDelta;
 
-    /* 晶振偏差补偿（收敛后生效）：目标是真实时�?wakeTs�?
-     * 本地 RTC �?d �?小时 �?本地计数只需�?
-     * realDelta*(3600+d)/3600 就能到达对应的真实时刻�?
-     * �? d=-216, 真实�?1800 �?�?本地闹钟只设 1692 �? 醒来正好准点 */
+    /* crystal drift compensation: local counter target so real time hits wakeTs */
     if (driftConverged && rtcDriftPerHour != 0 &&
         realDelta > 0 && realDelta < 1000000)
       localDelta = realDelta * (3600u + (uint32_t)rtcDriftPerHour) / 3600u;
@@ -1835,26 +1872,28 @@ static void enterStopUntil(uint32_t wakeTs)
     wakeRtc = syncedRtcSec + localDelta;
   }
 
-  /* 到点保护：唤醒时刻已过就直接返回，绝不能把闹钟设在过�?
-   * （F1 闹钟设在过去要等计数回绕 136 年才触发 = 永久沉睡�?*/
+  /* past-deadline guard: F1 alarm in the past waits ~136 years (= sleep forever) */
   if (wakeRtc <= rtcNow + 1)
     return;
 
-  {
-    uint32_t delta = wakeRtc - rtcNow;
-
-    rtc_set_alarm(rtcNow + delta);
-  }
-
-  /* WFE 事件唤醒循环：防假唤醒（event 寄存器残�?意外事件），
-   * 每次醒来核对时间，未到点继续�?*/
+  /* Sleep in <=5s chunks, re-arming the alarm each chunk: IWDG keeps counting
+   * in STOP (LSI never stops, 6.7~13.3s timeout at 30~60kHz), so the dog must
+   * be fed between chunks. Wake cost ~1-3ms per chunk (negligible duty cycle).
+   * Any hang / fault / RTC-freeze then ends in an IWDG reset = self-heal. */
   for (;;) {
-    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFE);
-    rtc_clear_alarm_flag();               /* �?RTOFF �?�?0 �?尾读 */
-    if (rtc_read_counter() >= wakeRtc)
+    uint32_t now = rtc_read_counter();
+    uint32_t target;
+
+    if (now >= wakeRtc)
       break;
+    target = (wakeRtc - now > WDG_SEG_SEC) ? (now + WDG_SEG_SEC) : wakeRtc;
+    rtc_set_alarm(target);
+    do {
+      HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFE);
+      rtc_clear_alarm_flag();
+    } while (rtc_read_counter() < target);
+    wdg_feed();
   }
-  /* 从这里继�?= 时间到点 */
 }
 
 /**
@@ -1971,10 +2010,16 @@ static int32_t nmeaToDeg(const char *v, char dir)
     return 0;
 
   /* 整数部分去掉�?2 位即�?*/
-  while (v < dot - 2) {
-    if (*v < '0' || *v > '9')
-      return 0;
-    deg = deg * 10 + (*v++ - '0');
+  {
+    uint8_t nd = 0;
+
+    while (v < dot - 2) {
+      /* >4 integer digits = garbled line: lat/lng max is 3 (180 deg),
+       * reject to avoid int32 overflow on absurd EMI-noise input */
+      if (*v < '0' || *v > '9' || ++nd > 4)
+        return 0;
+      deg = deg * 10 + (*v++ - '0');
+    }
   }
   v = dot - 2;          /* 分钟整数部分 2 �?*/
   for (d = 0; d < 2; d++) {
@@ -2392,6 +2437,7 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
     if (elapsed >= timeoutMs)
       break;
 
+    wdg_feed();
     HAL_Delay(100);
   }
 
@@ -2813,6 +2859,7 @@ static void openRxWindow3000(void)
    * 若模块半�?中断丢失标志停在 IDLE�? 秒兜底超时复位自愈，防整机卡死） */
   uint32_t rxStart = HAL_GetTick();
   while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
+    wdg_feed();   /* RX window wait: feed inside the loop */
     if (HAL_GetTick() - rxStart > 5000u) {
       printf("[LoRa] RX wait timeout! reset in 3s\r\n");
       HAL_Delay(3000);
@@ -2867,9 +2914,38 @@ static void openRxWindow3000(void)
   *         GPS 轮的窗口�?MSG_TYPE_GPS 之后，位置不同；
   *         否则末尾窗口里收到的设置指令要拖到下一轮才回包
   */
+/* =====================================================================
+ * @brief  boot reset report frame: 8|dev|rst:CAUSE|cnt| (type 8)
+ * @note   sent once per reboot, first pending-report slot of the first
+ *         window; cloud sees every reboot incl. watchdog/SW resets
+ * ===================================================================== */
+static void sendResetInfoMessage(void)
+{
+  char tx_msg[TX_LEN];
+
+  txCountNext();
+#if TX_COUNT_ENABLE
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s|%lu|",
+           MSG_TYPE_READINFO, deviceName, bootRstCause,
+           (unsigned long)tx_count);
+#else
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s|",
+           MSG_TYPE_READINFO, deviceName, bootRstCause);
+#endif
+  loraTx(tx_msg);
+  printf("[RST] tx -> \"%s\"\r\n", tx_msg);
+}
+
 static void reportPendingMessages(void)
 {
   /* 配置需要上报时，延�?1 秒发送配置消息（开机首次或收到配置更新指令�?*/
+  /* reboot report goes first: 8|dev|rst:CAUSE|cnt| (once per boot) */
+  if (bootRstPending) {
+    HAL_Delay(1000);
+    sendResetInfoMessage();
+    bootRstPending = 0;
+  }
+
   if (configNeedReport) {
     HAL_Delay(1000);
     sendConfigMessage();
@@ -3127,6 +3203,24 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
+  /* HW watchdog first: any hang from here on gets a reset within ~10s */
+  wdg_init();
+
+  /* Reset cause: store for the boot report frame + serial banner */
+  {
+    uint32_t rc = RCC->CSR;
+
+    RCC->CSR |= RCC_CSR_RMVF;
+    if (rc & RCC_CSR_IWDGRSTF)
+      strcpy(bootRstCause, "IWDG");   /* watchdog bite: it caught a hang */
+    else if (rc & RCC_CSR_SFTRSTF)
+      strcpy(bootRstCause, "SW");     /* software reset (tx/rx timeout etc) */
+    else
+      strcpy(bootRstCause, "POR");    /* power-on / brownout */
+    bootRstPending = 1;
+    printf("[BOOT] reset cause: %s\r\n", bootRstCause);
+  }
+
   /* RTC：STOP 深度休眠的时间基准与唤醒源（LSE 优先，无晶振退 LSI�?*/
   rtc_init();
 
@@ -3224,6 +3318,7 @@ int main(void)
           char time_str[20];
           formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
           printf("[WAKE] %s  %d\r\n", time_str, i);
+          wdg_feed();
           HAL_Delay(1000);
         }
 
@@ -3265,6 +3360,7 @@ int main(void)
     }
 
     /* GPS: 取出环形缓冲里的 NMEA 语句并打�?解析 */
+    wdg_feed();   /* main loop spin (continuous-tracking idle) keeps dog happy */
     gpsTask();
 
     HAL_Delay(100);
