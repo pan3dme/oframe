@@ -43,6 +43,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define DEMO_VER     "V1.7"
+#define BATTERY_SKIP_PCT 30   /* battery below this: skip LoRa TX/RX, sleep */
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -3202,11 +3203,23 @@ int main(void)
       if (nowTs >= wakeTime) {
         /* STOP 醒来时钟回落 HSI 8MHz，先恢复 72MHz（SysTick 随之恢复�?*/
         SystemClock_Config();
+        /* battery check first: below threshold -> no LoRa TX/RX at all this
+         * cycle, just re-arm the alarm and sleep. Re-read on every wake, so
+         * once charged back above threshold the normal flow resumes */
+        cachedBatteryPercent = GetBatteryPercent();
+        if (cachedBatteryPercent < BATTERY_SKIP_PCT) {
+          printf("[BAT] %d%% < %d%%, skip LoRa, next cycle\r\n",
+                 (int)cachedBatteryPercent, (int)BATTERY_SKIP_PCT);
+          /* low-batt period has no time sync: RTC drifts, force re-anchor
+           * with relay on the first cycle after recovery */
+          timeSynced = 0;
+          calcNextTxTime();
+          continue;              /* back to main loop, straight to sleep */
+        }
         /* 唤醒 LoRa 并执�?5 秒倒计�?*/
         printf("[WAKE] 5s countdown\r\n");
         loraInitFirstTime();
         /* 读取电量并缓存（每轮上报前刷新一次，上报帧里带的就是它） */
-        cachedBatteryPercent = GetBatteryPercent();
         for (int i = 5; i > 0; i--) {
           char time_str[20];
           formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
