@@ -129,6 +129,7 @@
       <view class="load-more-tip" wx:if="{{isLoadingMore}}">加载中...</view>
       <view class="load-more-tip" wx:elif="{{!hasMore && recordList.length > 0}}">— 没有更多了 —</view>
     </view>
+    <view class="empty-tip" wx:elif="{{recordServerError}}">⚠️ {{recordServerError}}</view>
     <view class="empty-tip" wx:else>{{recordType === 1 ? '暂无定位记录' : recordType === 2 ? '暂无对时记录' : '暂无轨迹记录'}}</view>
   </scroll-view>
 </block>

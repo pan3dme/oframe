@@ -17,6 +17,7 @@ Page({
     deviceId: '',
     deviceInfo: null,
   type8Info: null,   // 发射功率/固件版本（type=8 记录缓存，有才显示）
+  recordServerError: '',  // 服务器异常提示（如502/进程崩溃），空串=正常
     // 页面标题（从数据列表进入为“设备记录”，完整管理为“设备详情”）
     navTitle: '设备详情',
     // 是否隐藏设备信息头部（数据列表模式只展示记录）
@@ -589,7 +590,12 @@ Page({
       },
       success: (res) => {
         console.log('设备轨迹查询返回:', JSON.stringify(res.data))
-        const newRecords = this._parseRecords(res.data)
+        // 服务器异常（如502/进程崩溃）：返回的是 errorMessage 而不是数据，明确提示而不是误显示"暂无记录"
+        const srvErr = (res.data && res.data.errorMessage)
+          ? '服务器暂时不可用，请稍后下拉重试'
+          : ''
+        if (srvErr) console.warn('[记录] 服务器异常(' + res.statusCode + '):', res.data.errorMessage)
+        const newRecords = srvErr ? [] : this._parseRecords(res.data)
         // 记录返回后 type=8 缓存可能已更新（_parseRecords 内扫描），刷新功率/版本显示
         this._refreshType8Info(deviceId)
         if (offset > 0) {
@@ -611,7 +617,8 @@ Page({
             hasMore: newRecords.length >= this.data.recordLimit,
             isLoadingMore: false,
             isRefreshing: false,
-            showRecordTable: newRecords.length > 0
+            showRecordTable: newRecords.length > 0,
+            recordServerError: srvErr
           })
         }
         this._maybeCheckReportInterval()
