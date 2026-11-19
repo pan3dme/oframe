@@ -26,6 +26,8 @@ SKILLS = [
      '把指定设备的全部有效坐标画到卫星地图（散点）'),
     ('battery', '🔋', '电池电量分析',
      '心跳电量收敛分析：消耗速率/充电检测/可用天数'),
+    ('iwdg', '🐕', '看门狗复位设备',
+     '列出近 1~10 天内上报 rst:IWDG 的设备（type=8）'),
     # 后续技能往这里加
 ]
 
@@ -373,6 +375,12 @@ class AnalysisPage(QWidget):
         if key == 'battery':
             from crowui.leftpages.analysis_battery import BatteryDialog
             dlg = BatteryDialog(self.api, self.notify, self)
+            dlg.setWindowModality(Qt.WindowModality.NonModal)
+            dlg.show()
+            return
+        if key == 'iwdg':
+            from crowui.leftpages.analysis_iwdg import IwdgDialog
+            dlg = IwdgDialog(self.api, self.notify, self)
             dlg.setWindowModality(Qt.WindowModality.NonModal)
             dlg.show()
             return

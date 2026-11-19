@@ -240,6 +240,42 @@ class DeviceLogSyncer:
         return {'types': type_counts, 'daily': daily,
                 'devices': devices, 'summary': summary, 'days': days}
 
+    def iwdg_resets(self, days=1, kind='rst:IWDG'):
+        """近 days 天内 type=8 的复位记录（默认只看看门狗 rst:IWDG）
+        → [{'device','time','ts','lorastr'}]，时间正序、去重、剔除脏时间。
+        kind 可传 'rst:POR' / 'rst:SW' / None(全部 rst 类)"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT deviceId, lorastr, time FROM devicelog '
+                "WHERE type=8 AND lorastr LIKE '%rst:%' "
+                'ORDER BY auto_id DESC LIMIT 20000').fetchall()
+        from crowui import wx_codec
+        now = time.time()
+        min_ts = now - max(1, min(10, days)) * 86400
+        seen = set()
+        out = []
+        for did, ls, tm in rows:
+            s = str(ls)
+            if kind and kind.lower() not in s.lower():
+                continue
+            if kind is None and 'rst:' not in s:
+                continue
+            try:
+                ts = wx_codec.parse_time_to_ts(str(tm or ''))
+            except Exception:
+                ts = None
+            # 剔除 1970/2036 等脏时间及时间窗外的记录
+            if ts is None or ts < min_ts or ts > now + 86400:
+                continue
+            key = (did, s, ts)
+            if key in seen:          # 同设备同秒同内容的上报重复，去重
+                continue
+            seen.add(key)
+            out.append({'device': str(did), 'time': str(tm),
+                        'ts': ts, 'lorastr': s})
+        out.sort(key=lambda r: r['ts'])
+        return out
+
     def battery_devices(self):
         """有心跳电量(type=2)记录的设备 → [(deviceId, 次数)] 按次数降序"""
         with self._connect() as conn:
