@@ -42,7 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V1.8"
+#define DEMO_VER     "V1.9"
 #define BATTERY_SKIP_PCT 30   /* battery below this: skip LoRa TX/RX, sleep */
 
 #define TX_LEN       64
@@ -1779,7 +1779,7 @@ static void rtc_ensure_clock_running(void)
       ;
   } else if (sel == RCC_BDCR_RTCSEL_LSE) {
     RCC->BDCR |= RCC_BDCR_LSEON;        /* 备份域本应保留，保险重开 */
-    guard = 8000000;
+    guard = 288000000;                   /* ~4s (was ~111ms, far too short) */
     while (!(RCC->BDCR & RCC_BDCR_LSERDY) && --guard)
       ;
   }
@@ -1801,7 +1801,7 @@ static void rtc_init(void)
      *        太短会把正常晶振误判失败而退�?LSI，且 RTCSEL 写进备份域后
      *        不复位备份域就改不回�?*/
     RCC->BDCR |= RCC_BDCR_LSEON;
-    guard = 120000000;                   /* 72MHz 下约 4~8 �?*/
+    guard = 288000000;                   /* ~4s @72MHz: real chance for LSE */                   /* 72MHz 下约 4~8 �?*/
     while (!(RCC->BDCR & RCC_BDCR_LSERDY) && --guard)
       ;
 
@@ -3221,8 +3221,25 @@ int main(void)
     printf("[BOOT] reset cause: %s\r\n", bootRstCause);
   }
 
+  /* Non-POR boot: wipe the backup domain (= software "power cycle").
+   * IWDG/SW resets do NOT clear BDCR, so a stale/dead RTC source choice
+   * (LSE selected but oscillator dead) survives every reset and loops
+   * forever - the "reboots forever, only power cycle fixes" failure.
+   * This forces rtc_init to re-select LSE/LSI cleanly. Cost: RTC counter
+   * restarts at 0, time re-syncs anyway (RAM state was lost on reset). */
+  if (bootRstCause[0] != 'P') {          /* IWDG or SW reset */
+    __HAL_RCC_PWR_CLK_ENABLE();
+    __HAL_RCC_BKP_CLK_ENABLE();
+    SET_BIT(PWR->CR, PWR_CR_DBP);
+    RCC->BDCR |= RCC_BDCR_BDRST;         /* wipe backup domain */
+    RCC->BDCR &= ~RCC_BDCR_BDRST;
+    printf("[BOOT] backup domain reset (non-POR boot)\r\n");
+  }
+
   /* RTC：STOP 深度休眠的时间基准与唤醒源（LSE 优先，无晶振退 LSI�?*/
+  printf("[BOOT] step: rtc\r\n");
   rtc_init();
+  printf("[BOOT] step: flash load\r\n");
 
   /* �?Flash 加载设备名、配置、发射功率、农场中心坐标和设备台数 */
   loadDeviceNameFromFlash();
@@ -3231,6 +3248,7 @@ int main(void)
   loadSearchTimeFromFlash();
   loadCenterFromFlash();
   loadDeviceCountFromFlash();
+  printf("[BOOT] step: cfg ok\r\n");
 
   /* 打印启动信息 */
   printf("\r\n===== LoRa TX-only boot =====\r\n");
@@ -3795,6 +3813,8 @@ static void gpsPowerOff(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+  printf("[ERR] Error_Handler reached!\r\n");
+  HAL_Delay(50);
   __disable_irq();
   while (1)
   {
