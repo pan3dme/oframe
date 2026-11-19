@@ -42,7 +42,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V1.9"
+#define DEMO_VER     "V2.0"
 #define BATTERY_SKIP_PCT 30   /* battery below this: skip LoRa TX/RX, sleep */
 
 #define TX_LEN       64
@@ -1706,10 +1706,25 @@ static uint32_t getSlotOffsetSec(uint32_t intervalSec)
  * 必须重新 SystemClock_Config() 才能恢复 72MHz 和外设波特率 */
 static uint32_t rtcPrl = 32767;  /* 预分�?1：LSE=32767，LSI=39999 */
 
+/* wait (real ms, dog-fed) for flag bit(s) in an RCC reg to set.
+ * REAL time base, not loop counts: loop counts scale with CPU speed
+ * (288M loops ~= 28s @72MHz, far past the 10s IWDG - bit us hard) */
+static void rcc_wait_flag(volatile uint32_t *reg, uint32_t mask, uint32_t ms)
+{
+  uint32_t t0 = HAL_GetTick();
+
+  while (!(*reg & mask) && (HAL_GetTick() - t0) < ms)
+    wdg_feed();
+}
+
 /* �?RTC 写操作完成（RTOFF=1�?*/
 static void rtc_wait_rtoff(void)
 {
-  uint32_t guard = 200000;
+  /* loop-count guard kept deliberately (NOT HAL_GetTick): this also runs
+   * right after STOP wake where SysTick is frozen - a tick compare that
+   * never advances would loop forever. 2M loops ~0.2s @72MHz, ~1.75s
+   * @8MHz post-wake, both far below the 10s IWDG. */
+  uint32_t guard = 2000000;
   while (!(RTC->CRL & RTC_CRL_RTOFF) && --guard)
     ;
 }
@@ -1718,7 +1733,7 @@ static void rtc_wait_rtoff(void)
  * @note  系统复位�?STOP 唤醒后必须先�?RSF，否则读 RTC 计数得到 0�?*/
 static void rtc_wait_rsf(void)
 {
-  uint32_t guard = 200000;
+  uint32_t guard = 2000000;             /* ~0.2s @72MHz worst case */
   while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
     ;
 }
@@ -1769,19 +1784,14 @@ static void rtc_set_alarm(uint32_t alarmSec)
  * 若备份域已�?LSI 而本不上电没重开 LSI，RTC 将无时钟、计数恒 0 */
 static void rtc_ensure_clock_running(void)
 {
-  uint32_t guard;
   uint32_t sel = RCC->BDCR & RCC_BDCR_RTCSEL;
 
   if (sel == RCC_BDCR_RTCSEL_LSI) {
     RCC->CSR |= RCC_CSR_LSION;
-    guard = 200000;
-    while (!(RCC->CSR & RCC_CSR_LSIRDY) && --guard)
-      ;
+    rcc_wait_flag(&RCC->CSR, RCC_CSR_LSIRDY, 500u);
   } else if (sel == RCC_BDCR_RTCSEL_LSE) {
-    RCC->BDCR |= RCC_BDCR_LSEON;        /* 备份域本应保留，保险重开 */
-    guard = 288000000;                   /* ~4s (was ~111ms, far too short) */
-    while (!(RCC->BDCR & RCC_BDCR_LSERDY) && --guard)
-      ;
+    RCC->BDCR |= RCC_BDCR_LSEON;        /* re-arm LSE (belt & braces) */
+    rcc_wait_flag(&RCC->BDCR, RCC_BDCR_LSERDY, 4000u);
   }
 }
 
@@ -1789,8 +1799,6 @@ static void rtc_ensure_clock_running(void)
  * 备份域已配置过（软件复位/唤醒）则保留计数，不破坏时间 */
 static void rtc_init(void)
 {
-  uint32_t guard;
-
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_RCC_BKP_CLK_ENABLE();
   SET_BIT(PWR->CR, PWR_CR_DBP);         /* 解锁备份域写保护 */
@@ -1801,19 +1809,14 @@ static void rtc_init(void)
      *        太短会把正常晶振误判失败而退�?LSI，且 RTCSEL 写进备份域后
      *        不复位备份域就改不回�?*/
     RCC->BDCR |= RCC_BDCR_LSEON;
-    guard = 288000000;                   /* ~4s @72MHz: real chance for LSE */                   /* 72MHz 下约 4~8 �?*/
-    while (!(RCC->BDCR & RCC_BDCR_LSERDY) && --guard)
-      ;
-
-    if (guard) {                        /* LSE 起振成功 */
+    rcc_wait_flag(&RCC->BDCR, RCC_BDCR_LSERDY, 4000u);
+    if (RCC->BDCR & RCC_BDCR_LSERDY) {  /* LSE up: crystal OK */
       rtcPrl = 32767;
       RCC->BDCR |= RCC_BDCR_RTCSEL_LSE;
-    } else {                            /* �?LSE 晶振 �?LSI */
+    } else {                            /* dead/no crystal: fall back LSI */
       RCC->BDCR &= ~RCC_BDCR_LSEON;
       RCC->CSR |= RCC_CSR_LSION;
-      guard = 200000;
-      while (!(RCC->CSR & RCC_CSR_LSIRDY) && --guard)
-        ;
+      rcc_wait_flag(&RCC->CSR, RCC_CSR_LSIRDY, 500u);
       rtcPrl = 39999;
       RCC->BDCR |= RCC_BDCR_RTCSEL_LSI;
     }
@@ -1833,9 +1836,7 @@ static void rtc_init(void)
   rtc_ensure_clock_running();
 
   /* APB1 复位后等 RTC �?APB 同步完成 */
-  guard = 200000;
-  while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
-    ;
+  rtc_wait_rsf();
 
   /* RTC 闹钟 �?EXTI line 17 事件：STOP 的唤醒源
    * @note  �?WFE 事件模式（EMR）而非中断模式（IMR+NVIC）：
@@ -3233,7 +3234,7 @@ int main(void)
     SET_BIT(PWR->CR, PWR_CR_DBP);
     RCC->BDCR |= RCC_BDCR_BDRST;         /* wipe backup domain */
     RCC->BDCR &= ~RCC_BDCR_BDRST;
-    printf("[BOOT] backup domain reset (non-POR boot)\r\n");
+    printf("[BOOT] bkp wipe\r\n");
   }
 
   /* RTC：STOP 深度休眠的时间基准与唤醒源（LSE 优先，无晶振退 LSI�?*/
@@ -3813,7 +3814,7 @@ static void gpsPowerOff(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  printf("[ERR] Error_Handler reached!\r\n");
+  printf("[ERR] EH\r\n");
   HAL_Delay(50);
   __disable_irq();
   while (1)
