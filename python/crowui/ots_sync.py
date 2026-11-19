@@ -8,6 +8,7 @@
 
 import json
 import os
+import re
 import sqlite3
 import time
 
@@ -19,6 +20,12 @@ _OTS_PAGE = 1000      # OTS get_range 每页条数
 
 SYNC_DONE_CALLBACKS = []   # 同步完成回调（工作线程中调用，UI 方自行派发主线程）
 
+# ---- 脏设备 ID 过滤 ----
+# LoRa 传输误码会造出 v5-1\x03u:.. / w%,!1 / v4-017928... 等乱码 ID，
+# 它们各自只有 1~2 条记录，把「设备数」从 69 台虚增到 330 台。
+_DEVICE_ID_RE = re.compile(r'^v[0-9]+-[0-9]{1,3}$')  # v3-0 / v4-102 / v5-17
+MIN_DEVICE_RECORDS = 3          # 少于 3 条视为误码碎片（3~20 实测设备数恒为 69）
+
 
 class DeviceLogSyncer:
     """devicelog001 本机缓存：同步 + 本地查询"""
@@ -28,6 +35,9 @@ class DeviceLogSyncer:
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.db_path = os.path.join(root, 'res', 'local_cache', 'devicelog001.db')
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        self._whitelist_path = os.path.join(
+            os.path.dirname(self.db_path), 'device_whitelist.txt')
+        self._valid_ids = None
         self._init_db()
 
     # ---------- 本地库 ----------
@@ -49,15 +59,67 @@ class DeviceLogSyncer:
             conn.execute('''CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY, value TEXT)''')
 
+    # ---------- 脏设备 ID 过滤 ----------
+
+    def _extra_ids(self):
+        """用户手动白名单（res/local_cache/device_whitelist.txt，每行一个ID）"""
+        out = set()
+        try:
+            with open(self._whitelist_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    s = line.strip()
+                    if s and not s.startswith('#'):
+                        out.add(s)
+        except OSError:
+            pass
+        return out
+
+    def add_device_whitelist(self, device_id):
+        """把某个不规范但真实的设备ID加入白名单（持久化），下次分析生效"""
+        did = str(device_id).strip()
+        if not did or did in self._extra_ids():
+            return
+        with open(self._whitelist_path, 'a', encoding='utf-8') as f:
+            f.write(did + '\n')
+        self._valid_ids = None
+
+    def canonical_devices(self):
+        """合法设备集合：ID格式规范且记录数≥阈值，或在用户白名单里。
+        全库自学习，同步后缓存自动失效。原始记录一律保留不删。"""
+        if self._valid_ids is not None:
+            return self._valid_ids
+        with self._connect() as conn:
+            rows = conn.execute('SELECT deviceId, COUNT(*) FROM devicelog '
+                                'GROUP BY deviceId').fetchall()
+        extra = self._extra_ids()
+        valid = {str(d) for d, n in rows
+                 if str(d) in extra or
+                 (_DEVICE_ID_RE.match(str(d)) and n >= MIN_DEVICE_RECORDS)}
+        self._valid_ids = valid
+        return valid
+
+    def dirty_devices(self):
+        """被过滤的乱码ID → [(deviceId, 记录数)] 按记录数降序"""
+        with self._connect() as conn:
+            rows = conn.execute('SELECT deviceId, COUNT(*) FROM devicelog '
+                                'GROUP BY deviceId ORDER BY 2 DESC').fetchall()
+        valid = self.canonical_devices()
+        return [(str(d), n) for d, n in rows if str(d) not in valid]
+
     def stats(self):
-        """本地行数 / 设备数 / 最近一次同步时间"""
+        """本地行数 / 有效设备数 / 脏数据 / 最近一次同步时间"""
         with self._connect() as conn:
             total = conn.execute('SELECT COUNT(*) FROM devicelog').fetchone()[0]
-            devices = conn.execute('SELECT COUNT(DISTINCT deviceId) FROM devicelog'
-                                   ).fetchone()[0]
+            dev_rows = conn.execute('SELECT deviceId, COUNT(*) FROM devicelog '
+                                    'GROUP BY deviceId').fetchall()
             last = conn.execute("SELECT value FROM meta WHERE key='last_sync'"
                                 ).fetchone()
-        return {'total': total, 'devices': devices,
+        valid = self.canonical_devices()
+        dirty_rows = sum(n for d, n in dev_rows if str(d) not in valid)
+        return {'total': total, 'devices': len(valid),
+                'total_devices': len(dev_rows),
+                'dirty_devices': len(dev_rows) - len(valid),
+                'dirty_rows': dirty_rows,
                 'last_sync': last[0] if last else ''}
 
     def query_device(self, device_id, limit=100, log_type=None, backward=True):
@@ -101,17 +163,21 @@ class DeviceLogSyncer:
     # ---------- 分析查询 ----------
 
     def gps_devices(self):
-        """有定位/跟踪记录的设备 → [(deviceId, 点数)] 按点数降序"""
+        """有定位/跟踪记录的合法设备 → [(deviceId, 点数)] 按点数降序"""
         with self._connect() as conn:
-            return conn.execute(
+            rows = conn.execute(
                 'SELECT deviceId, COUNT(*) FROM devicelog '
                 'WHERE type IN (1,5) GROUP BY deviceId ORDER BY 2 DESC'
             ).fetchall()
+        valid = self.canonical_devices()
+        return [(d, n) for d, n in rows if str(d) in valid]
 
     def device_gps_points(self, device_id, days=None, max_points=4000):
         """某设备定位/跟踪坐标（时间正序，已抽稀到 max_points 内）
         → [(lat, lng, time_str)]；days=N 只取最近 N 天
         坐标过滤：丢弃测试垃圾值（限中国范围）"""
+        if str(device_id) not in self.canonical_devices():
+            return []
         with self._connect() as conn:
             rows = conn.execute(
                 'SELECT lorastr, time FROM devicelog '
@@ -170,17 +236,23 @@ class DeviceLogSyncer:
             rows_all = conn.execute(
                 'SELECT deviceId, type, lorastr, time FROM devicelog '
                 'ORDER BY auto_id ASC').fetchall()
-            daily = []
-            for i in range(trend_days - 1, -1, -1):
-                d = today - datetime.timedelta(days=i)
-                c = conn.execute(
-                    'SELECT COUNT(*) FROM devicelog WHERE time LIKE ?',
-                    (f'{d.year}/{d.month}/{d.day} %',)).fetchone()[0]
-                daily.append((f'{d.month}/{d.day}', c))
+        valid_ids = self.canonical_devices()
+        # 趋势图按天建索引：只统计合法设备、有效时间、时间窗内的记录
+        day_keys = {}
+        for i in range(trend_days - 1, -1, -1):
+            d = today - datetime.timedelta(days=i)
+            day_keys[(d.year, d.month, d.day)] = f'{d.month}/{d.day}'
+        daily_counts = dict.fromkeys(day_keys, 0)
 
         type_counts = {}
         dev = {}
+        dirty_rows = 0
+        dirty_ids = set()
         for did, typ, lorastr, tm in rows_all:
+            if str(did) not in valid_ids:
+                dirty_rows += 1          # 乱码设备ID的记录不参与任何分析
+                dirty_ids.add(str(did))
+                continue
             try:
                 ts = wx_codec.parse_time_to_ts(str(tm or ''))
             except (ValueError, OSError):
@@ -189,6 +261,16 @@ class DeviceLogSyncer:
             if min_ts is not None and (not valid_ts or ts < min_ts):
                 continue     # 时间窗过滤：过老/无时间的数据不参与分析
             type_counts[typ] = type_counts.get(typ, 0) + 1
+            ds = str(tm or '')
+            head = ds.split(' ')[0] if ' ' in ds else ds
+            bits = head.split('/')
+            if len(bits) == 3:
+                try:
+                    key = (int(bits[0]), int(bits[1]), int(bits[2]))
+                    if key in daily_counts:
+                        daily_counts[key] += 1
+                except ValueError:
+                    pass
             d = dev.setdefault(did, {'count': 0, 'last_ts': None,
                                      'battery': None, 'gps_ok': 0,
                                      'gps_total': 0, 'tmap': {}})
@@ -236,7 +318,10 @@ class DeviceLogSyncer:
                           d['battery'] < 20),
             'gps_total': sum(d['gps_total'] for d in devices),
             'gps_ok': sum(d['gps_ok'] for d in devices),
+            'dirty_devices': len(dirty_ids),
+            'dirty_rows': dirty_rows,
         }
+        daily = [(day_keys[k], daily_counts[k]) for k in day_keys]
         return {'types': type_counts, 'daily': daily,
                 'devices': devices, 'summary': summary, 'days': days}
 
@@ -252,9 +337,12 @@ class DeviceLogSyncer:
         from crowui import wx_codec
         now = time.time()
         min_ts = now - max(1, min(10, days)) * 86400
+        valid = self.canonical_devices()
         seen = set()
         out = []
         for did, ls, tm in rows:
+            if str(did) not in valid:
+                continue
             s = str(ls)
             if kind and kind.lower() not in s.lower():
                 continue
@@ -277,15 +365,19 @@ class DeviceLogSyncer:
         return out
 
     def battery_devices(self):
-        """有心跳电量(type=2)记录的设备 → [(deviceId, 次数)] 按次数降序"""
+        """有心跳电量(type=2)记录的合法设备 → [(deviceId, 次数)] 按次数降序"""
         with self._connect() as conn:
-            return conn.execute(
+            rows = conn.execute(
                 'SELECT deviceId, COUNT(*) FROM devicelog WHERE type=2 '
                 'GROUP BY deviceId ORDER BY 2 DESC').fetchall()
+        valid = self.canonical_devices()
+        return [(d, n) for d, n in rows if str(d) in valid]
 
     def device_battery(self, device_id, days=None):
         """某设备心跳电量序列（type=2，时间正序）
         → [(time_str, ts, battery%)]；已剔除解析失败/0-100 外的值"""
+        if str(device_id) not in self.canonical_devices():
+            return []
         with self._connect() as conn:
             rows = conn.execute(
                 'SELECT lorastr, time FROM devicelog '
@@ -348,6 +440,7 @@ class DeviceLogSyncer:
                 result = self._sync_http(conn, progress)
             conn.execute("INSERT OR REPLACE INTO meta VALUES ('last_sync', ?)",
                          (time.strftime('%Y-%m-%d %H:%M:%S'),))
+        self._valid_ids = None      # 同步后合法设备集合需重新学习
         result['total'] = self.stats()['total']
         result['elapsed'] = round(time.time() - t0, 1)
         for cb in list(SYNC_DONE_CALLBACKS):     # 通知分析页自动刷新

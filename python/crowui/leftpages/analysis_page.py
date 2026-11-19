@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QFrame, QGridLayout, QSizePolicy,
                              QStackedWidget, QScrollArea, QTableWidget,
                              QTableWidgetItem, QHeaderView, QAbstractItemView,
-                             QComboBox)
+                             QComboBox, QDialog)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont
 
@@ -169,9 +169,25 @@ class AnalysisPage(QWidget):
         g.setHorizontalSpacing(24)
         g.setVerticalSpacing(6)
         self.total_label = self._stat_cell(g, 0, 0, '📦 本机缓存记录')
-        self.device_label = self._stat_cell(g, 0, 1, '📱 覆盖设备')
+        self.device_label = self._stat_cell(g, 0, 1, '📱 有效设备')
         self.last_sync_label = self._stat_cell(g, 0, 2, '⏱ 上次同步')
+        self.dirty_label = self._stat_cell(g, 0, 3, '🧹 脏设备ID(已过滤)')
         lay.addWidget(card)
+
+        # ---- 脏数据说明 + 查看入口 ----
+        dirty_row = QHBoxLayout()
+        self.dirty_hint = QLabel('')
+        self.dirty_hint.setStyleSheet('color:#999; font-size:11px;'
+                                      'background:transparent;')
+        dirty_row.addWidget(self.dirty_hint)
+        dirty_row.addStretch()
+        dirty_btn = QPushButton('查看被过滤的 ID →')
+        dirty_btn.setFixedHeight(24)
+        dirty_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        dirty_btn.setStyleSheet(theme.GRAY_BUTTON_QSS)
+        dirty_btn.clicked.connect(self._show_dirty_devices)
+        dirty_row.addWidget(dirty_btn)
+        lay.addLayout(dirty_row)
 
         # ---- 分析技能 ----
         sec = QLabel('分析技能')
@@ -222,6 +238,7 @@ class AnalysisPage(QWidget):
         tbl_v = QVBoxLayout(table_card)
         tbl_v.setContentsMargins(14, 10, 14, 10)
         t2 = QLabel('📡 设备健康总览（按最后上报排序，点击表头可排序）')
+        self.dev_table_title = t2
         t2.setStyleSheet('color:#555; font-size:12px; font-weight:600;'
                          'background:transparent;')
         tbl_v.addWidget(t2)
@@ -402,6 +419,11 @@ class AnalysisPage(QWidget):
         self.total_label.setText(f"{st['total']:,} 条")
         self.device_label.setText(f"{st['devices']} 台")
         self.last_sync_label.setText(st['last_sync'] or '未同步')
+        self.dirty_label.setText(f"{st['dirty_devices']} 台")
+        self.dirty_hint.setText(
+            f"⚠ 库里共 {st['total_devices']} 个设备ID，其中 "
+            f"{st['dirty_devices']} 个是传输误码/测试ID（{st['dirty_rows']:,} 条记录）"
+            f"，已从全部分析中剔除；原始库未改动")
         # 聚合分析放工作线程，避免卡界面
         days = self._cur_days()
         syncer = self._syncer
@@ -423,6 +445,9 @@ class AnalysisPage(QWidget):
             f"📈 上报量趋势（近 {len(r['daily'])} 天"
             f"{'' if days in (None, 14) else '，受时间段过滤影响'}）")
         self.trend_bars.set_data(r['daily'])
+        self.dev_table_title.setText(
+            f'📡 设备健康总览（本时间段 {len(r["devices"])} 台有上报，'
+            f'点击表头可排序；选「全部」可看所有有效设备）')
         self._fill_device_table(r['devices'])
         self._fill_composition(r['types'], s)
 
@@ -468,4 +493,87 @@ class AnalysisPage(QWidget):
                    if summary['gps_total'] else 0)
         parts.append(f'定位成功率（全群）{gps_pct:.0f}%'
                      f'（有效 {summary["gps_ok"]:,} / 定位类 {summary["gps_total"]:,} 条）')
-        self.comp_label.setText('  ·  '.join(parts[:-1]) + '\n' + parts[-1])
+        extra = (f"🧹 本次分析已剔除 {summary['dirty_devices']} 个乱码设备ID"
+                 f"（{summary['dirty_rows']:,} 条记录），不计入上方任何指标")
+        self.comp_label.setText('  ·  '.join(parts[:-1]) + '\n'
+                                + parts[-1] + '\n' + extra)
+
+    # ==================== 脏设备ID清单 ====================
+
+    def _show_dirty_devices(self):
+        """列出被过滤的乱码ID，可把个别真实设备加白名单"""
+        rows = self._syncer.dirty_devices()
+        dlg = QDialog(self)
+        dlg.setWindowTitle('被过滤的设备ID')
+        dlg.setMinimumSize(560, 460)
+        lay = QVBoxLayout(dlg)
+        tip = QLabel(
+            '以下 ID 不符合「v批次-编号」格式或记录数不足 3 条，多为 LoRa '
+            '传输误码产生的碎片，已从分析中剔除（数据库记录保留）。\n'
+            '若其中有你的真实设备，选中后点「加入白名单」即可恢复统计。')
+        tip.setWordWrap(True)
+        tip.setStyleSheet('color:#666; font-size:11px;')
+        lay.addWidget(tip)
+        table = QTableWidget(0, 2)
+        table.setHorizontalHeaderLabels(['设备ID（乱码）', '记录数'])
+        table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setShowGrid(False)
+        table.setAlternatingRowColors(True)
+        table.setStyleSheet(
+            'QTableWidget { background:#FFF; border:1px solid #eee;'
+            ' font-size:11px; }'
+            'QHeaderView::section { background:#F7F7F7; border:none;'
+            ' padding:4px; color:#666; }')
+        table.setRowCount(len(rows))
+        for i, (did, n) in enumerate(rows):
+            table.setItem(i, 0, QTableWidgetItem(repr(did)))
+            it = QTableWidgetItem(str(n))
+            it.setData(Qt.ItemDataRole.DisplayRole, int(n))
+            table.setItem(i, 1, it)
+        table.setSortingEnabled(True)
+        table.sortItems(1, Qt.SortOrder.DescendingOrder)
+        lay.addWidget(table, stretch=1)
+
+        btn_row = QHBoxLayout()
+        self._dirty_count_lbl = QLabel(f'共 {len(rows)} 个')
+        self._dirty_count_lbl.setStyleSheet('color:#888; font-size:11px;')
+        btn_row.addWidget(self._dirty_count_lbl)
+        btn_row.addStretch()
+        add_btn = QPushButton('加入白名单')
+        add_btn.setFixedSize(100, 30)
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.setStyleSheet(theme.GREEN_BUTTON_QSS)
+        add_btn.clicked.connect(lambda: self._add_whitelist(table, dlg))
+        btn_row.addWidget(add_btn)
+        close_btn = QPushButton('关闭')
+        close_btn.setFixedSize(70, 30)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setStyleSheet(theme.GRAY_BUTTON_QSS)
+        close_btn.clicked.connect(dlg.close)
+        btn_row.addWidget(close_btn)
+        lay.addLayout(btn_row)
+        dlg.setWindowModality(Qt.WindowModality.NonModal)
+        self._dirty_dialog = dlg      # 保活，防止非模态窗口被回收
+        dlg.show()
+
+    def _add_whitelist(self, table, dlg):
+        r = table.currentRow()
+        if r < 0:
+            self.notify('请先选中一行')
+            return
+        raw = table.item(r, 0).text()
+        try:
+            import ast
+            did = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            did = raw
+        self._syncer.add_device_whitelist(did)
+        self.notify(f'已把 {did} 加入白名单，正在重算…')
+        dlg.close()
+        self.refresh_stats()
