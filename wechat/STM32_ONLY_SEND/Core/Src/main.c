@@ -33,6 +33,8 @@
 #include "pan3029_rf.h"
 #include "pan3029_port.h"
 #include "radio.h"
+#include "reliability.h"
+#include "nvstore.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -161,10 +163,11 @@ static uint8_t  upgpsRetryOneShot = 0; /* UPGPS 跟踪失败结束后的一次�
                                         * 只允许下轮做一次类�?1 搜星上报�?
                                         * 这次仍无坐标就清零，之后不再重试
                                         * �?0 分钟穷尽+1 次重试都失败=环境真无信号�?*/
-static uint32_t lastLoRaRxTs = 0;      /* 最近一次收�?LoRa 数据的时�?绝对时间�?
-                                        * 0=尚未初始�?开机后首次检查时取当前�?�?
-                                        * 链路沉默看门狗用：工作时间内 2 小时没收�?
-                                        * 任何 LoRa 信息 �?NVIC_SystemReset 真复�?*/
+/* Link health uses monotonic RTC time, independent of wall-clock sync. */
+static uint32_t linkLastRtc, linkSilentSec;
+static uint8_t linkPollReady, linkWasEnabled, linkRecoveryStep;
+static uint8_t clockFallback;
+
 /* 提前搜星结果（需�?GPS 的上报轮，唤醒后先搜星再等到点上报，保证时间点不后移�?*/
 static uint8_t  gpsPreSearched = 0;    /* 1=本轮已提前搜过星，OnMaster 直接取结果上�?*/
 static uint32_t gpsSearchMaxMs = GPS_SEARCH_DEFAULT_MIN * 60000UL; /* GPS search max ms; searchtime cmd 1~10 min, flash-saved */
@@ -363,8 +366,12 @@ static void parseNmeaLine(char *line);
 static uint8_t nmeaField(const char *line, uint8_t n, char *dst, uint8_t dstLen);
 static int32_t nmeaToDeg(const char *v, char dir);
 static uint8_t gpsFixFresh(void);
-static uint8_t isInWorkWindow(void);      /* 当前是否在工作时间段�?config �?�? */
 static void linkSilenceCheck(void);
+static void linkNoteValid(void);
+static uint32_t rtc_read_counter(void);
+static uint8_t configTimeFieldValid(const char *f);
+static void getConfigFieldStrFrom(const char *src, uint8_t idx, char *out, uint8_t outLen);
+static void nvSaveOrReset(uint32_t page, uint32_t magic, const void *data, uint32_t length);
 static void wdg_init(void);               /* HW watchdog: ~10s, fed in chunked sleep */
 static void wdg_feed(void);       /* 链路沉默看门�?2小时无LoRa→真复位) */
 static void    printTimeWindows(const char *tag);   /* 打印当前生效的两个时间段 */
@@ -394,7 +401,7 @@ static uint8_t  GetBatteryPercent(void);    /* ADC �?�?电池电压 �?电量�
   */
 PUTCHAR_PROTOTYPE
 {
-  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 20u);
   return ch;
 }
 
@@ -404,17 +411,10 @@ PUTCHAR_PROTOTYPE
   */
 static void loadDeviceNameFromFlash(void)
 {
-  uint32_t magic = *(volatile uint32_t *)DEVNAME_FLASH_ADDR;
-  if (magic == DEVNAME_MAGIC) {
-    const char *p = (const char *)(DEVNAME_FLASH_ADDR + 4);
-    uint8_t i;
-    for (i = 0; i < sizeof(deviceName) - 1 && p[i] != '\0'; i++)
-      deviceName[i] = p[i];
-    deviceName[i] = '\0';
-    printf("[FLASH] name loaded: %s\r\n", deviceName);
-  } else {
-    printf("[FLASH] no name, default: %s\r\n", deviceName);
-  }
+  char value[sizeof(deviceName)];
+  if (NvStore_Load(DEVNAME_FLASH_ADDR, DEVNAME_MAGIC, value, sizeof(value), 1u) &&
+      value[0] && strlen(value) <= 5u)
+    strcpy(deviceName, value);
 }
 
 /**
@@ -423,29 +423,7 @@ static void loadDeviceNameFromFlash(void)
   */
 static void saveDeviceNameToFlash(const char *name)
 {
-  FLASH_EraseInitTypeDef eraseInit;
-  uint32_t pageError = 0;
-  uint8_t i;
-
-  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseInit.PageAddress = DEVNAME_FLASH_ADDR;
-  eraseInit.NbPages = 1;
-
-  HAL_FLASH_Unlock();
-  HAL_FLASHEx_Erase(&eraseInit, &pageError);
-
-  /* 写入魔术�?*/
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DEVNAME_FLASH_ADDR, DEVNAME_MAGIC);
-
-  /* 写入设备名字符串（按半字写入�?*/
-  for (i = 0; i < strlen(name) + 1; i += 2) {
-    uint16_t halfWord = name[i] | (name[i + 1] << 8);
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, DEVNAME_FLASH_ADDR + 4 + i,
-                      halfWord);
-  }
-
-  HAL_FLASH_Lock();
-  printf("[FLASH] name saved: %s\r\n", name);
+  nvSaveOrReset(DEVNAME_FLASH_ADDR, DEVNAME_MAGIC, name, strlen(name) + 1u);
 }
 
 /**
@@ -453,17 +431,14 @@ static void saveDeviceNameToFlash(const char *name)
   */
 static void loadConfigFromFlash(void)
 {
-  uint32_t magic = *(volatile uint32_t *)CONFIG_FLASH_ADDR;
-  if (magic == CONFIG_MAGIC) {
-    const char *p = (const char *)(CONFIG_FLASH_ADDR + 4);
-    uint8_t i;
-    for (i = 0; i < sizeof(configStr) - 1 && p[i] != '\0'; i++)
-      configStr[i] = p[i];
-    configStr[i] = '\0';
-    printf("[FLASH] cfg loaded: %s\r\n", configStr);
-  } else {
-    printf("[FLASH] no cfg, default: %s\r\n", configStr);
-  }
+  char value[sizeof(configStr)], wf[8], gf[8];
+  uint32_t minutes;
+  if (!NvStore_Load(CONFIG_FLASH_ADDR, CONFIG_MAGIC, value, sizeof(value), 1u)) return;
+  minutes = (uint32_t)atoi(value);
+  getConfigFieldStrFrom(value, 1u, wf, sizeof(wf));
+  getConfigFieldStrFrom(value, 2u, gf, sizeof(gf));
+  if (minutes >= 1u && minutes <= 60u && configTimeFieldValid(wf) &&
+      configTimeFieldValid(gf)) strcpy(configStr, value);
 }
 
 /**
@@ -471,27 +446,7 @@ static void loadConfigFromFlash(void)
   */
 static void saveConfigToFlash(const char *str)
 {
-  FLASH_EraseInitTypeDef eraseInit;
-  uint32_t pageError = 0;
-  uint8_t i;
-
-  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseInit.PageAddress = CONFIG_FLASH_ADDR;
-  eraseInit.NbPages = 1;
-
-  HAL_FLASH_Unlock();
-  HAL_FLASHEx_Erase(&eraseInit, &pageError);
-
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CONFIG_FLASH_ADDR, CONFIG_MAGIC);
-
-  for (i = 0; i < strlen(str) + 1; i += 2) {
-    uint16_t halfWord = str[i] | (str[i + 1] << 8);
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, CONFIG_FLASH_ADDR + 4 + i,
-                      halfWord);
-  }
-
-  HAL_FLASH_Lock();
-  printf("[FLASH] cfg saved: %s\r\n", str);
+  nvSaveOrReset(CONFIG_FLASH_ADDR, CONFIG_MAGIC, str, strlen(str) + 1u);
 }
 
 /**
@@ -500,18 +455,9 @@ static void saveConfigToFlash(const char *str)
   */
 static void loadDeviceCountFromFlash(void)
 {
-  uint32_t magic = *(volatile uint32_t *)DEVCNT_FLASH_ADDR;
-  if (magic == DEVCNT_MAGIC) {
-    uint8_t saved = (uint8_t)(*(volatile uint32_t *)(DEVCNT_FLASH_ADDR + 4));
-    if (saved >= 1 && saved <= 60) {
-      deviceCount = saved;
-      printf("[FLASH] devcnt loaded: %d\r\n", deviceCount);
-    } else {
-      printf("[FLASH] devcnt bad(%d), default %d\r\n", saved, deviceCount);
-    }
-  } else {
-    printf("[FLASH] no devcnt, default: %d\r\n", deviceCount);
-  }
+  uint32_t value;
+  if (NvStore_Load(DEVCNT_FLASH_ADDR, DEVCNT_MAGIC, &value, sizeof(value), 0u) &&
+      value >= 1u && value <= 60u) deviceCount = (uint8_t)value;
 }
 
 /**
@@ -519,44 +465,17 @@ static void loadDeviceCountFromFlash(void)
   */
 static void saveDeviceCountToFlash(uint8_t count)
 {
-  FLASH_EraseInitTypeDef eraseInit;
-  uint32_t pageError = 0;
-
-  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseInit.PageAddress = DEVCNT_FLASH_ADDR;
-  eraseInit.NbPages = 1;
-
-  HAL_FLASH_Unlock();
-  HAL_FLASHEx_Erase(&eraseInit, &pageError);
-
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DEVCNT_FLASH_ADDR, DEVCNT_MAGIC);
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, DEVCNT_FLASH_ADDR + 4, count);
-
-  HAL_FLASH_Lock();
-  printf("[FLASH] devcnt saved: %d\r\n", count);
+  uint32_t value = count;
+  nvSaveOrReset(DEVCNT_FLASH_ADDR, DEVCNT_MAGIC, &value, sizeof(value));
 }
 /**
   * @brief  Load tx power from flash (restore after damage, power funcs)
   */
 static void loadTxPowerFromFlash(void)
 {
-  uint32_t magic = *(volatile uint32_t *)TXPWR_FLASH_ADDR;
-
-  if (magic == TXPWR_MAGIC) {
-    uint8_t saved = (uint8_t)(*(volatile uint32_t *)(TXPWR_FLASH_ADDR + 4));
-
-    if (saved >= 10 && saved <= 20) {
-      currentTxPower = saved;
-      printf("[FLASH] pwr loaded: %d dBm\r\n", saved);
-    } else {
-      currentTxPower = DEFAULT_PWR;
-      printf("[FLASH] pwr %d bad, default %d\r\n",
-             saved, DEFAULT_PWR);
-    }
-  } else {
-    currentTxPower = DEFAULT_PWR;
-    printf("[FLASH] pwr default: %d dBm\r\n", DEFAULT_PWR);
-  }
+  uint32_t value;
+  if (NvStore_Load(TXPWR_FLASH_ADDR, TXPWR_MAGIC, &value, sizeof(value), 0u) &&
+      value >= 10u && value <= 20u) currentTxPower = (uint8_t)value;
 }
 
 /**
@@ -564,20 +483,8 @@ static void loadTxPowerFromFlash(void)
   */
 static void saveTxPowerToFlash(uint8_t power)
 {
-  FLASH_EraseInitTypeDef eraseInit;
-  uint32_t pageError = 0;
-
-  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseInit.PageAddress = TXPWR_FLASH_ADDR;
-  eraseInit.NbPages = 1;
-
-  HAL_FLASH_Unlock();
-  HAL_FLASHEx_Erase(&eraseInit, &pageError);
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, TXPWR_FLASH_ADDR, TXPWR_MAGIC);
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, TXPWR_FLASH_ADDR + 4, (uint32_t)power);
-
-  HAL_FLASH_Lock();
-  printf("[FLASH] pwr saved: %d dBm\r\n", power);
+  uint32_t value = power;
+  nvSaveOrReset(TXPWR_FLASH_ADDR, TXPWR_MAGIC, &value, sizeof(value));
 }
 
 
@@ -586,24 +493,10 @@ static void saveTxPowerToFlash(uint8_t power)
   */
 static void loadSearchTimeFromFlash(void)
 {
-  uint32_t magic = *(volatile uint32_t *)SRCHTM_FLASH_ADDR;
-
-  if (magic == SRCHTM_MAGIC) {
-    uint32_t saved = *(volatile uint32_t *)(SRCHTM_FLASH_ADDR + 4);
-
-    if (saved >= GPS_SEARCH_MIN_MIN * 60000UL &&
-        saved <= GPS_SEARCH_MAX_MIN * 60000UL) {
-      gpsSearchMaxMs = saved;
-      printf("[FLASH] searchtime loaded: %lus\r\n",
-             (unsigned long)(gpsSearchMaxMs / 1000u));
-    } else {
-      printf("[FLASH] searchtime %lu bad, default\r\n",
-             (unsigned long)saved);
-    }
-  } else {
-    printf("[FLASH] no searchtime, default %lus\r\n",
-           (unsigned long)(gpsSearchMaxMs / 1000u));
-  }
+  uint32_t value;
+  if (NvStore_Load(SRCHTM_FLASH_ADDR, SRCHTM_MAGIC, &value, sizeof(value), 0u) &&
+      value >= GPS_SEARCH_MIN_MIN * 60000u && value <= GPS_SEARCH_MAX_MIN * 60000u)
+    gpsSearchMaxMs = value;
 }
 
 /**
@@ -611,31 +504,16 @@ static void loadSearchTimeFromFlash(void)
   */
 static void saveSearchTimeToFlash(uint32_t ms)
 {
-  FLASH_EraseInitTypeDef eraseInit;
-  uint32_t pageError = 0;
-
-  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseInit.PageAddress = SRCHTM_FLASH_ADDR;
-  eraseInit.NbPages = 1;
-
-  HAL_FLASH_Unlock();
-  HAL_FLASHEx_Erase(&eraseInit, &pageError);
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, SRCHTM_FLASH_ADDR, SRCHTM_MAGIC);
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, SRCHTM_FLASH_ADDR + 4, ms);
-
-  HAL_FLASH_Lock();
-  printf("[FLASH] searchtime saved: %lus\r\n", (unsigned long)(ms / 1000u));
+  nvSaveOrReset(SRCHTM_FLASH_ADDR, SRCHTM_MAGIC, &ms, sizeof(ms));
 }
 /**
  * @brief  �?Flash 读出一个以 '\0' 结尾的字符串
  */
-static void flashReadString(uint32_t addr, char *dst, int dstSize)
+static void nvSaveOrReset(uint32_t page, uint32_t magic,
+                          const void *data, uint32_t length)
 {
-  const char *p = (const char *)addr;
-  int i;
-  for (i = 0; i < dstSize - 1 && p[i] != '\0'; i++)
-    dst[i] = p[i];
-  dst[i] = '\0';
+  if (!NvStore_Save(page, magic, data, length)) Safety_Reset(RESET_FLASH);
+
 }
 
 /**
@@ -643,17 +521,7 @@ static void flashReadString(uint32_t addr, char *dst, int dstSize)
  * @note   STM32F1 只能半字编程；用 i+1<=len 兜底�?
  *         避免读到源串 '\0' 之后的越界字�?
  */
-static void flashWriteString(uint32_t addr, const char *str)
-{
-  int len = (int)strlen(str);
-  int i;
-  for (i = 0; i <= len; i += 2) {
-    uint16_t halfWord = (uint16_t)str[i];
-    if (i + 1 <= len)
-      halfWord |= ((uint16_t)str[i + 1]) << 8;
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, addr + i, halfWord);
-  }
-}
+/* String writes are handled by the journal, including the final NUL. */
 
 /**
  * @brief  �?Flash 加载农场中心坐标
@@ -661,25 +529,17 @@ static void flashWriteString(uint32_t addr, const char *str)
  */
 static void loadCenterFromFlash(void)
 {
-  uint32_t magic = *(volatile uint32_t *)CENTER_FLASH_ADDR;
-  if (magic == CENTER_MAGIC) {
-    flashReadString(CENTER_FLASH_ADDR + 4, centerStr, sizeof(centerStr));
-    printf("[FLASH] center loaded: %s\r\n", centerStr);
-    /* ͬ����ֵ���棺GPS �ϱ����ƫ���ã�����ʧ������Ϊδ�����ģ� */
-    {
-      int32_t la = 0, lo = 0;
-      const char *comma = strchr(centerStr, ',');
-      if (comma != NULL &&
-          parseDeg1e5(centerStr, &la) && parseDeg1e5(comma + 1, &lo)) {
-        centerLat1e5 = la;
-        centerLng1e5 = lo;
-        centerValid  = 1;
-      }
-    }
-  } else {
-    centerStr[0] = '\0';
-    centerValid = 0;
-    printf("[FLASH] no center\r\n");
+  char value[sizeof(centerStr)];
+  int32_t la, lo;
+  const char *comma;
+  if (!NvStore_Load(CENTER_FLASH_ADDR, CENTER_MAGIC, value, sizeof(value), 1u)) return;
+  comma = strchr(value, ',');
+  if (comma && parseDeg1e5(value, &la) && parseDeg1e5(comma + 1, &lo) &&
+      centerCoordValid(la, lo)) {
+    strcpy(centerStr, value);
+    centerLat1e5 = la;
+    centerLng1e5 = lo;
+    centerValid = 1u;
   }
 }
 
@@ -689,21 +549,7 @@ static void loadCenterFromFlash(void)
  */
 static void saveCenterToFlash(const char *str)
 {
-  FLASH_EraseInitTypeDef eraseInit;
-  uint32_t pageError = 0;
-
-  eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseInit.PageAddress = CENTER_FLASH_ADDR;
-  eraseInit.NbPages = 1;
-
-  HAL_FLASH_Unlock();
-  HAL_FLASHEx_Erase(&eraseInit, &pageError);
-
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CENTER_FLASH_ADDR, CENTER_MAGIC);
-  flashWriteString(CENTER_FLASH_ADDR + 4, str);
-
-  HAL_FLASH_Lock();
-  printf("[FLASH] center saved: %s\r\n", str);
+  nvSaveOrReset(CENTER_FLASH_ADDR, CENTER_MAGIC, str, strlen(str) + 1u);
 }
 
 /**
@@ -726,41 +572,21 @@ static uint8_t centerCoordValid(int32_t lat, int32_t lng)
 static void loraInitFirstTime(void)
 {
   uint8_t tries;
-
-  printf("LoRa init...\r\n");
-
-  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
-  /* hard reset pulse on EVERY wake: guarantees the module starts from a
-   * clean chip state after rf_deepsleep / STOP sleep (20ms, negligible) */
-  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
-  HAL_Delay(20);
-  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
-  HAL_Delay(100);
-
-  /* retry up to 3 times with a fresh RST pulse before giving up */
-  for (tries = 0; tries < 3; tries++) {
-    if (rf_init() == RF_OK)
-      break;
-    printf("RF init fail #%d, rst pulse, retry\r\n", tries + 1);
+  Safety_Begin(STAGE_RADIO, 10000u);
+  for (tries = 0u; tries < 3u; ++tries) {
+    wdg_feed();
+    HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
-    HAL_Delay(20);
+    HAL_Delay(20u);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
-    HAL_Delay(200);
+    HAL_Delay(100u);
+    if (rf_init() == RF_OK && rf_set_default_para() == RF_OK &&
+        rf_set_tx_power(currentTxPower) == RF_OK) break;
+    HAL_Delay(200u);
   }
-  if (tries >= 3) {
-    /* module dead / power unstable: log, let it settle, reboot like POR */
-    printf("RF init fail x3, reset in 3s\r\n");
-    HAL_Delay(3000);
-    printf("[RST] NVIC_SystemReset() ...\r\n");
-    NVIC_SystemReset();              /* noreturn */
-  }
-  printf("RF init OK\r\n");
-
-  rf_set_default_para();
-  rf_set_tx_power(currentTxPower);
-
-  loraInitialized = 1;
-
+  if (tries == 3u) Safety_Reset(RESET_RADIO);
+  loraInitialized = 1u;
+  Safety_Begin(STAGE_MAIN, 15000u);
   printf("[LoRa] %dM SF%d PWR=%d\r\n",
          DEFAULT_FREQ / 1000000, DEFAULT_SF, currentTxPower);
 }
@@ -786,21 +612,17 @@ static void txCountNext(void)
  */
 static void loraTx(const char *msg)
 {
-  uint32_t tx_time = 1000;
-  uint32_t start = HAL_GetTick();
-
-  rf_single_tx_data((uint8_t *)msg, strlen(msg) + 1, &tx_time);
-  /* TX_DONE �?EXTI2 中断 rf_irq_process() 置位。若模块半死/IRQ 脉冲丢失�?
-   * 这里会永久空�?�?整机死机（现场死机最大嫌疑点）�? 秒超时复位自�?*/
+  uint32_t tx_time = 1000u, start = HAL_GetTick();
+  Safety_Begin(STAGE_TX, 6000u);
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+  if (rf_single_tx_data((uint8_t *)msg, strlen(msg) + 1u, &tx_time) != RF_OK)
+    Safety_Reset(RESET_TX);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE) {
-    wdg_feed();   /* TX_DONE wait can stack up to 5s+; feed inside the loop */
-    if (HAL_GetTick() - start > 5000u) {
-      printf("[LoRa] TX wait timeout! reset in 3s\r\n");
-      HAL_Delay(3000);
-      NVIC_SystemReset();            /* 复位重跑初始化，等价断电重启 */
-    }
+    if ((uint32_t)(HAL_GetTick() - start) >= 5000u) Safety_Reset(RESET_TX);
+    wdg_feed();
   }
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
+  Safety_Begin(STAGE_MAIN, 15000u);
 }
 
 /**
@@ -1236,9 +1058,11 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     /* 把本轮补齐到 GPS_CONT_INTERVAL_SEC 秒：搜星只用 10 秒也要占满，
      * 搜星耗时超过它则本轮自然以搜星耗时为准，不再额外等待�?
      * 期间不休眠，但必须持续跑 gpsTask()，否�?512 字节环形缓冲会堆满丢�?*/
+    Safety_Begin(STAGE_TRACK_WAIT, (uint32_t)GPS_CONT_INTERVAL_SEC * 1000u + 2000u);
     while ((HAL_GetTick() - slotStart) <
            (uint32_t)GPS_CONT_INTERVAL_SEC * 1000u) {
       gpsTask();
+      wdg_feed();
       HAL_Delay(100);
     }
   }
@@ -1310,7 +1134,7 @@ static void calcNextTxTime(void)
   }
 
   if (fastMode)
-    printf("[SCHED] fast boot 3 rounds\r\n", (unsigned)fastStartRounds);
+    printf("[FAST] %u\r\n", (unsigned)fastStartRounds);
 }
 
 /**
@@ -1324,9 +1148,8 @@ static void calcNextTxTime(void)
  */
 static void scheduleAfterSync(void)
 {
-  /* 对时�?RTC 时间基准整体跳变：链路看门狗的活性时刻必须同步刷新，
-   * 否则"已用�?会被算成天文数字，对时后第一次检查就误重�?*/
-  lastLoRaRxTs = getCurrentTimestamp();
+  /* Do not charge a wall-clock jump as elapsed link time. */
+  linkLastRtc = rtc_read_counter();
 
   if (tx_count == 0) {
     nextTxTimestamp = getCurrentTimestamp();   /* 立即 �?主循环下一圈就上报 */
@@ -1447,7 +1270,7 @@ static uint8_t configTimeFieldValid(const char *f)
     return 0;                        /* �?/ 1 �?/ 3 位以�?都非�?*/
   if (strchr(TIME_DICT, f[0]) == NULL || strchr(TIME_DICT, f[1]) == NULL)
     return 0;                        /* 字符不在 base62 字典�?*/
-  return 1;
+  return twoCharToIndex(f) >= 0 && twoCharToIndex(f) <= 275;
 }
 
 /**
@@ -1546,93 +1369,76 @@ static uint8_t gpsNeededTimelyAt(uint32_t ts)
   if (gpsWaitReport)
     return 0;                        /* 类型5：upgps 不受约束，现场搜 */
   if (gpsNeedRetry)
-    return 1;                        /* 类型1：上轮失败，本轮准点重试 */
+    return 1; /* 类型1：上轮失败，本轮准点重试 */
   return isInGpsWorkWindowAt(ts);
 }
 
-/**
-  * @brief  当前是否处于工作时间段（configStr �?2 段，�?"0M" �?00:00~24:00�?
-  * @retval 1=在工作时间内, 0=不在 / 未对�?/ 字段非法
-  * @note   GPS 工作时间(�?3 �?一定落在工作时�?�?2 �?之内�?
-  *         所�?isInGpsWorkWindow()=1 时本函数必然也是 1
-  */
-static uint8_t isInWorkWindow(void)
+/* Link health: valid protocol traffic, monotonic work-time accumulation. */
+#define WDG_SEG_SEC 3u
+
+static void wdg_init(void) { Safety_Init(); }
+
+static void wdg_feed(void) { Safety_Feed(); }
+
+
+static void linkNoteValid(void)
 {
-  uint8_t  s, e;
-  uint32_t hour;
-
-  if (!timeSynced)
-    return 0;
-  if (!timeIdxToRange(getConfigWorkStartIdx(), &s, &e))
-    return 0;
-  if (e == TIME_HOUR_END)
-    e = 24;                          /* 23 表示 24:00 */
-
-  hour = getTodaySecond() / 3600u;
-  return ((hour >= s) && (hour < e)) ? 1U : 0U;
+  linkSilentSec = 0u;
+  linkRecoveryStep = 0u;
+  linkLastRtc = rtc_read_counter();
+  Safety_MarkLinkHealthy();
 }
 
-/**
- * @brief  链路沉默看门狗检查：工作时间�?2 小时没收到任�?LoRa 信息 �?真复�?
- * @note   - 计时基准�?RTC 绝对时间戳，�?STOP 深度休眠连续 —�?深度休眠机制
- *           完全不变，睡 30 分钟醒来这轮检查照样能覆盖休眠期（醒来必过这里�?
- *         - lastLoRaRxTs==0 表示开机后还没初始化：取当前时刻起�?
- *         - 对时成功会使时间基准跳变，scheduleAfterSync() 里同步刷新，防误�?
- *         - 连续定位(upgps 跟踪)期间跳过：跟踪是主动任务，类�?5 本来就不
- *           开接收窗口�?0 分钟 < 2 小时也不会触发，跳过保证绝不打断跟踪
- *         - 触发动作�?NVIC_SystemReset() 真复位（不是 STOP 唤醒）：
- *           快速上�?3 轮、配置上报、对时全部重走一遍，相当于设备自�?
- */
-/* =====================================================================
- * HW watchdog (IWDG): ~10s nominal timeout at 40kHz LSI (6.7~13.3s over
- * the 30~60kHz LSI spread). IWDG keeps counting in STOP mode, therefore:
- *   - deep sleep is chunked (WDG_SEG_SEC=5s) and fed between chunks;
- *   - long busy loops (GPS search etc.) feed inside the loop.
- * A dog bite = reset = full re-init = self-heal (same as power cycle). */
-#define WDG_SEG_SEC 5u
-
-static void wdg_init(void)
+/* Count only the overlap with the configured work window, including sleep. */
+static uint32_t workElapsed(uint32_t endTs, uint32_t elapsed)
 {
-  uint32_t t0 = HAL_GetTick();
-
-  IWDG->KR = 0xCCCC;   /* start counter (forces LSI on) */
-  IWDG->KR = 0x5555;   /* enable register writes */
-  IWDG->PR = 7;        /* prescaler /256 -> 156 Hz tick @40kHz */
-  IWDG->RLR = 0x0619;  /* 1562 ticks -> ~10s nominal (6.7~13.3s spread) */
-  while (IWDG->SR != 0 && HAL_GetTick() - t0 < 100)
-    ;                  /* wait PR/RL sync, bounded */
-  IWDG->KR = 0xAAAA;   /* first feed */
+  uint8_t sh, eh;
+  uint32_t beginTs, total = 0u;
+  if (!timeSynced) return elapsed;
+  if (!timeIdxToRange(getConfigWorkStartIdx(), &sh, &eh)) return 0u;
+  if (eh == TIME_HOUR_END) eh = 24u;
+  beginTs = endTs - elapsed;
+  while (elapsed) {
+    uint32_t tod = beginTs % 86400u;
+    uint32_t part = 86400u - tod;
+    uint32_t a, b;
+    if (part > elapsed) part = elapsed;
+    a = (tod > (uint32_t)sh * 3600u) ? tod : (uint32_t)sh * 3600u;
+    b = (tod + part < (uint32_t)eh * 3600u) ? tod + part : (uint32_t)eh * 3600u;
+    if (b > a) total += b - a;
+    beginTs += part;
+    elapsed -= part;
+  }
+  return total;
 }
-
-static void wdg_feed(void)
-{
-  IWDG->KR = 0xAAAA;
-}
-
 
 static void linkSilenceCheck(void)
 {
-  uint32_t now;
-  uint32_t silent;
-
-  if (gpsContTotalMin > 0)
-    return;                              /* 跟踪中不检�?*/
-
-  if (!isInWorkWindow())
-    return;                              /* 只在工作时间内生�?*/
-
-  now = getCurrentTimestamp();
-  if (lastLoRaRxTs == 0) {
-    lastLoRaRxTs = now;                  /* 开机首次检查：从当前时刻起�?*/
+  uint32_t now = rtc_read_counter(), elapsed;
+  uint8_t enabled = !gpsContTotalMin && cachedBatteryPercent >= BATTERY_SKIP_PCT;
+  if (!linkPollReady) {
+    linkPollReady = 1u;
+    linkLastRtc = now;
+    linkWasEnabled = enabled;
     return;
   }
-
-  silent = now - lastLoRaRxTs;           /* 无符号差值，回绕安全 */
-  if (silent >= LINK_SILENCE_REBOOT_SEC) {
-    printf("[WDG] no LoRa %lum%lus, reboot\r\n",
-           (unsigned long)(silent / 60u), (unsigned long)(silent % 60u));
-    HAL_Delay(100);                      /* 让日志从串口发完 */
-    NVIC_SystemReset();
+  elapsed = now - linkLastRtc;
+  if (!elapsed) return;
+  linkLastRtc = now;
+  if (elapsed > 86400u) Safety_Reset(RESET_RTC);
+  if (enabled && linkWasEnabled)
+    linkSilentSec += workElapsed(getCurrentTimestamp(), elapsed);
+  linkWasEnabled = enabled;
+  if (linkSilentSec < LINK_SILENCE_REBOOT_SEC) return;
+  linkSilentSec = 0u;
+  if (!linkRecoveryStep) {
+    /* First recover just the radio; retry at the existing scheduled slot. */
+    linkRecoveryStep = 1u;
+    if (loraInitialized) rf_deepsleep();
+    loraInitialized = 0u;
+    printf("[LINK] silence: radio reinit next slot\r\n");
+  } else {
+    Safety_Reset(RESET_LINK);
   }
 }
 
@@ -1709,45 +1515,46 @@ static uint32_t rtcPrl = 32767;  /* 预分�?1：LSE=32767，LSI=39999 */
 /* wait (real ms, dog-fed) for flag bit(s) in an RCC reg to set.
  * REAL time base, not loop counts: loop counts scale with CPU speed
  * (288M loops ~= 28s @72MHz, far past the 10s IWDG - bit us hard) */
-static void rcc_wait_flag(volatile uint32_t *reg, uint32_t mask, uint32_t ms)
+static uint8_t rcc_wait_flag(volatile uint32_t *reg, uint32_t mask, uint32_t ms)
 {
-  uint32_t t0 = HAL_GetTick();
-
-  while (!(*reg & mask) && (HAL_GetTick() - t0) < ms)
+  uint32_t start = HAL_GetTick();
+  while (!(*reg & mask)) {
+    if ((uint32_t)(HAL_GetTick() - start) >= ms) return 0u;
     wdg_feed();
+  }
+  return 1u;
 }
 
 /* �?RTC 写操作完成（RTOFF=1�?*/
 static void rtc_wait_rtoff(void)
 {
-  /* loop-count guard kept deliberately (NOT HAL_GetTick): this also runs
-   * right after STOP wake where SysTick is frozen - a tick compare that
-   * never advances would loop forever. 2M loops ~0.2s @72MHz, ~1.75s
-   * @8MHz post-wake, both far below the 10s IWDG. */
-  uint32_t guard = 2000000;
-  while (!(RTC->CRL & RTC_CRL_RTOFF) && --guard)
-    ;
+  uint32_t guard = 500000u;
+  while (!(RTC->CRL & RTC_CRL_RTOFF) && --guard) { }
+  if (!guard) Safety_Reset(RESET_RTC);
 }
 
 /* �?APB1 �?RTC 接口重新同步（RSF 置位�?
  * @note  系统复位�?STOP 唤醒后必须先�?RSF，否则读 RTC 计数得到 0�?*/
 static void rtc_wait_rsf(void)
 {
-  uint32_t guard = 2000000;             /* ~0.2s @72MHz worst case */
-  while (!(RTC->CRL & RTC_CRL_RSF) && --guard)
-    ;
+  uint32_t guard = 500000u;
+  while (!(RTC->CRL & RTC_CRL_RSF) && --guard) { }
+  if (!guard) Safety_Reset(RESET_RTC);
 }
 
-/* �?32 位秒计数（先读高 16 位，硬件锁存�?16 位）
- * @note  STOP 唤醒�?RTC 接口需�?2 �?RTC 时钟重新同步�?
- *        必须软件�?RSF 再等硬件重新置位，否则读到休眠前的影子值！ */
+/* Re-sync APB shadow after STOP; high/low/high handles the carry race. */
 static uint32_t rtc_read_counter(void)
 {
+  uint32_t high, low, high2;
   rtc_wait_rtoff();
-  RTC->CRL &= (uint16_t)~RTC_CRL_RSF;   /* 清同步标志，强制重新同步 */
+  RTC->CRL &= (uint16_t)~RTC_CRL_RSF;
   (void)RTC->CRL;
   rtc_wait_rsf();
-  return ((uint32_t)RTC->CNTH << 16) | (uint32_t)RTC->CNTL;
+  high = RTC->CNTH;
+  low = RTC->CNTL;
+  high2 = RTC->CNTH;
+  if (high != high2) low = RTC->CNTL;
+  return (high2 << 16) | low;
 }
 
 /* �?RTC 标志（ALRF/SECF�?
@@ -1784,14 +1591,11 @@ static void rtc_set_alarm(uint32_t alarmSec)
  * 若备份域已�?LSI 而本不上电没重开 LSI，RTC 将无时钟、计数恒 0 */
 static void rtc_ensure_clock_running(void)
 {
-  uint32_t sel = RCC->BDCR & RCC_BDCR_RTCSEL;
-
-  if (sel == RCC_BDCR_RTCSEL_LSI) {
+  if ((RCC->BDCR & RCC_BDCR_RTCSEL) == RCC_BDCR_RTCSEL_LSE) {
+    if (!rcc_wait_flag(&RCC->BDCR, RCC_BDCR_LSERDY, 500u)) Safety_Reset(RESET_RTC);
+  } else {
     RCC->CSR |= RCC_CSR_LSION;
-    rcc_wait_flag(&RCC->CSR, RCC_CSR_LSIRDY, 500u);
-  } else if (sel == RCC_BDCR_RTCSEL_LSE) {
-    RCC->BDCR |= RCC_BDCR_LSEON;        /* re-arm LSE (belt & braces) */
-    rcc_wait_flag(&RCC->BDCR, RCC_BDCR_LSERDY, 4000u);
+    if (!rcc_wait_flag(&RCC->CSR, RCC_CSR_LSIRDY, 500u)) Safety_Reset(RESET_RTC);
   }
 }
 
@@ -1799,54 +1603,51 @@ static void rtc_ensure_clock_running(void)
  * 备份域已配置过（软件复位/唤醒）则保留计数，不破坏时间 */
 static void rtc_init(void)
 {
-  __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_RCC_BKP_CLK_ENABLE();
-  SET_BIT(PWR->CR, PWR_CR_DBP);         /* 解锁备份域写保护 */
-
-  if ((RCC->BDCR & RCC_BDCR_RTCSEL) == 0) {
-    /* 备份域未配置：选时钟源并初始化
-     * @note  等待窗口必须足够长（32.768k 晶振起振可到数秒），
-     *        太短会把正常晶振误判失败而退�?LSI，且 RTCSEL 写进备份域后
-     *        不复位备份域就改不回�?*/
+  uint32_t before, start;
+  Safety_Begin(STAGE_RTC, 8000u);
+  /* RAM sync anchors are lost at reset; always rebuild RTC, keep diagnostics. */
+  Safety_ResetBackupDomain();
+  if (!Safety_UseLsi()) {
     RCC->BDCR |= RCC_BDCR_LSEON;
-    rcc_wait_flag(&RCC->BDCR, RCC_BDCR_LSERDY, 4000u);
-    if (RCC->BDCR & RCC_BDCR_LSERDY) {  /* LSE up: crystal OK */
-      rtcPrl = 32767;
+    if (rcc_wait_flag(&RCC->BDCR, RCC_BDCR_LSERDY, 4000u)) {
+      rtcPrl = 32767u;
       RCC->BDCR |= RCC_BDCR_RTCSEL_LSE;
-    } else {                            /* dead/no crystal: fall back LSI */
-      RCC->BDCR &= ~RCC_BDCR_LSEON;
-      RCC->CSR |= RCC_CSR_LSION;
-      rcc_wait_flag(&RCC->CSR, RCC_CSR_LSIRDY, 500u);
-      rtcPrl = 39999;
-      RCC->BDCR |= RCC_BDCR_RTCSEL_LSI;
     }
-    RCC->BDCR |= RCC_BDCR_RTCEN;
-
-    rtc_wait_rtoff();
-    RTC->CRL |= RTC_CRL_CNF;
-    RTC->PRLH = (uint16_t)(rtcPrl >> 16);
-    RTC->PRLL = (uint16_t)(rtcPrl & 0xFFFFU);
-    RTC->CNTH = 0;
-    RTC->CNTL = 0;
-    RTC->CRL &= (uint16_t)~RTC_CRL_CNF;
-    rtc_wait_rtoff();
   }
-
-  /* 无条件确保所选时钟源在跑（主电源域的 LSI 每次上电都要重开�?*/
+  if (!(RCC->BDCR & RCC_BDCR_RTCSEL)) {
+    RCC->BDCR &= ~RCC_BDCR_LSEON;
+    RCC->CSR |= RCC_CSR_LSION;
+    if (!rcc_wait_flag(&RCC->CSR, RCC_CSR_LSIRDY, 500u)) Safety_Reset(RESET_RTC);
+    rtcPrl = 39999u;
+    RCC->BDCR |= RCC_BDCR_RTCSEL_LSI;
+  }
+  RCC->BDCR |= RCC_BDCR_RTCEN;
   rtc_ensure_clock_running();
-
-  /* APB1 复位后等 RTC �?APB 同步完成 */
+  RTC->CRL &= (uint16_t)~RTC_CRL_RSF;
   rtc_wait_rsf();
-
-  /* RTC 闹钟 �?EXTI line 17 事件：STOP 的唤醒源
-   * @note  �?WFE 事件模式（EMR）而非中断模式（IMR+NVIC）：
-   *        实测本芯�?STOP �?WFI+NVIC 唤醒不工作，WFE 事件唤醒正常�?
-   *        ALRIE 保持 0�?1 会抑�?ALRF/事件，见 rtc_set_alarm 注释�?*/
-  EXTI->PR  = EXTI_PR_PR17;             /* 清挂�?*/
-  EXTI->RTSR |= EXTI_RTSR_TR17;         /* 上升�?*/
-  EXTI->EMR |= EXTI_EMR_MR17;           /* 事件模式：直接唤�?WFE */
-  EXTI->IMR &= ~EXTI_IMR_MR17;          /* 关中断模式（不走 NVIC�?*/
-  RTC->CRH &= (uint16_t)~RTC_CRH_ALRIE; /* 确保 ALRIE=0 */
+  rtc_wait_rtoff();
+  RTC->CRL |= RTC_CRL_CNF;
+  RTC->PRLH = (uint16_t)(rtcPrl >> 16);
+  RTC->PRLL = (uint16_t)rtcPrl;
+  RTC->CNTH = 0u;
+  RTC->CNTL = 0u;
+  RTC->CRL &= (uint16_t)~RTC_CRL_CNF;
+  (void)RTC->CRL;
+  rtc_wait_rtoff();
+  RTC->CRH = 0u; /* Keep the board-tested ALRIE=0 WFE event path. */
+  rtc_clear_alarm_flag();
+  EXTI->PR = EXTI_PR_PR17;
+  EXTI->RTSR |= EXTI_RTSR_TR17;
+  EXTI->EMR |= EXTI_EMR_MR17;
+  EXTI->IMR &= ~EXTI_IMR_MR17;
+  /* An asserted RDY bit alone is insufficient: verify actual counter motion. */
+  before = rtc_read_counter();
+  start = HAL_GetTick();
+  while (rtc_read_counter() == before) {
+    if ((uint32_t)(HAL_GetTick() - start) >= 1600u) Safety_Reset(RESET_RTC);
+    wdg_feed();
+  }
+  Safety_Begin(STAGE_MAIN, 15000u);
 }
 
 /* 进入 STOP 深度休眠，直到时间到�?wakeTs
@@ -1858,43 +1659,53 @@ static void rtc_init(void)
  *        由调用方判断到点�?SystemClock_Config() 恢复 */
 static void enterStopUntil(uint32_t wakeTs)
 {
-  uint32_t rtcNow  = rtc_read_counter();
-  uint32_t wakeRtc = wakeTs;
-
+  uint32_t rtcNow = rtc_read_counter(), wakeRtc = wakeTs;
+  uint32_t savedCtrl;
   if (timeSynced) {
     uint32_t realDelta = wakeTs - syncedTimestamp;
     uint32_t localDelta = realDelta;
-
-    /* crystal drift compensation: local counter target so real time hits wakeTs */
-    if (driftConverged && rtcDriftPerHour != 0 &&
-        realDelta > 0 && realDelta < 1000000)
-      localDelta = realDelta * (3600u + (uint32_t)rtcDriftPerHour) / 3600u;
-
+    if (driftConverged && rtcDriftPerHour && realDelta < 0x80000000u)
+      localDelta = (uint32_t)((uint64_t)realDelta *
+                   (uint32_t)(3600 + rtcDriftPerHour) / 3600u);
     wakeRtc = syncedRtcSec + localDelta;
   }
-
-  /* past-deadline guard: F1 alarm in the past waits ~136 years (= sleep forever) */
-  if (wakeRtc <= rtcNow + 1)
-    return;
-
-  /* Sleep in <=5s chunks, re-arming the alarm each chunk: IWDG keeps counting
-   * in STOP (LSI never stops, 6.7~13.3s timeout at 30~60kHz), so the dog must
-   * be fed between chunks. Wake cost ~1-3ms per chunk (negligible duty cycle).
-   * Any hang / fault / RTC-freeze then ends in an IWDG reset = self-heal. */
-  for (;;) {
-    uint32_t now = rtc_read_counter();
-    uint32_t target;
-
-    if (now >= wakeRtc)
-      break;
-    target = (wakeRtc - now > WDG_SEG_SEC) ? (now + WDG_SEG_SEC) : wakeRtc;
+  if ((int32_t)(wakeRtc - rtcNow) <= 1) return;
+  savedCtrl = SysTick->CTRL;
+  SysTick->CTRL = 0u;
+  SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk;
+  while ((int32_t)(wakeRtc - rtcNow) > 0) {
+    uint32_t target = ((uint32_t)(wakeRtc - rtcNow) > WDG_SEG_SEC) ?
+                       rtcNow + WDG_SEG_SEC : wakeRtc;
+    uint32_t after;
+    rtc_clear_alarm_flag();
+    EXTI->PR = EXTI_PR_PR17;
+    /* Drain stale events BEFORE arming, so an arriving alarm cannot be lost
+     * by HAL's SEV/WFE/WFE sequence after the last deadline check. */
+    __SEV();
+    __WFE();
     rtc_set_alarm(target);
-    do {
-      HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFE);
-      rtc_clear_alarm_flag();
-    } while (rtc_read_counter() < target);
-    wdg_feed();
+    Safety_PrepareStop();
+    for (;;) {
+      after = rtc_read_counter();
+      if ((int32_t)(after - target) >= 0) break;
+      MODIFY_REG(PWR->CR, PWR_CR_PDDS | PWR_CR_LPDS, PWR_CR_LPDS);
+      SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+      __DSB();
+      __WFE();
+      __ISB();
+      SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
+      /* Spurious wake: no feed; RTC must reach the armed deadline first. */
+    }
+    if ((uint32_t)(after - rtcNow) > WDG_SEG_SEC + 2u) Safety_Reset(RESET_RTC);
+    rtcNow = after;
+    rtc_clear_alarm_flag();
+    EXTI->PR = EXTI_PR_PR17;
+    Safety_AfterStop();
   }
+  SystemCoreClockUpdate(); /* STOP wakes on HSI; make SysTick valid at 8 MHz. */
+  if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK) Safety_Reset(RESET_INIT);
+  if (!(savedCtrl & SysTick_CTRL_TICKINT_Msk)) HAL_SuspendTick();
+  Safety_Begin(STAGE_MAIN, 15000u);
 }
 
 /**
@@ -1918,20 +1729,13 @@ static uint32_t getTodaySecond(void)
   */
 static uint32_t getCurrentTimestamp(void)
 {
-  uint32_t rtcNow = rtc_read_counter();
-
-  if (!timeSynced)
-    return rtcNow;
-  if (driftConverged && rtcDriftPerHour != 0) {
-    /* int32 运算即可：RTC 累计秒受链路看门�?2小时重启)约束�?
-     * ×3600 �?3×10^7 远小�?2^31；M3 硬件除法，体积几乎为�?*/
-    int32_t localDelta = (int32_t)(rtcNow - syncedRtcSec);
-    if (localDelta > 0 && localDelta < 1000000) {   /* ~11 天内有效 */
-      int32_t realDelta = localDelta * 3600 / (3600 + rtcDriftPerHour);
-      return syncedTimestamp + (uint32_t)realDelta;
-    }
-  }
-  return syncedTimestamp + (rtcNow - syncedRtcSec);
+  uint32_t localDelta, rtcNow = rtc_read_counter();
+  if (!timeSynced) return rtcNow;
+  localDelta = rtcNow - syncedRtcSec;
+  if (driftConverged && rtcDriftPerHour)
+    return syncedTimestamp + (uint32_t)((uint64_t)localDelta * 3600u /
+                             (uint32_t)(3600 + rtcDriftPerHour));
+  return syncedTimestamp + localDelta;
 }
 
 /**
@@ -2335,78 +2139,19 @@ static void gpsTrySyncFromSat(void)
  */
 static void gpsPrintSearchStatus(uint32_t elapsedMs)
 {
-  uint16_t year = gpsFix.year;
-  uint8_t  mon  = gpsFix.month;
-  uint8_t  day  = gpsFix.day;
-  uint8_t  hh   = gpsFix.hour;
-  uint32_t rxTotal = 0;   /* 本轮累计收到的串口字节数 */
-  uint32_t rxDelta = 0;   /* 距上次打印新增的字节数（�?字节/秒） */
-  char     rtcBuf[24];    /* 系统(RTC)时间：未对时固定显示 1970-01-01 */
-
-  /* RTC 系统时间：统一�?getCurrentTimestamp() 格式化�?
-   * 未对�?timeSynced=0)时它返回 RTC 计数（开机秒数）�?
-   * �?1970-01-01 00:00:00 起逐秒递增（在走，只是日期无意义）�?
-   * 已对时后显示真实北京时间（STOP 休眠期间 RTC 连续走时�?*/
+  char rtcBuf[24], latBuf[16], lngBuf[16];
   formatTimestamp(getCurrentTimestamp(), rtcBuf, sizeof(rtcBuf));
-
-  /* GPS UTC + 8 小时 = 北京时间（跨�?/ 跨月 / 跨年简单进位） */
-  hh = (uint8_t)(hh + 8);
-  if (hh >= 24) {
-    uint8_t dim = gpsDaysInMonth[((mon >= 1) && (mon <= 12)) ? (mon - 1) : 0];
-
-    hh = (uint8_t)(hh - 24);
-    if ((mon == 2) && isLeapYear(year))
-      dim = 29;
-    day++;
-    if (day > dim) {
-      day = 1;
-      mon++;
-      if (mon > 12) {
-        mon  = 1;
-        year = (uint16_t)(year + 1);
-      }
-    }
-  }
-
-  /* 串口数据量：本轮累计 + 距上次打印的增量（≈ 字节/秒）�?
-   * 增量�?0 就说明模块没在往外吐 NMEA —�?一眼区�?天线差没定位"�?串口根本没数�? */
-  {
-    uint32_t rx = gpsRxCount;
-    static uint32_t lastRx = 0;
-
-    if (rx >= lastRx)
-      rxDelta = rx - lastRx;
-    else
-      rxDelta = rx;                   /* 新一轮唤醒时 gpsPowerOn() 会把计数清零 */
-    lastRx  = rx;
-    rxTotal = rx;
-  }
-
-  if (gpsFixValid) {
-    char latBuf[16], lngBuf[16];
-
-    deg1e5ToStr(gpsFix.lat, latBuf);
-    deg1e5ToStr(gpsFix.lng, lngBuf);
-    printf("[GPS] FIX(%s,%s) yr>2025:%s ok:%s sat:%d t:%lus rx:%luB(+%lu) RTC:%s\r\n",
-           latBuf, lngBuf,
-           (year > 2025) ? "�?" : "�?",
-           gpsFixFresh() ? "�?" : "�?",
-           (int)gpsFix.sats,
-           (unsigned long)(elapsedMs / 1000),
-           (unsigned long)rxTotal, (unsigned long)rxDelta, rtcBuf);
-  } else {
-    printf("[GPS] NOFIX(--,--) yr>2025:%s ok:%s sat:%d t:%lus rx:%luB(+%lu) RTC:%s\r\n",
-           (year > 2025) ? "�?" : "�?",
-           gpsFixFresh() ? "�?" : "�?",
-           (int)gpsFix.sats,
-           (unsigned long)(elapsedMs / 1000),
-           (unsigned long)rxTotal, (unsigned long)rxDelta, rtcBuf);
-  }
+  deg1e5ToStr(gpsFix.lat, latBuf);
+  deg1e5ToStr(gpsFix.lng, lngBuf);
+  printf("[GPS] fix=%u %s,%s sat=%u t=%lus rx=%lu RTC=%s\r\n",
+         (unsigned)gpsFixFresh(), latBuf, lngBuf, (unsigned)gpsFix.sats,
+         (unsigned long)(elapsedMs / 1000u), (unsigned long)gpsRxCount, rtcBuf);
 }
 
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
 {
   uint32_t startTick  = HAL_GetTick();
+  Safety_Begin(STAGE_GPS, timeoutMs + 3000u);
   uint32_t elapsed;
   uint32_t lastStatus = 0;   /* 上次打印状态行的时刻（相对 startTick 的毫秒数�?*/
 
@@ -2462,6 +2207,7 @@ static uint8_t cmdIsForMe(char *fields[])
            fields[2], fields[1], deviceName);
     return 0;
   }
+  linkNoteValid();
   return 1;
 }
 
@@ -2477,7 +2223,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
   /* 收到任何 LoRa 数据（含乱码）都刷新链路活�?—�?哪怕解析失败，
    * 也说明中�?信道在工作，链路沉默看门狗不应对这种情况重启 */
-  lastLoRaRxTs = getCurrentTimestamp();
+  /* Health is refreshed only after protocol/target validation below. */
 
   fields[field_count++] = str;
   for (uint8_t i = 0; i < len && field_count < 8; i++) {
@@ -2552,9 +2298,9 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           uint32_t localElapsedSec = nowTick - anchorRtcSec;
           uint32_t remoteElapsedSec = recvTs - anchorTimestamp;
           /* 直接用间隔差值计算偏差，避免绝对时间戳整数截�?*/
-          int32_t  driftSec = (int32_t)localElapsedSec - (int32_t)remoteElapsedSec;
+          int64_t  driftSec = (int64_t)localElapsedSec - (int64_t)remoteElapsedSec;
           int32_t  driftPerHour = (remoteElapsedSec > 0)
-              ? (driftSec * 3600 / (int32_t)remoteElapsedSec)
+              ? (int32_t)((int64_t)driftSec * 3600 / (int64_t)remoteElapsedSec)
               : 0;
           printf("[DRIFT] %d/%lus (%ds/h) local=%lu server=%lu\r\n",
                  (int)driftSec,
@@ -2588,7 +2334,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               printf("[DRIFT] converged, comp %ds/h\r\n", (int)rtcDriftPerHour);
             } else {
               lastDriftSample = driftPerHour;
-              printf("[DRIFT] sample=%ds/h unconverged\r\n", (int)driftPerHour, (int)diff);
+              printf("[DRIFT] sample=%ds/h unconverged\r\n", (int)driftPerHour);
             }
           } else {
             int32_t diff = driftPerHour - rtcDriftPerHour;
@@ -2619,6 +2365,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           printf("[SYNC] residual=%ds\r\n", (int)syncErr);
         }
 
+        linkNoteValid();
         syncedTimestamp = recvTs;
         syncedRtcSec = nowTick;
         timeSynced = 1;
@@ -2816,7 +2563,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           if (cmdIsForMe(fields)) {
             printf("[CMD] relayreboot, resetting\r\n");
             HAL_Delay(100);            /* 让日志从串口发完 */
-            NVIC_SystemReset();
+            Safety_Reset(RESET_REMOTE);
           }
         }
         /* searchtime: 9|dev|searchtime|N - GPS search max N minutes (1~10),
@@ -2852,7 +2599,9 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   */
 static void openRxWindow3000(void)
 {
-  rf_enter_single_timeout_rx(3000);
+  Safety_Begin(STAGE_RX, 6000u);
+  rf_set_recv_flag(RADIO_FLAG_IDLE);
+  if (rf_enter_single_timeout_rx(3000u) != RF_OK) Safety_Reset(RESET_RX);
   if (!windowPrintOff)
     printf("[RX] 3s listen\r\n");
 
@@ -2862,9 +2611,7 @@ static void openRxWindow3000(void)
   while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
     wdg_feed();   /* RX window wait: feed inside the loop */
     if (HAL_GetTick() - rxStart > 5000u) {
-      printf("[LoRa] RX wait timeout! reset in 3s\r\n");
-      HAL_Delay(3000);
-      NVIC_SystemReset();
+      Safety_Reset(RESET_RX);
     }
   }
 
@@ -2906,6 +2653,7 @@ static void openRxWindow3000(void)
     if (!windowPrintOff)
       printf("[RX] CRC err\r\n");
   }
+  Safety_Begin(STAGE_MAIN, 15000u);
 }
 
 /**
@@ -2926,12 +2674,12 @@ static void sendResetInfoMessage(void)
 
   txCountNext();
 #if TX_COUNT_ENABLE
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s|%lu|",
-           MSG_TYPE_READINFO, deviceName, bootRstCause,
-           (unsigned long)tx_count);
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s-%u|%lu|",
+           MSG_TYPE_READINFO, deviceName, bootRstCause, (unsigned)Safety_LastStage(),
+            (unsigned long)tx_count);
 #else
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s|",
-           MSG_TYPE_READINFO, deviceName, bootRstCause);
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s-%u|",
+           MSG_TYPE_READINFO, deviceName, bootRstCause, (unsigned)Safety_LastStage());
 #endif
   loraTx(tx_msg);
   printf("[RST] tx -> \"%s\"\r\n", tx_msg);
@@ -2999,8 +2747,6 @@ static void OnMaster(void)
   if (skipTimeFrame) {
     if (gpsNeedRetry)
       printf("[SCHED] no fix last, GPS retry\r\n");
-    else
-      printf("[SCHED] GPS window, GPS frame\r\n");
   } else {
     /* 组包�?|v0-0|当天秒数|电量[|计数]
      * 周期上报固定发时间帧，不管有没有定位 —�?定位�?UPGPS 流程单独触发上报 */
@@ -3049,17 +2795,13 @@ static void OnMaster(void)
 
       gpsWaitReport = 0;  /* 先清零，避免异常路径残留导致每轮都在这儿�?*/
 
-      if (firstCmd)
-        printf("[GPS] upgps first: type5 no window\r\n");
-      else
-        printf("[GPS] type1 tx, then window\r\n");
+
 
       /* 类型5(upgps) 不受时间约束：一律现场搜星，搜完再发（时间可后移）�?
        * 万一有残留的预搜标志（例如上一轮被指令打断），在这里清掉，避免误用 */
       if (firstCmd && gpsPreSearched) {
         gpsPreSearched = 0;
         gpsPreFixOk    = 0;
-        printf("[GPS] skip presearch, live search\r\n");
       }
 
       if (gpsPreSearched) {
@@ -3102,6 +2844,7 @@ static void OnMaster(void)
            * 真无信号，无限延续只是每轮白�?4 分钟搜星�?*/
           uint8_t contOk = gpsRunContinuous(gpsContTotalMin, useType1);
 
+          linkLastRtc = rtc_read_counter();
           gpsContTotalMin = 0;
           gpsNeedRetry = contOk ? 0U : 1U;
           upgpsRetryOneShot = contOk ? 0U : 1U;
@@ -3134,10 +2877,7 @@ static void OnMaster(void)
       /* 注意：分支提示不要写�?one-liner 三元 + 中文值，
        * 中文紧贴闭合引号会被 ARMCC5 �?GBK 吞掉那个引号（missing closing quote），
        * 故改�?if/else + �?\r\n 收尾（与文件其它 printf 风格一致） */
-      if (gpsNeedRetry)
-        printf("[SCHED] retry next round (skip time frame)\r\n");
-      else
-        printf("[SCHED] resume normal time frame\r\n");
+
     }
   }
 
@@ -3187,6 +2927,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MCU 配置 --------------------------------------------------------*/
+  wdg_init();
   HAL_Init();
   SystemClock_Config();
 
@@ -3204,55 +2945,32 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
-  /* HW watchdog first: any hang from here on gets a reset within ~10s */
-  wdg_init();
-
-  /* Reset cause: store for the boot report frame + serial banner */
-  {
-    uint32_t rc = RCC->CSR;
-
-    RCC->CSR |= RCC_CSR_RMVF;
-    if (rc & RCC_CSR_IWDGRSTF)
-      strcpy(bootRstCause, "IWDG");   /* watchdog bite: it caught a hang */
-    else if (rc & RCC_CSR_SFTRSTF)
-      strcpy(bootRstCause, "SW");     /* software reset (tx/rx timeout etc) */
-    else
-      strcpy(bootRstCause, "POR");    /* power-on / brownout */
-    bootRstPending = 1;
-    printf("[BOOT] reset cause: %s\r\n", bootRstCause);
-  }
-
-  /* Non-POR boot: wipe the backup domain (= software "power cycle").
-   * IWDG/SW resets do NOT clear BDCR, so a stale/dead RTC source choice
-   * (LSE selected but oscillator dead) survives every reset and loops
-   * forever - the "reboots forever, only power cycle fixes" failure.
-   * This forces rtc_init to re-select LSE/LSI cleanly. Cost: RTC counter
-   * restarts at 0, time re-syncs anyway (RAM state was lost on reset). */
-  if (bootRstCause[0] != 'P') {          /* IWDG or SW reset */
-    __HAL_RCC_PWR_CLK_ENABLE();
-    __HAL_RCC_BKP_CLK_ENABLE();
-    SET_BIT(PWR->CR, PWR_CR_DBP);
-    RCC->BDCR |= RCC_BDCR_BDRST;         /* wipe backup domain */
-    RCC->BDCR &= ~RCC_BDCR_BDRST;
-    printf("[BOOT] bkp wipe\r\n");
-  }
-
-  /* RTC：STOP 深度休眠的时间基准与唤醒源（LSE 优先，无晶振退 LSI�?*/
-  printf("[BOOT] step: rtc\r\n");
+  strncpy(bootRstCause, Safety_BootCause(), sizeof(bootRstCause) - 1u);
+  bootRstPending = 1u;
+  printf("[BOOT] reset=%s stage=%u clock=%s\r\n", bootRstCause,
+         (unsigned)Safety_LastStage(), clockFallback ? "HSI64" : "HSE72");
   rtc_init();
-  printf("[BOOT] step: flash load\r\n");
+  {
+    uint32_t backoff = Safety_BackoffSeconds();
+    if (backoff) {
+      printf("[BOOT] repeated fault, backoff %lus\r\n", (unsigned long)backoff);
+      enterStopUntil(getCurrentTimestamp() + backoff);
+      SystemClock_Config();
+    }
+  }
+
 
   /* �?Flash 加载设备名、配置、发射功率、农场中心坐标和设备台数 */
+  if (!NvStore_Recover()) Safety_Reset(RESET_FLASH);
   loadDeviceNameFromFlash();
   loadConfigFromFlash();
   loadTxPowerFromFlash();
   loadSearchTimeFromFlash();
   loadCenterFromFlash();
   loadDeviceCountFromFlash();
-  printf("[BOOT] step: cfg ok\r\n");
 
   /* 打印启动信息 */
-  printf("\r\n===== LoRa TX-only boot =====\r\n");
+  printf("\r\n[BOOT] LoRa\r\n");
   printf("dev: %s\r\n", deviceName);
   printf("cfg: %s\r\n", configStr);
   printf("slot : idx=%d, total=%d, period=%lu min, offset=%lus\r\n",
@@ -3262,9 +2980,7 @@ int main(void)
   printTimeWindows("时段  : ");   /* 工作时间�?+ GPS 上报时间�?*/
 
   /* 首次 TX 延迟到主循环中执行（LoRa 在首�?TX 前才初始化） */
-  printf("TX mode: tx-only\r\n");
   nextTxTimestamp = 0;  /* 首次立即触发 TX */
-  printf("[SCHED] ready, first tx now\r\n");
 
   /* USER CODE END 2 */
 
@@ -3273,13 +2989,16 @@ int main(void)
   while (1)
   {
     /* USER CODE BEGIN 3 */
-    uint32_t nowTs = getCurrentTimestamp();
+    uint32_t nowTs;
+    Safety_Begin(STAGE_MAIN, 15000u);
+    nowTs = getCurrentTimestamp();
+    linkSilenceCheck();
 
     if (loraInitialized) {
       /* 链路沉默看门狗：工作时间�?2 小时没收到任�?LoRa 信息 �?真复位�?
        * 活跃期间每圈(100ms)查一次，开销可忽略；深度休眠期间 RTC 时间�?
        * 照样连续计时，醒来必过这里，所以休眠多久都不会漏检 */
-      linkSilenceCheck();
+
 
       /* LoRa 已激活：检查是否到达发送时�?*/
       if (nowTs >= nextTxTimestamp) {
@@ -3330,7 +3049,6 @@ int main(void)
           continue;              /* back to main loop, straight to sleep */
         }
         /* 唤醒 LoRa 并执�?5 秒倒计�?*/
-        printf("[WAKE] 5s countdown\r\n");
         loraInitFirstTime();
         /* 读取电量并缓存（每轮上报前刷新一次，上报帧里带的就是它） */
         for (int i = 5; i > 0; i--) {
@@ -3394,32 +3112,37 @@ int main(void)
   */
 void SystemClock_Config(void)
 {
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  RCC_OscInitTypeDef osc = {0};
+  RCC_ClkInitTypeDef clk = {0};
+  /* Already running (e.g. first TX after boot): do not disable its PLL. */
+  if ((RCC->CFGR & RCC_CFGR_SWS) == RCC_CFGR_SWS_PLL) return;
+  Safety_Begin(STAGE_CLOCK, 3000u);
+  osc.OscillatorType = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI;
+  osc.HSEState = RCC_HSE_ON;
+  osc.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  osc.HSIState = RCC_HSI_ON;
+  osc.PLL.PLLState = RCC_PLL_ON;
+  osc.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  osc.PLL.PLLMUL = RCC_PLL_MUL9;
+  if (HAL_RCC_OscConfig(&osc) != HAL_OK) {
+    /* Keep the device recoverable if the external crystal cannot start. */
+    osc.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    osc.PLL.PLLState = RCC_PLL_OFF;
+    if (HAL_RCC_OscConfig(&osc) != HAL_OK) Safety_Reset(RESET_INIT);
+    osc.PLL.PLLState = RCC_PLL_ON;
+    osc.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
+    osc.PLL.PLLMUL = RCC_PLL_MUL16;
+    if (HAL_RCC_OscConfig(&osc) != HAL_OK) Safety_Reset(RESET_INIT);
+    clockFallback = 1u;
+  } else clockFallback = 0u;
+  clk.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
+                  RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  clk.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  clk.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  clk.APB1CLKDivider = RCC_HCLK_DIV2;
+  clk.APB2CLKDivider = RCC_HCLK_DIV1;
+  if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_2) != HAL_OK) Safety_Reset(RESET_INIT);
+  Safety_Begin(STAGE_MAIN, 15000u);
 }
 
 /**
@@ -3507,6 +3230,7 @@ static void MX_GPIO_Init(void)
 
   /* PB15 = GPS 电源开关：推挽输出，默认高电平 = GPS 断电（极�? �?上电）�?
    * 搜星�?gpsPowerOn() 拉低上电，搜�?gpsPowerOff() 拉高断电 */
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);
   GPIO_InitStruct.Pin   = GPS_PWR_Pin;
   GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
@@ -3598,6 +3322,7 @@ static void MX_SPI1_Init(void)
 static void MX_ADC1_Init(void)
 {
   uint32_t timeout;
+  Safety_Begin(STAGE_ADC, 2000u);
 
   /* 1. 先设�?ADC 时钟分频 /8（必须在 ADC 时钟使能之前�?*/
   RCC->CFGR &= ~(3u << 14);
@@ -3605,6 +3330,7 @@ static void MX_ADC1_Init(void)
 
   /* 2. 使能 GPIOA �?ADC1 时钟 */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  GPIOA->CRL &= ~0xFu; /* PA0 analog input: avoid digital input leakage. */
   RCC->APB2ENR |= (1u << 9);              /* ADC1EN = 1 */
   (void)RCC->APB2ENR;
 
@@ -3628,14 +3354,18 @@ static void MX_ADC1_Init(void)
   ADC1->CR2 |= ADC_CR2_RSTCAL;
   timeout = 1000000;
   while ((ADC1->CR2 & ADC_CR2_RSTCAL) && --timeout);
+  if (!timeout) Safety_Reset(RESET_ADC);
   ADC1->CR2 |= ADC_CR2_CAL;
   timeout = 1000000;
   while ((ADC1->CR2 & ADC_CR2_CAL) && --timeout);
+  if (!timeout) Safety_Reset(RESET_ADC);
 
-  printf("[ADC] cal done CR2=0x%08lX\r\n", (unsigned long)ADC1->CR2);
+
 
   /* 7. 空读一次：确认 ADON 触发 + EOC 等待这条链路通，结果丢弃 */
   (void)ADC1_Read();
+  ADC1->CR2 &= ~ADC_CR2_ADON;
+  Safety_Begin(STAGE_MAIN, 15000u);
 }
 
 /**
@@ -3659,6 +3389,7 @@ static uint16_t ADC1_Read(void)
   /* STM32F1: 设置 ADON 触发转换（比 SWSTART 更可靠） */
   ADC1->CR2 |= ADC_CR2_ADON;
   while (!(ADC1->SR & ADC_SR_EOC) && --timeout);
+  if (!timeout) Safety_Reset(RESET_ADC);
   return (uint16_t)(ADC1->DR & 0xFFF);
 }
 
@@ -3670,12 +3401,17 @@ static uint16_t ADC1_Read(void)
 static uint8_t GetBatteryPercent(void)
 {
   uint32_t adc_sum = 0;
+  Safety_Begin(STAGE_ADC, 2000u);
+  ADC1->CR2 |= ADC_CR2_ADON;
+  HAL_Delay(1u);
   uint8_t i;
 
   /* 连续采样 8 次取平均，抑制噪�?*/
   for (i = 0; i < 8; i++) {
     adc_sum += ADC1_Read();
   }
+  ADC1->CR2 &= ~ADC_CR2_ADON;
+  Safety_Begin(STAGE_MAIN, 15000u);
   uint16_t adc_val = adc_sum / 8;
 
   /* 计算电池电压：分压比 1:1，基�?3.3V */
@@ -3813,14 +3549,8 @@ static void gpsPowerOff(void)
   */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  printf("[ERR] EH\r\n");
-  HAL_Delay(50);
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+  /* Works before UART and SysTick exist, and from interrupt context. */
+  Safety_Reset(RESET_INIT);
 }
 
 #ifdef  USE_FULL_ASSERT

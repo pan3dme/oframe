@@ -28,6 +28,8 @@ SKILLS = [
      '心跳电量收敛分析：消耗速率/充电检测/可用天数'),
     ('iwdg', '🐕', '看门狗复位设备',
      '列出近 1~10 天内上报 rst:IWDG 的设备（type=8）'),
+    ('restart', '🔁', '设备重启统计',
+     '统计近 1~10 天内发生过重启（POR/IWDG/SW/DTU）的设备'),
     # 后续技能往这里加
 ]
 
@@ -398,6 +400,12 @@ class AnalysisPage(QWidget):
         if key == 'iwdg':
             from crowui.leftpages.analysis_iwdg import IwdgDialog
             dlg = IwdgDialog(self.api, self.notify, self)
+            dlg.setWindowModality(Qt.WindowModality.NonModal)
+            dlg.show()
+            return
+        if key == 'restart':
+            from crowui.leftpages.analysis_restart import RestartDialog
+            dlg = RestartDialog(self.api, self.notify, self)
             dlg.setWindowModality(Qt.WindowModality.NonModal)
             dlg.show()
             return

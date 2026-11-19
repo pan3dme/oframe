@@ -364,6 +364,57 @@ class DeviceLogSyncer:
         out.sort(key=lambda r: r['ts'])
         return out
 
+    @staticmethod
+    def _rst_kind(s):
+        """从记录中识别重启类型 → 'IWDG'/'POR'/'SW'/'DTU' 或 None"""
+        sl = str(s).lower()
+        if 'rst:iwdg' in sl:
+            return 'IWDG'
+        if 'rst:por' in sl:
+            return 'POR'
+        if 'rst:sw' in sl:
+            return 'SW'
+        if 'dturst' in sl:
+            return 'DTU'
+        return None
+
+    def restart_records(self, days=1):
+        """近 days 天内合法设备的重启记录（POR/IWDG/SW/DTU 四类）
+        → [{'device','time','ts','lorastr','kind'}] 时间正序、去重、剔脏时间"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT deviceId, lorastr, time FROM devicelog '
+                "WHERE type=8 AND (lorastr LIKE '%rst:%' "
+                "OR lorastr LIKE '%DTURST%') "
+                'ORDER BY auto_id DESC LIMIT 20000').fetchall()
+        from crowui import wx_codec
+        now = time.time()
+        min_ts = now - max(1, min(10, days)) * 86400
+        valid = self.canonical_devices()
+        seen = set()
+        out = []
+        for did, ls, tm in rows:
+            if str(did) not in valid:
+                continue
+            s = str(ls)
+            kind = self._rst_kind(s)
+            if kind is None:
+                continue
+            try:
+                ts = wx_codec.parse_time_to_ts(str(tm or ''))
+            except Exception:
+                ts = None
+            if ts is None or ts < min_ts or ts > now + 86400:
+                continue
+            key = (did, s, ts)
+            if key in seen:          # 同设备同秒同内容的重复上报，去重
+                continue
+            seen.add(key)
+            out.append({'device': str(did), 'time': str(tm),
+                        'ts': ts, 'lorastr': s, 'kind': kind})
+        out.sort(key=lambda r: r['ts'])
+        return out
+
     def battery_devices(self):
         """有心跳电量(type=2)记录的合法设备 → [(deviceId, 次数)] 按次数降序"""
         with self._connect() as conn:

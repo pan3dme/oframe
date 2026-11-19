@@ -3,6 +3,8 @@
 "ly-020-software\main.o"
 "ly-020-software\stm32f1xx_it.o"
 "ly-020-software\stm32f1xx_hal_msp.o"
+"ly-020-software\reliability.o"
+"ly-020-software\nvstore.o"
 "ly-020-software\stm32f1xx_hal_gpio_ex.o"
 "ly-020-software\stm32f1xx_hal.o"
 "ly-020-software\stm32f1xx_hal_rcc.o"
