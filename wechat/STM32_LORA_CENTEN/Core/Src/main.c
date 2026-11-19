@@ -44,6 +44,16 @@
 #define DTU_QUEUE_SIZE 5
 #define DTU_MSG_MAX_LEN 256
 
+/* --- DTU platform PING heartbeat (server->4G->DTU->uart end-to-end link
+ * proof). Platform polls e.g. "PING1200"; the number in the frame IS the
+ * timeout window in seconds. Lost heartbeat -> link broken -> RST DTU,
+ * then report "8|dev|DTURST|PING<win>| once the link recovers */
+static uint32_t dtuPingWinMs      = 1200000; /* default 1200s until 1st PING */
+static uint32_t dtuLastPingTick   = 0;       /* HAL_GetTick() of last PING */
+static uint8_t  dtuPingGot        = 0;       /* 1 = at least one PING seen */
+static uint32_t dtuPingGraceStart = 0;       /* grace start (boot / post-RST) */
+static uint8_t  dtuRstByPing      = 0;       /* 1 = RST'd by PING timeout */
+
 typedef struct {
   char buf[DTU_MSG_MAX_LEN]; // 消息内容
   uint16_t len;              // 消息长度
@@ -1317,6 +1327,10 @@ static void dtuHardwareReset(void) {
   HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_SET);
   HAL_Delay(100);
   HAL_GPIO_WritePin(DTU_RST_GPIO_Port, DTU_RST_Pin, GPIO_PIN_RESET);
+  /* time state is tied to the old DTU session: force re-sync in fast mode
+   * (5s query) after re-registration, don't carry stale/fake time over */
+  dtuTimeValid = 0;
+  dtuNetTimeFailCount = 0;
 }
 
 /**
@@ -1718,6 +1732,16 @@ int main(void) {
         sendToDtu(rstStr, dtuCsqRssi, 0);
         dtuRstByCsq = 0;
       }
+      /* PING timeout RST'd the DTU: report once the link recovered.
+       * frame: 8|dev|DTURST|PING<windowSec>| �� server knows the outage
+       * happened and the heartbeat watchdog did its job */
+      if (dtuRstByPing) {
+        char rstStr[48];
+        snprintf(rstStr, sizeof(rstStr), "8|%s|DTURST|PING%lu|",
+                 (char *)deviceName, (unsigned long)(dtuPingWinMs / 1000u));
+        sendToDtu(rstStr, dtuCsqRssi, 0);
+        dtuRstByPing = 0;
+      }
       // 开机后首次获取到网络时间，上报一次配置信息（仅上报一次）
       if (!configBootSent) {
         configBootSent = 1;
@@ -1726,6 +1750,29 @@ int main(void) {
     }
 
     /* 过期缓存指令清理（每 30 秒扫一遍，time 时效到期不再下发�?*/
+    /* PING heartbeat timeout: judged only after grace period (boot / post-RST
+     * registration). No PING within window -> link broken -> RST DTU once,
+     * then re-arm grace and report the RST once the link recovers */
+    {
+      uint32_t nowT = HAL_GetTick();
+      uint8_t  pingRst = 0;
+
+      if (nowT - dtuPingGraceStart < 180000u) {
+        /* grace: DTU still registering after boot/reset (3 min) */
+      } else if (!dtuPingGot) {
+        pingRst = 1;                    /* zero PING since boot */
+      } else if (nowT - dtuLastPingTick > dtuPingWinMs) {
+        pingRst = 1;                    /* heartbeat lost */
+      }
+      if (pingRst) {
+        printf("[DTU PING] lost, RST dtu\r\n");
+        dtuRstByPing = 1;
+        dtuHardwareReset();
+        dtuPingGot = 0;
+        dtuPingGraceStart = HAL_GetTick(); /* re-arm grace for registration */
+      }
+    }
+
     cleanupExpiredPendingCmds();
 
     /* DTU 发送队列处理：�?2 秒从队列取出一条消息发�?*/
@@ -1774,6 +1821,26 @@ int main(void) {
         dtuRxBuf[DTU_RX_BUF_SIZE - 1] = '\0';
 
       char *pBuf = (char *)dtuRxBuf;
+
+      /* [TEST] ÿһ֡ DTU �յ���ԭ�Ķ�ԭ����ӡ��AT Ӧ��/JSON �·�/����ȫ�ԣ� */
+      printf("[DTU RX] \"%s\"\r\n", pBuf);
+
+      /* platform PING heartbeat: "PING1200" -> window=1200s.
+       * presence of this frame proves the full server->4G->DTU link is up */
+      {
+        char *pPing = strstr(pBuf, "PING");
+
+        if (pPing) {
+          int pingSec = atoi(pPing + 4);
+
+          if (pingSec >= 60 && pingSec <= 86400)
+            dtuPingWinMs = (uint32_t)pingSec * 1000u;
+          dtuPingGot = 1;
+          dtuLastPingTick = HAL_GetTick();
+          printf("[DTU PING] ok w=%lus\r\n",
+                 (unsigned long)(dtuPingWinMs / 1000u));
+        }
+      }
 
       /* 解析 CSQ 信号质量: config,csq,ok,<value> */
       char *pCsq = strstr(pBuf, "config,csq,ok,");
@@ -1840,7 +1907,8 @@ int main(void) {
        * config,get, 开头的�?DTU 对配置命令的回显（如 config,get,iccid），
        * 不是云端 JSON 指令，不能进 parseDtuCommand —�?iccid/imsi 的真�?
        * 应答在后续帧里由上面�?pIccid/pImsi 分支处理 */
-      if (!pCsq && !pNet && !pIccid && !pImsi && !strstr(pBuf, "config,get,")) {
+      if (!pCsq && !pNet && !pIccid && !pImsi && !strstr(pBuf, "config,get,") &&
+          !strstr(pBuf, "PING")) {
         /* 收到 DTU 下发数据：先把当前生效的工作时间打出来，
          * 放在 parseDtuCommand() 之前，方便对�?指令执行�?/ 执行�? */
         printWorkTimeDebug();
@@ -1862,9 +1930,11 @@ int main(void) {
       if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
         dtuCsqTick = HAL_GetTick();
         uint8_t cmd1[] = "config,get,csq\r\n";
+        printf("[DTU TX] config,get,csq\r\n");
         HAL_UART_Transmit(&huart3, cmd1, sizeof(cmd1) - 1, 1000);
         HAL_Delay(300); // 等待 csq 响应
         uint8_t cmd2[] = "config,get,nettime\r\n";
+        printf("[DTU TX] config,get,nettime\r\n");
         HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
         if (!dtuTimeValid) {
           dtuNetTimeFailCount++;
@@ -1890,11 +1960,13 @@ int main(void) {
       dtuIccidTick = HAL_GetTick();
       if (!dtuIccidGot) {
         uint8_t cmd3[] = "config,get,iccid\r\n";
+        printf("[DTU TX] config,get,iccid\r\n");
         HAL_UART_Transmit(&huart3, cmd3, sizeof(cmd3) - 1, 1000);
         HAL_Delay(300);
       }
       if (!dtuImsiGot) {
         uint8_t cmd4[] = "config,get,imsi\r\n";
+        printf("[DTU TX] config,get,imsi\r\n");
         HAL_UART_Transmit(&huart3, cmd4, sizeof(cmd4) - 1, 1000);
       }
     }
