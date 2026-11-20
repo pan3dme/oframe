@@ -1,13 +1,8 @@
 *** Using Compiler 'V5.06 update 7 (build 960)', folder: 'D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin'
 Build target 'LY-020-software'
 compiling main.c...
-../Core/Src/main.c(1313): warning:  #225-D: the format string ends before this argument
-      printf("[SCHED] fast boot 3 rounds\r\n", (unsigned)fastStartRounds);
-../Core/Src/main.c(2591): warning:  #225-D: the format string ends before this argument
-                printf("[DRIFT] sample=%ds/h unconverged\r\n", (int)driftPerHour, (int)diff);
-../Core/Src/main.c: 2 warnings, 0 errors
 linking...
-Program Size: Code=30648 RO-data=1812 RW-data=296 ZI-data=4360  
+Program Size: Code=30576 RO-data=1856 RW-data=328 ZI-data=4360  
 FromELF: creating hex file...
-"LY-020-software\LY-020-software.axf" - 0 Error(s), 2 Warning(s).
-Build Time Elapsed:  00:00:01
+"LY-020-software\LY-020-software.axf" - 0 Error(s), 0 Warning(s).
+Build Time Elapsed:  00:00:02

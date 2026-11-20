@@ -36,6 +36,17 @@
 #define GPS_RING_LEN        512    /* GPS 串口环形缓冲 */
 #define GPS_LINE_LEN        100    /* NMEA 单行缓冲 */
 #define GPS_PWR_ON_DELAY_MS 1000   /* GPS 上电后等待模块起振 (ms) */
+/* TEST_MODE selects the test scenario:
+ *   0 = time/sleep test (no LoRa, no GPS: print uptime for 1 min,
+ *       deep sleep 1 min via STOP + RTC alarm, alternate forever)
+ *   1 = GPS TX test (original firmware) */
+#define TEST_MODE 0
+#define ACTIVE_MS  60000u   /* active window: print time (1 min) */
+#define SLEEP_SEC  60u      /* deep sleep (STOP + RTC alarm) (1 min) */
+
+#if TEST_MODE == 0
+#pragma diag_suppress 177,550  /* mode-1 helpers stay compiled but unreferenced */
+#endif
 /* USER CODE END PD */
 
 /* Private variables ---------------------------------------------------------*/
@@ -329,6 +340,104 @@ static void MX_USART3_UART_Init(void)
   * @brief  The application entry point.
   * @retval int
   */
+#if TEST_MODE == 0
+/* =====================================================================
+ * Time/sleep test support: RTC on LSI (40kHz/40000 = 1Hz), alarm wakes
+ * STOP via EXTI17 event (WFE, NVIC not used - RTC_Alarm_IRQHandler in
+ * stm32f1xx_it.c stays as a fallback). GPIO states are frozen in STOP,
+ * so GPS stays powered off for the whole sleep.
+ * ===================================================================== */
+static uint32_t rtcCnt(void)
+{
+  uint16_t h, l, h2;
+
+  do {
+    h  = RTC->CNTH;
+    l  = RTC->CNTL;
+    h2 = RTC->CNTH;
+  } while (h != h2);
+  return ((uint32_t)h << 16) | l;
+}
+
+/* Force RTC source to LSI: a stale backup-domain selection (e.g. LSE left
+ * by another firmware, or dead crystal) would freeze the counter and the
+ * alarm would never fire - board would sleep forever. BDRST wipes it. */
+static void rtcInitLsi(void)
+{
+  uint32_t guard;
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_RCC_BKP_CLK_ENABLE();
+  PWR->CR |= PWR_CR_DBP;
+
+  if ((RCC->BDCR & RCC_BDCR_RTCSEL) != RCC_BDCR_RTCSEL_LSI) {
+    RCC->BDCR |= RCC_BDCR_BDRST;
+    RCC->BDCR &= (uint32_t)~RCC_BDCR_BDRST;
+    RCC->CSR |= RCC_CSR_LSION;
+    guard = 2000000u;
+    while (!(RCC->CSR & RCC_CSR_LSIRDY) && --guard)
+      ;
+    if (!guard) {
+      printf("[RTC] LSI FAIL, reset\r\n");
+      NVIC_SystemReset();
+    }
+    RCC->BDCR |= RCC_BDCR_RTCSEL_LSI | RCC_BDCR_RTCEN;
+  }
+
+  /* 1Hz prescaler (harmless rewrite every boot) */
+  while (!(RTC->CRL & RTC_CRL_RTOFF))
+    ;
+  RTC->CRL |= RTC_CRL_CNF;
+  RTC->PRLH = 0u;
+  RTC->PRLL = 39999u;
+  RTC->CRL &= (uint16_t)~RTC_CRL_CNF;
+  while (!(RTC->CRL & RTC_CRL_RTOFF))
+    ;
+}
+
+static uint32_t totalSec = 0;   /* uptime seconds (RAM survives STOP) */
+
+/* Enter STOP (low-power regulator), wake on RTC alarm via EXTI17 event.
+ * GPIO states are frozen in STOP: GPS stays off, LoRa stays in reset. */
+static void rtcSleepSec(uint32_t sec)
+{
+  uint32_t alarm = rtcCnt() + sec;
+
+  EXTI->IMR  |= EXTI_IMR_MR17;
+  EXTI->EMR  |= EXTI_EMR_MR17;
+  EXTI->RTSR |= EXTI_RTSR_TR17;
+  EXTI->FTSR &= (uint32_t)~EXTI_FTSR_TR17;
+  EXTI->PR   = EXTI_PR_PR17;               /* clear stale pending */
+  RTC->CRL  &= (uint16_t)~RTC_CRL_ALRF;    /* clear stale alarm flag */
+
+  while (!(RTC->CRL & RTC_CRL_RTOFF))
+    ;
+  RTC->CRL |= RTC_CRL_CNF;
+  RTC->ALRH = (uint16_t)(alarm >> 16);
+  RTC->ALRL = (uint16_t)alarm;
+  RTC->CRH |= RTC_CRH_ALRIE;
+  RTC->CRL &= (uint16_t)~RTC_CRL_CNF;
+  while (!(RTC->CRL & RTC_CRL_RTOFF))
+    ;
+
+  printf("[SLEEP] STOP, wake in %lus\r\n", (unsigned long)sec);
+  PWR->CR |= PWR_CR_LPDS;                  /* low-power regulator in STOP */
+  SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+  __SEV();                                 /* stale-event race guard */
+  __WFE();
+  __WFE();                                 /* actual STOP here */
+  SCB->SCR &= (uint32_t)~SCB_SCR_SLEEPDEEP_Msk;
+
+  /* woke: clear alarm leftovers, restore 72MHz (STOP wakes at HSI 8MHz) */
+  while (!(RTC->CRL & RTC_CRL_RTOFF))
+    ;
+  RTC->CRH &= (uint16_t)~RTC_CRH_ALRIE;
+  RTC->CRL &= (uint16_t)~RTC_CRL_ALRF;
+  EXTI->PR = EXTI_PR_PR17;
+  SystemClock_Config();
+}
+#endif /* TEST_MODE == 0 */
+
 int main(void)
 {
   /* MCU 配置 --------------------------------------------------------*/
@@ -339,18 +448,35 @@ int main(void)
   MX_GPIO_Init();
   MX_NVIC_Init();
   MX_SPI1_Init();
+#if TEST_MODE == 0
+  /* GPS off: PB15 high (Vcc off), PB1 low (standby), PA3 high (no reset) */
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
+  /* hold LoRa chip in reset: minimize its quiescent current */
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
+
+  rtcInitLsi();
+#endif
   MX_USART1_UART_Init();
   HAL_Delay(GPS_PWR_ON_DELAY_MS);   /* 等 GPS 模块上电起振 */
   MX_USART3_UART_Init();
 
   /* USER CODE BEGIN 2 */
 
+#if TEST_MODE == 1
   loraInitFirstTime();
 
   printf("===== LoRa GPS test TX =====\r\n");
   printf("interval: %d s fixed, type=%d frame, tx power %d~%d dBm cycling\r\n",
          (int)TX_INTERVAL_SEC, (int)MSG_TYPE_UP_GPS,
          (int)TX_PWR_MIN, (int)TX_PWR_MAX);
+#else
+  printf("===== time sleep test: no LoRa, no GPS =====\r\n");
+  printf("active %lus (print time) <-> deep sleep %lus, alternating\r\n",
+         (unsigned long)(ACTIVE_MS / 1000u), (unsigned long)SLEEP_SEC);
+#endif
   /* USER CODE END 2 */
 
   /* 无限循环 */
@@ -358,6 +484,7 @@ int main(void)
   while (1)
   {
     /* USER CODE BEGIN 3 */
+#if TEST_MODE == 1
     static uint8_t txPwr = TX_PWR_MIN;   /* 当前发射功率，逐帧递增循环 */
     uint32_t waited = 0;
     char tx_msg[TX_LEN];
@@ -403,6 +530,30 @@ int main(void)
     txPwr++;
     if (txPwr > TX_PWR_MAX)
       txPwr = TX_PWR_MIN;
+#else
+    /* time/sleep test: print uptime every second for 1 min,
+     * then deep sleep 1 min, alternate */
+    {
+      uint32_t start = HAL_GetTick();
+      uint32_t last = 0xFFFFFFFFu;
+
+      while ((HAL_GetTick() - start) < ACTIVE_MS) {
+        uint32_t el = (HAL_GetTick() - start) / 1000u;
+
+        if (el != last) {
+          last = el;
+          printf("[T] up %02lu:%02lu\r\n",
+                 (unsigned long)((totalSec + el) / 60u),
+                 (unsigned long)((totalSec + el) % 60u));
+        }
+      }
+      totalSec += ACTIVE_MS / 1000u;
+      rtcSleepSec(SLEEP_SEC);
+      totalSec += SLEEP_SEC;
+      printf("[WAKE] clock 72MHz restored, total up %lus\r\n",
+             (unsigned long)totalSec);
+    }
+#endif
     /* USER CODE END 3 */
   }
   /* USER CODE END WHILE */

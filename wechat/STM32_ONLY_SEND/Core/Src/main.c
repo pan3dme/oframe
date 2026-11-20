@@ -44,8 +44,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.0"
+#define DEMO_VER     "V2.1"
 #define BATTERY_SKIP_PCT 30   /* battery below this: skip LoRa TX/RX, sleep */
+#define BATTERY_SKIP_GRACE_TX 50u /* first N uplinks since boot: report even if low */
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -191,6 +192,8 @@ static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒�
 /* 开机前 3 轮快速上报配额：配置周期 > 1 分钟时，�?3 轮先�?1 分钟
  * （让设备尽快对时、收配置、进入正常时隙节奏）�? 轮后恢复配置周期�?
  * 每完成一�?OnMaster 递减一次；掉电重启重新�?3 �?*/
+static uint32_t bootTxRounds = 0;   /* LoRa frames since boot (never wraps):
+                                     * drives the low-battery grace window */
 static uint8_t  fastStartRounds = 3;
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  deviceCount    = 30;  /* 分时隙上报的子设备总台数（默认 30，可�?
@@ -600,6 +603,7 @@ static void txCountNext(void)
   tx_count++;
   if (tx_count > TX_COUNT_MAX)
     tx_count = 1;
+  bootTxRounds++;   /* never wraps: grace must survive tx_count wraparound */
   /* 上报次数超过阈值：一次性置位窗口静默标�?*/
   if (tx_count > WINDOW_PRINT_MAX_ROUNDS)
     windowPrintOff = 1;
@@ -3035,11 +3039,13 @@ int main(void)
       if (nowTs >= wakeTime) {
         /* STOP 醒来时钟回落 HSI 8MHz，先恢复 72MHz（SysTick 随之恢复�?*/
         SystemClock_Config();
-        /* battery check first: below threshold -> no LoRa TX/RX at all this
-         * cycle, just re-arm the alarm and sleep. Re-read on every wake, so
-         * once charged back above threshold the normal flow resumes */
+        /* battery check first: below threshold -> no LoRa TX/RX this cycle
+         * (EXCEPT the first 50 uplinks since boot, grace window), just
+         * re-arm the alarm and sleep. Re-read on every wake, so once
+         * charged back above threshold the normal flow resumes */
         cachedBatteryPercent = GetBatteryPercent();
-        if (cachedBatteryPercent < BATTERY_SKIP_PCT) {
+        if (cachedBatteryPercent < BATTERY_SKIP_PCT &&
+            bootTxRounds > BATTERY_SKIP_GRACE_TX) {
           printf("[BAT] %d%% < %d%%, skip LoRa, next cycle\r\n",
                  (int)cachedBatteryPercent, (int)BATTERY_SKIP_PCT);
           /* low-batt period has no time sync: RTC drifts, force re-anchor
