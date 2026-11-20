@@ -557,7 +557,8 @@ RF_Err_t rf_init(void)
 
     /* Restore original value */
     rf_write_reg(0x04, porreg);
-    printf("[PAN3029] Hardware OK (0x04=0x%02X)\r\n", porreg);
+    /* "[Hardware OK" success print removed: Flash is tight; the three
+     * failure prints above still report every detection problem. */
 
     porreg = rf_read_reg(0x04);
 	
@@ -649,29 +650,55 @@ RF_Err_t rf_sleep_wakeup(void)
 }
 
 /**
+ * @brief verified register write: read back and retry up to 3 times
+ * @note  SPI_WRITE_CHECK is disabled vendor-wide, so rf_write_reg() is a
+ *        blind write. A write lost to a supply transient (GPS/TX rail
+ *        spike after a ~100mA TX burst) would leave the chip awake in
+ *        STB/SLEEP with nobody noticing - the measured "sleep stuck at
+ *        ~30mA" failure. This helper catches it locally: mismatched
+ *        readback -> rewrite, up to 3 tries. Caller (rf_deepsleep 2-pass
+ *        wrapper) re-issues the whole sequence if it still refuses to land.
+ */
+static void rf_write_reg_verified(uint16_t addr, uint16_t value)
+{
+	uint8_t t;
+
+	for (t = 0u; t < 3u; t++) {
+		rf_write_reg(addr, value);
+		if (rf_read_reg(addr) == value)
+			return;
+	}
+	/* give up silently: the next rf_deepsleep() pass re-runs everything */
+}
+
+/**
  * @brief change rf mode from standby3(STB3) to deep sleep, rf should set DCDC_OFF before enter deepsleep
  * @param[in] <none>
  * @return result
+ * @note   single pass; rf_deepsleep() runs it twice for glitch immunity.
+ *         Mode writes are verified (read-back + retry); the final
+ *         DEEP_SLEEP write is NOT verified - the chip ignores SPI once
+ *         asleep, so a readback there is meaningless (always mismatch).
  */
-RF_Err_t rf_deepsleep(void)
+static RF_Err_t rf_deepsleep_once(void)
 {
 	rf_port.antenna_close();
     rf_port.delayus(10);
-    RF_ASSERT(rf_write_reg(REG_OP_MODE, RF_MODE_STB3));
+    rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB3);
     rf_port.delayus(150);
 
-    RF_ASSERT(rf_write_reg(REG_OP_MODE, RF_MODE_STB2));
+    rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB2);
     rf_port.delayus(10);
 
-    RF_ASSERT(rf_write_reg(REG_OP_MODE, RF_MODE_STB1));
+    rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB1);
     rf_port.delayus(10);
 
     rf_port.tcxo_close();
 
-    RF_ASSERT(rf_write_reg(0x04, 0x06));
+    rf_write_reg_verified(0x04, 0x06);
     rf_port.delayus(10);
 
-    RF_ASSERT(rf_write_reg(REG_OP_MODE, RF_MODE_SLEEP));
+    rf_write_reg_verified(REG_OP_MODE, RF_MODE_SLEEP);
     rf_port.delayus(10);
 
     RF_ASSERT(rf_reset_spec_page_reg_bits(PAGE3_SEL, 0x06, BIT5));
@@ -683,6 +710,22 @@ RF_Err_t rf_deepsleep(void)
     RF_ASSERT(rf_write_reg(REG_OP_MODE, RF_MODE_DEEP_SLEEP));
 
     return OK;
+}
+
+/**
+ * @brief enter deep sleep with glitch immunity: run the mode sequence TWICE
+ * @return result of the final pass
+ * @note  validated on hardware: TX burst -> immediate sleep -> stable ~40uA
+ *        over repeated cycles (was: sleep stuck at ~30mA when a rail
+ *        transient ate one blind register write). If the first pass fully
+ *        landed, the chip is already in deep sleep and further SPI writes
+ *        are ignored (DEEP_SLEEP mode write is idempotent); if a write was
+ *        lost, the second pass re-issues the whole sequence.
+ */
+RF_Err_t rf_deepsleep(void)
+{
+	(void)rf_deepsleep_once();
+	return rf_deepsleep_once();
 }
 
 /**

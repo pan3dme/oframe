@@ -155,15 +155,7 @@ static uint8_t  lastRxRssi = 0;        /* 最近一次接收窗口收到的 RSSI
 static uint8_t  lastRxSnr  = 0;        /* 最近一次接收窗口收到的 SNR */
 static uint8_t  lastRxSeen = 0;        /* 1=开机至今收到过�?未收到过上报 noRX) */
 static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自动清零 */
-static uint8_t  gpsNeedRetry = 0;      /* 上一轮搜星失�?已上�?0.0,0.0)=1
-                                        * �?本轮跳过定时上报，直接重试搜星上报坐标；
-                                        *   成功拿到坐标后自动清零，恢复定时上报
-                                        * @note  RAM �?deepsleep 期间保持，故跨休眠有效；
-                                        *        但真正掉电重启会丢失(回到0)，这是可接受�?*/
-static uint8_t  upgpsRetryOneShot = 0; /* UPGPS 跟踪失败结束后的一次性重试许可：
-                                        * 只允许下轮做一次类�?1 搜星上报�?
-                                        * 这次仍无坐标就清零，之后不再重试
-                                        * �?0 分钟穷尽+1 次重试都失败=环境真无信号�?*/
+static uint8_t  gpsNeedRetry = 0;      /* 1 = last search found no fix: at the NEXT periodic report slot do one GPS search + MSG_TYPE_GPS report (no dedicated retry rounds); cleared once a fix is got. Kept in RAM across STOP. */
 /* Link health uses monotonic RTC time, independent of wall-clock sync. */
 static uint32_t linkLastRtc, linkSilentSec;
 static uint8_t linkPollReady, linkWasEnabled, linkRecoveryStep;
@@ -881,22 +873,6 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
   printf("[GPS] tx -> \"%s\"\r\n", tx_msg);
 }
 
-/**
- * @brief  消�?UPGPS 结束后的一次性重试许�?
- * @param  fixed: 本轮上报是否拿到真实坐标
- * @note   upgps 跟踪失败后只保留一次类�?1 重试：这次仍无坐标就彻底清零
- *         不再延续。原本预�?单次两条路径各复制一份相同判断，统一收敛于此
- */
-static void consumeUpgpsRetryOneShot(uint8_t fixed)
-{
-  if (!upgpsRetryOneShot)
-    return;
-  upgpsRetryOneShot = 0;
-  if (!fixed) {
-    gpsNeedRetry = 0;
-    printf("[GPS] retry oneshot used\r\n");
-  }
-}
 
 /**
  * @brief  搜星 + 上报坐标（upgps 指令 �?失败自动重试 共用同一套流程）
@@ -2730,13 +2706,6 @@ static void OnMaster(void)
    * @note 未对�?timeSynced=0)时两个时段判断都恒为 0，此�?*不能**放弃重试�?
    *       否则一开机没对时就会把重试标记清掉，永远拿不到坐标�?
    *       未对时一律继续重试，等到对上时间后再按时段判�?*/
-  if (gpsNeedRetry && timeSynced && !isInGpsWorkWindow()) {
-    /* GPS 时段结束即放弃重试（不再等整个工作时段结束）�?
-     * 时段尾部的每轮白搜星(235�?没有意义，省�?*/
-    gpsNeedRetry = 0;
-    upgpsRetryOneShot = 0;
-    printf("[SCHED] GPS window over, drop retry\r\n");
-  }
 
   /* 下列两种情况不发定时�?MSG_TYPE_TIME，把这一轮让�?GPS�?
    *   1) 上轮无坐标要重试(gpsNeedRetry)
@@ -2745,12 +2714,10 @@ static void OnMaster(void)
    *         对时与接收下发指令都在那个窗口完成（故本处不再开窗口�?
    * @note 本轮已收�?upgps 指令(gpsWaitReport=1)时不跳过：末尾走的是 UP_GPS
    *       老逻辑（上报后不开窗口），必须靠定时后这个窗口收指�?对时 */
-  uint8_t skipTimeFrame =
-      ((gpsNeedRetry || isInGpsWorkWindow()) && !gpsWaitReport) ? 1U : 0U;
+  uint8_t skipTimeFrame = isInGpsWorkWindow() ? 1U : 0U;
 
   if (skipTimeFrame) {
-    if (gpsNeedRetry)
-      printf("[SCHED] no fix last, GPS retry\r\n");
+    /* GPS work window: the MSG_TYPE_GPS at the end replaces the time frame */
   } else {
     /* 组包�?|v0-0|当天秒数|电量[|计数]
      * 周期上报固定发时间帧，不管有没有定位 —�?定位�?UPGPS 流程单独触发上报 */
@@ -2772,7 +2739,7 @@ static void OnMaster(void)
   /* ---- 3 秒接收窗口（single 模式，最多只收一条） ----
    * 只在本轮发了定时帧时在这里开；跳过定时帧的轮次改为在末尾 MSG_TYPE_GPS
    * 上报之后再开（见下面 GPS 块），避�?没发帧还白等 3 �? */
-  if (!skipTimeFrame)
+  if (!skipTimeFrame && !gpsNeedRetry)
     openRxWindow3000();
 
   /* 窗口里收到的 A/C 等设置指令，本轮就回�?*/
@@ -2822,7 +2789,6 @@ static void OnMaster(void)
 
         sendGpsPositionMessage(preOk, useType1, gpsPreSec, gpsPreBytes);
         gpsNeedRetry = preOk ? 0U : 1U;
-        consumeUpgpsRetryOneShot(preOk);
 
         gpsPreSearched = 0;
         gpsPreFixOk    = 0;
@@ -2851,16 +2817,14 @@ static void OnMaster(void)
           linkLastRtc = rtc_read_counter();
           gpsContTotalMin = 0;
           gpsNeedRetry = contOk ? 0U : 1U;
-          upgpsRetryOneShot = contOk ? 0U : 1U;
           if (contOk)
             printf("[GPS] tracking end\r\n");
           else
-            printf("[GPS] tracking end, 1 retry\r\n");
+            printf("[GPS] tracking end, retry at next slot\r\n");
         } else {
           /* 单次搜星上报（参数为 0 �?upgps 指令，或失败后的自动重试�?*/
           hasFix = gpsSearchAndReport(useType1);
           gpsNeedRetry = hasFix ? 0U : 1U;
-          consumeUpgpsRetryOneShot(hasFix);
         }
 
         /* GPS 用完：PB15 置高断电
@@ -2948,6 +2912,11 @@ int main(void)
   MX_ADC1_Init();          /* 电池电量检测：PA0 / ADC1_CH0 */
 
   /* USER CODE BEGIN 2 */
+
+  /* First-boot flash window: hold 10s so SWD can attach and re-flash
+   * before the radio/RTC traffic starts. STOP wakes never reach this
+   * code (they resume inside the main loop), only real resets do. */
+  HAL_Delay(10000u);
 
   strncpy(bootRstCause, Safety_BootCause(), sizeof(bootRstCause) - 1u);
   bootRstPending = 1u;
