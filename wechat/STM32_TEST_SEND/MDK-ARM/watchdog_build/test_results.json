@@ -1,0 +1,13 @@
+{
+  "passed": 10444,
+  "powerCutSaveBoundaries": 1119,
+  "powerCutRecoveryBoundaries": 564,
+  "powerCutModes": [
+    "before write",
+    "partial halfword erase/program"
+  ],
+  "programmedBytes": 32512,
+  "lowest": "0x8000000",
+  "highest": "0x8007eff",
+  "scope": "source-derived feed/work-time/long-term timing checks; persistence fault MODEL; HEX validation; no board execution"
+}

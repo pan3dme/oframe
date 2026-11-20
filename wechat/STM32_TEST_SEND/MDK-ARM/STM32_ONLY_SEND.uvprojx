@@ -19,7 +19,7 @@
           <Vendor>STMicroelectronics</Vendor>
           <PackID>Keil.STM32F1xx_DFP.2.4.1</PackID>
           <PackURL>https://www.keil.com/pack/</PackURL>
-          <Cpu>IRAM(0x20000000-0x20004FFF) IROM(0x8000000-0x800FFFF) CLOCK(8000000) CPUTYPE("Cortex-M3") TZ</Cpu>
+          <Cpu>IRAM(0x20000000-0x20004FFF) IROM(0x8000000-0x800E3FF) CLOCK(8000000) CPUTYPE("Cortex-M3") TZ</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
           <StartupFile></StartupFile>
           <FlashDriverDll></FlashDriverDll>
@@ -253,7 +253,7 @@
               <IROM>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x10000</Size>
+                <Size>0xe400</Size>
               </IROM>
               <XRAM>
                 <Type>0</Type>
@@ -341,7 +341,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xB</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\user;../../Common/RadioF103/inc;../../Common/inc</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;..\user;../Radio/inc;../../Common/inc</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -409,6 +409,16 @@
               <FileName>stm32f1xx_hal_msp.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/stm32f1xx_hal_msp.c</FilePath>
+            </File>
+            <File>
+              <FileName>reliability.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/reliability.c</FilePath>
+            </File>
+            <File>
+              <FileName>nvstore.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/nvstore.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -498,12 +508,12 @@
             <File>
               <FileName>pan3029_port.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../../Common/RadioF103/src/pan3029_port.c</FilePath>
+              <FilePath>../Radio/src/pan3029_port.c</FilePath>
             </File>
             <File>
               <FileName>pan3029_rf.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../../Common/RadioF103/src/pan3029_rf.c</FilePath>
+              <FilePath>../Radio/src/pan3029_rf.c</FilePath>
             </File>
           </Files>
         </Group>
