@@ -155,7 +155,7 @@ static uint8_t  lastRxRssi = 0;        /* 最近一次接收窗口收到的 RSSI
 static uint8_t  lastRxSnr  = 0;        /* 最近一次接收窗口收到的 SNR */
 static uint8_t  lastRxSeen = 0;        /* 1=开机至今收到过�?未收到过上报 noRX) */
 static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自动清零 */
-static uint8_t  gpsNeedRetry = 0;      /* 1 = last search found no fix: at the NEXT periodic report slot do one GPS search + MSG_TYPE_GPS report (no dedicated retry rounds); cleared once a fix is got. Kept in RAM across STOP. */
+/* gpsNeedRetry removed: a failed upgps search reports once and is DONE - no automatic re-search at later slots (each retry cycle burned ~4-8min of GPS power when no satellites were visible). */
 /* Link health uses monotonic RTC time, independent of wall-clock sync. */
 static uint32_t linkLastRtc, linkSilentSec;
 static uint8_t linkPollReady, linkWasEnabled, linkRecoveryStep;
@@ -239,9 +239,8 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
  *   - 上电 PB15 默认�?�?GPS 断电（完全关机，0 电流�?
  *   - 搜星�?gpsPowerOn() 置低 �?上电开机，搜完 gpsPowerOff() 置高 �?断电
  *   - 深度休眠等待期模块始终断电，不耗任何电�?
- * �?0 时为核对模式：PB15 高阻、不翻转，模块状态由外部电源决定
+  *   GPS power control is unconditional (formal-board flow).
  */
-#define GPS_PWR_CTRL_EN  1
 
 /* 链路沉默看门狗：工作时间内连续这么久没收到任�?LoRa 信息 �?真复位自恢复
  * �? 小时。跨 STOP 深度休眠连续计时——用 RTC 时间戳，休眠机制完全不变�?
@@ -1348,8 +1347,6 @@ static uint8_t gpsNeededTimelyAt(uint32_t ts)
 {
   if (gpsWaitReport)
     return 0;                        /* 类型5：upgps 不受约束，现场搜 */
-  if (gpsNeedRetry)
-    return 1; /* 类型1：上轮失败，本轮准点重试 */
   return isInGpsWorkWindowAt(ts);
 }
 
@@ -2739,7 +2736,7 @@ static void OnMaster(void)
   /* ---- 3 秒接收窗口（single 模式，最多只收一条） ----
    * 只在本轮发了定时帧时在这里开；跳过定时帧的轮次改为在末尾 MSG_TYPE_GPS
    * 上报之后再开（见下面 GPS 块），避�?没发帧还白等 3 �? */
-  if (!skipTimeFrame && !gpsNeedRetry)
+  if (!skipTimeFrame)
     openRxWindow3000();
 
   /* 窗口里收到的 A/C 等设置指令，本轮就回�?*/
@@ -2760,7 +2757,7 @@ static void OnMaster(void)
   {
     uint8_t inGpsWin = isInGpsWorkWindow();
 
-    if (gpsWaitReport || gpsNeedRetry || inGpsWin) {
+    if (gpsWaitReport || inGpsWin) {
       uint8_t firstCmd = gpsWaitReport;        /* upgps 指令触发的第一�?*/
       uint8_t useType1 = firstCmd ? 0U : 1U;   /* 0=UP_GPS(5), 1=GPS(1) */
 
@@ -2788,13 +2785,11 @@ static void OnMaster(void)
           printf("[GPS] pre: nofix(%lus)\r\n", (unsigned long)gpsPreSec);
 
         sendGpsPositionMessage(preOk, useType1, gpsPreSec, gpsPreBytes);
-        gpsNeedRetry = preOk ? 0U : 1U;
 
         gpsPreSearched = 0;
         gpsPreFixOk    = 0;
         gpsPowerOff();   /* 确保断电（预搜里已断电，重复调用安全�?*/
       } else {
-        uint8_t hasFix;
 
         /* 兜底路径（未走预搜，如运行中被现场触发）�?
          * 这一轮要�?GPS：PB15 置低上电，用完立刻置高断�?
@@ -2816,15 +2811,13 @@ static void OnMaster(void)
 
           linkLastRtc = rtc_read_counter();
           gpsContTotalMin = 0;
-          gpsNeedRetry = contOk ? 0U : 1U;
           if (contOk)
             printf("[GPS] tracking end\r\n");
           else
             printf("[GPS] tracking end, retry at next slot\r\n");
         } else {
           /* 单次搜星上报（参数为 0 �?upgps 指令，或失败后的自动重试�?*/
-          hasFix = gpsSearchAndReport(useType1);
-          gpsNeedRetry = hasFix ? 0U : 1U;
+          (void)gpsSearchAndReport(useType1);   /* one search, one report - done either way */
         }
 
         /* GPS 用完：PB15 置高断电
@@ -3472,7 +3465,6 @@ static void gpsPowerOn(void)
   gpsLineLen = 0;
   gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数�?*/
 
-#if GPS_PWR_CTRL_EN
   /* 顺序关键：先�?WAKE_UP(PB1) 拉高，再上电 —�?
    * 若上电瞬�?WAKE_UP 为低，模块会直接�?Standby 而不搜星�?
    * 两种起始状态都覆盖�?
@@ -3483,10 +3475,6 @@ static void gpsPowerOn(void)
   HAL_Delay(GPS_PWR_ON_DELAY_MS);
   gpsPowerState = 1;
   printf("[GPS] Power ON (PB15 low, PB1 Full on)\r\n");
-#else
-  gpsPowerState = 1;   /* 核对阶段：PB15 未驱动，模块由外部电源供�?*/
-  printf("[GPS] search start(check: PB15 undriven, ext power)\r\n");
-#endif
 }
 
 /**
@@ -3496,25 +3484,20 @@ static void gpsPowerOn(void)
  */
 static void gpsPowerOff(void)
 {
-#if GPS_PWR_CTRL_EN
   HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);     /* �?= 断电 */
   /* WAKE_UP(PB1) 拉低 �?模块�?Standby(20uA)�?
    *   - 若模块已断电：低电平被保持，下次上电�?PowerOn 会先拉高�?
    *   - 若模块仍供电（硬件过渡期常供电）：进�?Standby 低功耗待机，
    *     RTC 域保持，下次拉高即热启动(~2 �?，比冷启动省大量搜星电流 */
   HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET); /* �?= Standby */
-#endif
 
   gpsFixValid = 0;
   gpsPowerState = 0;   /* 断电后串口数据一律在 gpsTask 里丢�?*/
   gpsRd = gpsWr;
   gpsLineLen = 0;
 
-#if GPS_PWR_CTRL_EN
   printf("[GPS] Power OFF (PB15 high, PB1 Standby)\r\n");
-#else
-  printf("[GPS] search end(check: PB15 undriven, state unchanged)\r\n");
-#endif
+  printf("[GPS] Power OFF (PB15 high, PB1 Standby)\r\n");
 }
 
 /* USER CODE END 4 */

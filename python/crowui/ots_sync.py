@@ -221,6 +221,57 @@ class DeviceLogSyncer:
                   6: '配置上报', 9: '模式配置', 4: '杂讯'}
     _ONLINE_SEC = 2 * 3600      # 2h 内有心跳=在线
     _LAG_SEC = 24 * 3600        # 24h 内=迟滞，更久=失联
+    _INTERVAL_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*[,，]')
+    _RF_T_RE = re.compile(r'(?<![\d-])(\d{1,3})\s*T(?![A-Za-z])', re.I)
+    _RF_P_RE = re.compile(r'(?<![\d-])(\d{1,2})\s*dbm\b', re.I)
+    _RF_V_RE = re.compile(r'[Vv](\d+(?:\.\d+)*)$')
+
+    @classmethod
+    def _parse_rf_params(cls, lorastr):
+        """从 type=8 参数记录解析 (组台数, 发射功率dBm, 固件版本)。
+        新格式 8|v3-12|15T|16dbm|V2.0|11，
+        旧格式 8|v3-12|15T|433HZ|16dbm|V1.2|7|；
+        RSSI 读数 -59dBm,6 不是发射功率，必须排除。
+        版本号整段匹配 V数字（如 V2.0），避免误吃设备ID v3-12。"""
+        s = str(lorastr or '')
+        if 'dbm' not in s.lower():
+            return None
+        mt = cls._RF_T_RE.search(s)
+        mp = cls._RF_P_RE.search(s)
+        if not mt or not mp:
+            return None
+        try:
+            groups, power = int(mt.group(1)), int(mp.group(1))
+        except ValueError:
+            return None
+        if not 0 <= groups <= 999 or not 1 <= power <= 30:
+            return None
+        version = None
+        for seg in s.split('|'):
+            mv = cls._RF_V_RE.match(seg.strip())
+            if mv:
+                version = 'V' + mv.group(1)
+                break
+        return {'groups': groups, 'power': power, 'version': version}
+
+    @classmethod
+    def _parse_interval(cls, lorastr):
+        """从 type=6 配置记录解析上报间隔（分钟）。
+        形如 6|dev|30,0M|1 / 6|dev|15,0M,3t,6|2|；
+        第3段首个数字即间隔，实测与心跳间隔吻合（分钟）。"""
+        segs = str(lorastr or '').split('|')
+        if len(segs) < 3:
+            return None
+        m = cls._INTERVAL_RE.match(segs[2])
+        if not m:
+            return None
+        try:
+            v = float(m.group(1))
+        except ValueError:
+            return None
+        if not 1 <= v <= 1440:        # 1分钟~24小时，超出视为误码
+            return None
+        return int(v) if v == int(v) else v
 
     def analyze(self, days=None):
         """全库一次扫描聚合：设备健康、数据构成、每日趋势。
@@ -246,6 +297,8 @@ class DeviceLogSyncer:
 
         type_counts = {}
         dev = {}
+        intervals = {}                 # 每台设备最后一条 type=6 的上报间隔配置
+        params = {}                    # 每台设备最后一条含dbm的type=8参数
         dirty_rows = 0
         dirty_ids = set()
         for did, typ, lorastr, tm in rows_all:
@@ -253,6 +306,21 @@ class DeviceLogSyncer:
                 dirty_rows += 1          # 乱码设备ID的记录不参与任何分析
                 dirty_ids.add(str(did))
                 continue
+            # 配置是设备属性，不受时间段过滤影响；按 auto_id 正序覆盖到最后一条
+            if typ == 6:
+                iv = self._parse_interval(lorastr)
+                if iv is not None:
+                    intervals[str(did)] = {'minutes': iv,
+                                          'time': str(tm),
+                                          'lorastr': str(lorastr)}
+            elif typ == 8:
+                rf = self._parse_rf_params(lorastr)
+                if rf:
+                    params[str(did)] = {'groups': rf['groups'],
+                                       'power': rf['power'],
+                                       'version': rf['version'],
+                                       'time': str(tm),
+                                       'lorastr': str(lorastr)}
             try:
                 ts = wx_codec.parse_time_to_ts(str(tm or ''))
             except (ValueError, OSError):
@@ -323,7 +391,8 @@ class DeviceLogSyncer:
         }
         daily = [(day_keys[k], daily_counts[k]) for k in day_keys]
         return {'types': type_counts, 'daily': daily,
-                'devices': devices, 'summary': summary, 'days': days}
+                'devices': devices, 'summary': summary, 'days': days,
+                'intervals': intervals, 'params': params}
 
     def iwdg_resets(self, days=1, kind='rst:IWDG'):
         """近 days 天内 type=8 的复位记录（默认只看看门狗 rst:IWDG）

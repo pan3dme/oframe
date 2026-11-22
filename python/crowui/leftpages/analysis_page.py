@@ -7,6 +7,7 @@
 - 数据构成说明
 - 页内卫星地图视图（定位分布技能）"""
 
+import re
 import time
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -41,6 +42,23 @@ _TYPE_CHIPS = [   # 数据构成展示顺序 (type, 名称, 是否有分析价�
     (8, '设备参数', True), (6, '配置上报', False), (9, '模式配置', False),
     (4, '杂讯', False),
 ]
+
+
+def _device_sort_key(s):
+    """设备名自然排序键：v3-2 排在 v3-10 前（数字段按数值比较）"""
+    return tuple((1, int(p)) if p.isdigit() else (0, p)
+                 for p in re.split(r'(\d+)', str(s)))
+
+
+class DeviceNameItem(QTableWidgetItem):
+    """设备名列：支持 v批次-编号 的自然排序"""
+
+    def __lt__(self, other):
+        try:
+            return _device_sort_key(self.text()) < \
+                _device_sort_key(other.text())
+        except (TypeError, ValueError):
+            return self.text() < other.text()
 
 
 class DailyBars(QWidget):
@@ -241,12 +259,16 @@ class AnalysisPage(QWidget):
         tbl_v.setContentsMargins(14, 10, 14, 10)
         t2 = QLabel('📡 设备健康总览（按最后上报排序，点击表头可排序）')
         self.dev_table_title = t2
+        t2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         t2.setStyleSheet('color:#555; font-size:12px; font-weight:600;'
                          'background:transparent;')
         tbl_v.addWidget(t2)
-        self.dev_table = QTableWidget(0, 6)
+        self.dev_table = QTableWidget(0, 10)
         self.dev_table.setHorizontalHeaderLabels(
-            ['设备', '状态', '最后上报', '电量', '上报条数', '定位成功率'])
+            ['设备', '状态', '最后上报', '电量', '上报间隔(分)',
+             '组台数', '发射功率(dBm)', '固件版本', '上报条数', '定位成功率'])
+        self.dev_table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignCenter)
         self.dev_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents)
         self.dev_table.horizontalHeader().setStretchLastSection(True)
@@ -454,12 +476,16 @@ class AnalysisPage(QWidget):
             f"{'' if days in (None, 14) else '，受时间段过滤影响'}）")
         self.trend_bars.set_data(r['daily'])
         self.dev_table_title.setText(
-            f'📡 设备健康总览（本时间段 {len(r["devices"])} 台有上报，'
-            f'点击表头可排序；选「全部」可看所有有效设备）')
-        self._fill_device_table(r['devices'])
+            f'📡 设备健康总览（本时间段 {len(r["devices"])} 台有上报；'
+            f'间隔取 type=6、组台数/功率取含 dbm 的 type=8 最新记录；'
+            f'点击表头可排序）')
+        self._fill_device_table(r['devices'], r.get('intervals') or {},
+                                r.get('params') or {})
         self._fill_composition(r['types'], s)
 
-    def _fill_device_table(self, devs):
+    def _fill_device_table(self, devs, intervals=None, params=None):
+        intervals = intervals or {}
+        params = params or {}
         now = time.time()
         self.dev_table.setSortingEnabled(False)
         self.dev_table.setRowCount(len(devs))
@@ -470,11 +496,19 @@ class AnalysisPage(QWidget):
                 if d['last_ts'] else '—'
             rate = (f"{d['gps_ok'] / d['gps_total'] * 100:.0f}%"
                     if d['gps_total'] else '—')
+            iv = intervals.get(d['id'])
+            iv_val = iv['minutes'] if iv else None
+            rf = params.get(d['id'])
             vals = [d['id'], st_txt, last_txt,
                     f"{d['battery']}%" if d['battery'] is not None else '—',
+                    f'{iv_val:g}' if iv_val is not None else '—',
+                    str(rf['groups']) if rf else '—',
+                    str(rf['power']) if rf else '—',
+                    (rf['version'] if rf and rf['version'] else '—'),
                     f"{d['count']:,}", rate]
             for c, v in enumerate(vals):
-                it = QTableWidgetItem(v)
+                it = DeviceNameItem(v) if c == 0 else QTableWidgetItem(v)
+                it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 it.setForeground(QColor('#333333'))
                 if c == 1:
                     color = ('#07c160' if online else
@@ -482,11 +516,23 @@ class AnalysisPage(QWidget):
                     it.setForeground(QColor(color))
                 if c == 3 and lowbat:
                     it.setForeground(QColor('#e53935'))
-                if c == 4:      # 数字列参与排序
+                if c == 4 and iv_val is not None:   # 间隔：数值排序
+                    it.setData(Qt.ItemDataRole.DisplayRole, iv_val)
+                    it.setToolTip(f"来自最后一条 type=6 配置：{iv['lorastr']}\n"
+                                  f"上报时间 {iv['time']}")
+                if c in (5, 6) and rf:              # 组台数 / 功率：数值排序
+                    it.setData(Qt.ItemDataRole.DisplayRole,
+                               rf['groups'] if c == 5 else rf['power'])
+                    it.setToolTip(f"来自最后一条含 dbm 的 type=8："
+                                  f"{rf['lorastr']}\n上报时间 {rf['time']}")
+                if c == 7 and rf and rf['version']:  # 固件版本
+                    it.setToolTip(f"来自最后一条含 dbm 的 type=8："
+                                  f"{rf['lorastr']}\n上报时间 {rf['time']}")
+                if c == 8:      # 上报条数：数值排序
                     it.setData(Qt.ItemDataRole.DisplayRole, int(d['count']))
                 self.dev_table.setItem(i, c, it)
         self.dev_table.setSortingEnabled(True)
-        self.dev_table.sortItems(2, Qt.SortOrder.DescendingOrder)
+        self.dev_table.sortItems(0, Qt.SortOrder.AscendingOrder)
 
     def _fill_composition(self, types, summary):
         parts = []
