@@ -159,12 +159,14 @@ for(const initialized of [0,1])for(const sleepResult of [0,1]){
 const stop=body(main,'enterStopUntil');
 // Execute the STOP loop with a modeled RTC event and hardware watchdog expiry.
 // The WFE/analog hardware itself is not emulated or proven by this test.
-for(const mode of ['normal','spurious','frozen','jump']) {
-  let rtc=0,rawFeeds=0,sleeps=0,spur=0;
+for(const mode of ['normal','spurious','frozen','jump','cold-boot','fault-boot']) {
+  let rtc=0,rawFeeds=0,sleeps=0,spur=0,awakeTick=5,windowFeeds=0;
   const enabled=new Set([8,39]);
   const state={rtcSeen:0,rtcValue:0,rtcTick:0,phaseTick:0,phaseLimit:0,
     feedTick:0,currentStage:0,BKP:{},IWDG:{},STAGE_STOP:10,STAGE_MAIN:4,
-    RESET_RTC:2,HAL_GetTick:()=>5,Safety_HadFault:()=>1,
+    RESET_RTC:2,HAL_GetTick:()=>awakeTick,Safety_HadFault:()=>mode==='cold-boot'?0:1,
+    firstWindowDone:0,wdg_feed:()=>{windowFeeds++;},
+    HAL_Delay:ms=>{const before=Math.floor(awakeTick/1000);awakeTick+=ms;rtc+=Math.floor(awakeTick/1000)-before;},
     Safety_Reset:reason=>{throw Error('reset:'+reason);},
     timeSynced:0,WDG_SEG_SEC:3,SysTick:{CTRL:3},SCB:{SCR:0},EXTI:{},PWR:{CR:0},
     EXTI2_IRQn:8,USART3_IRQn:39,GPIO_PIN_2:4,
@@ -187,7 +189,7 @@ for(const mode of ['normal','spurious','frozen','jump']) {
   state.rtc_read_counter=()=>{vm.runInContext('Safety_CheckRtc('+rtc+')',stopctx);return rtc;};
   install(stopctx,safety,[['Safety_CheckRtc','rtc'],['Safety_Begin','stage,maxMs'],
     ['Safety_PrepareStop',''],['Safety_AfterStop','']]);
-  const translated=js(stop).replace('MODIFY_REG(PWR.CR, PWR_CR_PDDS | PWR_CR_LPDS, PWR_CR_LPDS | PWR_CR_CWUF)',
+  const translated=js(stop).replace('let firstWindowDone = 0;','').replace('MODIFY_REG(PWR.CR, PWR_CR_PDDS | PWR_CR_LPDS, PWR_CR_LPDS | PWR_CR_CWUF)',
     'PWR.CR = (PWR.CR & ~(PWR_CR_PDDS | PWR_CR_LPDS)) | PWR_CR_LPDS | PWR_CR_CWUF');
   vm.runInContext('function enterStopUntil(wakeTs){'+translated+'}',stopctx);
   if(mode==='frozen'){
@@ -197,10 +199,17 @@ for(const mode of ['normal','spurious','frozen','jump']) {
     assert.throws(()=>vm.runInContext('enterStopUntil(9)',stopctx),/reset:2/);cases++;
     check(rawFeeds===1,'RTC overrun resets before post-STOP feed');
   } else {
-    vm.runInContext('enterStopUntil(9)',stopctx);
-    check(rtc===9 && rawFeeds===6,'three successful RTC segments feed at boundaries');
+    const target=mode==='cold-boot'?19:9;
+    vm.runInContext('enterStopUntil('+target+')',stopctx);
+    check(rtc===target && rawFeeds===6,'three successful RTC segments feed at boundaries');
     check(enabled.has(8)&&enabled.has(39)&&state.SysTick.CTRL===3,'restore IRQs and tick after STOP');
     if(mode==='spurious')check(sleeps===6,'spurious wakes add no feeds');
+    if(mode==='cold-boot'){
+      check(awakeTick===10005 && windowFeeds===100,'cold boot preserves full 10-second flashing window and feeds');
+      vm.runInContext('enterStopUntil(28)',stopctx);
+      check(awakeTick===10005 && windowFeeds===100 && rtc===28,'later sleep never repeats flashing delay');
+    }
+    if(mode==='fault-boot')check(awakeTick===5 && windowFeeds===0,'fault recovery does not repeatedly delay 10 seconds');
   }
 }
 check(stop.includes('NVIC_GetEnableIRQ(EXTI2_IRQn)') && stop.includes('NVIC_GetEnableIRQ(USART3_IRQn)'), 'save both IRQ enables');
@@ -428,6 +437,39 @@ function trackingTrace(jumps,noFix){
 for(const noFix of [false,true])
   check(JSON.stringify(trackingTrace(false,noFix))===JSON.stringify(trackingTrace(true,noFix)),
     'UPGPS interval/deadline unchanged by repeated wall time corrections '+noFix);
+// No wake countdown; the MCU stays asleep until one-second radio preparation.
+const beforeWake=read('backups/wake_delay_20261123/Core/Src/main.c');
+check(stop===body(beforeWake,'enterStopUntil'),'original first-sleep flashing window unchanged byte-for-byte');
+for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport'])
+  check(body(main,name)===body(beforeWake,name),'wake optimization cannot alter UPGPS timing '+name);
+const radioLead=Number(main.match(/#define RADIO_WAKE_LEAD_SEC (\d+)u/)[1]);
+check(radioLead===1 && !main.includes('for (int i = 5; i > 0; i--)'),'one-second preparation without five-second countdown');
+const wakeStart=main.indexOf('      uint8_t  timelyGps   = gpsNeededTimelyAt(nextTxTimestamp);');
+const wakeEnd=main.indexOf('      /*',main.indexOf('        enterStopUntil(wakeTime);',wakeStart));
+assert(wakeStart>=0&&wakeEnd>wakeStart);
+const wakeCode=js(main.slice(wakeStart,wakeEnd));
+for(const scenario of [
+  {now:598,target:600,gps:false,interval:600,init:0,sleep:599},
+  {now:599,target:600,gps:false,interval:600,init:1,sleep:null},
+  {now:1,target:0,gps:false,interval:600,init:1,sleep:null},
+  {now:358,target:600,gps:true,interval:600,init:0,sleep:359},
+  {now:359,target:600,gps:true,interval:600,init:1,sleep:599},
+  {now:40,target:100,gps:true,interval:60,init:0,sleep:41}
+]){
+  let initialized=0,slept=null,searches=0;
+  const wake={nowTs:scenario.now,nextTxTimestamp:scenario.target,gpsPreSearched:0,gpsContTotalMin:0,
+    RADIO_WAKE_LEAD_SEC:radioLead,GPS_PRESEARCH_LEAD_SEC:241,
+    gpsNeededTimelyAt:()=>scenario.gps?1:0,getConfigIntervalSec:()=>scenario.interval,
+    SystemClock_Config:()=>{},GetBatteryPercent:()=>99,cachedBatteryPercent:99,
+    loraInitFirstTime:()=>{initialized++;},printf:()=>{},
+    HAL_Delay:()=>{throw Error('Unexpected fixed wake delay');},
+    gpsPreSearch:()=>{searches++;wake.nowTs+=10;wake.gpsPreSearched=1;},
+    getCurrentTimestamp:()=>wake.nowTs,loraSleep:()=>{},loraInitialized:1,
+    enterStopUntil:time=>{slept=time;}};
+  vm.runInContext(wakeCode,vm.createContext(wake));
+  check(initialized===scenario.init && slept===scenario.sleep,'wake only at actual preparation deadline '+scenario.now+'/'+scenario.target);
+  check(searches===(scenario.gps&&scenario.init?1:0),'automatic GPS preparation still scheduled');
+}
 const summary={passed:cases,scope:'source-derived RTC/IRQ/sleep decision regressions; no board execution'};
 fs.writeFileSync(path.join(root,'MDK-ARM/watchdog_build/test_low_power_results.json'),JSON.stringify(summary,null,2));
 console.log(JSON.stringify(summary,null,2));

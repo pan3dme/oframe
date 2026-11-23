@@ -96,7 +96,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         11u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         12u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -234,10 +234,9 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
 #define GPS_CONT_MAX_SEC      ((uint32_t)GPS_CONT_MAX_MIN * 60u)   /* 60 分钟的秒数：
    * 跟踪目标就是定位成功 —�?一直拿不到有效坐标时，跟踪期限自动保底延长
    * 到这里（期间每轮照常上报 0.0,0.0），拿到坐标后恢复参数设定的时长 */
-/* 需要搜星的上报轮：提前唤醒�?= 搜星上限 + 5 秒（LoRa 初始化倒计时）
- * 醒来先搜星，搜到就把 GPS 断电再睡到上报点�?5 秒，到点准点发帧�?
- * 搜不到也到点�?"0.0,0.0|串口字节数|"，保证上报时间点不后�?*/
-#define GPS_PRESEARCH_LEAD_SEC ((gpsSearchMaxMs / 1000u) + 5u)
+/* Automatic GPS search plus the radio initialization budget. */
+#define RADIO_WAKE_LEAD_SEC 1u /* initialization budget; no fixed wake delay */
+#define GPS_PRESEARCH_LEAD_SEC ((gpsSearchMaxMs / 1000u) + RADIO_WAKE_LEAD_SEC)
 #define GPS_PWR_ON_DELAY_MS  1000  /* PB15 上电后等待模块输�?NMEA 的时�?ms)
                                     * @note 电源冷启动（不用 WAKE_UP 休眠模式），
                                     *       比Standby热唤醒慢，给�?1 �?*/
@@ -949,19 +948,14 @@ static uint8_t gpsSearchAndReport(uint8_t useGpsType)
   return hasFix;
 }
 
-/**
- * @brief  提前搜星（需�?GPS 的上报轮：唤醒后先搜，到点只发帧�?
- * @note   1) 搜星窗口 = 现在 �?(nextTxTimestamp - 5 �?，必须留 5 秒给 LoRa 发送；
- *         2) 窗口不足 GPS_WAIT_MIN_MS(10 �? 时直接跳过：标记"已完成、无坐标"�?
- *            到点�?"0.0,0.0|串口字节数|"，绝不让上报时间点后移；
- *         3) 窗口够但小于搜星上限时以窗口为准
- *            （例如上报周�?1 分钟 < 4 分钟搜星上限，只能在 1 分钟内尽力搜）；
- *         4) 搜完立即断电，结果暂�?gpsPreXxx，OnMaster 到点直接上报，不再现场搜�?
- */
+/* Automatic GPS search ends before the radio preparation deadline.
+ * If less than the minimum search window remains, report no fix on schedule.
+ * Successful presearch powers GPS off and keeps the result for its TX slot. */
 static void gpsPreSearch(void)
 {
   uint32_t nowTs    = getCurrentTimestamp();
-  uint32_t deadline = (nextTxTimestamp > 5u) ? (nextTxTimestamp - 5u) : nowTs;
+  uint32_t deadline = (nextTxTimestamp > RADIO_WAKE_LEAD_SEC) ?
+                      nextTxTimestamp - RADIO_WAKE_LEAD_SEC : nowTs;
   uint32_t availMs  = (deadline > nowTs) ? ((deadline - nowTs) * 1000u) : 0u;
   uint32_t maxMs, minMs, t0;
   uint8_t  hasFix, savedPrint;
@@ -3030,30 +3024,20 @@ int main(void)
         OnMaster();  /* 内部会处理发送、接收窗口、以及发送后的休眠判�?*/
       }
     } else {
-      /* LoRa 未初始化（首次启�?�?�?deepsleep 唤醒�?
-       * 唤醒时刻�?本轮是否必须准点�?GPS �?决定�?
-       *   类型1(GPS时段/重试) �?提前搜星，到点准点发帧（提前量见下）
-       *   类型5(upgps 指令)   �?提前 5 秒醒，醒后现场搜星，上报时间可后�?
-       *   普通定时帧          �?提前 5 秒醒（LoRa 初始化倒计时）
-       *
-       * 提前�?= min(搜星上限+5, 周期-5)�?
-       *   正式上线周期(30~60 分钟) > 搜星上限，取 245 秒，搜星时间充足�?
-       *   若周期被设得很小(�?1 分钟 < 4 分钟搜星上限)，压缩为"周期-5 �?�?
-       *   保证提前量不跨进上一轮，绝不会把这个上报点挤掉；
-       *   压缩后窗口不�?GPS_WAIT_MIN_MS(10 �? �?gpsPreSearch() 会跳过搜星，
-       *   到点照发 "0.0,0.0|字节数|" —�?准点优先，绝不后�?*/
+      /* Wake for radio initialization, or earlier for scheduled GPS search. */
       uint8_t  timelyGps   = gpsNeededTimelyAt(nextTxTimestamp);
       uint8_t  doPreSearch = (timelyGps && !gpsPreSearched && !gpsContTotalMin) ? 1U : 0U;
-      uint32_t leadSec     = 5u;
+      uint32_t leadSec     = RADIO_WAKE_LEAD_SEC;
       uint32_t wakeTime;
 
       if (timelyGps) {
         uint32_t intervalSec = getConfigIntervalSec();
-        uint32_t maxLead = (intervalSec > 10u) ? (intervalSec - 5u) : 5u;
+        uint32_t maxLead = (intervalSec > RADIO_WAKE_LEAD_SEC) ?
+                           intervalSec - RADIO_WAKE_LEAD_SEC : RADIO_WAKE_LEAD_SEC;
 
         leadSec = (GPS_PRESEARCH_LEAD_SEC < maxLead) ? GPS_PRESEARCH_LEAD_SEC : maxLead;
-        if (leadSec < 5u)
-          leadSec = 5u;
+        if (leadSec < RADIO_WAKE_LEAD_SEC)
+          leadSec = RADIO_WAKE_LEAD_SEC;
       }
       wakeTime = (nextTxTimestamp > leadSec) ? (nextTxTimestamp - leadSec) : 0u;
 
@@ -3065,17 +3049,7 @@ int main(void)
         doPreSearch = gpsNeededTimelyAt(nextTxTimestamp) &&
                       !gpsPreSearched && !gpsContTotalMin;
         loraInitFirstTime();
-        /* 读取电量并缓存（每轮上报前刷新一次，上报帧里带的就是它） */
-        for (int i = 5; i > 0; i--) {
-          char time_str[20];
-          formatTimestamp(getCurrentTimestamp(), time_str, sizeof(time_str));
-          printf("[WAKE] %s  %d\r\n", time_str, i);
-          wdg_feed();
-          HAL_Delay(1000);
-        }
-
-        /* 需�?GPS：醒后立刻预搜（搜星窗口�?上报点前 5 �?截止），
-         * 保证到点无论有无坐标都能准时发帧 */
+        /* Start scheduled GPS presearch immediately after radio initialization. */
         if (doPreSearch) {
           if (leadSec < GPS_PRESEARCH_LEAD_SEC)
             printf("[GPS] period<search max: lead=%lus, best effort\r\n",
@@ -3085,12 +3059,12 @@ int main(void)
 
           {
             uint32_t now2  = getCurrentTimestamp();
-            uint32_t wake2 = (nextTxTimestamp > 5u) ? (nextTxTimestamp - 5u) : now2;
+            uint32_t wake2 = (nextTxTimestamp > RADIO_WAKE_LEAD_SEC) ?
+                             nextTxTimestamp - RADIO_WAKE_LEAD_SEC : now2;
 
-            if (wake2 > now2 + 5u) {
-              /* 距离上报点还�?>5 秒：GPS 已断电，�?STOP 睡到点前 5 秒�?
-               * 醒来只需初始�?LoRa + 倒计时，到点直接发预搜结果（最省电�?*/
-              printf("[SCHED] pre done, %lus left, sleep 5s before tx\r\n",
+            if (wake2 > now2 + RADIO_WAKE_LEAD_SEC) {
+              /* GPS is off; return to STOP until radio preparation is due. */
+              printf("[SCHED] pre done, %lus left\r\n",
                      (unsigned long)(wake2 - now2));
               loraSleep();
               loraInitialized = 0;
@@ -3099,12 +3073,7 @@ int main(void)
           }
         }
       } else if (!gpsContTotalMin && !gpsPreSearched) {
-        /* 等待期：MCU �?STOP 深度休眠，RTC 闹钟�?wakeTime 唤醒；RAM 内容保持�?
-         * 说明�?
-         *   - 类型5(upgps) 允许睡到"上报点前 5 �?，醒后现场搜星再发（不受约束�?
-         *   - 类型1 允许睡到"上报点前 提前�?，醒后先预搜再到点发（准点）
-         *   所�?GPS 待办不再需要空转等满一个周期（省电�?
-         * 双保险：确认 LoRa 已深度休眠（OnMaster 末尾已调过，重复调用安全�?*/
+        /* Idle radio is asleep; keep the MCU in STOP until preparation time. */
         loraSleep();
         enterStopUntil(wakeTime);
       }
