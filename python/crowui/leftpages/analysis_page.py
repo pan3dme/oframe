@@ -31,6 +31,8 @@ SKILLS = [
      '列出近 1~10 天内上报 rst:IWDG 的设备（type=8）'),
     ('restart', '🔁', '设备重启统计',
      '统计近 1~10 天内发生过重启（POR/IWDG/SW/DTU）的设备'),
+    ('timesync', '🕐', '对时校验',
+     '检查某台设备最近 20 条对时：帧内时间与上报时隙是否正确'),
     # 后续技能往这里加
 ]
 
@@ -428,6 +430,12 @@ class AnalysisPage(QWidget):
         if key == 'restart':
             from crowui.leftpages.analysis_restart import RestartDialog
             dlg = RestartDialog(self.api, self.notify, self)
+            dlg.setWindowModality(Qt.WindowModality.NonModal)
+            dlg.show()
+            return
+        if key == 'timesync':
+            from crowui.leftpages.analysis_timesync import TimeSyncDialog
+            dlg = TimeSyncDialog(self.api, self.notify, self)
             dlg.setWindowModality(Qt.WindowModality.NonModal)
             dlg.show()
             return

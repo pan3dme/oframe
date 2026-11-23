@@ -270,7 +270,9 @@ def parse_time_to_ts(raw_time):
     for fmt in ('%Y/%m/%d %H:%M:%S', '%Y/%m/%d %H:%M', '%Y/%m/%d'):
         try:
             return int(datetime.strptime(s, fmt).timestamp())
-        except ValueError:
+        except (ValueError, OSError):
+            # OSError：Windows 上 1970 以前的时间戳（如未对时设备的
+            # "1970/1/1 ..."）datetime.timestamp() 会抛 Invalid argument
             continue
     try:
         n = int(str(raw_time).strip())

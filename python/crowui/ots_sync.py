@@ -135,6 +135,43 @@ class DeviceLogSyncer:
             conn.row_factory = sqlite3.Row
             return [dict(r) for r in conn.execute(sql, args)]
 
+    def timesync_devices(self):
+        """有对时(type=2)记录的合法设备 → [(deviceId, 去重后条数)]。
+        多中继会把同一条上报重复上云，按帧内容(lorastr)去重计数"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT deviceId, COUNT(DISTINCT lorastr) FROM devicelog '
+                'WHERE type=2 GROUP BY deviceId ORDER BY 2 DESC').fetchall()
+        valid = self.canonical_devices()
+        return [(str(d), n) for d, n in rows if str(d) in valid]
+
+    def device_interval(self, device_id):
+        """该设备最新可解析的 type=6 上报周期（分钟）；无 → None。
+        与 analyze() 同口径：取最后一条**可解析**的记录"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT lorastr FROM devicelog WHERE deviceId=? AND type=6 '
+                'ORDER BY auto_id DESC LIMIT 5', (device_id,)).fetchall()
+        for (s,) in rows:
+            v = self._parse_interval(s)
+            if v is not None:
+                return v
+        return None
+
+    def device_rf_params(self, device_id):
+        """该设备最新可解析的 type=8 readinfo 参数
+        → {'groups','power','version'}（groups=组台数，即帧里的 NT）；无 → None"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT lorastr FROM devicelog WHERE deviceId=? AND type=8 '
+                "AND lorastr LIKE '%dbm%' ORDER BY auto_id DESC LIMIT 5",
+                (device_id,)).fetchall()
+        for (s,) in rows:
+            p = self._parse_rf_params(s)
+            if p is not None:
+                return p
+        return None
+
     # ---------- 落库 ----------
 
     def _upsert_rows(self, conn, rows):
