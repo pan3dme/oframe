@@ -95,6 +95,12 @@ static uint8_t centerValid  = 0;
 #define DEVCNT_MAGIC        0xA5A55A5E  /* 设备台数魔术�?*/
 #define SRCHTM_FLASH_ADDR   0x0800E400  /* GPS search time storage (7th page from end) */
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
+#define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
+#define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
+#define APP_VERSION         5u          /* bump on EVERY new program: if it differs
+                                       * from the Flash marker, the first cycle
+                                       * reports all readinfo items once, then
+                                       * the new version is stored */
 #define GPS_SEARCH_MIN_MIN  1           /* searchtime cmd: min (minutes) */
 #define GPS_SEARCH_MAX_MIN  10          /* searchtime cmd: max (minutes) */
 #define GPS_SEARCH_DEFAULT_MIN 4       /* default search max (minutes) */
@@ -511,6 +517,31 @@ static void nvSaveOrReset(uint32_t page, uint32_t magic,
 }
 
 /**
+ * @brief firmware upgrade marker: compare APP_VERSION against the Flash copy
+ * @note  new program flashed (or marker page erased/invalid) -> flag ONE
+ *        readinfo cycle (readInfoValue=0 reports all 6 kinds back-to-back,
+ *        2s apart) and store the new version. Same version -> nothing extra.
+ */
+static void checkVersionReportFlag(void)
+{
+  uint32_t stored = 0;
+  uint32_t cur    = APP_VERSION;
+
+  if (NvStore_Load(VER_FLASH_ADDR, VER_MAGIC, &stored, sizeof(stored), 0u) &&
+      stored == cur)
+    return;
+
+  readInfoNeedReport = 1;
+  readInfoValue = 0;   /* 0 = report all 6 readinfo kinds once */
+  Safety_MarkLinkHealthy();   /* new firmware = fresh start: clear the fault
+                               * streak so the first boot after a re-flash is
+                               * not delayed by the old build's backoff */
+  printf("[VER] fw %lu new (flash %lu), readinfo x6 pending\r\n",
+         (unsigned long)cur, (unsigned long)stored);
+  nvSaveOrReset(VER_FLASH_ADDR, VER_MAGIC, &cur, sizeof(cur));
+}
+
+/**
  * @brief  把一个字符串（含结尾 '\0'）按半字写入 Flash
  * @note   STM32F1 只能半字编程；用 i+1<=len 兜底�?
  *         避免读到源串 '\0' 之后的越界字�?
@@ -658,6 +689,10 @@ static void sendReadInfoMessage(void)
   if (readInfoValue == 0) {
     uint8_t v;
 
+    /* 6 frames x (tx+2s gap) ~ 15s: re-arm the MAIN stage deadline,
+     * it would otherwise fire at 15s mid-burst (Safety_Feed cannot
+     * extend it - only Safety_Begin re-arms phaseTick/phaseLimit) */
+    Safety_Begin(STAGE_MAIN, 30000u);
     for (v = 1; v <= 6; v++) {
       readInfoValue = v;
       wdg_feed();   /* 6 frames x (tx~1s + 2s gap) = ~15s total, must feed */
@@ -1636,7 +1671,28 @@ static void rtc_init(void)
  *        由调用方判断到点�?SystemClock_Config() 恢复 */
 static void enterStopUntil(uint32_t wakeTs)
 {
-  uint32_t rtcNow = rtc_read_counter(), wakeRtc = wakeTs;
+  static uint8_t firstWindowDone = 0;
+  uint32_t rtcNow, wakeRtc = wakeTs;
+
+  /* Post-reset flashing window: hold awake 10s right before the FIRST
+   * STOP entry so SWD can attach and re-flash (debug port is dead in
+   * STOP). One-shot: later STOPs (and STOP wakes) skip it. Runs on every
+   * entry path including the boot-fault backoff sleep. Two hard rules:
+   *   1. feed the 10s IWDG throughout the wait (blind 10s delay = bite);
+   *   2. finish BEFORE rtcNow is sampled below - a stale baseline makes
+   *      the first STOP segment look like an RTC overrun (V2.2.6 bug:
+   *      reset=RTC at stage=STOP, exactly 10s after the backoff print). */
+  if (!firstWindowDone) {
+    uint32_t i;
+
+    firstWindowDone = 1;
+    Safety_Begin(STAGE_MAIN, 30000u);   /* re-arm deadline for the window */
+    for (i = 0u; i < 100u; i++) {       /* 100 x 100ms = 10s, IWDG fed */
+      wdg_feed();
+      HAL_Delay(100u);
+    }
+  }
+  rtcNow = rtc_read_counter();
   uint32_t savedCtrl;
   if (timeSynced) {
     uint32_t realDelta = wakeTs - syncedTimestamp;
@@ -2906,11 +2962,6 @@ int main(void)
 
   /* USER CODE BEGIN 2 */
 
-  /* First-boot flash window: hold 10s so SWD can attach and re-flash
-   * before the radio/RTC traffic starts. STOP wakes never reach this
-   * code (they resume inside the main loop), only real resets do. */
-  HAL_Delay(10000u);
-
   strncpy(bootRstCause, Safety_BootCause(), sizeof(bootRstCause) - 1u);
   bootRstPending = 1u;
   printf("[BOOT] reset=%s stage=%u clock=%s\r\n", bootRstCause,
@@ -2934,6 +2985,7 @@ int main(void)
   loadSearchTimeFromFlash();
   loadCenterFromFlash();
   loadDeviceCountFromFlash();
+  checkVersionReportFlag();   /* new firmware? -> one readinfo x6 cycle */
 
   /* 打印启动信息 */
   printf("\r\n[BOOT] LoRa\r\n");

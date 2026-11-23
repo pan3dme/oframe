@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define JOURNAL_PAGE 0x0800FC00u
-#define FIRST_PAGE   0x0800E400u
+#define FIRST_PAGE   0x0800E000u
 #define LAST_PAGE    0x0800F800u
 #define PAGE_SIZE    1024u
 #define FOOTER       128u
@@ -19,9 +19,13 @@ typedef struct {
 
 static uint8_t valid_page(uint32_t page, uint32_t magic)
 {
+  /* Indexed by (page - FIRST_PAGE)/PAGE_SIZE; must match main.c usage:
+   * E000 VER, E400 SRCHTM, E800 DEVCNT, EC00 CENTER,
+   * F000 TXPWR, F400 CONFIG, F800 DEVNAME */
   static const uint32_t magics[] = {
-    0xA5A55A5Fu, 0xA5A55A5Eu, 0xA5A55A5Du,
-    0xA5A55A5Cu, 0x5A5AA5A6u, 0xA5A55A5Bu
+    0xA5A55A60u, 0xA5A55A5Fu, 0xA5A55A5Eu,
+    0xA5A55A5Du, 0xA5A55A5Cu, 0x5A5AA5A6u,
+    0xA5A55A5Bu
   };
   if (page < FIRST_PAGE || page > LAST_PAGE || (page & (PAGE_SIZE - 1u)))
     return 0u;
