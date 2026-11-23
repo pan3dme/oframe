@@ -26,7 +26,7 @@
       <view class="item-status-signal" style="color:{{item.signalColor}}"><view class="sig-bar sig-1"></view><view class="sig-bar sig-2"></view><view class="sig-bar sig-3"></view><view class="sig-bar sig-4"></view></view>
       <view class="item-info">
         <view class="item-line-one">
-          <text class="item-name-compact" style="color:{{item.nameColor}}">{{item.deviceId}}<text wx:if="{{item.rename}}" class="item-name-alias">（{{item.rename}}）</text><text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text></text>
+          <text class="item-name-compact" style="color:{{item.nameColor}}">{{item.deviceId}}<text wx:if="{{item.rename}}" class="item-name-alias">（{{item.rename}}）</text><text wx:if="{{item.battery}}" style="color:{{item.batteryColor}}">（{{item.battery}}）</text><text wx:if="{{item.version}}" class="item-name-version"> {{item.version}}</text></text>
           <!-- 定位记录：坐标有效=实心圆点；坐标 0,0（定位无效）=空心圆点 -->
           <view wx:if="{{item.lastRecordType === 'gps' && !item.gpsInvalid}}" class="item-type-dot item-type-dot-gps" style="background:{{item.dotColor}}"></view>
           <view wx:elif="{{item.lastRecordType === 'gps' && item.gpsInvalid}}" class="item-type-dot item-type-dot-invalid" style="border-color:{{item.dotColor}}"></view>

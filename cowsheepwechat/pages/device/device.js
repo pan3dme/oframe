@@ -414,10 +414,15 @@ Page({
     }
     // 给每条记录附加 `selected` 标记：来自地图中心选中的设备 → 在列表中显眼高亮
     // 仅在 deviceId 完全匹配时标记为选中，避免 rename 字段影响
+    // 同时附加 `version`：读每台设备自己的 type=8 缓存（在详情页/⚙️查询时填充），无缓存则不显示
     const selId = this.data.selectedDeviceId
-    const decorated = list.map(it => Object.assign({}, it, {
-      selected: !!(selId && it.deviceId === selId)
-    }))
+    const decorated = list.map(it => {
+      const t8 = dataCache.getType8Info(it.deviceId)
+      return Object.assign({}, it, {
+        selected: !!(selId && it.deviceId === selId),
+        version: (t8 && t8.version) || ''
+      })
+    })
     // 若当前筛选后的列表中存在选中行，则把 scroll-into-view 目标指向它；
     // 否则清空，避免后续切换分类时继续滚动到上一个选中行
     const hasSelectedInList = !!(selId && decorated.some(it => it.selected))
