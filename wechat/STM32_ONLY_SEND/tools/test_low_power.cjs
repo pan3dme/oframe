@@ -220,22 +220,6 @@ for(const count of [0,100,101,10000])for(const battery of [0,29,30,99]){
   check(vm.runInContext('gpsBatteryOk()',gpsctx)===(battery>=30),'GPS battery boundary '+count+'/'+battery);
   check(Boolean(vm.runInContext('gpsNeededTimelyAt(100)',gpsctx))===(battery>=30),'no early GPS wake below threshold');
 }
-// Periodic battery checking stops a running GPS and handles tick wrap.
-for(const start of [0,0xFFFFFF00])for(const battery of [29,30]){
-  let now=start,samples=0,off=0;
-  const gpsctx=vm.createContext({GPS_MIN_BATTERY_PCT:minimum,cachedBatteryPercent:99,gpsPowerState:1,
-    HAL_GetTick:()=>now,GetBatteryPercent:ownStage=>{check(ownStage===0,'poll keeps GPS watchdog phase');samples++;return battery;},
-    gpsPowerOff:()=>{off++;gpsctx.gpsPowerState=0;}});
-  install(gpsctx,main,[['gpsBatteryOk','']]);
-  const poll=js(body(main,'gpsCheckBattery')).replace(/\*lastTick/g,'lastTick.value')
-    .replace('(now - lastTick.value)','((now - lastTick.value) >>> 0)');
-  vm.runInContext('function gpsCheckBattery(lastTick){'+poll+'}',gpsctx);
-  gpsctx.lastTick={value:start};now=(start+9999)>>>0;
-  check(vm.runInContext('gpsCheckBattery(lastTick)',gpsctx)===1 && samples===0,'no excessive ADC polling');
-  now=(start+10000)>>>0;
-  check(vm.runInContext('gpsCheckBattery(lastTick)',gpsctx)===(battery>=30?1:0),'poll observes new battery');
-  check(samples===1 && off===(battery<30?1:0),'running GPS powers off only below threshold');
-}
 // A low-battery report sends time/battery and opens RX even inside GPS hours.
 function reportSource(){
   return js(body(main,'OnMaster'))
@@ -264,8 +248,9 @@ for(const battery of [0,29,30]){
 }
 check(body(main,'gpsPowerOn').includes('if (!gpsBatteryOk()) return;'),'direct power-on has GPS battery gate');
 check(body(main,'gpsPreSearch').includes('if (!gpsBatteryOk()) return;'),'presearch has GPS battery gate');
-check(body(main,'gpsRunContinuous').includes('if (!gpsCheckBattery(&batteryTick)) break;'),'tracking waits poll battery');
-check(body(main,'gpsWaitForFix').includes('if (!gpsCheckBattery(&batteryTick)) {'),'long searches poll battery');
+check(!main.includes('gpsCheckBattery') && !main.includes('batteryTick'),'periodic GPS battery polling removed');
+for(const name of ['gpsRunContinuous','gpsWaitForFix'])
+  check(body(main,name).includes('if (!gpsBatteryOk()) return 0u;') && !body(main,name).includes('GetBatteryPercent'),'GPS tasks check cached battery only at entry');
 check(!body(main,'linkSilenceCheck').includes('cachedBatteryPercent'),'low battery does not disable link supervision');
 // Actual upgps command branch rejects both single and continuous requests low.
 const parser=body(main,'parse_rx_message');
@@ -294,33 +279,41 @@ for(const battery of [29,30]){
   check(JSON.stringify(writes)===JSON.stringify(battery>=30?[[1,1],[15,0]]:[]),'low battery never asserts GPS power');
   check(powerctx.gpsPowerState===(battery>=30?1:0),'GPS power state respects threshold');
 }
-// Battery conversion called by GPS polling must not re-arm its task deadline.
-for(const ownStage of [0,1]){
+// Ordinary battery sampling still uses the bounded ADC phase.
+{
   const stages=[];
   const adcctx=vm.createContext({ADC1:{CR2:0},ADC_CR2_ADON:1,HAL_Delay:()=>{},ADC1_Read:()=>2400,
     STAGE_ADC:12,STAGE_MAIN:4,Safety_Begin:(stage,limit)=>stages.push([stage,limit]),printf:()=>{}});
-  install(adcctx,main,[['GetBatteryPercent','ownStage']]);
-  vm.runInContext('GetBatteryPercent('+ownStage+')',adcctx);
-  check(JSON.stringify(stages)===JSON.stringify(ownStage?[[12,2000],[4,15000]]:[]),'preserve GPS deadline while sampling');
+  install(adcctx,main,[['GetBatteryPercent','']]);
+  vm.runInContext('GetBatteryPercent()',adcctx);
+  check(JSON.stringify(stages)===JSON.stringify([[12,2000],[4,15000]]),'ordinary ADC phase retained');
 }
-// Execute the tracking loop: low battery cannot extend a request to 60 minutes.
-for(const mode of ['initial-low','search-drop','wait-drop','normal']){
+// Started searches finish by fix/timeout without any in-task battery sampling.
+for(const mode of ['initial-low','timeout','fix']){
+  let now=0,feeds=0;
+  const searchctx=vm.createContext({cachedBatteryPercent:mode==='initial-low'?29:99,GPS_MIN_BATTERY_PCT:minimum,
+    HAL_GetTick:()=>now,HAL_Delay:ms=>{now+=ms;},gpsTask:()=>{},gpsFixFresh:()=>mode==='fix',
+    gpsPrintEn:0,STAGE_GPS:8,Safety_Begin:()=>{},printf:()=>{},wdg_feed:()=>{feeds++;},
+    GetBatteryPercent:()=>{throw Error('Unexpected battery sample during search');}});
+  install(searchctx,main,[['gpsBatteryOk',''],['gpsWaitForFix','minMs,timeoutMs']]);
+  const result=vm.runInContext('gpsWaitForFix(10000,30000)',searchctx,{timeout:1000});
+  check(result===(mode==='fix'?1:0),'search result '+mode);
+  check(now===(mode==='initial-low'?0:mode==='fix'?10000:30000),'entry gate or original search deadline '+mode);
+}
+// Started tracking retains its original interval and no-fix extension rules.
+for(const mode of ['initial-low','normal','multiple','no-fix']){
   let now=0,searches=0;
   const track={cachedBatteryPercent:mode==='initial-low'?29:99,GPS_MIN_BATTERY_PCT:minimum,
     HAL_GetTick:()=>now,GPS_CONT_MAX_SEC:3600,GPS_CONT_INTERVAL_SEC:180,
     STAGE_TRACK_WAIT:9,Safety_Begin:()=>{},printf:()=>{},gpsTask:()=>{},wdg_feed:()=>{},
-    HAL_Delay:ms=>{now+=ms;},gpsCheckBattery:()=>{
-      if(mode==='wait-drop' && now>=20000)track.cachedBatteryPercent=29;
-      return track.cachedBatteryPercent>=30;
-    },gpsSearchAndReport:()=>{searches++;now+=10000;
-      if(mode==='search-drop'){track.cachedBatteryPercent=29;return 0;}return 1;
-    }};
+    HAL_Delay:ms=>{now+=ms;},GetBatteryPercent:()=>{throw Error('Unexpected battery sample during tracking');},
+    gpsSearchAndReport:()=>{searches++;now+=10000;return mode==='no-fix'?0:1;}};
   const trackctx=vm.createContext(track);install(trackctx,main,[['gpsBatteryOk','']]);
-  const translated=js(body(main,'gpsRunContinuous')).replace(/gpsCheckBattery\(&batteryTick\)/g,'gpsCheckBattery()');
+  const translated=js(body(main,'gpsRunContinuous'));
   vm.runInContext('function gpsRunContinuous(totalMin,useGpsType){'+translated+'}',trackctx);
-  const result=vm.runInContext('gpsRunContinuous('+(mode==='normal'?1:10)+',0)',trackctx,{timeout:1000});
-  check(searches===(mode==='initial-low'?0:1),'tracking search count '+mode);
-  check(now<=20000 && result===(mode==='normal'||mode==='wait-drop'?1:0),'tracking ends promptly '+mode);
+  const result=vm.runInContext('gpsRunContinuous('+(mode==='multiple'?10:1)+',0)',trackctx,{timeout:1000});
+  check(searches===(mode==='initial-low'?0:mode==='multiple'?4:mode==='no-fix'?20:1),'tracking search count '+mode);
+  check(now===(mode==='initial-low'?0:mode==='multiple'?550000:mode==='no-fix'?3430000:10000) && result===(mode==='normal'||mode==='multiple'?1:0),'original tracking duration '+mode);
 }
 const countctx=vm.createContext({tx_count:999,TX_COUNT_MAX:999,bootTxRounds:100,WINDOW_PRINT_MAX_ROUNDS:10,windowPrintOff:0});
 install(countctx,main,[['txCountNext','']]);

@@ -2,7 +2,7 @@
   "compiler": "ARMCC5",
   "sources": {
     "MDK-ARM\\startup_stm32f103xb.s": "8d4376c0bb1d0e3128cb31d709606d3a08fb5b05ff0578983bb206689cdf2afe",
-    "Core\\Src\\main.c": "a62572c2db99d43cb10cc3c7aee45d90711f9428332d766ebde584aa76ece82e",
+    "Core\\Src\\main.c": "1dd898e0066af8f972237fbb9b686b59b707040f4269f848917dc68c79003629",
     "Core\\Src\\stm32f1xx_it.c": "e4ad232533ebeafa8c15a6f5303f51f1d7742ad0ef0df1ab3f7f76831d9687de",
     "Core\\Src\\stm32f1xx_hal_msp.c": "416db48768667615d7ea78662bc1cfaf934e72c405f0f079a243586948e11981",
     "Core\\Src\\reliability.c": "b2c4ba2f2403529b0c928c5cc1445e4c04965301bd5940364988d6992707f1be",
@@ -87,13 +87,13 @@
     "Drivers\\CMSIS\\Device\\ST\\STM32F1xx\\Include\\system_stm32f1xx.h": "a54dfbb3480c672f532d472a6e84bcf34df6551771d2e9966c5a3503c676b6ab",
     "tools\\build_watchdog.cjs": "e09d577e05848a88572ee36f6f475ffd96fdb091481e34821d73deb48ea822c3",
     "tools\\test_watchdog.cjs": "6efc19d55c3cb98e8eb8d2bfaff2afa382acf9028c4ec354fa9596c82c9020b8",
-    "tools\\test_low_power.cjs": "8c4170bd0b528ffdb150b08739be8ddbf3a5a0c77c84fb4cd5eb042cd984e533",
+    "tools\\test_low_power.cjs": "e2d596ce21494f741acc2b08e3b0e79453cf667a0d0daee07afb1c53a9724937",
     "MDK-ARM\\STM32_ONLY_SEND.uvprojx": "683d53d306df18b65ab53a785759264d61fa8d3d096052bdfafc333e0b3e1dfb",
     "MDK-ARM\\LY-020-software\\LY-020-software.sct": "4d875cf0c49546bd6ea6003f9d57b8519b0db18a8dcce82e7bea42d8217e2e5f"
   },
   "outputs": {
-    "STM32_ONLY_SEND.hex": "7afa0c43a66973c2bf0bd915d0e672e4f9780aaebc8a44e7f10935735d9b73a5",
-    "STM32_ONLY_SEND.bin": "47fbbf08336ef4da4f200508cf1a63c939ba95685dba1afdca53362faf9b99a5",
-    "STM32_ONLY_SEND.axf": "1ad7666452bae2d2c25812f10393552272c85b901d6fd2de92f763f72c81d576"
+    "STM32_ONLY_SEND.hex": "fea45eeb680c249043382d9a770a3d842e2823a35737008c455d1e54a4658753",
+    "STM32_ONLY_SEND.bin": "d61c4833e66db5dc0255738134bbed385a6b4397f07be29a940f285413b14fef",
+    "STM32_ONLY_SEND.axf": "8a344197645f43d7db21842059623820ff5bb02eda6cecad25baffdda22de8b4"
   }
 }

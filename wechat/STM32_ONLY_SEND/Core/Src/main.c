@@ -44,7 +44,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.1"
+#define DEMO_VER     "V2.2"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       64
@@ -96,7 +96,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         9u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         10u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -378,7 +378,6 @@ static void    printTimeWindows(const char *tag);   /* 打印当前生效的两�
 static uint8_t isInGpsWorkWindow(void);   /* 当前是否�?GPS 工作时间段内(config �?�? */
 static uint8_t isInGpsWorkWindowAt(uint32_t ts);  /* 指定时刻是否�?GPS 时间段内 */
 static uint8_t gpsBatteryOk(void);
-static uint8_t gpsCheckBattery(uint32_t *lastTick);
 static uint8_t gpsNeededTimelyAt(uint32_t ts);    /* 该时刻是�?必须准点"�?GPS �?类型1) */
 static void    gpsPreSearch(void);                /* 提前搜星（到点前必须完成�?*/
 static void    openRxWindow3000(void);    /* 开 3 秒接收窗口并解析（可重复调用�?*/
@@ -386,7 +385,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 �?Full on */
 static void gpsPowerOff(void);              /* GPS 休眠：PB1(WAKE_UP) 置低 �?Standby */
 static uint16_t ADC1_Read(void);            /* ADC1 单次读取�?2 位） */
-static uint8_t  GetBatteryPercent(uint8_t ownStage);    /* ADC �?�?电池电压 �?电量百分�?*/
+static uint8_t  GetBatteryPercent(void);    /* ADC �?�?电池电压 �?电量百分�?*/
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -1018,12 +1017,12 @@ static void gpsPreSearch(void)
  */
 static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
 {
+  if (!gpsBatteryOk()) return 0u;
   uint32_t totalSec    = (uint32_t)totalMin * 60u;
   uint32_t deadlineSec = totalSec;     /* 实际结束期限：无坐标时延长到 60 分钟 */
   uint32_t startTick   = HAL_GetTick();   /* 计时基准用开�?tick（毫秒）�?
    * 连续定位期间常会发生卫星授时/服务器对时，绝对时间戳会被整体平移，
    * 用时间戳差值会�?已用�?算成天文数字，导致第 1 轮后就被误判超时结束 */
-  uint32_t batteryTick = startTick;
   uint32_t rounds      = 0;
   uint8_t  everFixed   = 0;
 
@@ -1036,10 +1035,8 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     uint8_t  hasFix;
 
     /* �?1 轮无条件执行：收�?upgps 指令就是要立刻搜星上�?*/
-    if (!gpsCheckBattery(&batteryTick)) break;
     rounds++;
     hasFix = gpsSearchAndReport(useGpsType);
-    if (!gpsBatteryOk()) break;
     if (hasFix)
       everFixed = 1;
 
@@ -1083,7 +1080,6 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     Safety_Begin(STAGE_TRACK_WAIT, (uint32_t)GPS_CONT_INTERVAL_SEC * 1000u + 2000u);
     while ((HAL_GetTick() - slotStart) <
            (uint32_t)GPS_CONT_INTERVAL_SEC * 1000u) {
-      if (!gpsCheckBattery(&batteryTick)) break;
       gpsTask();
       wdg_feed();
       HAL_Delay(100);
@@ -1377,21 +1373,6 @@ static uint8_t isInGpsWorkWindowAt(uint32_t ts)
 static uint8_t gpsBatteryOk(void)
 {
   return cachedBatteryPercent >= GPS_MIN_BATTERY_PCT;
-}
-
-/* During long searches/tracking, recheck the battery at most every 10s. */
-static uint8_t gpsCheckBattery(uint32_t *lastTick)
-{
-  uint32_t now = HAL_GetTick();
-  if ((uint32_t)(now - *lastTick) >= 10000u) {
-    *lastTick = now;
-    cachedBatteryPercent = GetBatteryPercent(0u);
-  }
-  if (!gpsBatteryOk()) {
-    if (gpsPowerState) gpsPowerOff();
-    return 0u;
-  }
-  return 1u;
 }
 
 static uint8_t gpsNeededTimelyAt(uint32_t ts)
@@ -2205,8 +2186,8 @@ static void gpsPrintSearchStatus(uint32_t elapsedMs)
 
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
 {
+  if (!gpsBatteryOk()) return 0u;
   uint32_t startTick  = HAL_GetTick();
-  uint32_t batteryTick = startTick;
   Safety_Begin(STAGE_GPS, timeoutMs + 3000u);
   uint32_t elapsed;
   uint32_t lastStatus = 0;   /* 上次打印状态行的时刻（相对 startTick 的毫秒数�?*/
@@ -2218,10 +2199,6 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
     gpsPrintSearchStatus(0);   /* 进入就先给一行，之后每秒刷新 */
 
   while (1) {
-    if (!gpsCheckBattery(&batteryTick)) {
-      printf("[GPS] low battery, skip\r\n");
-      return 0u;
-    }
     gpsTask();                    /* 排空环形缓冲并解�?NMEA */
 
     elapsed = HAL_GetTick() - startTick;
@@ -2776,7 +2753,7 @@ static void OnMaster(void)
 {
   char tx_msg[TX_LEN];
   uint32_t today_sec = getTodaySecond();
-  cachedBatteryPercent = GetBatteryPercent(1u);
+  cachedBatteryPercent = GetBatteryPercent();
 
   /* 上轮失败的重试只�?工作时间段内"继续：已离开工作时间段就放弃重试�?
    * 否则会出�?跳过定时帧、又不搜�?的空转轮次，设备整轮什么都不上�?
@@ -3083,7 +3060,7 @@ int main(void)
         /* STOP 醒来时钟回落 HSI 8MHz，先恢复 72MHz（SysTick 随之恢复�?*/
         SystemClock_Config();
         /* Battery gates GPS only, regardless of the number of uplinks. */
-        cachedBatteryPercent = GetBatteryPercent(1u);
+        cachedBatteryPercent = GetBatteryPercent();
         doPreSearch = gpsNeededTimelyAt(nextTxTimestamp) &&
                       !gpsPreSearched && !gpsContTotalMin;
         loraInitFirstTime();
@@ -3442,11 +3419,10 @@ static uint16_t ADC1_Read(void)
   * @note   PA0 接分压电路（100K+100K），V_bat = ADC�?4096 * 3.3V * 2
   *         锂电池映射：4.2V=99%, 3.3V=0%，分段线性插�?
   */
-static uint8_t GetBatteryPercent(uint8_t ownStage)
+static uint8_t GetBatteryPercent(void)
 {
   uint32_t adc_sum = 0;
-  /* GPS polling keeps the caller deadline; ordinary reads mark the ADC stage. */
-  if (ownStage) Safety_Begin(STAGE_ADC, 2000u);
+  Safety_Begin(STAGE_ADC, 2000u);
   ADC1->CR2 |= ADC_CR2_ADON;
   HAL_Delay(1u);
   uint8_t i;
@@ -3456,7 +3432,7 @@ static uint8_t GetBatteryPercent(uint8_t ownStage)
     adc_sum += ADC1_Read();
   }
   ADC1->CR2 &= ~ADC_CR2_ADON;
-  if (ownStage) Safety_Begin(STAGE_MAIN, 15000u);
+  Safety_Begin(STAGE_MAIN, 15000u);
   uint16_t adc_val = adc_sum / 8;
 
   /* 计算电池电压：分压比 1:1，基�?3.3V */
