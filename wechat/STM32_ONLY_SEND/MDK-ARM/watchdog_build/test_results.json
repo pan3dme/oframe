@@ -7,8 +7,8 @@
     "before write",
     "partial halfword erase/program"
   ],
-  "programmedBytes": 32204,
+  "programmedBytes": 32196,
   "lowest": "0x8000000",
-  "highest": "0x8007dcb",
+  "highest": "0x8007dc3",
   "scope": "source-derived feed/work-time/long-term timing checks; persistence fault MODEL; HEX validation; no board execution"
 }

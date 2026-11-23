@@ -1,4 +1,4 @@
 {
-  "passed": 16737,
+  "passed": 16780,
   "scope": "source-derived RTC/IRQ/sleep decision regressions; no board execution"
 }

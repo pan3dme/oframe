@@ -2,7 +2,7 @@
   "compiler": "ARMCC5",
   "sources": {
     "MDK-ARM\\startup_stm32f103xb.s": "8d4376c0bb1d0e3128cb31d709606d3a08fb5b05ff0578983bb206689cdf2afe",
-    "Core\\Src\\main.c": "e45fe73531d100b4ce29e088619ea062323711706652e6e1c6d753dd554105a0",
+    "Core\\Src\\main.c": "3618a11ceb9d9bd4dca932be3f2079bc1b858bc2f977cf25c8ad99f8218635ec",
     "Core\\Src\\stm32f1xx_it.c": "e4ad232533ebeafa8c15a6f5303f51f1d7742ad0ef0df1ab3f7f76831d9687de",
     "Core\\Src\\stm32f1xx_hal_msp.c": "416db48768667615d7ea78662bc1cfaf934e72c405f0f079a243586948e11981",
     "Core\\Src\\reliability.c": "b2c4ba2f2403529b0c928c5cc1445e4c04965301bd5940364988d6992707f1be",
@@ -87,13 +87,13 @@
     "Drivers\\CMSIS\\Device\\ST\\STM32F1xx\\Include\\system_stm32f1xx.h": "a54dfbb3480c672f532d472a6e84bcf34df6551771d2e9966c5a3503c676b6ab",
     "tools\\build_watchdog.cjs": "e09d577e05848a88572ee36f6f475ffd96fdb091481e34821d73deb48ea822c3",
     "tools\\test_watchdog.cjs": "6efc19d55c3cb98e8eb8d2bfaff2afa382acf9028c4ec354fa9596c82c9020b8",
-    "tools\\test_low_power.cjs": "c067df2bf9626d4f220d1c853f03a5fb8d23617ba8a1add6d825384d56d752dc",
+    "tools\\test_low_power.cjs": "5d0741acabbca54fee2a5bed4f70d57616e144b787f6273510af278fb3b44dbf",
     "MDK-ARM\\STM32_ONLY_SEND.uvprojx": "683d53d306df18b65ab53a785759264d61fa8d3d096052bdfafc333e0b3e1dfb",
     "MDK-ARM\\LY-020-software\\LY-020-software.sct": "4d875cf0c49546bd6ea6003f9d57b8519b0db18a8dcce82e7bea42d8217e2e5f"
   },
   "outputs": {
-    "STM32_ONLY_SEND.hex": "aafeb7be11ac298eb66ceb1479cacd1e3c70a820799ecfee89141ac92eadecbf",
-    "STM32_ONLY_SEND.bin": "33eb725819b8684d3ca8de246c09ebf17d5a766821c7e791b0f222e7b648807a",
-    "STM32_ONLY_SEND.axf": "b74fb26333d22102c058dae60176cece087db8599e9ed3160f5489748a7ab217"
+    "STM32_ONLY_SEND.hex": "58dc7b5cbdee543a127e403efb159e99ecff0f2d52da98364a8ee868ff88411c",
+    "STM32_ONLY_SEND.bin": "8dc10d8c97a25e7d960c9bba78ee6470c4f24eec8b496e7be849972b7d336dba",
+    "STM32_ONLY_SEND.axf": "8493e5832ec83766b6e5369444b03981a99cb593017aff9e5ecef25a348fb928"
   }
 }

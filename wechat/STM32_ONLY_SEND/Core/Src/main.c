@@ -96,7 +96,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         12u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         13u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -3030,7 +3030,7 @@ int main(void)
       uint32_t leadSec     = RADIO_WAKE_LEAD_SEC;
       uint32_t wakeTime;
 
-      if (timelyGps) {
+      if (doPreSearch) {
         uint32_t intervalSec = getConfigIntervalSec();
         uint32_t maxLead = (intervalSec > RADIO_WAKE_LEAD_SEC) ?
                            intervalSec - RADIO_WAKE_LEAD_SEC : RADIO_WAKE_LEAD_SEC;
@@ -3048,31 +3048,28 @@ int main(void)
         cachedBatteryPercent = GetBatteryPercent();
         doPreSearch = gpsNeededTimelyAt(nextTxTimestamp) &&
                       !gpsPreSearched && !gpsContTotalMin;
-        loraInitFirstTime();
-        /* Start scheduled GPS presearch immediately after radio initialization. */
+        /* Keep the radio asleep (or in boot reset) throughout automatic GPS search. */
         if (doPreSearch) {
           if (leadSec < GPS_PRESEARCH_LEAD_SEC)
             printf("[GPS] period<search max: lead=%lus, best effort\r\n",
                    (unsigned long)leadSec);
 
           gpsPreSearch();
-
-          {
-            uint32_t now2  = getCurrentTimestamp();
-            uint32_t wake2 = (nextTxTimestamp > RADIO_WAKE_LEAD_SEC) ?
-                             nextTxTimestamp - RADIO_WAKE_LEAD_SEC : now2;
-
-            if (wake2 > now2 + RADIO_WAKE_LEAD_SEC) {
-              /* GPS is off; return to STOP until radio preparation is due. */
-              printf("[SCHED] pre done, %lus left\r\n",
-                     (unsigned long)(wake2 - now2));
-              loraSleep();
-              loraInitialized = 0;
-              enterStopUntil(wake2);
-            }
+        }
+        {
+          uint32_t now2 = getCurrentTimestamp();
+          uint32_t wake2 = (nextTxTimestamp > RADIO_WAKE_LEAD_SEC) ?
+                           nextTxTimestamp - RADIO_WAKE_LEAD_SEC : now2;
+          if (wake2 > now2 + RADIO_WAKE_LEAD_SEC) {
+            /* Also wait asleep if battery/window checks skipped the GPS search. */
+            printf("[SCHED] TX preparation in %lus\r\n", (unsigned long)(wake2 - now2));
+            enterStopUntil(wake2);
+            SystemClock_Config(); /* STOP returns on HSI; restore UART/SPI clocks. */
           }
         }
-      } else if (!gpsContTotalMin && !gpsPreSearched) {
+        /* Prepare radio only after GPS is off and the TX preparation time is due. */
+        loraInitFirstTime();
+      } else if (!gpsContTotalMin) {
         /* Idle radio is asleep; keep the MCU in STOP until preparation time. */
         loraSleep();
         enterStopUntil(wakeTime);

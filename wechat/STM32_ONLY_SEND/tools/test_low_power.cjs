@@ -454,22 +454,46 @@ for(const scenario of [
   {now:1,target:0,gps:false,interval:600,init:1,sleep:null},
   {now:358,target:600,gps:true,interval:600,init:0,sleep:359},
   {now:359,target:600,gps:true,interval:600,init:1,sleep:599},
-  {now:40,target:100,gps:true,interval:60,init:0,sleep:41}
+  {now:40,target:100,gps:true,interval:60,init:0,sleep:41},
+  {now:359,target:600,gps:true,interval:600,init:1,sleep:null,searchSeconds:240},
+  {now:359,target:600,gps:true,interval:600,init:1,sleep:null,searchSeconds:245},
+  {now:359,target:600,gps:true,interval:600,init:1,sleep:599,searchSeconds:0},
+  {now:359,target:600,gps:true,interval:600,init:1,sleep:599,battery:29},
+  {now:500,target:600,gps:true,interval:600,init:0,sleep:599,cached:1},
+  {now:599,target:600,gps:true,interval:600,init:1,sleep:null,cached:1}
 ]){
-  let initialized=0,slept=null,searches=0;
-  const wake={nowTs:scenario.now,nextTxTimestamp:scenario.target,gpsPreSearched:0,gpsContTotalMin:0,
+  let initialized=0,slept=null,searches=0,gpsPowered=false,clockReady=false;
+  const events=[];
+  const wake={nowTs:scenario.now,nextTxTimestamp:scenario.target,gpsPreSearched:scenario.cached||0,gpsContTotalMin:0,
     RADIO_WAKE_LEAD_SEC:radioLead,GPS_PRESEARCH_LEAD_SEC:241,
-    gpsNeededTimelyAt:()=>scenario.gps?1:0,getConfigIntervalSec:()=>scenario.interval,
-    SystemClock_Config:()=>{},GetBatteryPercent:()=>99,cachedBatteryPercent:99,
-    loraInitFirstTime:()=>{initialized++;},printf:()=>{},
+    gpsNeededTimelyAt:()=>scenario.gps&&wake.cachedBatteryPercent>=30?1:0,getConfigIntervalSec:()=>scenario.interval,
+    SystemClock_Config:()=>{clockReady=true;events.push('clock');},
+    GetBatteryPercent:()=>scenario.battery??99,cachedBatteryPercent:99,
+    loraInitFirstTime:()=>{
+      check(clockReady && !gpsPowered,'restore clocks and power off GPS before radio init');
+      initialized++;wake.loraInitialized=1;events.push('radio');
+    },printf:()=>{},
     HAL_Delay:()=>{throw Error('Unexpected fixed wake delay');},
-    gpsPreSearch:()=>{searches++;wake.nowTs+=10;wake.gpsPreSearched=1;},
-    getCurrentTimestamp:()=>wake.nowTs,loraSleep:()=>{},loraInitialized:1,
-    enterStopUntil:time=>{slept=time;}};
+    gpsPreSearch:()=>{
+      check(initialized===0 && wake.loraInitialized===0,'radio stays asleep throughout automatic search');
+      searches++;gpsPowered=true;events.push('gps');
+      wake.nowTs+=scenario.searchSeconds??10;wake.gpsPreSearched=1;gpsPowered=false;
+    },
+    getCurrentTimestamp:()=>wake.nowTs,loraSleep:()=>{},loraInitialized:0,
+    enterStopUntil:time=>{
+      check(initialized===0 && !gpsPowered,'both modules remain inactive while awaiting TX');
+      slept=time;wake.nowTs=time;clockReady=false;events.push('stop');
+    }};
   vm.runInContext(wakeCode,vm.createContext(wake));
   check(initialized===scenario.init && slept===scenario.sleep,'wake only at actual preparation deadline '+scenario.now+'/'+scenario.target);
-  check(searches===(scenario.gps&&scenario.init?1:0),'automatic GPS preparation still scheduled');
+  check(searches===(scenario.gps&&scenario.init&&!scenario.cached&&scenario.battery!==29?1:0),'automatic GPS preparation still scheduled');
+  if(searches)check(events.indexOf('gps')<events.indexOf('radio'),'radio initialization follows GPS completion');
+  if(initialized&&slept!==null)check(events.slice(-2).join(',')==='clock,radio','STOP restores clocks immediately before radio init');
 }
+const beforeDeferredRadio=read('backups/radio_after_gps_20261123/Core/Src/main.c');
+for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport','enterStopUntil'])
+  check(body(main,name)===body(beforeDeferredRadio,name),'deferred radio preserves UPGPS and first flash window '+name);
+check(!body(main,'gpsPreSearch').includes('loraInitFirstTime'),'automatic search never initializes radio internally');
 const summary={passed:cases,scope:'source-derived RTC/IRQ/sleep decision regressions; no board execution'};
 fs.writeFileSync(path.join(root,'MDK-ARM/watchdog_build/test_low_power_results.json'),JSON.stringify(summary,null,2));
 console.log(JSON.stringify(summary,null,2));
