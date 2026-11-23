@@ -7,7 +7,7 @@ const radio = read('Radio/src/pan3029_rf.c');
 let cases = 0;
 function check(value, label) { assert(value, label); cases++; }
 function body(src, name) {
-  const match = src.match(new RegExp('(?:static )?(?:void|uint8_t|uint32_t|RF_Err_t) ' + name + '\\([^)]*\\)\\r?\\n\\{([\\s\\S]*?)^\\}', 'm'));
+  const match = src.match(new RegExp('(?:static )?(?:void|uint8_t|uint32_t|RF_Err_t) ' + name + '\\([^)]*\\)\\r?\\n[ \\t]*\\{([\\s\\S]*?)^\\}', 'm'));
   assert(match, 'Missing function ' + name);
   return match[1];
 }
@@ -40,8 +40,8 @@ function js(src) {
   src = calls(src, 'RF_BUS_READ_RETURN', value => macro('RF_BUS_READ_RETURN', value));
   return src.replace(/\(int32_t\)\(([^()]+)\)/g, '(($1) | 0)')
     .replace(/\(uint32_t\)\(now - (rtcTick|phaseTick)\)/g, '((now - $1) >>> 0)')
-    .replace(/\((?:void|uint8_t|uint16_t|uint32_t|uint64_t|RF_Err_t|int|unsigned int|unsigned long)\)/g, '')
-    .replace(/\b(?:uint8_t|uint16_t|uint32_t|RF_Err_t|int)\b/g, 'let')
+    .replace(/\((?:void|uint8_t|uint16_t|uint32_t|uint64_t|RF_Err_t|int|long|unsigned int|unsigned long)\)/g, '')
+    .replace(/\b(?:uint8_t|uint16_t|uint32_t|int32_t|RF_Err_t|int)\b/g, 'let')
     .replace(/\bstatic let\b/g, 'let')
     .replace(/\b(0x[\da-f]+|\d+)[uU]\b/gi, '$1').replace(/->/g, '.')
     .replace(/\bdo\s*\{/g, 'do {');
@@ -227,12 +227,12 @@ function reportSource(){
     .replace(/\bchar\s+(\w+)\[[^\]]+\]/g,'let $1=[]');
 }
 for(const battery of [0,29,30]){
-  let tx=0,rx=0,gps=0,calc=0;
+  let tx=0,rx=0,gps=0,calc=0,marks=0;
   const app={cachedBatteryPercent:99,GPS_MIN_BATTERY_PCT:minimum,
     getTodaySecond:()=>100,GetBatteryPercent:()=>battery,isInGpsWorkWindow:()=>1,
     gpsWaitReport:battery<30?1:0,gpsContTotalMin:battery<30?60:0,gpsPreSearched:1,gpsPreFixOk:1,gpsPreSec:10,gpsPreBytes:512,
     TX_LEN:64,MSG_TYPE_TIME:2,deviceName:'v3-5',tx_count:0,
-    txCountNext:()=>{app.tx_count++;},sizeof:()=>64,snprintf:()=>{},loraTx:()=>{tx++;},
+    txCountNext:()=>{app.tx_count++;},markPeriodicReport:()=>{marks++;},sizeof:()=>64,snprintf:()=>{},loraTx:()=>{tx++;},
     openRxWindow3000:()=>{rx++;app.gpsWaitReport=1;app.gpsContTotalMin=60;},reportPendingMessages:()=>{},
     gpsPowerOn:()=>{gps++;},gpsPowerOff:()=>{},gpsRunContinuous:()=>{gps++;return 1;},
     sendGpsPositionMessage:()=>{gps++;},rtc_read_counter:()=>100,printf:()=>{},
@@ -242,7 +242,7 @@ for(const battery of [0,29,30]){
   vm.runInContext('function OnMaster(){'+reportSource()+'}',appctx);
   vm.runInContext('OnMaster()',appctx);
   if(battery<30){
-    check(tx===1 && rx===1 && gps===0 && calc===1,'low battery preserves LoRa TX/RX and scheduling');
+    check(tx===1 && rx===1 && gps===0 && calc===1 && marks===1,'low battery preserves LoRa TX/RX and actual-report anchor');
     check(app.gpsWaitReport===0&&app.gpsContTotalMin===0&&app.gpsPreSearched===0,'discard low-battery GPS requests/cache');
   }else check(gps===1&&rx===1,'30 percent still permits cached GPS reporting');
 }
@@ -319,6 +319,115 @@ const countctx=vm.createContext({tx_count:999,TX_COUNT_MAX:999,bootTxRounds:100,
 install(countctx,main,[['txCountNext','']]);
 vm.runInContext('txCountNext()',countctx);
 check(countctx.bootTxRounds===101 && countctx.tx_count===1,'boot count survives wire counter wrap');
+// Execute current slot calculation with real C integer-division semantics.
+function installSchedule(context){
+  const translated=js(body(main,'calcNextTxTime'))
+    .replace('rtc_read_counter() - periodicLastRtc','((rtc_read_counter() - periodicLastRtc) >>> 0)')
+    .replace(/intervalSec \/ 2\b/g,'Math.floor(intervalSec / 2)')
+    .replace('earliest / 86400','Math.floor(earliest / 86400)')
+    .replace('tod / intervalSec','Math.floor(tod / intervalSec)');
+  vm.runInContext('function calcNextTxTime(){'+translated+'}',context);
+  install(context,main,[['markPeriodicReport',''],['scheduleAfterSync','']]);
+}
+const scheduleEnv={timeSynced:1,fastStartRounds:0,period:600,wall:0,index:5,count:30,rtc:0,
+  getConfigIntervalSec:()=>scheduleEnv.period,getCurrentTimestamp:()=>scheduleEnv.wall,
+  getSlotOffsetSec:p=>Math.floor((scheduleEnv.index%scheduleEnv.count)*p/scheduleEnv.count),
+  rtc_read_counter:()=>scheduleEnv.rtc,periodicSeen:0,periodicLastRtc:0xFFFFFF00,nextTxTimestamp:0,printf:()=>{}};
+const scheduleCtx=vm.createContext(scheduleEnv);installSchedule(scheduleCtx);
+const scheduleScript=new vm.Script('calcNextTxTime()');
+function scheduleCase(wall,period,index,count,elapsed=null,fast=0){
+  Object.assign(scheduleEnv,{wall,period,index,count,fastStartRounds:fast,
+    rtc:elapsed===null?10000:((0xFFFFFF00+elapsed)>>>0),periodicSeen:elapsed!==null?1:0});
+  scheduleScript.runInContext(scheduleCtx);
+  return scheduleEnv.nextTxTimestamp;
+}
+const h=(hours,minutes,seconds=0)=>hours*3600+minutes*60+seconds;
+check(scheduleCase(h(19,0,5),600,5,30)===h(19,1,40),'current-period slot remains eligible');
+check(scheduleCase(h(19,6,41),600,5,30)===h(19,11,40),'short remaining wait no longer skips a period');
+check(scheduleCase(h(19,8),600,5,30,1000)===h(19,11,40),'old regular report permits nearest slot');
+check(scheduleCase(h(19,8),600,5,30,0)===h(19,21,40),'recent regular report enforces spacing');
+check(scheduleCase(h(19,8),600,5,30,80)===h(19,11,40),'exact half-period total spacing allowed');
+check(scheduleCase(h(19,8),600,5,30,79)===h(19,21,40),'one second short still protected');
+check(scheduleCase(h(19,1,40),600,5,30)===h(19,11,40),'exact current slot is not retransmitted');
+// Reference chooses the first future eligible slot, enumerating each day.
+function expectedSlot(wall,period,offset,elapsed){
+  const gap=elapsed===null?1:Math.max(1,Math.floor(period/2)-elapsed);
+  const midnight=wall-wall%86400;
+  for(let day=0;day<2;day++)for(let tod=offset;tod<86400;tod+=period){
+    const candidate=midnight+day*86400+tod;
+    if(candidate>=wall+gap)return candidate;
+  }
+  throw Error('No reference slot');
+}
+for(let minutes=1;minutes<=60;minutes++)for(const count of [1,30,60])for(const index of [0,5,count-1])
+  for(const tod of [0,5,59,12345,86300,86399])for(const elapsed of [null,0,29,300,4000]){
+    const period=minutes*60,wall=20000*86400+tod,offset=Math.floor((index%count)*period/count);
+    check(scheduleCase(wall,period,index,count,elapsed)===expectedSlot(wall,period,offset,elapsed),
+      'nearest eligible daily slot '+[minutes,count,index,tod,elapsed]);
+  }
+check(scheduleCase(h(19,0,5),600,5,30,null,3)===h(19,0,10),'startup fast period uses its own offset');
+{
+  let rtc=100,wall=1000;
+  const context=vm.createContext({timeSynced:0,fastStartRounds:0,tx_count:0,
+    getConfigIntervalSec:()=>600,getCurrentTimestamp:()=>wall,getSlotOffsetSec:()=>100,
+    rtc_read_counter:()=>rtc,periodicSeen:0,periodicLastRtc:0,nextTxTimestamp:0,printf:()=>{}});
+  installSchedule(context);
+  vm.runInContext('calcNextTxTime()',context);check(context.nextTxTimestamp===1600,'unsynced interval unchanged');
+  vm.runInContext('scheduleAfterSync()',context);check(context.nextTxTimestamp===1000,'first boot immediate report unchanged');
+  vm.runInContext('markPeriodicReport()',context);check(context.periodicSeen===1&&context.periodicLastRtc===100,'completed regular TX records RTC');
+  context.timeSynced=1;context.tx_count=1;rtc=180;
+  for(const corrected of [h(19,8),h(18,8),h(20,8)]){
+    wall=corrected;vm.runInContext('scheduleAfterSync()',context);
+    check(context.nextTxTimestamp===expectedSlot(wall,600,100,80),'forward/backward wall sync keeps RTC spacing');
+    check(context.periodicLastRtc===100,'rescheduling cannot move actual-TX anchor');
+  }
+}
+const beforeSchedule=read('backups/slot_schedule_20261123/Core/Src/main.c');
+for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport'])
+  check(body(main,name)===body(beforeSchedule,name),'UPGPS timing function unchanged '+name);
+check(body(main,'sendGpsPositionMessage').includes('if (useGpsType) markPeriodicReport();'),'type 5 never updates ordinary TX anchor');
+for(const useType1 of [0,1])for(const fail of [false,true]){
+  const sender=vm.createContext({TX_LEN:64,MSG_TYPE_GPS:1,MSG_TYPE_UP_GPS:5,
+    deviceName:'v3-5',tx_count:1,txCountNext:()=>{},fmtRxBytes:()=>{},sizeof:()=>64,snprintf:()=>{},
+    loraTx:()=>{if(fail)throw Error('TX reset');},rtc_read_counter:()=>123,
+    periodicSeen:0,periodicLastRtc:0});
+  install(sender,main,[['markPeriodicReport','']]);
+  const send=js(body(main,'sendGpsPositionMessage'))
+    .replace(/#if TX_COUNT_ENABLE\s*([\s\S]*?)#else[\s\S]*?#endif/g,'$1')
+    .replace(/char\s+latBuf\[16\], lngBuf\[16\];/,'let latBuf=[], lngBuf=[];')
+    .replace(/\bchar\s+(\w+)\[[^\]]+\]/g,'let $1=[]');
+  vm.runInContext('function sendGpsPositionMessage(hasFix,useGpsType,searchSec,rxBytes){'+send+'}',sender);
+  if(fail){assert.throws(()=>vm.runInContext('sendGpsPositionMessage(0,'+useType1+',10,0)',sender),/TX reset/);cases++;}
+  else vm.runInContext('sendGpsPositionMessage(0,'+useType1+',10,0)',sender);
+  check(sender.periodicSeen===(!fail&&useType1?1:0),'only completed scheduled GPS anchors spacing');
+}
+for(const name of ['sendCenterMessage','sendConfigMessage','sendResetInfoMessage','sendReadInfoMessage'])
+  check(!body(main,name).includes('markPeriodicReport'),'auxiliary frames cannot defer regular slots '+name);
+// Inject actual scheduleAfterSync repeatedly inside unchanged tracking loops.
+// Forward/backward wall-clock jumps and slot recalculation cannot alter traces.
+function trackingTrace(jumps,noFix){
+  let tick=0,wallBase=h(19,0),syncs=0;const trace=[];
+  const context=vm.createContext({cachedBatteryPercent:99,GPS_MIN_BATTERY_PCT:30,
+    timeSynced:1,fastStartRounds:0,tx_count:1,getConfigIntervalSec:()=>600,
+    getCurrentTimestamp:()=>wallBase+Math.floor(tick/1000),getSlotOffsetSec:()=>100,
+    rtc_read_counter:()=>100+Math.floor(tick/1000),periodicSeen:1,periodicLastRtc:90,
+    HAL_GetTick:()=>tick,GPS_CONT_MAX_SEC:3600,GPS_CONT_INTERVAL_SEC:180,
+    STAGE_TRACK_WAIT:9,Safety_Begin:()=>{},printf:()=>{},wdg_feed:()=>{},
+    HAL_Delay:ms=>{tick+=ms;},GetBatteryPercent:()=>{throw Error('Unexpected in-task sample');},
+    gpsTask:()=>{
+      if(jumps&&Math.floor(tick/5000)>syncs){syncs=Math.floor(tick/5000);wallBase+=syncs%2?3600:-7200;
+        vm.runInContext('scheduleAfterSync()',context);}
+    },gpsSearchAndReport:()=>{trace.push(tick);tick+=10000;
+      if(jumps){wallBase+=trace.length%2?86400:-172800;vm.runInContext('scheduleAfterSync()',context);}
+      return noFix?0:1;}});
+  installSchedule(context);install(context,main,[['gpsBatteryOk',''],['gpsRunContinuous','totalMin,useGpsType']]);
+  const result=vm.runInContext('gpsRunContinuous(10,0)',context,{timeout:5000});
+  check(context.periodicLastRtc===90,'UPGPS and sync never refresh ordinary TX anchor');
+  return {trace,tick,result};
+}
+for(const noFix of [false,true])
+  check(JSON.stringify(trackingTrace(false,noFix))===JSON.stringify(trackingTrace(true,noFix)),
+    'UPGPS interval/deadline unchanged by repeated wall time corrections '+noFix);
 const summary={passed:cases,scope:'source-derived RTC/IRQ/sleep decision regressions; no board execution'};
 fs.writeFileSync(path.join(root,'MDK-ARM/watchdog_build/test_low_power_results.json'),JSON.stringify(summary,null,2));
 console.log(JSON.stringify(summary,null,2));

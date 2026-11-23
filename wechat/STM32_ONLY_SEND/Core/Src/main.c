@@ -96,7 +96,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         10u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         11u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -185,6 +185,10 @@ static uint32_t tx_count = 0;          /* 上报帧计数（每发一�?LoRa +1�
 #define WINDOW_PRINT_MAX_ROUNDS 20     /* 上报超过此次数后停止所有接收窗口打�?*/
 static uint8_t windowPrintOff = 0;     /* 一次性标记：�?1 后窗口静默（回绕也不恢复�?
                                         * 断电重启才复位）——长期部署减少串口日志噪�?*/
+/* Only scheduled type 2/type 1 reports set this monotonic RTC anchor.
+ * Command UPGPS (type 5) and auxiliary replies must not affect it. */
+static uint32_t periodicLastRtc;
+static uint8_t periodicSeen;
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒�?*/
 /* 开机前 3 轮快速上报配额：配置周期 > 1 分钟时，�?3 轮先�?1 分钟
  * （让设备尽快对时、收配置、进入正常时隙节奏）�? 轮后恢复配置周期�?
@@ -358,6 +362,7 @@ static int16_t getConfigWorkStartIdx(void);      /* 工作时间�?�?�?"0M") *
 static int16_t getConfigGpsEndIdx(void);         /* GPS 上报时间�?�?�?"3t") */
 static uint8_t  getDeviceIndex(void);
 static uint32_t getSlotOffsetSec(uint32_t intervalSec);
+static void markPeriodicReport(void);
 static void calcNextTxTime(void);
 static void MX_USART3_UART_Init(void);
 static void gpsTask(void);
@@ -909,6 +914,7 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
   }
 
   loraTx(tx_msg);
+  if (useGpsType) markPeriodicReport();
 }
 
 
@@ -1096,6 +1102,12 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
   return everFixed;
 }
 
+static void markPeriodicReport(void)
+{
+  periodicLastRtc = rtc_read_counter();
+  periodicSeen = 1u;
+}
+
 /**
   * @brief  计算下次上报时间
   * @note   已对时：基于时隙调度，nextTx = 下一�?slot 边界（休眠时保持�?RAM�?
@@ -1104,42 +1116,30 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
 static void calcNextTxTime(void)
 {
   uint32_t intervalSec = getConfigIntervalSec();
-  uint8_t  fastMode = 0;
-
-  /* 开机前 3 轮快速上报：配置周期 > 1 分钟时先压到 1 分钟�?
-   * 让设备尽快完成对�?/ 收配�?/ 进入正常时隙节奏�? 轮后恢复配置周期�?
-   * @note  时隙偏移也必须按压缩后的周期算，否则各设备的错峰位置会乱 */
-  if ((fastStartRounds > 0) && (intervalSec > 60u)) {
-    intervalSec = 60u;
-    fastMode = 1;
-  }
-
+  uint32_t nowTs = getCurrentTimestamp();
+  if (fastStartRounds > 0u && intervalSec > 60u) intervalSec = 60u;
   if (timeSynced) {
-    /* 已对时：基于当天 00:00 的时隙调�?*/
     uint32_t slotOffset = getSlotOffsetSec(intervalSec);
-    uint32_t nowSec = getTodaySecond();
-    uint32_t currentSlot = nowSec / intervalSec;
-    uint32_t nextSlotTime = (currentSlot + 1) * intervalSec + slotOffset;
-    /* 如果计算的时间已过，再加一个周�?*/
-    if (nextSlotTime <= nowSec) {
-      nextSlotTime += intervalSec;
+    uint32_t nowSec = nowTs % 86400u;
+    uint32_t minWait = 1u, earliest, day, tod, slot;
+    if (periodicSeen) {
+      uint32_t elapsed = rtc_read_counter() - periodicLastRtc;
+      if (elapsed < intervalSec / 2u) minWait = intervalSec / 2u - elapsed;
     }
-    /* 防止对时后等待时间过短导致重复上报（< 半周期则再加一个周期） */
-    uint32_t waitSec = nextSlotTime - nowSec;
-    if (waitSec < intervalSec / 2) {
-      nextSlotTime += intervalSec;
-    }
-    nextTxTimestamp = getCurrentTimestamp() + (nextSlotTime - nowSec);
-    printf("[SCHED] next=%lu wait=%lus\r\n", (unsigned long)nextTxTimestamp,
-           (unsigned long)(nextSlotTime - nowSec));
+    /* Nearest own slot at/after the minimum spacing, anchored to each day.
+     * RTC elapsed is independent of forward/backward network time corrections. */
+    earliest = nowSec + minWait;
+    day = earliest / 86400u;
+    tod = earliest % 86400u;
+    slot = (tod / intervalSec) * intervalSec + slotOffset;
+    if (slot < tod) slot += intervalSec;
+    if (slot >= 86400u) { ++day; slot = slotOffset; }
+    nextTxTimestamp = nowTs + day * 86400u + slot - nowSec;
   } else {
-    /* 未对时：当前 boot seconds + 间隔 */
-    nextTxTimestamp = getCurrentTimestamp() + intervalSec;
-    printf("[SCHED] next=%lu\r\n", (unsigned long)nextTxTimestamp);
+    nextTxTimestamp = nowTs + intervalSec;
   }
-
-  if (fastMode)
-    printf("[FAST] %u\r\n", (unsigned)fastStartRounds);
+  printf("[SCHED] next=%lu wait=%lus\r\n", (unsigned long)nextTxTimestamp,
+         (unsigned long)(nextTxTimestamp - nowTs));
 }
 
 /**
@@ -2787,6 +2787,7 @@ static void OnMaster(void)
 #endif
 
     loraTx(tx_msg);
+    markPeriodicReport();
   }
 
   /* ---- 3 秒接收窗口（single 模式，最多只收一条） ----
