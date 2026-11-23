@@ -216,7 +216,7 @@ void USART3_IRQHandler(void)
   *        本函数正常不会进入；保留兜底实现（万一 IMR 被打开也不违规写）。
   *        清 RTC 标志必须等 RTOFF=1，且写后必须跟一次读（RM0008）。
   */
-void RTC_Alarm_IRQHandler(void)
+void RTCAlarm_IRQHandler(void)
 {
   EXTI->PR = EXTI_PR_PR17;                /* 清 EXTI 挂起 */
   if (RTC->CRL & (RTC_CRL_SECF | RTC_CRL_ALRF)) {

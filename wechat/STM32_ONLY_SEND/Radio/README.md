@@ -13,3 +13,10 @@ Local changes:
 
 Keep these changes when importing a future vendor driver update. Do not replace
 this directory with a shared path without reviewing the watchdog behavior.
+
+2026-11-23 reliability update:
+
+- Page selection plus access and read/modify/write operations preserve the caller interrupt mask as one transaction.
+- Deep-sleep preparation checks readable mode writes, retries preparation once, and reports failure to the caller. The retained second pass is deliberately unchecked because a sleeping chip cannot be read back.
+- Application sleep requests are idempotent. Do not send a new verified sleep sequence to an already sleeping module.
+- Final deep-sleep entry and board current still require measurement; SPI success does not prove low current.

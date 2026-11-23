@@ -1,0 +1,41 @@
+{
+  "compiler": "ARMCC5",
+  "sources": {
+    "MDK-ARM\\startup_stm32f103xb.s": "8d4376c0bb1d0e3128cb31d709606d3a08fb5b05ff0578983bb206689cdf2afe",
+    "Core\\Src\\main.c": "d562094d206a4932ef1a0887207dc99f1841c6b379a3d34da55f151a778c2fc7",
+    "Core\\Src\\stm32f1xx_it.c": "d58b68aca49674bbfb27217ab83eed58438b4b4f92d2c8eae35403e6c3ddbee3",
+    "Core\\Src\\stm32f1xx_hal_msp.c": "416db48768667615d7ea78662bc1cfaf934e72c405f0f079a243586948e11981",
+    "Core\\Src\\reliability.c": "7089b1f2e990a488292308a47c4fa4b6606e414f70811b8db220bf5f459b678f",
+    "Core\\Src\\nvstore.c": "545ebd01ff0fc94a800a05bd43fc25b6dbc49c1950f5b52b831bbc8abed2d570",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_gpio_ex.c": "5ec9f22de1b3ee82e8437b3ba52725f8f031cf9075848582a0a297d4d1176450",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal.c": "607343f969fce8d49111fe4d8d32001c9b289742408d0452ae49761034f39f01",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_rcc.c": "5c64b13347aa70dd970f803331d3e106e915e13e2bb029d27c673cfba7cd394c",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_rcc_ex.c": "2dc02facf7141e4a25ae5653287d7100adbc3847b8a25e3e00969927c2e727d5",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_gpio.c": "a2e12792c9d49eecdc567ab9fc1a49ed90723007f9579b702c28960dfd83e121",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_dma.c": "9ec6e91366c9b27c64b93c4d31fb4636dbc830b055ec501dc728c34eff6900da",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_cortex.c": "21ccc3b54e45e62b278e7f32fd34533bb1e0f4105c7f47c9218ffa0801bfbddd",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_pwr.c": "d7db81f800f7f41c942b485e2f3fe9a27f5b21def71830297ecb44f131d91e60",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_flash.c": "cddd2adcf578c7d63fd27f55a6ef88f50540a3b65927dfc411c192900c127bb1",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_flash_ex.c": "5e0631a9ce807629cc24d26effb6dba3b0e4eeca10e9d46ae9d5dc40fa1989da",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_exti.c": "6f201feccce8c53717098109bd4d2b4a0894ce4334cd1d6cdd8d15d5e69a8eb6",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_uart.c": "0baff878faf8551e43ad63959f04bae08d61ee94e686e56a56cd97d02535c4d9",
+    "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_spi.c": "74c20012ae5e579f6f720b941e66cae7b39ca47d80d873dc53d2274519795802",
+    "Core\\Src\\system_stm32f1xx.c": "6f13b57054f33b4dcb8f3f23fa05b2942d9dca8abd9a2a08ecde6f99693505a5",
+    "Radio\\src\\pan3029_port.c": "032be24428b4f9464e7c2613df7acfab41b75c08c8b20bba80d48bc3b544a6b3",
+    "Radio\\src\\pan3029_rf.c": "b8da901d1ede8e691117a461625669b90074054dd240acf9ba7f984ac1bc339c",
+    "Core\\Inc\\reliability.h": "1387de895d8e5145514d181b92aa40e70a4a9f0ecbcea485f8fd817dded29d59",
+    "Core\\Inc\\nvstore.h": "5a63766da2a5ed622a069643714cfbf9b4678d0572d9e16592f7319e54afe866",
+    "MDK-ARM\\STM32_ONLY_SEND.uvprojx": "72c4896fbc88eacb9445110ba70a972d4846aaf582b23da2f4d7d52e351e63f2",
+    "MDK-ARM\\LY-020-software\\LY-020-software.sct": "e8a4264c51e4986cc8611d934f9518430ba5b09a0b75d26783105060326aa979",
+    "Radio\\inc\\crc.h": "f20866409eee51acb723d49f64f8c88b0a713e88db6a27cedcca752035f938d7",
+    "Radio\\inc\\pan3029_param.h": "ea61ec3f6f7612aec517620b184d0c5e4b7dd9dd18aa979b1bf56c86e880afe6",
+    "Radio\\inc\\pan3029_port.h": "7295c6fd6fd6a252580b73a95e8f3bcd650b104497cb99820ab20b6a655f6212",
+    "Radio\\inc\\pan3029_rf.h": "941e559093df9c7077183a116cb459151fd840af371b6ce31fcf4417ac7639e4",
+    "Radio\\inc\\radio.h": "8b73ba815d2966a86a719d04ebd48adad858d986584156767c4f121f7cd2236a"
+  },
+  "outputs": {
+    "STM32_ONLY_SEND.hex": "a3fafc2d68c89697fe521d216113356cac749ea4c1c2227728cab26c5634f3aa",
+    "STM32_ONLY_SEND.bin": "26df9d90de37a9324dbf6ada7c8ebd798e1d9d8531ebddb270877554817e2e09",
+    "STM32_ONLY_SEND.axf": "ad306591dadd93df8d34d6579feb2ea5b0dd20688ee3c08d2fc05ef33aa448c7"
+  }
+}

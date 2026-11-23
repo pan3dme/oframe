@@ -10,6 +10,17 @@
 #include "pan3029_param.h"
 #include "radio.h"
 #include <math.h>
+#include "reliability.h"
+
+/* A page selection and its access (including read/modify/write) form one
+ * transaction. Nested CS operations preserve this outer interrupt state. */
+#define RF_BUS_BEGIN() uint32_t busPrimask = __get_PRIMASK(); __disable_irq()
+#define RF_BUS_RETURN(value) do { RF_Err_t busResult = (RF_Err_t)(value); \
+    __set_PRIMASK(busPrimask); return busResult; } while (0)
+#define RF_BUS_READ_RETURN(value) do { uint8_t busValue = (value); \
+    __set_PRIMASK(busPrimask); return busValue; } while (0)
+#define RF_BUS_ASSERT(fn) do { if ((fn) != RF_OK) \
+    RF_BUS_RETURN(RF_FAIL); } while (0)
 
 
 #define USE_MODEM_CHIRPlOT
@@ -176,6 +187,7 @@ void rf_read_fifo(uint8_t addr, uint8_t *buffer, int size)
  */
 RF_Err_t rf_switch_page(enum PAGE_SEL page)
 {
+    RF_BUS_BEGIN();
     uint8_t page_sel;
     uint8_t tmpreg;
 
@@ -186,11 +198,11 @@ RF_Err_t rf_switch_page(enum PAGE_SEL page)
 #if SPI_WRITE_CHECK
     if ((rf_read_reg(REG_SYS_CTL) & 0x03) != page)
     {
-        return FAIL;
+        RF_BUS_RETURN(FAIL);
     }
 #endif
     
-    return OK;
+    RF_BUS_RETURN(OK);
 }
 
 /**
@@ -202,10 +214,11 @@ RF_Err_t rf_switch_page(enum PAGE_SEL page)
  */
 RF_Err_t rf_write_spec_page_reg(enum PAGE_SEL page, uint8_t addr, uint8_t value)
 {
-    RF_ASSERT(rf_switch_page(page));
-    RF_ASSERT(rf_write_reg(addr, value));
+    RF_BUS_BEGIN();
+    RF_BUS_ASSERT(rf_switch_page(page));
+    RF_BUS_ASSERT(rf_write_reg(addr, value));
 
-    return OK;
+    RF_BUS_RETURN(OK);
 }
 
 /**
@@ -216,9 +229,10 @@ RF_Err_t rf_write_spec_page_reg(enum PAGE_SEL page, uint8_t addr, uint8_t value)
  */
 uint8_t rf_read_spec_page_reg(enum PAGE_SEL page, uint8_t addr)
 {
-    RF_ASSERT(rf_switch_page(page));
+    RF_BUS_BEGIN();
+    RF_BUS_ASSERT(rf_switch_page(page));
 
-    return rf_read_reg(addr);
+    RF_BUS_READ_RETURN(rf_read_reg(addr));
 }
 
 /**
@@ -231,11 +245,12 @@ uint8_t rf_read_spec_page_reg(enum PAGE_SEL page, uint8_t addr)
  */
 RF_Err_t rf_write_spec_page_regs(enum PAGE_SEL page, uint8_t addr, uint8_t *buffer, uint8_t len)
 {
+    RF_BUS_BEGIN();
     uint8_t i;
     uint16_t addr_w;
     RF_Err_t ret = RF_OK;
 
-    RF_ASSERT(rf_switch_page(page));
+    RF_BUS_ASSERT(rf_switch_page(page));
 
     addr_w = (0x01 | (addr << 1));
     rf_port.spi_cs_low();
@@ -260,14 +275,15 @@ RF_Err_t rf_write_spec_page_regs(enum PAGE_SEL page, uint8_t addr, uint8_t *buff
     rf_port.spi_cs_high();
 #endif
 
-    return ret;
+    RF_BUS_RETURN(ret);
 }
 
 RF_Err_t rf_read_spec_page_regs(enum PAGE_SEL page, uint8_t addr, uint8_t *buffer, uint8_t len)
 {
+    RF_BUS_BEGIN();
     uint8_t i;
     
-    RF_ASSERT(rf_switch_page(page));
+    RF_BUS_ASSERT(rf_switch_page(page));
 
     rf_port.spi_cs_low();
     rf_port.spi_readwrite(0x00 | (addr << 1));
@@ -277,7 +293,7 @@ RF_Err_t rf_read_spec_page_regs(enum PAGE_SEL page, uint8_t addr, uint8_t *buffe
     }
     rf_port.spi_cs_high();
 
-    return OK;
+    RF_BUS_RETURN(OK);
 }
 
 /**
@@ -290,13 +306,14 @@ RF_Err_t rf_read_spec_page_regs(enum PAGE_SEL page, uint8_t addr, uint8_t *buffe
  */
 RF_Err_t rf_set_spec_page_reg_bits(enum PAGE_SEL page, uint8_t addr, uint8_t mask)
 {
+    RF_BUS_BEGIN();
     uint8_t tmp;
     RF_Err_t ret;
 
     tmp = rf_read_spec_page_reg(page, addr);
     ret = rf_write_spec_page_reg(page, addr, tmp | mask);
 
-    return ret;
+    RF_BUS_RETURN(ret);
 }
 
 /**
@@ -309,17 +326,19 @@ RF_Err_t rf_set_spec_page_reg_bits(enum PAGE_SEL page, uint8_t addr, uint8_t mas
  */
 RF_Err_t rf_reset_spec_page_reg_bits(enum PAGE_SEL page, uint8_t addr, uint8_t mask)
 {
+    RF_BUS_BEGIN();
     uint8_t tmp;
     RF_Err_t ret;
     
     tmp = rf_read_spec_page_reg(page, addr);
     ret = rf_write_spec_page_reg(page, addr, tmp & (~mask));
     
-    return ret;
+    RF_BUS_RETURN(ret);
 }
 
 RF_Err_t rf_write_spec_page_reg_bits(enum PAGE_SEL page, uint8_t addr, uint8_t val, uint8_t mask)
 {
+    RF_BUS_BEGIN();
     uint8_t tmp;
     RF_Err_t ret;
     uint8_t shift = GET_SHIFT(mask);
@@ -330,7 +349,7 @@ RF_Err_t rf_write_spec_page_reg_bits(enum PAGE_SEL page, uint8_t addr, uint8_t v
     tmp = rf_read_spec_page_reg(page, addr);
     ret = rf_write_spec_page_reg(page, addr, (tmp & (~mask)) | val);
 
-    return ret;
+    RF_BUS_RETURN(ret);
 }
 
 /**
@@ -656,19 +675,19 @@ RF_Err_t rf_sleep_wakeup(void)
  *        spike after a ~100mA TX burst) would leave the chip awake in
  *        STB/SLEEP with nobody noticing - the measured "sleep stuck at
  *        ~30mA" failure. This helper catches it locally: mismatched
- *        readback -> rewrite, up to 3 tries. Caller (rf_deepsleep 2-pass
- *        wrapper) re-issues the whole sequence if it still refuses to land.
+ *        readback -> rewrite, up to 3 tries. Caller retries the complete preparation once,
+ *        then returns RF_FAIL so the application resets.
  */
-static void rf_write_reg_verified(uint16_t addr, uint16_t value)
+static RF_Err_t rf_write_reg_verified(uint16_t addr, uint16_t value, uint8_t verify)
 {
 	uint8_t t;
 
 	for (t = 0u; t < 3u; t++) {
 		rf_write_reg(addr, value);
-		if (rf_read_reg(addr) == value)
-			return;
+		if (!verify || rf_read_reg(addr) == value)
+			return RF_OK;
 	}
-	/* give up silently: the next rf_deepsleep() pass re-runs everything */
+	return RF_FAIL;
 }
 
 /**
@@ -680,25 +699,25 @@ static void rf_write_reg_verified(uint16_t addr, uint16_t value)
  *         DEEP_SLEEP write is NOT verified - the chip ignores SPI once
  *         asleep, so a readback there is meaningless (always mismatch).
  */
-static RF_Err_t rf_deepsleep_once(void)
+static RF_Err_t rf_deepsleep_once(uint8_t verify)
 {
 	rf_port.antenna_close();
     rf_port.delayus(10);
-    rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB3);
+    RF_ASSERT(rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB3, verify));
     rf_port.delayus(150);
 
-    rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB2);
+    RF_ASSERT(rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB2, verify));
     rf_port.delayus(10);
 
-    rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB1);
+    RF_ASSERT(rf_write_reg_verified(REG_OP_MODE, RF_MODE_STB1, verify));
     rf_port.delayus(10);
 
     rf_port.tcxo_close();
 
-    rf_write_reg_verified(0x04, 0x06);
+    RF_ASSERT(rf_write_reg_verified(0x04, 0x06, verify));
     rf_port.delayus(10);
 
-    rf_write_reg_verified(REG_OP_MODE, RF_MODE_SLEEP);
+    RF_ASSERT(rf_write_reg_verified(REG_OP_MODE, RF_MODE_SLEEP, verify));
     rf_port.delayus(10);
 
     RF_ASSERT(rf_reset_spec_page_reg_bits(PAGE3_SEL, 0x06, BIT5));
@@ -724,8 +743,19 @@ static RF_Err_t rf_deepsleep_once(void)
  */
 RF_Err_t rf_deepsleep(void)
 {
-	(void)rf_deepsleep_once();
-	return rf_deepsleep_once();
+    uint8_t tries;
+    RF_Err_t result = RF_FAIL;
+    RF_BUS_BEGIN();
+    for (tries = 0u; tries < 2u; ++tries) {
+        result = rf_deepsleep_once(1u);
+        if (result == RF_OK) {
+            /* Retain the tested second sequence for a lost final sleep write.
+             * A sleeping device cannot be read back: no verification here. */
+            result = rf_deepsleep_once(0u);
+            break;
+        }
+    }
+    RF_BUS_RETURN(result);
 }
 
 /**
@@ -2457,7 +2487,9 @@ void rf_irq_process(void)
 		if(irq & REG_IRQ_MAPM_DONE)
 		{
 				uint8_t addr_val = rf_read_spec_page_reg(PAGE0_SEL, 0x6e);
-				RxDoneParams.mpam_recv_buf[RxDoneParams.mpam_recv_index++] = addr_val;
+				if (RxDoneParams.mpam_recv_index >= sizeof(RxDoneParams.mpam_recv_buf))
+                    Safety_Reset(RESET_RADIO);
+                RxDoneParams.mpam_recv_buf[RxDoneParams.mpam_recv_index++] = addr_val;
 				irq &= ~REG_IRQ_MAPM_DONE;
 				rf_clr_irq(REG_IRQ_MAPM_DONE);
 				rf_set_recv_flag(RADIO_FLAG_MAPM);

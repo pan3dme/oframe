@@ -8,6 +8,8 @@
 static uint32_t feedTick;
 static uint32_t phaseTick;
 static uint32_t phaseLimit;
+static uint32_t rtcValue, rtcTick;
+static uint8_t rtcSeen;
 static uint8_t streak;
 static uint8_t forceLsi;
 static uint8_t lastStage;
@@ -93,6 +95,19 @@ void Safety_Feed(void)
   }
 }
 
+/* Stage transitions must never hide a stopped scheduling clock. */
+void Safety_CheckRtc(uint32_t rtc)
+{
+  uint32_t now = HAL_GetTick();
+  if (!rtcSeen || rtc != rtcValue) {
+    rtcSeen = 1u;
+    rtcValue = rtc;
+    rtcTick = now;
+  } else if ((uint32_t)(now - rtcTick) >= 3000u) {
+    Safety_Reset(RESET_RTC);
+  }
+}
+
 void Safety_PrepareStop(void)
 {
   currentStage = STAGE_STOP;
@@ -139,6 +154,7 @@ void Safety_MarkLinkHealthy(void)
 }
 
 uint8_t Safety_UseLsi(void) { return forceLsi; }
+uint8_t Safety_HadFault(void) { return streak != 0u; }
 uint8_t Safety_LastStage(void) { return lastStage; }
 const char *Safety_BootCause(void) { return bootCause; }
 uint32_t Safety_BackoffSeconds(void)

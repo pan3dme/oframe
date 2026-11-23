@@ -45,8 +45,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define DEMO_VER     "V2.1"
-#define BATTERY_SKIP_PCT 30   /* battery below this: skip LoRa TX/RX, sleep */
-#define BATTERY_SKIP_GRACE_TX 50u /* first N uplinks since boot: report even if low */
+#define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       64
 #define RX_LEN       64
@@ -97,7 +96,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         5u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         9u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -190,8 +189,7 @@ static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒�
 /* 开机前 3 轮快速上报配额：配置周期 > 1 分钟时，�?3 轮先�?1 分钟
  * （让设备尽快对时、收配置、进入正常时隙节奏）�? 轮后恢复配置周期�?
  * 每完成一�?OnMaster 递减一次；掉电重启重新�?3 �?*/
-static uint32_t bootTxRounds = 0;   /* LoRa frames since boot (never wraps):
-                                     * drives the low-battery grace window */
+static uint32_t bootTxRounds = 0;   /* uplink frames since boot, independent of wire counter */
 static uint8_t  fastStartRounds = 3;
 static uint8_t  currentTxPower = DEFAULT_PWR;  /* 当前发射功率（从 Flash 加载或指令修改） */
 static uint8_t  deviceCount    = 30;  /* 分时隙上报的子设备总台数（默认 30，可�?
@@ -335,6 +333,8 @@ static uint8_t centerCoordValid(int32_t lat, int32_t lng);
 static void    deg1e5ToStr(int32_t v, char *buf);
 static uint8_t parseDeg1e5(const char *s, int32_t *out);
 static void loraInitFirstTime(void);
+static uint8_t loraTryInit(void);
+static void loraSleep(void);
 static void sendConfigMessage(void);
 static void sendResetInfoMessage(void);   /* boot reset cause frame (type 8) */
 
@@ -377,6 +377,8 @@ static void wdg_feed(void);       /* 链路沉默看门�?2小时无LoRa→真�
 static void    printTimeWindows(const char *tag);   /* 打印当前生效的两个时间段 */
 static uint8_t isInGpsWorkWindow(void);   /* 当前是否�?GPS 工作时间段内(config �?�? */
 static uint8_t isInGpsWorkWindowAt(uint32_t ts);  /* 指定时刻是否�?GPS 时间段内 */
+static uint8_t gpsBatteryOk(void);
+static uint8_t gpsCheckBattery(uint32_t *lastTick);
 static uint8_t gpsNeededTimelyAt(uint32_t ts);    /* 该时刻是�?必须准点"�?GPS �?类型1) */
 static void    gpsPreSearch(void);                /* 提前搜星（到点前必须完成�?*/
 static void    openRxWindow3000(void);    /* 开 3 秒接收窗口并解析（可重复调用�?*/
@@ -384,7 +386,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 �?Full on */
 static void gpsPowerOff(void);              /* GPS 休眠：PB1(WAKE_UP) 置低 �?Standby */
 static uint16_t ADC1_Read(void);            /* ADC1 单次读取�?2 位） */
-static uint8_t  GetBatteryPercent(void);    /* ADC �?�?电池电压 �?电量百分�?*/
+static uint8_t  GetBatteryPercent(uint8_t ownStage);    /* ADC �?�?电池电压 �?电量百分�?*/
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -533,9 +535,6 @@ static void checkVersionReportFlag(void)
 
   readInfoNeedReport = 1;
   readInfoValue = 0;   /* 0 = report all 6 readinfo kinds once */
-  Safety_MarkLinkHealthy();   /* new firmware = fresh start: clear the fault
-                               * streak so the first boot after a re-flash is
-                               * not delayed by the old build's backoff */
   printf("[VER] fw %lu new (flash %lu), readinfo x6 pending\r\n",
          (unsigned long)cur, (unsigned long)stored);
   nvSaveOrReset(VER_FLASH_ADDR, VER_MAGIC, &cur, sizeof(cur));
@@ -594,9 +593,10 @@ static uint8_t centerCoordValid(int32_t lat, int32_t lng)
   * @brief  首次初始�?LoRa 模块（从关机状态启动）
   * @note   仅在第一�?TX 前或�?deepsleep 唤醒后调�?
   */
-static void loraInitFirstTime(void)
+static uint8_t loraTryInit(void)
 {
   uint8_t tries;
+  HAL_NVIC_DisableIRQ(EXTI2_IRQn);
   Safety_Begin(STAGE_RADIO, 10000u);
   for (tries = 0u; tries < 3u; ++tries) {
     wdg_feed();
@@ -609,9 +609,17 @@ static void loraInitFirstTime(void)
         rf_set_tx_power(currentTxPower) == RF_OK) break;
     HAL_Delay(200u);
   }
-  if (tries == 3u) Safety_Reset(RESET_RADIO);
-  loraInitialized = 1u;
+  loraInitialized = (tries < 3u);
+  __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_2);
+  HAL_NVIC_ClearPendingIRQ(EXTI2_IRQn);
+  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
   Safety_Begin(STAGE_MAIN, 15000u);
+  return loraInitialized;
+}
+
+static void loraInitFirstTime(void)
+{
+  if (!loraTryInit()) Safety_Reset(RESET_RADIO);
   printf("[LoRa] %dM SF%d PWR=%d\r\n",
          DEFAULT_FREQ / 1000000, DEFAULT_SF, currentTxPower);
 }
@@ -625,7 +633,7 @@ static void txCountNext(void)
   tx_count++;
   if (tx_count > TX_COUNT_MAX)
     tx_count = 1;
-  bootTxRounds++;   /* never wraps: grace must survive tx_count wraparound */
+  bootTxRounds++;   /* independent of tx_count wraparound */
   /* 上报次数超过阈值：一次性置位窗口静默标�?*/
   if (tx_count > WINDOW_PRINT_MAX_ROUNDS)
     windowPrintOff = 1;
@@ -649,6 +657,7 @@ static void loraTx(const char *msg)
   }
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
   Safety_Begin(STAGE_MAIN, 15000u);
+  printf("[TX] %s\r\n", msg);
 }
 
 /**
@@ -669,7 +678,6 @@ static void loraTx(const char *msg)
 #endif
 
   loraTx(tx_msg);
-  printf("[CFG] tx -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -780,7 +788,6 @@ static void sendReadInfoMessage(void)
   }
 
   loraTx(tx_msg);
-  printf("[INFO] tx -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -804,7 +811,6 @@ static void sendCenterMessage(void)
 #endif
 
   loraTx(tx_msg);
-  printf("[CENTER] tx -> \"%s\"\r\n", tx_msg);
 }
 
 /**
@@ -904,7 +910,6 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
   }
 
   loraTx(tx_msg);
-  printf("[GPS] tx -> \"%s\"\r\n", tx_msg);
 }
 
 
@@ -956,15 +961,15 @@ static void gpsPreSearch(void)
   uint32_t maxMs, minMs, t0;
   uint8_t  hasFix, savedPrint;
 
+  if (!gpsBatteryOk()) return;
+
   gpsPreSearched = 1;      /* 无论搜不搜，都标记本轮预搜已处理 */
   gpsPreFixOk    = 0;
   gpsPreSec      = 0;
   gpsPreBytes    = 0;
 
   if (availMs < GPS_WAIT_MIN_MS) {
-    printf("[GPS] prewin %lu<%lu min, skip, report 0.0,0.0 on time\r\n",
-           (unsigned long)(availMs / 1000u),
-           (unsigned long)(GPS_WAIT_MIN_MS / 1000u));
+    printf("[GPS] prewindow short\r\n");
     return;
   }
 
@@ -1018,6 +1023,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
   uint32_t startTick   = HAL_GetTick();   /* 计时基准用开�?tick（毫秒）�?
    * 连续定位期间常会发生卫星授时/服务器对时，绝对时间戳会被整体平移，
    * 用时间戳差值会�?已用�?算成天文数字，导致第 1 轮后就被误判超时结束 */
+  uint32_t batteryTick = startTick;
   uint32_t rounds      = 0;
   uint8_t  everFixed   = 0;
 
@@ -1030,8 +1036,10 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     uint8_t  hasFix;
 
     /* �?1 轮无条件执行：收�?upgps 指令就是要立刻搜星上�?*/
+    if (!gpsCheckBattery(&batteryTick)) break;
     rounds++;
     hasFix = gpsSearchAndReport(useGpsType);
+    if (!gpsBatteryOk()) break;
     if (hasFix)
       everFixed = 1;
 
@@ -1065,7 +1073,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     if (remain < (uint32_t)GPS_CONT_INTERVAL_SEC) {
       /* 剩下的时间凑不满一轮（一轮最短也�?GPS_CONT_INTERVAL_SEC 秒）�?
        * 不再空等，直接结束连续定位，回到正常定时调度（该休眠就休眠） */
-      printf("[CONT] #%lu last, end\r\n", (unsigned long)remain);
+      printf("[CONT] end\r\n");
       break;
     }
 
@@ -1075,6 +1083,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     Safety_Begin(STAGE_TRACK_WAIT, (uint32_t)GPS_CONT_INTERVAL_SEC * 1000u + 2000u);
     while ((HAL_GetTick() - slotStart) <
            (uint32_t)GPS_CONT_INTERVAL_SEC * 1000u) {
+      if (!gpsCheckBattery(&batteryTick)) break;
       gpsTask();
       wdg_feed();
       HAL_Delay(100);
@@ -1125,26 +1134,12 @@ static void calcNextTxTime(void)
       nextSlotTime += intervalSec;
     }
     nextTxTimestamp = getCurrentTimestamp() + (nextSlotTime - nowSec);
-    {
-      uint32_t nowHms = nowSec % 86400;
-      uint32_t nextHms = nextTxTimestamp % 86400;
-      printf("[SCHED] synced | now=%lu %02lu:%02lu:%02lu slot=%lu wait=%lu (%lu:%02lu) | nextTx=%lu %02lu:%02lu:%02lu\r\n",
-             (unsigned long)nowSec,
-             (unsigned long)(nowHms / 3600), (unsigned long)((nowHms % 3600) / 60), (unsigned long)(nowHms % 60),
-             (unsigned long)slotOffset,
-             (unsigned long)(nextSlotTime - nowSec),
-             (unsigned long)((nextSlotTime - nowSec) / 60),
-             (unsigned long)((nextSlotTime - nowSec) % 60),
-             (unsigned long)nextTxTimestamp,
-             (unsigned long)(nextHms / 3600), (unsigned long)((nextHms % 3600) / 60), (unsigned long)(nextHms % 60));
-    }
+    printf("[SCHED] next=%lu wait=%lus\r\n", (unsigned long)nextTxTimestamp,
+           (unsigned long)(nextSlotTime - nowSec));
   } else {
     /* 未对时：当前 boot seconds + 间隔 */
     nextTxTimestamp = getCurrentTimestamp() + intervalSec;
-    printf("[SCHED] no-sync | interval=%lu (%lu:%02lu) | nextTx=%lu\r\n",
-           (unsigned long)intervalSec,
-           (unsigned long)(intervalSec / 60), (unsigned long)(intervalSec % 60),
-           (unsigned long)nextTxTimestamp);
+    printf("[SCHED] next=%lu\r\n", (unsigned long)nextTxTimestamp);
   }
 
   if (fastMode)
@@ -1378,11 +1373,40 @@ static uint8_t isInGpsWorkWindowAt(uint32_t ts)
  *            醒后现场搜星，搜多久算多久，上报时间可以后移到搜星结束，
  *            所以不参与提前量计算（返回 0�?
  */
+/* Low battery only restricts GPS; communication is always allowed. */
+static uint8_t gpsBatteryOk(void)
+{
+  return cachedBatteryPercent >= GPS_MIN_BATTERY_PCT;
+}
+
+/* During long searches/tracking, recheck the battery at most every 10s. */
+static uint8_t gpsCheckBattery(uint32_t *lastTick)
+{
+  uint32_t now = HAL_GetTick();
+  if ((uint32_t)(now - *lastTick) >= 10000u) {
+    *lastTick = now;
+    cachedBatteryPercent = GetBatteryPercent(0u);
+  }
+  if (!gpsBatteryOk()) {
+    if (gpsPowerState) gpsPowerOff();
+    return 0u;
+  }
+  return 1u;
+}
+
 static uint8_t gpsNeededTimelyAt(uint32_t ts)
 {
-  if (gpsWaitReport)
+  if (!gpsBatteryOk() || gpsWaitReport)
     return 0;                        /* 类型5：upgps 不受约束，现场搜 */
   return isInGpsWorkWindowAt(ts);
+}
+
+/* Deep-sleep preparation is bounded; a failed preparation must not be silent. */
+static void loraSleep(void)
+{
+  if (!loraInitialized) return; /* Already asleep, or held in reset at boot. */
+  if (rf_deepsleep() != RF_OK) Safety_Reset(RESET_RADIO);
+  loraInitialized = 0u;
 }
 
 /* Link health: valid protocol traffic, monotonic work-time accumulation. */
@@ -1427,7 +1451,7 @@ static uint32_t workElapsed(uint32_t endTs, uint32_t elapsed)
 static void linkSilenceCheck(void)
 {
   uint32_t now = rtc_read_counter(), elapsed;
-  uint8_t enabled = !gpsContTotalMin && cachedBatteryPercent >= BATTERY_SKIP_PCT;
+  uint8_t enabled = !gpsContTotalMin;
   if (!linkPollReady) {
     linkPollReady = 1u;
     linkLastRtc = now;
@@ -1446,7 +1470,7 @@ static void linkSilenceCheck(void)
   if (!linkRecoveryStep) {
     /* First recover just the radio; retry at the existing scheduled slot. */
     linkRecoveryStep = 1u;
-    if (loraInitialized) rf_deepsleep();
+    if (loraInitialized) loraSleep();
     loraInitialized = 0u;
     printf("[LINK] silence: radio reinit next slot\r\n");
   } else {
@@ -1462,24 +1486,14 @@ static void linkSilenceCheck(void)
   */
 static void printTimeWindows(const char *tag)
 {
-  char    f0[8], f1[8];
-  int16_t i0, i1;
   uint8_t s0, e0, s1, e1;
-
-  getConfigFieldStr(1, f0, sizeof(f0));   /* �?2 �? 工作时间�?*/
-  getConfigFieldStr(2, f1, sizeof(f1));   /* �?3 �? GPS 上报时间�?*/
-  i0 = getConfigWorkStartIdx();
-  i1 = getConfigGpsEndIdx();
-
-  if (timeIdxToRange(i0, &s0, &e0) && timeIdxToRange(i1, &s1, &e1)) {
-    /* 终点 23 表示 24:00 */
-    printf("%s work %02u:00-%02u:00 (%s idx %d), GPS %02u:00-%02u:00 (%s idx %d)\r\n",
-           tag,
-           s0, (e0 == TIME_HOUR_END) ? 24u : e0, f0, i0,
-           s1, (e1 == TIME_HOUR_END) ? 24u : e1, f1, i1);
+  if (timeIdxToRange(getConfigWorkStartIdx(), &s0, &e0) &&
+      timeIdxToRange(getConfigGpsEndIdx(), &s1, &e1)) {
+    printf("%s work=%u-%u GPS=%u-%u\r\n", tag,
+           s0, (e0 == TIME_HOUR_END) ? 24u : e0,
+           s1, (e1 == TIME_HOUR_END) ? 24u : e1);
   } else {
-    printf("%s parse fail, schedule off (w=%s idx %d, g=%s idx %d)\r\n",
-           tag, f0, i0, f1, i1);
+    printf("%s invalid window\r\n", tag);
   }
 }
 
@@ -1566,7 +1580,9 @@ static uint32_t rtc_read_counter(void)
   low = RTC->CNTL;
   high2 = RTC->CNTH;
   if (high != high2) low = RTC->CNTL;
-  return (high2 << 16) | low;
+  low |= high2 << 16;
+  Safety_CheckRtc(low);
+  return low;
 }
 
 /* �?RTC 标志（ALRF/SECF�?
@@ -1682,7 +1698,7 @@ static void enterStopUntil(uint32_t wakeTs)
    *   2. finish BEFORE rtcNow is sampled below - a stale baseline makes
    *      the first STOP segment look like an RTC overrun (V2.2.6 bug:
    *      reset=RTC at stage=STOP, exactly 10s after the backoff print). */
-  if (!firstWindowDone) {
+  if (!firstWindowDone && !Safety_HadFault()) {
     uint32_t i;
 
     firstWindowDone = 1;
@@ -1693,7 +1709,7 @@ static void enterStopUntil(uint32_t wakeTs)
     }
   }
   rtcNow = rtc_read_counter();
-  uint32_t savedCtrl;
+  uint32_t savedCtrl, savedRadioIrq, savedGpsIrq;
   if (timeSynced) {
     uint32_t realDelta = wakeTs - syncedTimestamp;
     uint32_t localDelta = realDelta;
@@ -1703,6 +1719,11 @@ static void enterStopUntil(uint32_t wakeTs)
     wakeRtc = syncedRtcSec + localDelta;
   }
   if ((int32_t)(wakeRtc - rtcNow) <= 1) return;
+  /* GPS is off and radio is asleep here. Noise must not keep waking the CPU. */
+  savedRadioIrq = NVIC_GetEnableIRQ(EXTI2_IRQn);
+  savedGpsIrq = NVIC_GetEnableIRQ(USART3_IRQn);
+  HAL_NVIC_DisableIRQ(EXTI2_IRQn);
+  HAL_NVIC_DisableIRQ(USART3_IRQn);
   savedCtrl = SysTick->CTRL;
   SysTick->CTRL = 0u;
   SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk;
@@ -1721,7 +1742,7 @@ static void enterStopUntil(uint32_t wakeTs)
     for (;;) {
       after = rtc_read_counter();
       if ((int32_t)(after - target) >= 0) break;
-      MODIFY_REG(PWR->CR, PWR_CR_PDDS | PWR_CR_LPDS, PWR_CR_LPDS);
+      MODIFY_REG(PWR->CR, PWR_CR_PDDS | PWR_CR_LPDS, PWR_CR_LPDS | PWR_CR_CWUF);
       SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
       __DSB();
       __WFE();
@@ -1738,6 +1759,10 @@ static void enterStopUntil(uint32_t wakeTs)
   SystemCoreClockUpdate(); /* STOP wakes on HSI; make SysTick valid at 8 MHz. */
   if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK) Safety_Reset(RESET_INIT);
   if (!(savedCtrl & SysTick_CTRL_TICKINT_Msk)) HAL_SuspendTick();
+  __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_2);
+  HAL_NVIC_ClearPendingIRQ(EXTI2_IRQn);
+  if (savedRadioIrq) HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+  if (savedGpsIrq) HAL_NVIC_EnableIRQ(USART3_IRQn);
   Safety_Begin(STAGE_MAIN, 15000u);
 }
 
@@ -2148,12 +2173,9 @@ static void gpsTrySyncFromSat(void)
   {
     char cstBuf[20];
 
-    /* 打印 UTC 原始时间和换算后的北京时间，两者并排避免混�?
-     * （旧打印标着 UTC+8 却输�?UTC 字段，看日志容易误判成时间错�?8 小时�?*/
+    /* Log the local time actually used for scheduling. */
     formatTimestamp(ts, cstBuf, sizeof(cstBuf));
-    printf("[SYNC] GPS time(first): UTC=%04u-%02u-%02u %02u:%02u:%02u, BJT=%s, ts=%lu\r\n",
-           gpsFix.year, gpsFix.month, gpsFix.day,
-           gpsFix.hour, gpsFix.minute, gpsFix.second, cstBuf, (unsigned long)ts);
+    printf("[SYNC] GPS BJT=%s\r\n", cstBuf);
   }
 
   /* 对时成功后按真实时间重算下次上报时间（首次开机则立即补报一次） */
@@ -2184,6 +2206,7 @@ static void gpsPrintSearchStatus(uint32_t elapsedMs)
 static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
 {
   uint32_t startTick  = HAL_GetTick();
+  uint32_t batteryTick = startTick;
   Safety_Begin(STAGE_GPS, timeoutMs + 3000u);
   uint32_t elapsed;
   uint32_t lastStatus = 0;   /* 上次打印状态行的时刻（相对 startTick 的毫秒数�?*/
@@ -2195,6 +2218,10 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
     gpsPrintSearchStatus(0);   /* 进入就先给一行，之后每秒刷新 */
 
   while (1) {
+    if (!gpsCheckBattery(&batteryTick)) {
+      printf("[GPS] low battery, skip\r\n");
+      return 0u;
+    }
     gpsTask();                    /* 排空环形缓冲并解�?NMEA */
 
     elapsed = HAL_GetTick() - startTick;
@@ -2335,12 +2362,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           int32_t  driftPerHour = (remoteElapsedSec > 0)
               ? (int32_t)((int64_t)driftSec * 3600 / (int64_t)remoteElapsedSec)
               : 0;
-          printf("[DRIFT] %d/%lus (%ds/h) local=%lu server=%lu\r\n",
-                 (int)driftSec,
-                 (unsigned long)localElapsedSec,
-                 (int)driftPerHour,
-                 (unsigned long)localElapsedSec,
-                 (unsigned long)remoteElapsedSec);
+          printf("[DRIFT] sample=%ds/h\r\n", (int)driftPerHour);
 
           /* 收敛判定（含异常剔除）：
            * �?区间过短(<10分钟)不采�?—�?上报周期可设（含 1 分钟快速轮），
@@ -2385,8 +2407,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           /* 首次对时：记录锚�?*/
           anchorRtcSec = nowTick;
           anchorTimestamp = recvTs;
-          printf("[DRIFT] anchor set: ts=%lu rtc=%lu\r\n",
-                 (unsigned long)recvTs, (unsigned long)nowTick);
+          printf("[DRIFT] anchor\r\n");
         }
 
         /* 补偿残差验证：本�?含补�?时间 vs 中绷新下发对时的差值�?
@@ -2426,7 +2447,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             if (strlen(fields[3]) > 5) {
-              printf("[CMD] name too long (>5), rejected\r\n");
+              printf("[CMD] invalid value\r\n");
             } else {
               strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
               deviceName[sizeof(deviceName) - 1] = '\0';
@@ -2447,6 +2468,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          *        不能在中�?解析上下文里长时间等待，否则会堵死整个流�?*/
         else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
+            if (!gpsBatteryOk()) {
+              printf("[GPS] low battery, skip\r\n");
+              break;
+            }
             int mins = atoi(fields[3]);        /* atoi 自动跳过前导空格 */
 
             if (mins < 0)
@@ -2495,7 +2520,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                          ((fastStartRounds > 0) && (getConfigIntervalSec() > 60u))
                              ? 60u : getConfigIntervalSec()));
             } else {
-              printf("[CMD] devcnt %d OOR(1-60), reject", cnt);
+              printf("[CMD] invalid value\r\n");
             }
           }
         }
@@ -2514,7 +2539,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             int newPwr = atoi(fields[3]);
 
             if (newPwr < 10 || newPwr > 20) {
-              printf("[CMD] txpower %d OOR(10-20), reject", newPwr);
+              printf("[CMD] invalid value\r\n");
             } else {
               currentTxPower = (uint8_t)newPwr;
               rf_set_tx_power((uint8_t)newPwr);
@@ -2569,7 +2594,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
             if (!configTimeFieldValid(wf) || !configTimeFieldValid(gf)) {
               /* 中文值不写三元表达式（ARMCC5 GBK 吞引号），用 if/else */
-              printf("[CMD] A: field invalid, need 2 base62, reject");
+              printf("[CMD] invalid value\r\n");
               printf("[CMD]   work=\"%s\" gps=\"%s\"", wf, gf);
             } else if (newMin >= 1 && newMin <= 60) {
               strncpy(configStr, fields[3], sizeof(configStr) - 1);
@@ -2582,8 +2607,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                * 这里不用做额外的"重新加载"，直接把生效的区间打出来核对 */
               printTimeWindows("[指令] 新时�?: ");
             } else {
-              printf("[CMD] A: interval %lu OOR(1-60), reject",
-                     (unsigned long)newMin);
+              printf("[CMD] invalid value\r\n");
             }
           }
         }
@@ -2610,7 +2634,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               saveSearchTimeToFlash(gpsSearchMaxMs);
               printf("[CMD] searchtime: %d min\r\n", newMin);
             } else {
-              printf("[CMD] searchtime %d OOR(1-10), reject\r\n", newMin);
+              printf("[CMD] invalid value\r\n");
             }
           }
         } else {
@@ -2715,7 +2739,6 @@ static void sendResetInfoMessage(void)
            MSG_TYPE_READINFO, deviceName, bootRstCause, (unsigned)Safety_LastStage());
 #endif
   loraTx(tx_msg);
-  printf("[RST] tx -> \"%s\"\r\n", tx_msg);
 }
 
 static void reportPendingMessages(void)
@@ -2753,6 +2776,7 @@ static void OnMaster(void)
 {
   char tx_msg[TX_LEN];
   uint32_t today_sec = getTodaySecond();
+  cachedBatteryPercent = GetBatteryPercent(1u);
 
   /* 上轮失败的重试只�?工作时间段内"继续：已离开工作时间段就放弃重试�?
    * 否则会出�?跳过定时帧、又不搜�?的空转轮次，设备整轮什么都不上�?
@@ -2767,7 +2791,7 @@ static void OnMaster(void)
    *         对时与接收下发指令都在那个窗口完成（故本处不再开窗口�?
    * @note 本轮已收�?upgps 指令(gpsWaitReport=1)时不跳过：末尾走的是 UP_GPS
    *       老逻辑（上报后不开窗口），必须靠定时后这个窗口收指�?对时 */
-  uint8_t skipTimeFrame = isInGpsWorkWindow() ? 1U : 0U;
+  uint8_t skipTimeFrame = (gpsBatteryOk() && isInGpsWorkWindow()) ? 1U : 0U;
 
   if (skipTimeFrame) {
     /* GPS work window: the MSG_TYPE_GPS at the end replaces the time frame */
@@ -2786,7 +2810,6 @@ static void OnMaster(void)
 #endif
 
     loraTx(tx_msg);
-    printf("tx OK -> \"%s\"\r\n", tx_msg);
   }
 
   /* ---- 3 秒接收窗口（single 模式，最多只收一条） ----
@@ -2813,7 +2836,14 @@ static void OnMaster(void)
   {
     uint8_t inGpsWin = isInGpsWorkWindow();
 
-    if (gpsWaitReport || inGpsWin) {
+    if (!gpsBatteryOk()) {
+      printf("[GPS] low battery, skip\r\n");
+      gpsWaitReport = 0u;
+      gpsContTotalMin = 0u;
+      gpsPreSearched = 0u;
+      gpsPreFixOk = 0u;
+    }
+    if (gpsBatteryOk() && (gpsWaitReport || inGpsWin)) {
       uint8_t firstCmd = gpsWaitReport;        /* upgps 指令触发的第一�?*/
       uint8_t useType1 = firstCmd ? 0U : 1U;   /* 0=UP_GPS(5), 1=GPS(1) */
 
@@ -2863,14 +2893,11 @@ static void OnMaster(void)
            * 类型 1 重试机会（下轮对时点搜星上报一次），这次仍无坐�?
            * 就彻底清零不再延�?—�?60 分钟+1 次重试都失败说明环境
            * 真无信号，无限延续只是每轮白�?4 分钟搜星�?*/
-          uint8_t contOk = gpsRunContinuous(gpsContTotalMin, useType1);
+          (void)gpsRunContinuous(gpsContTotalMin, useType1);
 
           linkLastRtc = rtc_read_counter();
           gpsContTotalMin = 0;
-          if (contOk)
-            printf("[GPS] tracking end\r\n");
-          else
-            printf("[GPS] tracking end, retry at next slot\r\n");
+          printf("[GPS] tracking end\r\n");
         } else {
           /* 单次搜星上报（参数为 0 �?upgps 指令，或失败后的自动重试�?*/
           (void)gpsSearchAndReport(useType1);   /* one search, one report - done either way */
@@ -2922,7 +2949,7 @@ static void OnMaster(void)
       printf("[SLEEP] deep %lum%lus, %s\r\n",
              (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
              nextBuf + 11);
-      rf_deepsleep();
+      loraSleep();
       loraInitialized = 0;  /* 标记需要唤醒后重新初始�?*/
     } else {
       printf("[ACTIVE] LoRa ready, tx in %lum%lus, %s\r\n",
@@ -2971,6 +2998,11 @@ int main(void)
     uint32_t backoff = Safety_BackoffSeconds();
     if (backoff) {
       printf("[BOOT] repeated fault, backoff %lus\r\n", (unsigned long)backoff);
+      /* Recover a retained TX/RX state before the long fault backoff. If the
+       * module cannot initialize, hold reset asserted to inhibit activity. */
+      if (!loraTryInit() || rf_deepsleep() != RF_OK)
+        HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
+      loraInitialized = 0u;
       enterStopUntil(getCurrentTimestamp() + backoff);
       SystemClock_Config();
     }
@@ -2991,10 +3023,7 @@ int main(void)
   printf("\r\n[BOOT] LoRa\r\n");
   printf("dev: %s\r\n", deviceName);
   printf("cfg: %s\r\n", configStr);
-  printf("slot : idx=%d, total=%d, period=%lu min, offset=%lus\r\n",
-         getDeviceIndex(), deviceCount,
-         (unsigned long)getConfigIntervalSec(),
-         (unsigned long)getSlotOffsetSec(getConfigIntervalSec()));
+  printf("slot=%u total=%u\r\n", getDeviceIndex(), deviceCount);
   printTimeWindows("时段  : ");   /* 工作时间�?+ GPS 上报时间�?*/
 
   /* 首次 TX 延迟到主循环中执行（LoRa 在首�?TX 前才初始化） */
@@ -3053,22 +3082,10 @@ int main(void)
       if (nowTs >= wakeTime) {
         /* STOP 醒来时钟回落 HSI 8MHz，先恢复 72MHz（SysTick 随之恢复�?*/
         SystemClock_Config();
-        /* battery check first: below threshold -> no LoRa TX/RX this cycle
-         * (EXCEPT the first 50 uplinks since boot, grace window), just
-         * re-arm the alarm and sleep. Re-read on every wake, so once
-         * charged back above threshold the normal flow resumes */
-        cachedBatteryPercent = GetBatteryPercent();
-        if (cachedBatteryPercent < BATTERY_SKIP_PCT &&
-            bootTxRounds > BATTERY_SKIP_GRACE_TX) {
-          printf("[BAT] %d%% < %d%%, skip LoRa, next cycle\r\n",
-                 (int)cachedBatteryPercent, (int)BATTERY_SKIP_PCT);
-          /* low-batt period has no time sync: RTC drifts, force re-anchor
-           * with relay on the first cycle after recovery */
-          timeSynced = 0;
-          calcNextTxTime();
-          continue;              /* back to main loop, straight to sleep */
-        }
-        /* 唤醒 LoRa 并执�?5 秒倒计�?*/
+        /* Battery gates GPS only, regardless of the number of uplinks. */
+        cachedBatteryPercent = GetBatteryPercent(1u);
+        doPreSearch = gpsNeededTimelyAt(nextTxTimestamp) &&
+                      !gpsPreSearched && !gpsContTotalMin;
         loraInitFirstTime();
         /* 读取电量并缓存（每轮上报前刷新一次，上报帧里带的就是它） */
         for (int i = 5; i > 0; i--) {
@@ -3097,7 +3114,7 @@ int main(void)
                * 醒来只需初始�?LoRa + 倒计时，到点直接发预搜结果（最省电�?*/
               printf("[SCHED] pre done, %lus left, sleep 5s before tx\r\n",
                      (unsigned long)(wake2 - now2));
-              rf_deepsleep();
+              loraSleep();
               loraInitialized = 0;
               enterStopUntil(wake2);
             }
@@ -3110,7 +3127,7 @@ int main(void)
          *   - 类型1 允许睡到"上报点前 提前�?，醒后先预搜再到点发（准点）
          *   所�?GPS 待办不再需要空转等满一个周期（省电�?
          * 双保险：确认 LoRa 已深度休眠（OnMaster 末尾已调过，重复调用安全�?*/
-        rf_deepsleep();
+        loraSleep();
         enterStopUntil(wakeTime);
       }
       /* 连续定位模式(gpsContTotalMin)保持活跃空转，由 HAL_Delay(100) 节流 */
@@ -3162,6 +3179,12 @@ void SystemClock_Config(void)
   clk.APB1CLKDivider = RCC_HCLK_DIV2;
   clk.APB2CLKDivider = RCC_HCLK_DIV1;
   if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_2) != HAL_OK) Safety_Reset(RESET_INIT);
+  if (huart1.Instance == USART1) MX_USART1_UART_Init();
+  if (huart3.Instance == USART3) {
+    HAL_NVIC_DisableIRQ(USART3_IRQn);
+    if (HAL_UART_AbortReceive(&huart3) != HAL_OK) Safety_Reset(RESET_INIT);
+    MX_USART3_UART_Init();
+  }
   Safety_Begin(STAGE_MAIN, 15000u);
 }
 
@@ -3296,12 +3319,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
 
   /* LoRa RST 复位引脚 (PA1) - 默认高电�?*/
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
   GPIO_InitStruct.Pin  = LORA_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
 
   /* LoRa IRQ 中断引脚 (PA2) - 上升沿触发，下拉 */
   GPIO_InitStruct.Pin  = GPIO_PIN_2;
@@ -3418,10 +3442,11 @@ static uint16_t ADC1_Read(void)
   * @note   PA0 接分压电路（100K+100K），V_bat = ADC�?4096 * 3.3V * 2
   *         锂电池映射：4.2V=99%, 3.3V=0%，分段线性插�?
   */
-static uint8_t GetBatteryPercent(void)
+static uint8_t GetBatteryPercent(uint8_t ownStage)
 {
   uint32_t adc_sum = 0;
-  Safety_Begin(STAGE_ADC, 2000u);
+  /* GPS polling keeps the caller deadline; ordinary reads mark the ADC stage. */
+  if (ownStage) Safety_Begin(STAGE_ADC, 2000u);
   ADC1->CR2 |= ADC_CR2_ADON;
   HAL_Delay(1u);
   uint8_t i;
@@ -3431,7 +3456,7 @@ static uint8_t GetBatteryPercent(void)
     adc_sum += ADC1_Read();
   }
   ADC1->CR2 &= ~ADC_CR2_ADON;
-  Safety_Begin(STAGE_MAIN, 15000u);
+  if (ownStage) Safety_Begin(STAGE_MAIN, 15000u);
   uint16_t adc_val = adc_sum / 8;
 
   /* 计算电池电压：分压比 1:1，基�?3.3V */
@@ -3513,6 +3538,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
  */
 static void gpsPowerOn(void)
 {
+  if (!gpsBatteryOk()) return;
   gpsRd = gpsWr;      /* 丢弃残留字节（关中断非必需：ISR 只改 gpsWr�?*/
   gpsLineLen = 0;
   gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数�?*/
@@ -3548,8 +3574,7 @@ static void gpsPowerOff(void)
   gpsRd = gpsWr;
   gpsLineLen = 0;
 
-  printf("[GPS] Power OFF (PB15 high, PB1 Standby)\r\n");
-  printf("[GPS] Power OFF (PB15 high, PB1 Standby)\r\n");
+  printf("[GPS] off\r\n");
 }
 
 /* USER CODE END 4 */
