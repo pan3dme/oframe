@@ -43,11 +43,6 @@
                 </block>
               </text>
             </view>
-            <!-- 发射功率/固件版本（来自 type=8 记录缓存；版本号已显示在标题别名后，这里只显示功率） -->
-            <view class="hi-item" wx:if="{{type8Info && type8Info.txPower}}">
-              <text class="hi-label">发射功率</text>
-              <text class="hi-value">{{type8Info.txPower}}</text>
-            </view>
             <view class="hi-item">
               <text class="hi-label">开机时间</text>
               <text class="hi-value">{{deviceInfo.powerOnTime || '-'}}</text>
@@ -64,12 +59,35 @@
           </view>
         </view>
 
-        <!-- 右上角操作图标：设备编辑按钮（弹出编辑设备弹窗），管理员且 level<=2 才显示 -->
-        <view class="header-actions" wx:if="{{isAdmin && userLevel <= 2}}">
-          <view class="header-icon-btn" bindtap="onDetailEdit">
+        <!-- 右上角操作图标：获取设备配置(getvisoininfo，暂只打印返回) + 设备编辑（管理员且 level<=2） -->
+        <view class="header-actions">
+          <view class="header-icon-btn" bindtap="onGetVisionInfo">
+            <text class="header-icon">⚙️</text>
+          </view>
+          <view class="header-icon-btn" wx:if="{{isAdmin && userLevel <= 2}}" bindtap="onDetailEdit">
             <text class="header-icon">✏️</text>
           </view>
         </view>
+      </view>
+
+      <!-- 点击 ⚙️ 后显示的设备信息（getvisoininfo 实时查询，不缓存，需要时点击） -->
+      <view class="vision-panel" wx:if="{{visionInfo}}">
+        <view class="vision-header">
+          <text class="vision-title">⚙️ 设备信息（实时查询）</text>
+          <text class="vision-close" bindtap="onCloseVisionInfo">✕</text>
+        </view>
+        <view class="vision-grid">
+          <view class="vision-item"><text class="vision-label">设备ID</text><text class="vision-value">{{visionInfo.deviceId || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">固件版本</text><text class="vision-value">{{visionInfo.version || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">发射功率</text><text class="vision-value">{{visionInfo.txPower || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">农场设备数</text><text class="vision-value">{{visionInfo.farmCount || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">上报数</text><text class="vision-value">{{visionInfo.reportCount || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">信号 RSSI</text><text class="vision-value">{{visionInfo.rssi}}</text></view>
+          <view class="vision-item"><text class="vision-label">信噪比 SNR</text><text class="vision-value">{{visionInfo.snr}}</text></view>
+          <view class="vision-item"><text class="vision-label">上传设备</text><text class="vision-value">{{visionInfo.upDateDevice || '-'}}</text></view>
+        </view>
+        <view class="vision-row"><text class="vision-label">记录时间</text><text class="vision-value">{{visionInfo.time || '-'}}</text></view>
+        <view class="vision-raw">原始报文：{{visionInfo.lorastr}}</view>
       </view>
 
       <!-- 设备功能按钮（每行3个）：中继设备(有ProductKey)与普通设备的按钮数据不同 -->

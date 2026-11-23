@@ -18,7 +18,8 @@ Page({
     hasSelected: false,
     selectedDeviceId: '',
     deviceInfo: null,
-  type8Info: null,   // 发射功率/固件版本（type=8 记录缓存，有才显示）
+  type8Info: null,   // 固件版本（type=8 记录缓存，有才显示在别名后）
+  visionInfo: null,  // 点击⚙️实时查询的设备信息（不缓存，需要时点击）
     loading: false,
     // 数据记录列表
     showRecordTable: false,
@@ -82,7 +83,7 @@ Page({
     }
     if (!this._checkLogin()) return
     this._readSettings()
-    // 每次展示都刷新功率/版本显示（tab 页 onLoad 只执行一次，缓存可能在此期间被其它页面更新）
+    // 每次展示都刷新版本号显示（tab 页 onLoad 只执行一次，缓存可能在此期间被其它页面更新）
     const t8Device = this.data.selectedDeviceId || dataCache.getHomeSelectedDevice()
     if (t8Device) this._refreshType8Info(t8Device)
     // 从地图选点页返回：读取中继设置坐标结果，确认后 insertlog 提交
@@ -244,9 +245,14 @@ Page({
 
   // ========== 设备信息 ==========
   loadDeviceInfo(deviceId, force, done) {
-    // 先用已缓存的功率/版本即时显示（无缓存则等记录加载后更新）
+    // 切换设备时清空上次查询的面板，避免显示别的设备的数据
+    if (this.data.visionInfo && this.data.visionInfo.deviceId !== deviceId) {
+      this.setData({ visionInfo: null })
+    }
+    // 先用已缓存的版本号即时显示（无缓存则等预取/记录返回后更新）
     this._refreshType8Info(deviceId)
-    // 专项预取：与设备记录页相同的请求形态（type:0 混合记录），保证 type=8 缓存有数据
+    // 专项预取：index 页 loadTodayRecords 不带 type:0，返回里通常没有 type=8 报文，
+    // 这里用 type:0 混合记录单独拉一次，保证版本号缓存有数据
     wx.request({
       url: API_URL,
       method: 'POST',
@@ -461,7 +467,7 @@ Page({
       },
       success: (res) => {
         const newRecords = this._parseRecords(res.data)
-        // 记录返回后 type=8 缓存可能已更新（_parseRecords 内扫描），刷新功率/版本显示
+        // 记录返回后 type=8 缓存可能已更新（_parseRecords 内扫描），刷新版本号显示
         this._refreshType8Info()
         if (offset > 0) {
           const merged = this.data.recordList.concat(newRecords)
@@ -711,7 +717,7 @@ Page({
     })
   },
 
-  // 功率/版本展示（type=8 缓存，每台设备一条，有缓存才显示）
+  // 版本号展示（type=8 缓存，每台设备一条，有缓存才显示在别名后）
   _refreshType8Info(deviceId) {
     const id = deviceId || this.data.selectedDeviceId
     if (!id) return
@@ -722,9 +728,8 @@ Page({
       return
     }
     const info = dataCache.getType8Info(id)
-    console.log('[type8] 首页刷新显示 device=' + id + ' 缓存=' + JSON.stringify(info))
-    // 无缓存时清空显示：切换设备后不能残留上一台设备的功率/版本
-    this.setData({ type8Info: info ? { txPower: info.txPower || '', version: info.version || '' } : null })
+    // 无缓存时清空显示：切换设备后不能残留上一台设备的版本号
+    this.setData({ type8Info: info ? { version: info.version || '' } : null })
   },
 
   // ========== 记录解析（与 device-detail 一致） ==========
@@ -1135,6 +1140,96 @@ Page({
   // 无选中设备/想换设备 → 去设备列表
   goDeviceTab() {
     wx.switchTab({ url: '/pages/device/device' })
+  },
+
+  // ========== 获取设备配置（getvisoininfo）==========
+  // 点击⚙️实时查询一条含dbm的type=8记录，解析后显示在卡片下方；不缓存、不预取
+  onGetVisionInfo() {
+    const info = this.data.deviceInfo
+    const deviceId = (info && (info.deviceId || info.deviceid)) || this.data.selectedDeviceId || ''
+    if (!deviceId) {
+      wx.showToast({ title: '未选中设备', icon: 'none' })
+      return
+    }
+    console.log('[getvisoininfo] 请求 deviceId=' + deviceId)
+    wx.showLoading({ title: '获取中' })
+    wx.request({
+      url: API_URL,
+      method: 'POST',
+      data: {
+        action: 'getvisoininfo',
+        info: { deviceId: deviceId, wechatid: getApp().getWechatId() }
+      },
+      timeout: 10000,
+      success: (res) => {
+        console.log('[getvisoininfo] statusCode=' + res.statusCode + ' 返回:', res.data)
+        console.log('[getvisoininfo] 返回JSON:', JSON.stringify(res.data))
+        const rows = (res.data && Array.isArray(res.data.data)) ? res.data.data : []
+        if (res.data && res.data.errorMessage) {
+          wx.showToast({ title: '服务器异常', icon: 'none' })
+          return
+        }
+        if (!rows.length) {
+          wx.showToast({ title: '暂无设备信息', icon: 'none' })
+          this.setData({ visionInfo: null })
+          return
+        }
+        // 汇总 primaryKey + attributes 为普通对象
+        const row = rows[0]
+        const attr = {}
+        const pk = Array.isArray(row.primaryKey) ? row.primaryKey : []
+        pk.forEach(k => { attr[k.name] = k.value })
+        const attrs = Array.isArray(row.attributes) ? row.attributes : []
+        attrs.forEach(k => { attr[k.columnName] = k.columnValue })
+
+        // 解析 lorastr：8|v3-1|15T|16dbm|V2.1|335|
+        //   段2=农场设备数(15T)  含dbm段=发射功率  V开头段=固件版本  末尾纯数字=上报数
+        const segs = String(attr.lorastr || '').split(/[｜|]/)
+        let txPower = ''
+        let version = ''
+        let farmCount = ''
+        let reportCount = ''
+        for (let i = 2; i < segs.length; i++) {
+          const seg = String(segs[i] || '').trim()
+          if (!seg) continue
+          const m = seg.match(/^(\d+(?:\.\d+)?)\s*dbm$/i)
+          if (m && !txPower) { txPower = m[1] + 'dbm'; continue }
+          if (/^v\d+(\.\d+)*$/i.test(seg) && !version) { version = seg; continue }
+          const fc = seg.match(/^(\d+)t$/i)
+          if (fc && !farmCount) { farmCount = fc[1] + '台'; continue }
+          if (/^\d+$/.test(seg) && !reportCount) reportCount = seg
+        }
+        this.setData({
+          visionInfo: {
+            deviceId: attr.deviceId || deviceId,
+            version: version,
+            txPower: txPower,
+            farmCount: farmCount,
+            reportCount: reportCount,
+            rssi: attr.rssi === undefined || attr.rssi === '' ? '-' : String(attr.rssi),
+            snr: attr.snr === undefined || attr.snr === '' ? '-' : String(attr.snr),
+            time: attr.time || '',
+            upDateDevice: attr.upDateDevice || '',
+            lorastr: attr.lorastr || ''
+          }
+        })
+        // 这条记录同样是 type=8 报文：写进版本号缓存，让标题别名后立即显示并持久化
+        dataCache.cacheType8FromRecords(res.data)
+        this._refreshType8Info(deviceId)
+      },
+      fail: (err) => {
+        console.error('[getvisoininfo] 请求失败:', JSON.stringify(err))
+        wx.showToast({ title: '请求失败', icon: 'none' })
+      },
+      complete: () => {
+        wx.hideLoading()
+      }
+    })
+  },
+
+  // 关闭设备信息面板
+  onCloseVisionInfo() {
+    this.setData({ visionInfo: null })
   },
 
   // ========== 编辑设备弹窗 ==========

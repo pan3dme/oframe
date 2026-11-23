@@ -123,3 +123,68 @@ page {
   color: rgba(255, 255, 255, 0.65);
   font-weight: 400;
 }
+
+/* ========== 设备信息实时查询面板（点击⚙️后显示） ========== */
+.vision-panel {
+  margin: 20rpx 24rpx 0;
+  padding: 24rpx 28rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
+}
+.vision-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.vision-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1a73e8;
+}
+.vision-close {
+  font-size: 30rpx;
+  color: #999;
+  padding: 0 12rpx;
+}
+.vision-grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+.vision-item {
+  width: 50%;
+  display: flex;
+  align-items: center;
+  margin-bottom: 16rpx;
+  box-sizing: border-box;
+  padding-right: 16rpx;
+}
+.vision-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+.vision-label {
+  width: 150rpx;
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #999;
+}
+.vision-value {
+  flex: 1;
+  font-size: 26rpx;
+  color: #333;
+  word-break: break-all;
+}
+.vision-raw {
+  margin-top: 8rpx;
+  padding: 14rpx 16rpx;
+  background: #f7f9fc;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: #666;
+  word-break: break-all;
+}

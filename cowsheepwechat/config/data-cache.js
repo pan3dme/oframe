@@ -1185,7 +1185,11 @@ function restoreFromStorage(target) {
 // ============ 设备功率/版本缓存（type=8 记录） ============
 // type=8 是通用信息通道，不是每条 type=8 都和版本相关！
 // 只有 lorastr 中含 "dbm" 段的才是功率/版本报文，格式：8|v3-10|15T|16dbm|V1.4|3|
-//   段0=类型  段1=设备ID  含"dbm"的段=发射功率  V+数字开头的段=固件版本
+//   段0=类型  段1=设备ID
+//   段2=15T → 农场配置的设备数（15台，用于对时分段；暂未使用）
+//   段3=16dbm → 发射功率
+//   段4=V1.4 → 固件版本（详情页显示在设备别名后）
+//   段5=335 → 上报数（不使用）
 // 其余内容的 type=8（其它通用信息）一律不缓存
 // 每台设备只保留最新一条；记录时间远大于当前时间（>2天）视为脏数据直接忽略
 function _parseRecordTimeTs(s) {
@@ -1237,7 +1241,6 @@ function cacheType8FromRecords(data) {
       if (version && !/^v\d+(\.\d+)*$/i.test(version)) version = ''
       // 设备归属：只按记录归属字段（primaryKey/attributes 的 deviceId）缓存——
       // 每台设备只存自己的一条，详情页只显示自己的功率/版本
-      // （lorastr 第2段仅在没有归属字段时兜底，不作为独立 key）
       const deviceId = attr.deviceId || attr.deviceid || record.deviceId || record.deviceid || (segs[1] || '').trim()
       if (!deviceId || deviceId === '-') return
       // 时间核对：记录时间远大于当前时间（>2天）说明数据有错，忽略
