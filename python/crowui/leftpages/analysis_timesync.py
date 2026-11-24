@@ -33,7 +33,6 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
-from crowui import theme
 from crowui.ots_sync import DeviceLogSyncer
 from crowui.wx_codec import parse_time_to_ts
 
@@ -44,6 +43,50 @@ _SLOT_TOL = 90      # 时隙偏差容差（秒）
 
 _COLORS = {'ok': '#07c160', 'warn': '#E6A23C', 'bad': '#EF5350',
            'fast': '#E6A23C', 'dirty': '#999999'}
+
+# 工具栏轻量按钮：本窗口「刷新/关闭」属于次要操作，不用 theme 里的大药丸实心
+# 按钮（padding:8px 24px / border-radius:23px / min-height:30px）——被压成 64x28
+# 后文字被内边距挤压、圆角过大、高饱和色块在浅色面板里过于抢眼。
+# 这里沿用分析技能面板 _make_skill_btn 的白底细描边风格，与下拉框视觉重量一致。
+_REFRESH_BTN_QSS = """
+    QPushButton {
+        background: #FFFFFF;
+        color: #07A854;
+        border: 1px solid #D4EDDA;
+        border-radius: 6px;
+        padding: 4px 14px;
+        font-size: 12px;
+        font-family: "Microsoft YaHei";
+    }
+    QPushButton:hover {
+        color: #078A45;
+        border-color: #07C160;
+        background: #F0FAF5;
+    }
+    QPushButton:pressed { background: #E4F6EC; }
+    QPushButton:disabled {
+        color: #94A3B8;
+        border-color: #E2E8F0;
+        background: #FAFAFA;
+    }
+"""
+_CLOSE_BTN_QSS = """
+    QPushButton {
+        background: #FFFFFF;
+        color: #64748B;
+        border: 1px solid #E2E8F0;
+        border-radius: 6px;
+        padding: 4px 14px;
+        font-size: 12px;
+        font-family: "Microsoft YaHei";
+    }
+    QPushButton:hover {
+        color: #334155;
+        border-color: #CBD5E1;
+        background: #F8FAFC;
+    }
+    QPushButton:pressed { background: #F1F5F9; }
+"""
 
 
 def _dev_sort_key(s):
@@ -228,20 +271,23 @@ class TimeSyncDialog(QDialog):
         lay.addWidget(line)
 
         row = QHBoxLayout()
+        row.setSpacing(8)
         row.addWidget(QLabel('设备:'))
         self.device_combo = QComboBox()
+        self.device_combo.setFixedHeight(30)
         self.device_combo.currentIndexChanged.connect(self._analyze_async)
         row.addWidget(self.device_combo, stretch=1)
-        refresh = QPushButton('刷新')
-        refresh.setFixedSize(64, 28)
+        # 轻量描边按钮：宽度随文字自适应（不再固定 64 压扁），高度与下拉框一致
+        refresh = QPushButton('↻  刷新')
+        refresh.setFixedHeight(30)
         refresh.setCursor(Qt.CursorShape.PointingHandCursor)
-        refresh.setStyleSheet(theme.GREEN_BUTTON_QSS)
+        refresh.setStyleSheet(_REFRESH_BTN_QSS)
         refresh.clicked.connect(self._load_devices)
         row.addWidget(refresh)
-        close = QPushButton('关闭')
-        close.setFixedSize(64, 28)
+        close = QPushButton('✕  关闭')
+        close.setFixedHeight(30)
         close.setCursor(Qt.CursorShape.PointingHandCursor)
-        close.setStyleSheet(theme.GRAY_BUTTON_QSS)
+        close.setStyleSheet(_CLOSE_BTN_QSS)
         close.clicked.connect(self.close)
         row.addWidget(close)
         lay.addLayout(row)
