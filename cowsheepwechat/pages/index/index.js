@@ -1158,7 +1158,9 @@ Page({
       method: 'POST',
       data: {
         action: 'getvisoininfo',
-        info: { deviceId: deviceId, wechatid: getApp().getWechatId() }
+        // prefix：服务端对 lorastr 做 WildcardQuery 的通配串，只取 INFO 帧
+        // （readinfo 参数帧），排除 ICCID/IMSI 等其它 type=8 帧
+        info: { deviceId: deviceId, prefix: '*|INFO|*', wechatid: getApp().getWechatId() }
       },
       timeout: 10000,
       success: (res) => {
@@ -1182,13 +1184,14 @@ Page({
         const attrs = Array.isArray(row.attributes) ? row.attributes : []
         attrs.forEach(k => { attr[k.columnName] = k.columnValue })
 
-        // 解析 lorastr：8|v3-1|15T|16dbm|V2.1|335|
-        //   段2=农场设备数(15T)  含dbm段=发射功率  V开头段=固件版本  末尾纯数字=上报数
+        // 解析 lorastr（逐段模式匹配，兼容新旧格式，段数可变）：
+        //   旧 8|v3-1|15T|16dbm|V2.1|335|
+        //   新 8|v3-10|INFO|15T|433HZ|16dbm|V2.5|15|  （段2=帧标识INFO，多一个频率段）
+        //   15T=农场设备数  16dbm=发射功率  V2.5=固件版本  末尾纯数字=上报数
         const segs = String(attr.lorastr || '').split(/[｜|]/)
         let txPower = ''
         let version = ''
         let farmCount = ''
-        let reportCount = ''
         for (let i = 2; i < segs.length; i++) {
           const seg = String(segs[i] || '').trim()
           if (!seg) continue
@@ -1196,8 +1199,7 @@ Page({
           if (m && !txPower) { txPower = m[1] + 'dbm'; continue }
           if (/^v\d+(\.\d+)*$/i.test(seg) && !version) { version = seg; continue }
           const fc = seg.match(/^(\d+)t$/i)
-          if (fc && !farmCount) { farmCount = fc[1] + '台'; continue }
-          if (/^\d+$/.test(seg) && !reportCount) reportCount = seg
+          if (fc && !farmCount) { farmCount = fc[1] + '台' }
         }
         this.setData({
           visionInfo: {
@@ -1205,11 +1207,7 @@ Page({
             version: version,
             txPower: txPower,
             farmCount: farmCount,
-            reportCount: reportCount,
-            rssi: attr.rssi === undefined || attr.rssi === '' ? '-' : String(attr.rssi),
-            snr: attr.snr === undefined || attr.snr === '' ? '-' : String(attr.snr),
             time: attr.time || '',
-            upDateDevice: attr.upDateDevice || '',
             lorastr: attr.lorastr || ''
           }
         })

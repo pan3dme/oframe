@@ -81,10 +81,6 @@
           <view class="vision-item"><text class="vision-label">固件版本</text><text class="vision-value">{{visionInfo.version || '-'}}</text></view>
           <view class="vision-item"><text class="vision-label">发射功率</text><text class="vision-value">{{visionInfo.txPower || '-'}}</text></view>
           <view class="vision-item"><text class="vision-label">农场设备数</text><text class="vision-value">{{visionInfo.farmCount || '-'}}</text></view>
-          <view class="vision-item"><text class="vision-label">上报数</text><text class="vision-value">{{visionInfo.reportCount || '-'}}</text></view>
-          <view class="vision-item"><text class="vision-label">信号 RSSI</text><text class="vision-value">{{visionInfo.rssi}}</text></view>
-          <view class="vision-item"><text class="vision-label">信噪比 SNR</text><text class="vision-value">{{visionInfo.snr}}</text></view>
-          <view class="vision-item"><text class="vision-label">上传设备</text><text class="vision-value">{{visionInfo.upDateDevice || '-'}}</text></view>
         </view>
         <view class="vision-row"><text class="vision-label">记录时间</text><text class="vision-value">{{visionInfo.time || '-'}}</text></view>
         <view class="vision-raw">原始报文：{{visionInfo.lorastr}}</view>
