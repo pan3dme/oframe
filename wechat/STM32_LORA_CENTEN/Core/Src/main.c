@@ -53,7 +53,7 @@ typedef struct {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define EXAMPLE_NAME "CENTEN LoRa gateway" // 工程名称
-#define DEMO_VER "V1.1.1"                // 演示版本�?
+#define DEMO_VER "V1.1.2"                // 演示版本�?
 #define EXAMPLE_DATE "2026/11/24"      // 工程日期
 
 #define RX_LEN 96             // LoRa 接收缓冲区最大长度（字节�?

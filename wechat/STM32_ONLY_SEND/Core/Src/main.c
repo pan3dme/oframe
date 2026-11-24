@@ -44,7 +44,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.4"
+#define DEMO_VER     "V2.5"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       128   /* build buffer: frames may be composed freely */
@@ -97,7 +97,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         15u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         16u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
