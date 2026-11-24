@@ -6,7 +6,7 @@ $buildRoot = Join-Path $projectRoot 'build'
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 [xml]$projectXml = Get-Content -LiteralPath (Join-Path $mdkRoot 'STM32_LORA_CENTEN.uvprojx') -Raw
 $includeDirs = @('Core/Inc','Drivers/STM32F1xx_HAL_Driver/Inc','Drivers/STM32F1xx_HAL_Driver/Inc/Legacy','Drivers/CMSIS/Device/ST/STM32F1xx/Include','Drivers/CMSIS/Include','user') | ForEach-Object { Join-Path $projectRoot $_ }
-$includeDirs += @((Join-Path $projectRoot '../Common/RadioF103/inc'), (Join-Path $projectRoot '../Common/inc'))
+$includeDirs += @((Join-Path $projectRoot 'Common/RadioF103/inc'), (Join-Path $projectRoot 'Common/inc'))
 $compileArgs = @('--cpu','Cortex-M3','--c99','-O2','-Ospace','--apcs=interwork','--library_type=microlib','-g','--split_sections','-D__MICROLIB','-DUSE_HAL_DRIVER','-DSTM32F103xB')
 foreach ($includeDir in $includeDirs) { $compileArgs += @('-I', $includeDir) }
 $objects = @()

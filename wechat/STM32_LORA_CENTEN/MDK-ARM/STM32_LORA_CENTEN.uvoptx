@@ -478,7 +478,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>../../Common/RadioF103/src/pan3029_rf.c</PathWithFileName>
+      <PathWithFileName>../Common/RadioF103/src/pan3029_rf.c</PathWithFileName>
       <FilenameWithoutPath>pan3029_rf.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -490,7 +490,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>../../Common/RadioF103/src/crc.c</PathWithFileName>
+      <PathWithFileName>../Common/RadioF103/src/crc.c</PathWithFileName>
       <FilenameWithoutPath>crc.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -510,7 +510,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>../../Common/src/common_test.c</PathWithFileName>
+      <PathWithFileName>../Common/src/common_test.c</PathWithFileName>
       <FilenameWithoutPath>common_test.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
