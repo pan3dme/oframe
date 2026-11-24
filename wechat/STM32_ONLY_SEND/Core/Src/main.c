@@ -47,7 +47,8 @@
 #define DEMO_VER     "V2.4"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
-#define TX_LEN       64
+#define TX_LEN       128   /* build buffer: frames may be composed freely */
+#define LORA_TX_MAX  36    /* policy cap: max 36 text bytes on air; relay RX window (96) still accepts it */
 #define RX_LEN       64
 
 /* æ¶ˆæ¯ç±»å‹å®šä¹‰ï¼ˆä¸ PAN3029_F030 å¯¹é½ï¿?*/
@@ -57,7 +58,7 @@
 #define MSG_TYPE_CONFIG   6   /* é…ç½®æ¶ˆæ¯ */
 #define MSG_TYPE_SYN_TIME 4   /* ä¸‹å‘å¯¹æ—¶ä¿¡æ¯ï¼ˆä¸­ç»§â†’æœ¬è®¾å¤‡ï¼‰ */
 #define MSG_TYPE_READINFO 8   /* è®¾å¤‡ä¿¡æ¯ä¸ŠæŠ¥ï¼ˆreadinfo æŒ‡ä»¤å›å¤ï¿?
-                               * å¸§æ ¼ï¿? 8|è®¾å¤‡å|è®¾å¤‡æ•°é‡|å‘å°„åŠŸç‡(dBm)|ä¿ç•™(å½“å‰å¡«è®¡ï¿?|
+ * frame: 8|name|INFO|deviceCount|tx power(dBm)|reserved(currently count)|
                                * @note ç±»å‹ 8 æ›¾é¢„ç•™ç»™å‘Šè­¦ï¼ˆWARNï¼‰ï¼Œå‘Šè­¦ä»æœªå®ç°ï¿?
                                *       è‹¥å°†æ¥è¦åšå‘Šè­¦ï¼Œå¿…é¡»æ¢ä¸€ä¸ªç±»å‹å· */
 #define MSG_TYPE_UP_GPS   5   /* GPS ä¸Šä¼  */
@@ -74,9 +75,9 @@ char configStr[64] = DEFAULT_CONFIG_STR;
 /* å†œåœºä¸­å¿ƒåæ ‡ï¿?lat,lng"ï¼Œç©º=æœªè®¾ç½®ï¼Œï¿?C æŒ‡ä»¤ä¸‹å‘å¹¶æŒä¹…åŒ–ï¿?*/
 char centerStr[64] = "";
 
-/* ÖĞĞÄ×ø±ê int32 »º´æ£¨1e-5 ¶È£©£ºGPS ÉÏ±¨Ïà¶ÔÆ«ÒÆÊ¹ÓÃ¡£
- * centerStr ÊÇ×Ö·û´®ĞÎÊ½£¨Flash/ÉÏ±¨ÓÃ£©£¬ÕâÁ½¸öÊÇÊıÖµĞÎÊ½£¨ËãÆ«ÒÆÓÃ£©£¬
- * Á½ÕßÔÚ "¼ÓÔØ Flash" ºÍ "C Ö¸ÁîÉèÖÃÖĞĞÄ" Á½´¦Í¬²½¸üĞÂ */
+/* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ int32 ï¿½ï¿½ï¿½æ£¨1e-5 ï¿½È£ï¿½ï¿½ï¿½GPS ï¿½Ï±ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½Ê¹ï¿½Ã¡ï¿?
+ * centerStr ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½Flash/ï¿½Ï±ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½
+ * ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ "ï¿½ï¿½ï¿½ï¿½ Flash" ï¿½ï¿½ "C Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½" ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 static int32_t centerLat1e5 = 0;
 static int32_t centerLng1e5 = 0;
 static uint8_t centerValid  = 0;
@@ -129,9 +130,9 @@ static uint32_t syncedTimestamp = 0;  /* åŒæ­¥åˆ°çš„ Unix æ—¶é—´ï¿?*/
 static uint32_t syncedRtcSec = 0;     /* å¯¹æ—¶é‚£ä¸€åˆ»çš„ RTC è®¡æ•°ï¼ˆç§’ï¿?*/
 static uint8_t  timeSynced = 0;       /* æ˜¯å¦å·²åŒæ­¥æ—¶ï¿?*/
 static uint32_t anchorRtcSec = 0;
-/* ¶àÖĞ¼ÌÊ±¼äÔ´Ê¶±ğ£º¶ÔÊ±Ö¡µÚ 5 ¶Î Relay ID£¨CENTEN ¶Ë RELAY_ID ºêÏÂ·¢£©¡£
- * ¸÷Ì¨ÖĞ¼ÌÊ±ÖÓ»ù×¼ÓĞ²î ¡ú »»ÁËÖĞ¼Ì¾ÍÖØÉèÃªµãÖØĞÂ²ÉÑùÆ«²î£¬
- * ·ÀÖ¹ÄÃÁíÒ»Ì¨µÄÖÓÈ¥Ëã¾ÉÃªµãÆ«²î¶øÎÛÈ¾¾§Õñ²¹³¥Öµ */
+/* ï¿½ï¿½ï¿½Ğ¼ï¿½Ê±ï¿½ï¿½Ô´Ê¶ï¿½ğ£º¶ï¿½Ê±Ö¡ï¿½ï¿½ 5 ï¿½ï¿½ Relay IDï¿½ï¿½CENTEN ï¿½ï¿½ RELAY_ID ï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½ï¿½
+ * ï¿½ï¿½Ì¨ï¿½Ğ¼ï¿½Ê±ï¿½Ó»ï¿½×¼ï¿½Ğ²ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ğ¼Ì¾ï¿½ï¿½ï¿½ï¿½ï¿½Ãªï¿½ï¿½ï¿½ï¿½ï¿½Â²ï¿½ï¿½ï¿½Æ«ï¿½î£¬
+ * ï¿½ï¿½Ö¹ï¿½ï¿½ï¿½ï¿½Ò»Ì¨ï¿½ï¿½ï¿½ï¿½È¥ï¿½ï¿½ï¿½Ãªï¿½ï¿½Æ«ï¿½ï¿½ï¿½ï¿½ï¿½È¾ï¿½ï¿½ï¿½ñ²¹³ï¿½Öµ */
 static char    lastSyncRelay[8] = "";
 static uint8_t lastSyncRelaySeen = 0;     /* é¦–æ¬¡å¯¹æ—¶ï¿?RTC åŸºå‡†ï¼ˆç”¨äºæ™¶æŒ¯åå·®è®¡ç®—ï¼‰ */
 static uint16_t gpsContTotalMin = 0;   /* upgps æŒ‡ä»¤å¸¦çš„åˆ†é’Ÿæ•°å‚æ•°ï¼š
@@ -257,9 +258,9 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* ç¼“å­˜ç”µé‡ç™¾åˆ†æ¯”ï¼ˆ
 /* æ™¶æŒ¯åå·®æ”¶æ•›é˜ˆå€¼ï¼ˆï¿?å°æ—¶ï¼‰ï¼šè¿ç»­ä¸¤æ¬¡å¯¹æ—¶æµ‹å¾—çš„åå·®ç›¸ï¿?ï¿?æ­¤å€¼è§†ä¸ºæ”¶æ•›ï¿½?
  * 30 åˆ†é’Ÿå¯¹æ—¶åŒºé—´ï¿?1 ç§’çš„æµ‹é‡è¯¯å·® ï¿?12 ï¿?å°æ—¶ï¼Œå– 15 ç•™è£•ï¿?*/
 #define DRIFT_CONVERGE_TOL      30
-/* @note  Ô­ 15 s/h ¹ıÑÏ£º30 ·ÖÖÓ¶ÔÊ±Çø¼ä 1 Ãë²âÁ¿ÔëÉù¡Ö12 s/h£¬Á½´Î²ÉÑù
- *        ¶¼Òª"Ç¡ºÃ½Ó½ü"²ÅÊÕÁ²£¬LSI ³¡¾°(Æ«²î´óÇÒËæÎÂ¶ÈÆ¯)¿ÉÄÜ³¤ÆÚ²»ÊÕÁ²£»
- *        30 s/h ¶Ô 30 ·ÖÖÓÂÖµÄ²¹³¥²Ğ²î½ö ¡À15 Ãë£¬ÇÒÃ¿´Î¶ÔÊ±¶¼»áÖØ²â¾ÀÆ« */
+/* @note  Ô­ 15 s/h ï¿½ï¿½ï¿½Ï£ï¿½30 ï¿½ï¿½ï¿½Ó¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ 1 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿?2 s/hï¿½ï¿½ï¿½ï¿½ï¿½Î²ï¿½ï¿½ï¿½
+ *        ï¿½ï¿½Òª"Ç¡ï¿½Ã½Ó½ï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½LSI ï¿½ï¿½ï¿½ï¿½(Æ«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¶ï¿½Æ?ï¿½ï¿½ï¿½Ü³ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ *        30 s/h ï¿½ï¿½ 30 ï¿½ï¿½ï¿½ï¿½ï¿½ÖµÄ²ï¿½ï¿½ï¿½ï¿½Ğ²ï¿½ï¿?ï¿½ï¿½15 ï¿½ë£¬ï¿½ï¿½Ã¿ï¿½Î¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½Æ?*/
 /* åå·®æ ·æœ¬å‰”é™¤ä¸Šé™ï¼ˆç§’/å°æ—¶ï¼‰ï¼šLSI æ™¶æŒ¯æœ€å·®çº¦ Â±5%ï¼ˆï¿½?80ï¿?hï¼‰ï¼Œ
  * è¶…è¿‡ Â±300 è§†ä¸ºä¸­ç»§è‡ªèº«æˆæ—¶é”™è¯¯ï¼ˆä¸­ç»§æ—¶é—´è·³å˜å¯¼è‡´ï¼‰ï¼Œæ ·æœ¬ç›´æ¥ä¸¢å¼ƒâ€”ï¿½?
  * ä¸å‚ä¸æ”¶æ•›ã€ä¸æ±¡æŸ“è¡¥å¿å€¼ï¼Œæ”¶æ•›ç»“æœåªç”±å¯ä¿¡æ ·æœ¬å†³å®š */
@@ -649,10 +650,15 @@ static void txCountNext(void)
  */
 static void loraTx(const char *msg)
 {
+  /* build side ignores frame length; strip the tail here before air time
+   * (LORA_TX_MAX keeps the payload inside the relay's RX_LEN window) */
+  uint32_t len = strlen(msg);
   uint32_t tx_time = 1000u, start = HAL_GetTick();
+  if (len > LORA_TX_MAX)
+    len = LORA_TX_MAX;
   Safety_Begin(STAGE_TX, 6000u);
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
-  if (rf_single_tx_data((uint8_t *)msg, strlen(msg) + 1u, &tx_time) != RF_OK)
+  if (rf_single_tx_data((uint8_t *)msg, len + 1u, &tx_time) != RF_OK)
     Safety_Reset(RESET_TX);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE) {
     if ((uint32_t)(HAL_GetTick() - start) >= 5000u) Safety_Reset(RESET_TX);
@@ -686,10 +692,10 @@ static void loraTx(const char *msg)
 /**
  * @brief  å‘é€è®¾å¤‡ä¿¡æ¯æ¶ˆæ¯ï¼ˆreadinfo æŒ‡ä»¤å›å¤ï¼Œæ¯æ¬¡åªå‘ä¸€æ¡ï¼Œå¸§é•¿ ï¿?2 å­—èŠ‚ï¿?
  * @note   ï¿?readInfoValue ç»„å¸§ï¿?
- *           0(ç¼ºçœ/ä¹±ç ): 8|è®¾å¤‡|å°æ•°T|åŠŸç‡dbm|ç‰ˆæœ¬|è®¡æ•°|   (26~29 å­—èŠ‚)
+ *           0(default):    8|name|INFO|countT|freqHZ|powerdbm|version|txcnt| (26~38 bytes)
  *           1:            8|è®¾å¤‡|åå·®s/h|è®¡æ•°|             (19 å­—èŠ‚, åå·®èŒƒå›´Â±300)
  *           2:            8|è®¾å¤‡|Rssi,Snr|è®¡æ•°|            (20 å­—èŠ‚; å¼€æœºæœªæ”¶è¿‡åŒ…æŠ¥ noRX)
- * @note   æ¦‚å†µå¸§å»æ‰äº†ï¿?433HZ ï¿?â€”ï¿½?æœ€åæƒ…ï¿?è®¡æ•°999)åŸå¸§ 33 å­—èŠ‚ï¿?32 ä¸Šé™
+ * @note   æ¦‚å†µå¸§å·²æ¢å¤ HZ é¢‘ç‡æ®µâ€”â€”TX_LEN=64ï¼Œæœ€é•¿çº¦33å­—èŠ‚ï¼Œå®‰å…?
  */
 static void sendReadInfoMessage(void)
 {
@@ -725,43 +731,43 @@ static void sendReadInfoMessage(void)
   txCountNext();
   if (readInfoValue == 1) {
 #if TX_COUNT_ENABLE
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ds/h|%lu|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|DRIFT|%ds/h|%lu|",
              MSG_TYPE_READINFO, deviceName, (int)rtcDriftPerHour,
              (unsigned long)tx_count);
 #else
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ds/h|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|DRIFT|%ds/h|",
              MSG_TYPE_READINFO, deviceName, (int)rtcDriftPerHour);
 #endif
   } else if (readInfoValue == 2) {
     if (lastRxSeen) {
 #if TX_COUNT_ENABLE
-      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ddBm,%d|%lu|",
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RSSI|%ddBm,%d|%lu|",
                MSG_TYPE_READINFO, deviceName,
                (int)lastRxRssi - 256, (int)lastRxSnr,
                (unsigned long)tx_count);
 #else
-      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%ddBm,%d|",
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RSSI|%ddBm,%d|",
                MSG_TYPE_READINFO, deviceName,
                (int)lastRxRssi - 256, (int)lastRxSnr);
 #endif
     } else {
 #if TX_COUNT_ENABLE
-      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|noRX|%lu|",
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RSSI|noRX|%lu|",
                MSG_TYPE_READINFO, deviceName, (unsigned long)tx_count);
 #else
-      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|noRX|",
+      snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RSSI|noRX|",
                MSG_TYPE_READINFO, deviceName);
 #endif
     }
   } else if (readInfoValue == 3) {
     /* å†œåœºä¸­å¿ƒåæ ‡ï¼šæœªè®¾ç½®è¿‡å› "0,0"ï¼ˆä¸ C æŒ‡ä»¤å›åŒ…é€»è¾‘ä¸€è‡´ï¼‰ */
 #if TX_COUNT_ENABLE
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|%lu|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|COORD|%s|%lu|",
              MSG_TYPE_READINFO, deviceName,
              (centerStr[0] != '\0') ? centerStr : "0,0",
              (unsigned long)tx_count);
 #else
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|COORD|%s|",
              MSG_TYPE_READINFO, deviceName,
              (centerStr[0] != '\0') ? centerStr : "0,0");
 #endif
@@ -771,22 +777,22 @@ static void sendReadInfoMessage(void)
     uint32_t uidW = *(volatile uint32_t *)0x1FFFF7F0u;
 
 #if TX_COUNT_ENABLE
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%08lX|%lu|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|UID|%08lX|%lu|",
              MSG_TYPE_READINFO, deviceName,
              (unsigned long)uidW, (unsigned long)tx_count);
 #else
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%08lX|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|UID|%08lX|",
              MSG_TYPE_READINFO, deviceName, (unsigned long)uidW);
 #endif
   } else {
 #if TX_COUNT_ENABLE
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%uT|%ddbm|%s|%lu|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|INFO|%uT|%luHZ|%ddbm|%s|%lu|",
              MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
-             (int)currentTxPower, DEMO_VER, (unsigned long)tx_count);
+             (unsigned long)(DEFAULT_FREQ / 1000000u), (int)currentTxPower, DEMO_VER, (unsigned long)tx_count);
 #else
-    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%uT|%ddbm|%s|",
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|INFO|%uT|%luHZ|%ddbm|%s|",
              MSG_TYPE_READINFO, deviceName, (unsigned int)deviceCount,
-             (int)currentTxPower, DEMO_VER);
+             (unsigned long)(DEFAULT_FREQ / 1000000u), (int)currentTxPower, DEMO_VER);
 #endif
   }
 
@@ -862,10 +868,10 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
 
   if (hasFix) {
     char latBuf[16], lngBuf[16];
-    /* Ïà¶ÔÖĞĞÄÆ«ÒÆ£¨1e-5 ¶È¼´ 1e5 ±¶ÕûÊı£¬Ô¼ 1.1m ·Ö±æÂÊ£©¡£
-     * ¹æÔò£ºÓĞÖĞĞÄ×ø±êÇÒÆ«ÒÆÔÚ 10km ·¶Î§ÄÚ -> ÉÏ±¨ÕûÊıÆ«ÒÆ£¨ÎŞĞ¡Êıµã£¬
-     * ÖĞ¼Ì¾İ´ËÅĞ¶¨"Ğè»¹Ô­"²¢¼Ó»ØÖĞĞÄ×ø±ê£©£»·ñÔòÉÏ±¨¾ø¶Ô×ø±ê¡£
-     * ·¶Î§½üËÆ·½ĞÎ£ºlat ¡À0.09¡ã(~10km)£¬lng ¡À0.105¡ã(31¡ãÎ³¶ÈÕÛËã ~10km) */
+    /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ«ï¿½Æ£ï¿?e-5 ï¿½È¼ï¿½ 1e5 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ 1.1m ï¿½Ö±ï¿½ï¿½Ê£ï¿½ï¿½ï¿½
+     * ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½ï¿½ï¿½ 10km ï¿½ï¿½Î§ï¿½ï¿½ -> ï¿½Ï±ï¿½ï¿½ï¿½ï¿½ï¿½Æ«ï¿½Æ£ï¿½ï¿½ï¿½Ğ¡ï¿½ï¿½ï¿½ã£¬
+     * ï¿½Ğ¼Ì¾İ´ï¿½ï¿½Ğ¶ï¿½"ï¿½è»¹Ô­"ï¿½ï¿½ï¿½Ó»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê£©ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ê¡£
+     * ï¿½ï¿½Î§ï¿½ï¿½ï¿½Æ·ï¿½ï¿½Î£ï¿½lat ï¿½ï¿½0.09ï¿½ï¿½(~10km)ï¿½ï¿½lng ï¿½ï¿½0.105ï¿½ï¿½(31ï¿½ï¿½Î³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ~10km) */
     int32_t dlat = gpsFix.lat - centerLat1e5;
     int32_t dlng = gpsFix.lng - centerLng1e5;
 
@@ -881,10 +887,10 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
                (unsigned long)searchSec);
 #endif
     } else {
-      /* Ğ¡Êı±£Áô 5 Î»£º¾«¶È ~1.1m£¬¹»ÓÃÇÒÖ¡³¤¸ü¶Ì */
+      /* Ğ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 5 Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ~1.1mï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
       deg1e5ToStr(gpsFix.lat, latBuf);
       deg1e5ToStr(gpsFix.lng, lngBuf);
-      /* ÓĞ¶¨Î»: ÀàĞÍ|Éè±¸Ãû|lat,lng|ËÑĞÇÃëÊı[|¼ÆÊı|] */
+      /* ï¿½Ğ¶ï¿½Î»: ï¿½ï¿½ï¿½ï¿½|ï¿½è±¸ï¿½ï¿½|lat,lng|ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½[|ï¿½ï¿½ï¿½ï¿½|] */
 #if TX_COUNT_ENABLE
       snprintf(tx_msg, sizeof(tx_msg), "%d|%s|%s,%s|%lu|%lu|",
                msgType, deviceName, latBuf, lngBuf,
@@ -2308,10 +2314,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
         /* æ™¶æŒ¯åå·®è®¡ç®—ï¼ˆé¦–æ¬¡å¯¹æ—¶è®¾ä¸ºé”šç‚¹ï¼Œåç»­æ¯æ¬¡å¯¹æ—¶è¾“å‡ºåå·®ï¼‰ï¿½?
          * æœ¬åœ°é—´éš”ï¿?RTC ç§’ï¼šSTOP ä¼‘çœ æœŸé—´ RTC ç»§ç»­èµ°ï¼Œæµ‹çš„æ‰æ˜¯çœŸå®é’Ÿå·® */
-        /* ¶àÖĞ¼ÌÊ±¼äÔ´¼ì²é£º¶ÔÊ±Ö¡µÚ 4 ¶Î = ÏÂ·¢ÖĞ¼ÌµÄÖĞ¼ÌÃû£¨CENTEN µÄ
-         * deviceName£¬°´ UID Éú³É£¬¸÷Ì¨²»Í¬£©¡£±¾´Î¶ÔÊ±À´×Ô²»Í¬ÖĞ¼Ì ¡ú
-         * Ê±¼äÖáÕÕ³£Í¬²½£¬µ«Çå timeSynced ×ß"Ê×´Î¶ÔÊ±"Â·¾¶ÖØÉèÃªµã£¬
-         * Æ«²îÖØĞÂ²ÉÑù£¨¸÷Ì¨ÖĞ¼ÌÊ±ÖÓ»ù×¼ÓĞ²î£¬»ìËã»áÎÛÈ¾¾§Õñ²¹³¥Öµ£© */
+        /* ï¿½ï¿½ï¿½Ğ¼ï¿½Ê±ï¿½ï¿½Ô´ï¿½ï¿½é£ºï¿½ï¿½Ê±Ö¡ï¿½ï¿?4 ï¿½ï¿½ = ï¿½Â·ï¿½ï¿½Ğ¼Ìµï¿½ï¿½Ğ¼ï¿½ï¿½ï¿½ï¿½ï¿½CENTEN ï¿½ï¿½
+         * deviceNameï¿½ï¿½ï¿½ï¿½ UID ï¿½ï¿½ï¿½É£ï¿½ï¿½ï¿½Ì¨ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î¶ï¿½Ê±ï¿½ï¿½ï¿½Ô²ï¿½Í¬ï¿½Ğ¼ï¿½ ï¿½ï¿½
+         * Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Õ³ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ timeSynced ï¿½ï¿½"ï¿½×´Î¶ï¿½Ê±"Â·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ãªï¿½ã£¬
+         * Æ«ï¿½ï¿½ï¿½ï¿½ï¿½Â²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì¨ï¿½Ğ¼ï¿½Ê±ï¿½Ó»ï¿½×¼ï¿½Ğ²î£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¾ï¿½ï¿½ï¿½ñ²¹³ï¿½Öµï¿½ï¿?*/
         {
           const char *rid = (field_count >= 4) ? fields[3] : "";
           if (lastSyncRelaySeen && strcmp(rid, lastSyncRelay) != 0) {
@@ -2535,7 +2541,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               deg1e5ToStr(la, laBuf);
               deg1e5ToStr(lo, loBuf);
               snprintf(centerStr, sizeof(centerStr), "%s,%s", laBuf, loBuf);
-              centerLat1e5 = la;      /* Í¬²½ÊıÖµ»º´æ£ºGPS Ïà¶ÔÆ«ÒÆÓÃ */
+              centerLat1e5 = la;      /* Í¬ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½æ£ºGPS ï¿½ï¿½ï¿½Æ«ï¿½ï¿½ï¿½ï¿?*/
               centerLng1e5 = lo;
               centerValid  = 1;
               saveCenterToFlash(centerStr);
@@ -2692,7 +2698,7 @@ static void openRxWindow3000(void)
   *         å¦åˆ™æœ«å°¾çª—å£é‡Œæ”¶åˆ°çš„è®¾ç½®æŒ‡ä»¤è¦æ‹–åˆ°ä¸‹ä¸€è½®æ‰å›åŒ…
   */
 /* =====================================================================
- * @brief  boot reset report frame: 8|dev|rst:CAUSE|cnt| (type 8)
+ * @brief  boot reset report frame: 8|dev|RST|rst:CAUSE|cnt| (type 8)
  * @note   sent once per reboot, first pending-report slot of the first
  *         window; cloud sees every reboot incl. watchdog/SW resets
  * ===================================================================== */
@@ -2702,11 +2708,11 @@ static void sendResetInfoMessage(void)
 
   txCountNext();
 #if TX_COUNT_ENABLE
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s-%u|%lu|",
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RST|rst:%s-%u|%lu|",
            MSG_TYPE_READINFO, deviceName, bootRstCause, (unsigned)Safety_LastStage(),
             (unsigned long)tx_count);
 #else
-  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|rst:%s-%u|",
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RST|rst:%s-%u|",
            MSG_TYPE_READINFO, deviceName, bootRstCause, (unsigned)Safety_LastStage());
 #endif
   loraTx(tx_msg);
@@ -2715,7 +2721,7 @@ static void sendResetInfoMessage(void)
 static void reportPendingMessages(void)
 {
   /* é…ç½®éœ€è¦ä¸ŠæŠ¥æ—¶ï¼Œå»¶ï¿?1 ç§’å‘é€é…ç½®æ¶ˆæ¯ï¼ˆå¼€æœºé¦–æ¬¡æˆ–æ”¶åˆ°é…ç½®æ›´æ–°æŒ‡ä»¤ï¿?*/
-  /* reboot report goes first: 8|dev|rst:CAUSE|cnt| (once per boot) */
+  /* reboot report goes first: 8|dev|RST|rst:CAUSE|cnt| (once per boot) */
   if (bootRstPending) {
     HAL_Delay(1000);
     sendResetInfoMessage();
@@ -2797,10 +2803,10 @@ static void OnMaster(void)
    * è§„åˆ™ï¼ˆGPS å·¥ä½œæ—¶é—´æ®µä¸€å®šè½åœ¨å·¥ä½œæ—¶é—´æ®µä¹‹å†…ï¿?
    *   (1) upgps æŒ‡ä»¤(gpsWaitReport) â€”ï¿½?ä»»ä½•æ—¶é—´æ”¶åˆ°éƒ½ç«‹åˆ»æœæ˜Ÿï¼Œ
    *       ï¿?MSG_TYPE_UP_GPS(5) ä¸ŠæŠ¥ï¼Œä¸ŠæŠ¥å**ä¸å¼€**æ¥æ”¶çª—å£
-   *   (2) ä¸Šè½® MSG_TYPE_UP_GPS æ²¡æ‹¿åˆ°æ­£ç¡®åæ ?gpsNeedRetry) â†?
-   *       ä¹‹åæ¯ä¸ªä¸ŠæŠ¥ç‚¹éƒ½ä»?MSG_TYPE_GPS(1) é‡è¯•å¹¶å¼€æ¥æ”¶çª—å£ï¼?
+   *   (2) ä¸Šè½® MSG_TYPE_UP_GPS æ²¡æ‹¿åˆ°æ­£ç¡®åï¿?gpsNeedRetry) ï¿?
+   *       ä¹‹åæ¯ä¸ªä¸ŠæŠ¥ç‚¹éƒ½ï¿?MSG_TYPE_GPS(1) é‡è¯•å¹¶å¼€æ¥æ”¶çª—å£ï¿?
    *       ç›´åˆ°æ‹¿åˆ°æ­£ç¡®åæ ‡ä¸ºæ­¢
-   *       ï¼ˆä»… GPS å·¥ä½œæ—¶æ®µå†…é‡è¯•ï¼Œç¦»å¼€ GPS æ—¶æ®µå³æ”¾å¼ƒï¼Œè§?OnMaster å¼€å¤´ï¼‰
+   *       ï¼ˆä»… GPS å·¥ä½œæ—¶æ®µå†…é‡è¯•ï¼Œç¦»å¼€ GPS æ—¶æ®µå³æ”¾å¼ƒï¼Œï¿?OnMaster å¼€å¤´ï¼‰
    *   (3) GPS å·¥ä½œæ—¶é—´ï¿?config ï¿?3 ï¿? ï¿?â€”ï¿½?æ­£å¸¸ï¿?MSG_TYPE_GPS(1) ä¸ŠæŠ¥
    *       å¹¶å¼€æ¥æ”¶çª—å£ï¼›å·²æœ‰æ–°é²œåæ ‡å°±ç›´æ¥å‘ç¼“å­˜åæ ‡ï¼Œæ²¡æœ‰åæ ‡æ‰ä¸´æ—¶æœï¿?
    * æ”¾åœ¨ calcNextTxTime() ä¹‹å‰ â€”ï¿½?ç­‰å¾…å¯èƒ½è€—æ—¶å‡ åç§’ï¼Œ

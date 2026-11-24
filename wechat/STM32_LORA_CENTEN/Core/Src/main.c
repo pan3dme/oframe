@@ -57,6 +57,7 @@ typedef struct {
 #define EXAMPLE_DATE "2026/11/24"      // 工程日期
 
 #define RX_LEN 96             // LoRa 接收缓冲区最大长度（字节�?
+#define CENTEN_LORA_TX_MAX 36 /* max bytes sent in one LoRa frame (truncated) */
 /* LoRa 接收后延时下发时间（ms）：指令�?upgps �?1000，对时帧�?1500 */
 #define LORA_CMD_DELAY_MS      800  // 有缓存指令或 gpstm 有效时，收到上行后延时下发指�?
 #define LORA_SYNCTIME_DELAY_MS 1200 // 无指令时，收到上行后延时回对时帧
@@ -368,8 +369,10 @@ static int radioEnterRx(void) {
 
 static int startLoraTx(const uint8_t *data, int len, int pendingSlot) {
   uint32_t txTime = 0;
-  if (!loraSwOn || radioTxActive || len <= 0 || len >= CENTEN_COMMAND_FRAME_SIZE)
+  if (!loraSwOn || radioTxActive || len <= 0)
     return 0;
+  if (len > CENTEN_LORA_TX_MAX)
+    len = CENTEN_LORA_TX_MAX; /* cap: keep one frame at 36 bytes on air */
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
   if (rf_single_tx_data((uint8_t *)data, (uint8_t)len, &txTime) != RF_OK ||
       centen_radio_spi_failed()) {
@@ -954,7 +957,7 @@ static void loadNameFromFlash(void) {
       bound = 1;
     }
   }
-  printf("[FLASH] name=%s (%s)\r\n", deviceName, bound ? "bound" : "default");
+  printf("[FLASH] n=%s %s\r\n", deviceName, bound ? "bound" : "default");
 }
 
 /**
@@ -1516,26 +1519,27 @@ static void parseDtuCommand(char *buf) {
 
 
   } else if (strcmp(cmd, "readinfo") == 0) {
-    /* readinfo: 拆三条上报，避免服务器单条接收过�?
-     * 帧A 主信�?参�?ONLY_SEND): 8|名|设备数T|频率HZ|功率dbm|版本|计数|
-     *     中继不维护子设备数，设备数段固定�?0
-     * 帧B ICCID: 8|deviceName|ICCID|
-     * 帧C IMSI:  8|deviceName|IMSI|
-     * �? 开机后 ICCID/IMSI 尚未查到时对应段为空，重�?readinfo 即可 */
+    /* readinfo: split into three frames (server single-frame length limit).
+     * Frame1 main:  8|name|INFO|countT|freqHZ|powerdbm|version|txCount|
+     *               relay does not track node count; count field fixed 0
+     * Frame2 ICCID: 8|name|ICCID|<20-digit SIM id>|
+     * Frame3 IMSI:  8|name|IMSI|<15-digit IMSI>|
+     * If ICCID/IMSI not yet queried after boot the field is empty;
+     * re-issue readinfo to refresh. */
     char infoStr[48];
-    printf("[HEALTH] uart_drop=%lu parse=%lu txerr=%lu qdrop=%lu rst=%lu rf_timeout=%lu rf_drop=%lu\r\n",
+    printf("[H] uart=%lu parse=%lu tx=%lu qd=%lu rst=%lu rfto=%lu rfdr=%lu\r\n",
       (unsigned long)centenDtuRing.dropped, (unsigned long)(dtuParseRejected + dtuFrame.rejected),
       (unsigned long)dtuTxFailures, (unsigned long)dtuQueueDropped, (unsigned long)dtuResetCount,
       (unsigned long)radioTxTimeouts, (unsigned long)(radioRxRejected + radioJobsDropped));
-    snprintf(infoStr, sizeof(infoStr), "%d|%s|%dT|%luHZ|%ddbm|%s|%lu|",
+    snprintf(infoStr, sizeof(infoStr), "%d|%s|INFO|%dT|%luHZ|%ddbm|%s|%lu|",
              MSG_TYPE_READINFO, deviceName, 0,
              (unsigned long)(DEFAULT_FREQ / 1000000u),
              (int)localTxPower, DEMO_VER, (unsigned long)rtcSendCount);
     sendToDtu(infoStr, dtuCsqRssi, 0);
-    snprintf(infoStr, sizeof(infoStr), "%d|%s|%s|", MSG_TYPE_READINFO,
+    snprintf(infoStr, sizeof(infoStr), "%d|%s|ICCID|%s|", MSG_TYPE_READINFO,
              deviceName, dtuIccidStr);
     sendToDtu(infoStr, dtuCsqRssi, 0);
-    snprintf(infoStr, sizeof(infoStr), "%d|%s|%s|", MSG_TYPE_READINFO,
+    snprintf(infoStr, sizeof(infoStr), "%d|%s|IMSI|%s|", MSG_TYPE_READINFO,
              deviceName, dtuImsiStr);
     sendToDtu(infoStr, dtuCsqRssi, 0);
   } else {
