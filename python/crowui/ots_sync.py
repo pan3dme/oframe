@@ -160,7 +160,8 @@ class DeviceLogSyncer:
 
     def device_rf_params(self, device_id):
         """该设备最新可解析的 type=8 readinfo 参数
-        → {'groups','power','version'}（groups=组台数，即帧里的 NT）；无 → None"""
+        → {'groups','power','version','freq'}（groups=组台数，即帧里的 NT）；
+        无 → None"""
         with self._connect() as conn:
             rows = conn.execute(
                 'SELECT lorastr FROM devicelog WHERE deviceId=? AND type=8 '
@@ -170,6 +171,35 @@ class DeviceLogSyncer:
             p = self._parse_rf_params(s)
             if p is not None:
                 return p
+        return None
+
+    _DRIFT_RE = re.compile(r'DRIFT\|([+-]?\d+)\s*s/h', re.I)
+
+    @classmethod
+    def _parse_drift(cls, lorastr):
+        """从 V2.5+ 的 DRIFT 记录解析 RTC 每小时漂移（秒/小时，±300 内）。
+        形如 8|dev|DRIFT|0s/h|4| / 8|dev|DRIFT|-25s/h|；无法解析返回 None。
+        0 = 已收敛启用补偿；|值| 越大晶振越差（超 ±300 固件视为自身授时错误丢弃）"""
+        m = cls._DRIFT_RE.search(str(lorastr or ''))
+        if not m:
+            return None
+        try:
+            v = int(m.group(1))
+        except ValueError:
+            return None
+        return v if -300 <= v <= 300 else None
+
+    def device_drift(self, device_id):
+        """该设备最新可解析的 DRIFT 记录 → 秒/小时（int）；无 → None"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT lorastr FROM devicelog WHERE deviceId=? AND type=8 '
+                "AND lorastr LIKE '%DRIFT|%' ORDER BY auto_id DESC LIMIT 5",
+                (device_id,)).fetchall()
+        for (s,) in rows:
+            v = self._parse_drift(s)
+            if v is not None:
+                return v
         return None
 
     # ---------- 落库 ----------
@@ -258,17 +288,21 @@ class DeviceLogSyncer:
                   6: '配置上报', 9: '模式配置', 4: '杂讯'}
     _ONLINE_SEC = 2 * 3600      # 2h 内有心跳=在线
     _LAG_SEC = 24 * 3600        # 24h 内=迟滞，更久=失联
+    _RELAY_DUP_SEC = 600        # 多中继重复上云判定窗：同内容 10 分钟内算同一次
     _INTERVAL_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)\s*[,，]')
     _RF_T_RE = re.compile(r'(?<![\d-])(\d{1,3})\s*T(?![A-Za-z])', re.I)
     _RF_P_RE = re.compile(r'(?<![\d-])(\d{1,2})\s*dbm\b', re.I)
+    _RF_F_RE = re.compile(r'(?<![\d-])(\d{3})\s*HZ\b', re.I)
     _RF_V_RE = re.compile(r'[Vv](\d+(?:\.\d+)*)$')
 
     @classmethod
     def _parse_rf_params(cls, lorastr):
-        """从 type=8 参数记录解析 (组台数, 发射功率dBm, 固件版本)。
-        新格式 8|v3-12|15T|16dbm|V2.0|11，
-        旧格式 8|v3-12|15T|433HZ|16dbm|V1.2|7|；
-        RSSI 读数 -59dBm,6 不是发射功率，必须排除。
+        """从 type=8 参数记录解析 (组台数, 发射功率dBm, 固件版本, 频率MHz)。
+        V2.5+ 格式 8|dev|INFO|15T|433HZ|16dbm|V2.5|7|（固件确认段序：
+        deviceCount T / freq HZ / power dbm / version），
+        旧格式 8|v3-12|15T|433HZ|16dbm|V1.2|7| 与 8|v3-12|15T|16dbm|V2.0|11；
+        V2.5+ 还会把 RSSI/UID/DRIFT/COORD/RST 单独成帧
+        （如 8|dev|RSSI|-20dBm,5|5|），均不含组台数 T，正则自然排除。
         版本号整段匹配 V数字（如 V2.0），避免误吃设备ID v3-12。"""
         s = str(lorastr or '')
         if 'dbm' not in s.lower():
@@ -289,7 +323,12 @@ class DeviceLogSyncer:
             if mv:
                 version = 'V' + mv.group(1)
                 break
-        return {'groups': groups, 'power': power, 'version': version}
+        freq = None
+        mf = cls._RF_F_RE.search(s)
+        if mf:
+            freq = int(mf.group(1))          # 433HZ → 433（MHz）
+        return {'groups': groups, 'power': power, 'version': version,
+                'freq': freq}
 
     @classmethod
     def _parse_interval(cls, lorastr):
@@ -356,6 +395,7 @@ class DeviceLogSyncer:
                     params[str(did)] = {'groups': rf['groups'],
                                        'power': rf['power'],
                                        'version': rf['version'],
+                                       'freq': rf['freq'],
                                        'time': str(tm),
                                        'lorastr': str(lorastr)}
             try:
@@ -444,7 +484,7 @@ class DeviceLogSyncer:
         now = time.time()
         min_ts = now - max(1, min(10, days)) * 86400
         valid = self.canonical_devices()
-        seen = set()
+        kept_ts = {}                 # (did, lorastr) → 已保留记录的 ts
         out = []
         for did, ls, tm in rows:
             if str(did) not in valid:
@@ -461,10 +501,11 @@ class DeviceLogSyncer:
             # 剔除 1970/2036 等脏时间及时间窗外的记录
             if ts is None or ts < min_ts or ts > now + 86400:
                 continue
-            key = (did, s, ts)
-            if key in seen:          # 同设备同秒同内容的上报重复，去重
-                continue
-            seen.add(key)
+            key = (str(did), s)
+            prev = kept_ts.get(key)
+            if prev is not None and prev - ts < self._RELAY_DUP_SEC:
+                continue     # 多中继重复上云（内容相同、时间差几秒），去重
+            kept_ts[key] = ts
             out.append({'device': str(did), 'time': str(tm),
                         'ts': ts, 'lorastr': s})
         out.sort(key=lambda r: r['ts'])
@@ -497,7 +538,7 @@ class DeviceLogSyncer:
         now = time.time()
         min_ts = now - max(1, min(10, days)) * 86400
         valid = self.canonical_devices()
-        seen = set()
+        kept_ts = {}                 # (did, lorastr) → 已保留记录的 ts
         out = []
         for did, ls, tm in rows:
             if str(did) not in valid:
@@ -512,10 +553,11 @@ class DeviceLogSyncer:
                 ts = None
             if ts is None or ts < min_ts or ts > now + 86400:
                 continue
-            key = (did, s, ts)
-            if key in seen:          # 同设备同秒同内容的重复上报，去重
-                continue
-            seen.add(key)
+            key = (str(did), s)
+            prev = kept_ts.get(key)
+            if prev is not None and prev - ts < self._RELAY_DUP_SEC:
+                continue     # 多中继重复上云（内容相同、时间差几秒），去重
+            kept_ts[key] = ts
             out.append({'device': str(did), 'time': str(tm),
                         'ts': ts, 'lorastr': s, 'kind': kind})
         out.sort(key=lambda r: r['ts'])

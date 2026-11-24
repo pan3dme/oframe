@@ -369,7 +369,8 @@ class TimeSyncDialog(QDialog):
             rows = _dedupe_rows(raw, RECORDS)
             interval = syncer.device_interval(did)
             rf = syncer.device_rf_params(did)
-            return did, rows, interval, rf
+            drift = syncer.device_drift(did)
+            return did, rows, interval, rf, drift
 
         self.status_label.setText('分析中…')
         self.api.run_async(work, self._apply, self._on_err)
@@ -379,7 +380,7 @@ class TimeSyncDialog(QDialog):
         self.notify(f'对时校验分析失败：{err}')
 
     def _apply(self, pack):
-        did, rows, interval, rf = pack
+        did, rows, interval, rf, drift = pack
         if did != self.device_combo.currentData():
             return                            # 用户已切到别的设备，丢弃旧结果
         groups = rf['groups'] if rf else None
@@ -390,8 +391,12 @@ class TimeSyncDialog(QDialog):
                    + ('' if s['groups_known'] else '（未知，按默认 30）'))
         slot_txt = (f"预期时隙 {_sec_to_hms(s['offset'])}"
                     if s['offset'] is not None else '预期时隙未知')
-        self.status_label.setText(
-            f'{did} · 编号 {s["index"]} · {param_txt} · {cnt_txt} · {slot_txt}')
+        drift_txt = (f'自报漂移 {drift:+d}s/h' if drift is not None
+                     else '')
+        head = f'{did} · 编号 {s["index"]} · {param_txt} · {cnt_txt} · {slot_txt}'
+        if drift_txt:
+            head += f' · {drift_txt}'
+        self.status_label.setText(head)
         bits = [f"时钟：{s['clock_ok']} 正确 / {s['clock_warn']} 漂移 / "
                 f"{s['clock_bad']} 错乱"
                 + (f"（平均偏差 {s['avg_clock']:+d} 秒）"
