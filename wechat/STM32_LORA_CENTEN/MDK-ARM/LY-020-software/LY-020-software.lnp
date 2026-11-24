@@ -1,5 +1,7 @@
 --cpu Cortex-M3
 "ly-020-software\startup_stm32f103xb.o"
+"ly-020-software\centen_uart.o"
+"ly-020-software\centen_support.o"
 "ly-020-software\main.o"
 "ly-020-software\stm32f1xx_it.o"
 "ly-020-software\stm32f1xx_hal_msp.o"
@@ -17,7 +19,7 @@
 "ly-020-software\stm32f1xx_hal_uart.o"
 "ly-020-software\stm32f1xx_hal_spi.o"
 "ly-020-software\system_stm32f1xx.o"
-"ly-020-software\pan3029_port.o"
+"ly-020-software\centen_radio_port.o"
 "ly-020-software\pan3029_rf.o"
 "ly-020-software\crc.o"
 "ly-020-software\common_test.o"

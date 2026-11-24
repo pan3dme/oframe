@@ -101,7 +101,22 @@ Page({
 
   // ========== 设备选择 ==========
   onDeviceChange(e) {
-    this.setData({ deviceIndex: parseInt(e.detail.value) })
+    const idx = parseInt(e.detail.value)
+    const oldDevice = this.data.deviceList[this.data.deviceIndex]
+    const newDevice = this.data.deviceList[idx]
+    const patch = { deviceIndex: idx }
+    // 已生成「绑定IMU卡」模板且 value 仍是旧设备名（未被手动改过）时，
+    // 同步成新设备名：发送时 deviceId 会自动注入当前设备，value 需与之保持一致
+    if (oldDevice && newDevice && oldDevice.deviceId !== newDevice.deviceId) {
+      try {
+        const obj = JSON.parse(this.data.cmdText)
+        if (obj && obj.cmd === 'bindDeviceId' && obj.value === oldDevice.deviceId) {
+          obj.value = newDevice.deviceId
+          patch.cmdText = JSON.stringify(obj)
+        }
+      } catch (err) { /* 非JSON，忽略 */ }
+    }
+    this.setData(patch)
   },
 
   // ========== 指令输入 ==========
@@ -145,6 +160,15 @@ Page({
   },
   onQuickRelayReboot() {
     this.setData({ cmdText: JSON.stringify({ cmd: 'relayreboot', value: 1, time: Number(this.data.cmdTime) || 0 }), quickSelected: 18 })
+  },
+  // 绑定IMU卡：value 就是当前选中的目标设备名（如 v3-108），
+  // 点击后自动填入，用户仍可在文本框里修改后再发送
+  onQuickBindImu() {
+    const device = this.data.deviceList[this.data.deviceIndex]
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'bindDeviceId', value: device ? device.deviceId : '', time: Number(this.data.cmdTime) || 0 }),
+      quickSelected: 24
+    })
   },
   onQuickConfig() {
     const device = this.data.deviceList[this.data.deviceIndex]

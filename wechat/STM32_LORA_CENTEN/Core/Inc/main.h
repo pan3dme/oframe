@@ -66,7 +66,7 @@ void Error_Handler(void);
 /* K1(PB4)/K2(PB5) 已从本板移除，引脚定义与中断配置一并删除 */
 
 /* USER CODE BEGIN Private defines */
-/* --- LoRa (PAN3029) 软件 SPI 引脚 --- */
+/* --- LoRa PAN3029 hardware SPI1 pins --- */
 #define LORA_SCK_Pin      GPIO_PIN_5
 #define LORA_SCK_GPIO_Port GPIOA
 #define LORA_MISO_Pin     GPIO_PIN_6

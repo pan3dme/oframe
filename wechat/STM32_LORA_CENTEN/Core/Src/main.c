@@ -1,24 +1,11 @@
 /* USER CODE BEGIN Header */
 /**
- ******************************************************************************
- * @file           : main.c
- * @brief          : PAN3029 LoRa 收发器主程序 - STM32F103C8T6
- *                   �?CenterReceiveBLE_v4 LoRa 配置匹配
- * @note           功能说明�?
- *                 1. LoRa 通信：支持接收和发送两种模式，可通过按键 K1/K2 切换
- *                 2. LED 指示：LED1 接收状态指示（收到数据�?00ms�?
- *                 3. 调试输出：通过 USART1 输出系统状�?
- ******************************************************************************
- * @attention
- *
- * Copyright (c) 2025 STMicroelectronics.
- * All rights reserved.
- *
- * This software is licensed under terms that can be found in the LICENSE file
- * in the root directory of this software component.
- * If no LICENSE file comes with this software, it is provided AS-IS.
- *
- ******************************************************************************
+ * CENTEN LoRa/4G gateway, STM32F103C8T6 + PAN3029.
+ * UART IRQs only receive bytes; RF IRQs only record events.
+ * Packet parsing, RF operations and downlink scheduling run in main.
+ * See README_CENTEN.md for protocol limits and validation.
+ * Copyright (c) 2025 STMicroelectronics. All rights reserved.
+ * Licensed under LICENSE when supplied; otherwise provided AS-IS.
  */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
@@ -27,6 +14,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "centen_support.h"
+#include "centen_uart.h"
 #include "common_test.h"  // 公共测试模块（Common 目录共享�?
 #include "pan3029_port.h" // PAN3029 硬件端口适配层头文件
 #include "pan3029_rf.h"   // PAN3029 LoRa 射频驱动头文�?
@@ -42,7 +31,7 @@
 
 /* DTU 发送队列：环形缓冲区，每条消息最�?256 字节，最�?5 �?*/
 #define DTU_QUEUE_SIZE 5
-#define DTU_MSG_MAX_LEN 256
+#define DTU_MSG_MAX_LEN 384
 
 /* --- DTU platform PING heartbeat (server->4G->DTU->uart end-to-end link
  * proof). Platform polls e.g. "PING1200"; the number in the frame IS the
@@ -63,11 +52,11 @@ typedef struct {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define EXAMPLE_NAME "LY-020 LoRa Gps" // 工程名称
-#define DEMO_VER "V1.0"                // 演示版本�?
-#define EXAMPLE_DATE "2026/10/04"      // 工程日期
+#define EXAMPLE_NAME "CENTEN LoRa gateway" // 工程名称
+#define DEMO_VER "V1.1.1"                // 演示版本�?
+#define EXAMPLE_DATE "2026/11/24"      // 工程日期
 
-#define RX_LEN 36             // LoRa 接收缓冲区最大长度（字节�?
+#define RX_LEN 96             // LoRa 接收缓冲区最大长度（字节�?
 /* LoRa 接收后延时下发时间（ms）：指令�?upgps �?1000，对时帧�?1500 */
 #define LORA_CMD_DELAY_MS      800  // 有缓存指令或 gpstm 有效时，收到上行后延时下发指�?
 #define LORA_SYNCTIME_DELAY_MS 1200 // 无指令时，收到上行后延时回对时帧
@@ -125,18 +114,53 @@ static uint8_t workMode = MODE_RX;     // 当前工作模式（RX/TX/IDLE�?
                                        //   原按键消抖时间戳已随 K1/K2 移除�?
 
 /* LoRa receive buffers - LoRa 接收缓冲�?*/
-static uint8_t prev_rx_buf[RX_LEN] = {
-    0};                          // 上次接收到的数据（用于对比是否重复）
-static uint8_t prev_rx_size = 0; // 上次接收数据的长�?
 
 extern struct RxDoneMsg
     RxDoneParams; // 外部声明：接收完成时的消息结构体（在驱动中定义）
 
 /* DTU (USART3) 接收缓冲�?*/
-#define DTU_RX_BUF_SIZE 256
-static uint8_t dtuRxBuf[DTU_RX_BUF_SIZE]; // DTU 接收缓冲�?
-static uint16_t dtuRxLen = 0;             // 当前接收到的数据长度
-static uint32_t dtuLastRxTick = 0;   // 上次收到字节的时间戳（用于超时判断）
+static CentenFramer dtuFrame;
+static uint32_t dtuOverflowSeen;
+static uint32_t dtuRecoveryStart;
+static uint32_t dtuQueryTick;
+static uint8_t dtuQueryStage;
+static uint8_t dtuQueryPending;
+static uint8_t dtuQueryAnswered;
+static uint32_t dtuResetCount;
+static uint32_t dtuParseRejected;
+static uint32_t dtuTxFailures;
+static uint32_t dtuQueueDropped;
+static uint8_t syncReportPending;
+static uint32_t configActiveAddr;
+static uint32_t configSequence;
+
+/* ISR only records events. All PAN3029/SPI operations run in main context. */
+static volatile uint8_t radioIrqPending;
+static uint8_t radioTxActive;
+static uint8_t radioPowerDirty;
+static uint32_t radioTxStart;
+static int radioTxPendingSlot = -1;
+static uint32_t radioTxGeneration;
+static uint32_t pendingGeneration;
+static uint8_t radioRecoverPending;
+static uint32_t radioRecoverTick;
+static uint32_t radioTxTimeouts;
+static uint32_t radioRxRejected;
+static uint32_t radioJobsDropped;
+#define DTU_RECOVERY_GRACE_MS 180000u
+#define DTU_QUERY_WAIT_MS 5000u
+#define CONFIG_PAGE_A 0x0800F800u
+#define CONFIG_PAGE_B 0x0800FC00u
+#define LORA_JOB_COUNT 8
+typedef struct {
+  uint8_t used, kind;
+  char deviceId[32];
+  uint32_t due;
+} LoraJob;
+static LoraJob loraJobs[LORA_JOB_COUNT];
+extern int centen_radio_spi_failed(void);
+extern void centen_radio_spi_clear(void);
+
 static uint32_t dtuCsqTick = 0;      // nettime 查询定时器：记录上次发送时�?
 static char     dtuIccidStr[24] = ""; // SIM �?ICCID�?0 位，续费/换卡核对用）
 static uint8_t  dtuIccidGot = 0;     // 1=已获取到 ICCID，不再重复查�?
@@ -146,10 +170,8 @@ static uint32_t dtuIccidTick = 0;    // ICCID/IMSI 查询独立定时器（拿�
 static uint32_t dtuCsqAnswerTick = 0; // 最近一次收�?CSQ 应答的时刻（0=还没收到过）
 static uint8_t  dtuRstByCsq = 0;     // 1=�?CSQ 死机复位�?DTU，恢复联网后上报一次告知服务器
 static uint32_t syncReportDue = 0;   // 上报到期时刻（nettime 成功后延�?10 秒，0=无待报）
-static char dtuNetTimeStr[32] = "0"; // DTU 网络时间戳（秒），用于上�?
 static uint32_t dtuTimestamp = 0;    // DTU 网络时间 Unix 时间戳（秒）
 static uint32_t dtuSyncTick = 0;     // 对时时的 HAL_GetTick() 值，用于实时计算
-static uint32_t lastPrintTick = 0;   // [调试] 每秒打印时间�?
 static uint8_t dtuTimeValid = 0;     // 网络时间是否已获取成�?
 static int dtuCsqRssi = 0;           // DTU CSQ 信号强度�?
 static uint8_t dtuNetTimeFailCount = 0;  // DTU 网络时间连续失败计数器（达到 3 次复�?DTU�?
@@ -197,6 +219,8 @@ typedef struct {
   char deviceId[32]; // 目标设备 ID
   char cmd[32];      // 指令内容
   char val[32];      // 指令参数
+  uint8_t hasExpiry;
+  uint32_t generation;
   uint32_t expireTick; // 0=永久缓存；非0=到期时刻（JSON "time" 分钟数，超时不再下发�?
 } PendingCmd_t;
 
@@ -244,7 +268,6 @@ static void MX_NVIC_Init(void);        // NVIC 中断控制器初始化
 static void printf_logo(void);   // 打印工程信息 Logo
 static int getDeviceIndex(void); // 根据芯片 UID 获取设备编号
 static void OnSlave(void);       // LoRa 从机接收处理函数
-static void enter_rx_mode(void);   // 切换到接收模�?
 static void lora_rf_sleep(void);   // 关闭 LoRa 射频（深度休眠）
 static uint8_t lora_rf_wake(void); // 唤醒 LoRa 射频并恢复接�?
 /* do_tx_send() 已随 MODE_TX 一并删除（无触发源�?*/
@@ -253,7 +276,7 @@ static void sendToDtu(const char *loraStr, int rssi,
 static void enqueueDtuMsg(const char *msg, int len); // 将消息加�?DTU 发送队�?
 static void processDtuQueue(void);     // 处理 DTU 发送队列（每秒发一条）
 static void loadConfigFromFlash(void); // �?Flash 加载配置 + 农场中心坐标
-static void flash_save_all(void);   // 整页重写：对时配�?+ 农场中心坐标
+static uint8_t flash_save_all(void);   // 整页重写：对时配�?+ 农场中心坐标
 static void sendCenterToDtu(void);  // 上报农场中心坐标 1|name|lat,lng|
 static int center_coord_valid(double lat, double lng); // 经纬度合法性校�?
 static void syncRelayCenter(void);      // 中心坐标字符�?>数值缓�?1e-5�?
@@ -271,7 +294,6 @@ static uint8_t indexToTimeWindow(int idx, uint8_t *outStart,
 static uint8_t workWindowEndAdj(uint8_t end); // 工作窗口结束小时修正（方案C�?
 static uint8_t getWorkClockHour(void);        // 工作时钟：取当天小时(0~23)
 static uint8_t isInWorkWindow(void);          // 当前是否处于工作区间�?
-static void printWorkTimeDebug(void);      // 打印工作时间解码过程（调试用�?
 static void cachePendingCommand(const char *deviceId, const char *cmd,
                                 const char *val, uint32_t timeMin); // 缓存待执行指�?
 static uint8_t
@@ -279,6 +301,14 @@ checkPendingCommand(const char *deviceId); // 检查是否有缓存指令，返�
 static uint8_t sendPendingCommand(
     const char *deviceId); // 发送缓存指令并清除，返�?=已发�?0=�?
 
+static void serviceRadio(void);
+static void scheduleLoraReply(const char *deviceId, uint8_t kind);
+static int startLoraTx(const uint8_t *data, int len, int pendingSlot);
+static void processDtuInput(void);
+static void processDtuFrame(char *frame);
+static void processDtuQueries(void);
+static void dtuHardwareReset(void);
+static int radioEnterRx(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -319,7 +349,7 @@ static int getDeviceIndex(void) {
  */
 PUTCHAR_PROTOTYPE {
   // 通过 USART1 发送单个字符，超时时间 0xFFFF
-  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 2);
   return ch;
 }
 
@@ -328,14 +358,8 @@ PUTCHAR_PROTOTYPE {
  * @note   在系统启动时调用，显示工程名称、版本、日期、硬件配置等信息
  */
 static void printf_logo(void) {
-  printf("\n\r");
-  printf("*************************************************************\r\n");
-  printf("* Project Name  : %s\r\n", EXAMPLE_NAME); // 工程名称
-  printf("* Demo Version  : %s\r\n", DEMO_VER);     // 版本�?
-  printf("* Date          : %s\r\n", EXAMPLE_DATE); // 日期
-  printf("* MCU           : STM32F103C8T6\r\n");    // 主控芯片
-  printf("* Radio         : PAN3029 (LoRa)\r\n");   // 射频模块
-  printf("*************************************************************\r\n");
+  printf("CENTEN %s %s %luMHz SF%u\r\n", DEMO_VER, EXAMPLE_DATE,
+         (unsigned long)(DEFAULT_FREQ / 1000000u), DEFAULT_SF);
 }
 
 /**
@@ -347,199 +371,177 @@ static void printf_logo(void) {
  *         4. 处理接收错误（CRC 错误、超时）
  *         5. 重新进入单次超时接收模式（超时时�?5-15 秒）
  */
-static void OnSlave(void) {
-  /* LoRa 射频已被 lorasw 关闭：不处理任何射频事件�?
-   * 更不能重新进入接收（否则会一直把睡下去的射频唤醒，白耗电�?*/
-  if (!loraSwOn) {
+static int radioEnterRx(void) {
+  return rf_enter_continous_rx() == RF_OK && !centen_radio_spi_failed();
+}
+
+static int startLoraTx(const uint8_t *data, int len, int pendingSlot) {
+  uint32_t txTime = 0;
+  if (!loraSwOn || radioTxActive || len <= 0 || len >= CENTEN_COMMAND_FRAME_SIZE)
+    return 0;
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+  if (rf_single_tx_data((uint8_t *)data, (uint8_t)len, &txTime) != RF_OK ||
+      centen_radio_spi_failed()) {
+    radioEnterRx();
+    return 0;
+  }
+  radioTxActive = 1;
+  radioTxStart = HAL_GetTick();
+  radioTxPendingSlot = pendingSlot;
+  if (pendingSlot >= 0) radioTxGeneration = pendingCmdCache[pendingSlot].generation;
+  return 1;
+}
+
+static void scheduleLoraReply(const char *deviceId, uint8_t kind) {
+  int i, slot = -1;
+  for (i = 0; i < LORA_JOB_COUNT; i++) {
+    if (loraJobs[i].used && strcmp(loraJobs[i].deviceId, deviceId) == 0) { slot = i; break; }
+    if (!loraJobs[i].used && slot < 0) slot = i;
+  }
+  if (slot < 0) { radioJobsDropped++; return; }
+  loraJobs[slot].used = 1;
+  loraJobs[slot].kind = kind;
+  strcpy(loraJobs[slot].deviceId, deviceId);
+  loraJobs[slot].due = HAL_GetTick() +
+      (kind == 0 ? LORA_SYNCTIME_DELAY_MS : LORA_CMD_DELAY_MS);
+}
+
+static void serviceRadio(void) {
+  uint32_t now = HAL_GetTick();
+  int i, selected = -1;
+  char txData[CENTEN_COMMAND_FRAME_SIZE];
+  int len;
+  if (radioIrqPending && loraSwOn) {
+    /* Clearing before processing preserves a newly arriving edge. */
+    radioIrqPending = 0;
+    rf_irq_process();
+  }
+  if (centen_radio_spi_failed()) {
+    if (!radioRecoverPending) {
+      radioRecoverPending = 1;
+      radioRecoverTick = now;
+      loraSwOn = 0;
+      radioTxActive = 0;
+      radioTxPendingSlot = -1;
+      memset(loraJobs, 0, sizeof(loraJobs));
+      printf("[LoRa] SPI fault, recovery scheduled\r\n");
+    }
+  }
+  if (radioRecoverPending) {
+    if (now - radioRecoverTick >= 5000u && isInWorkWindow()) {
+      radioRecoverTick = now;
+      centen_radio_spi_clear();
+      if (lora_rf_wake()) radioRecoverPending = 0;
+    }
     return;
   }
+  if (!loraSwOn) return;
+  if (radioTxActive) {
+    if (rf_get_transmit_flag() == RADIO_FLAG_TXDONE) {
+      if (radioTxPendingSlot >= 0 && pendingCmdCache[radioTxPendingSlot].used &&
+          pendingCmdCache[radioTxPendingSlot].generation == radioTxGeneration) {
+        memset(&pendingCmdCache[radioTxPendingSlot], 0, sizeof(PendingCmd_t));
+        printf("[PENDING CMD] radio TX done (terminal execution unconfirmed)\r\n");
+      }
+    } else if (now - radioTxStart < 3000u) return;
+    else {
+      radioTxTimeouts++;
+      printf("[LoRa] TX timeout; command retained\r\n");
+    }
+    radioTxActive = 0;
+    radioTxPendingSlot = -1;
+    rf_set_transmit_flag(RADIO_FLAG_IDLE);
+    radioEnterRx();
+  }
+  if (radioPowerDirty) {
+    if (rf_set_tx_power(localTxPower) != RF_OK || centen_radio_spi_failed()) return;
+    radioPowerDirty = 0;
+  }
+  if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) return;
+  for (i = 0; i < LORA_JOB_COUNT; i++) {
+    if (!loraJobs[i].used || !centen_due(now, loraJobs[i].due)) continue;
+    if (selected < 0 || (int32_t)(loraJobs[i].due - loraJobs[selected].due) < 0)
+      selected = i;
+  }
+  if (selected < 0) return;
+  /* An old wake window must never produce a late reply to the wrong uplink. */
+  if (now - loraJobs[selected].due > 1000u) {
+    loraJobs[selected].used = 0;
+    radioJobsDropped++;
+    return;
+  }
+  if (checkPendingCommand(loraJobs[selected].deviceId)) {
+    sendPendingCommand(loraJobs[selected].deviceId);
+  } else if (gpstmActive && now - gpstmRecvTick < gpstmTimeoutMin * 60000u) {
+    len = centen_command_frame(txData, sizeof(txData), loraJobs[selected].deviceId, "upgps", "0");
+    if (len > 0) startLoraTx((uint8_t *)txData, len, -1);
+  } else if (dtuTimeValid) {
+    uint32_t ts = getCurrentTimestamp(), sum = 0, t = ts;
+    while (t) { sum += t % 10u; t /= 10u; }
+    len = snprintf(txData, sizeof(txData), "%d|%lu|%02lu|%s", MSG_TYPE_SYN_TIME,
+        (unsigned long)ts, (unsigned long)(sum % 100u), deviceName);
+    if (len > 0 && len < (int)sizeof(txData)) startLoraTx((uint8_t *)txData, len, -1);
+  }
+  loraJobs[selected].used = 0;
+}
 
-  // 检查是否接收完�?
+static void OnSlave(void) {
+  uint8_t local_buf[RX_LEN + 1u];
+  uint8_t local_size, local_rssi;
+  float local_snr;
+  int msgType;
+  char loraDevId[32];
+  char reportBuf[RX_LEN + 32u];
+  const char *p1, *p2;
+  size_t idLen;
+  if (!loraSwOn || radioTxActive) return;
   if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) {
-    uint8_t local_buf[RX_LEN]; // 本地接收缓冲�?
-    uint8_t local_size;        // 接收数据长度
-    uint8_t local_rssi;        // 接收信号强度指示 (寄存器原始值，需�?56得dBm)
-    float local_snr;           // 信噪�?(dB)
-    uint8_t is_same = 0;       // 数据重复标志
-
-    // 临界区保护：关中断，快速读取接收数�?
-    __disable_irq();
-    rf_set_recv_flag(RADIO_FLAG_IDLE); // 清除接收完成标志
-    local_rssi = RxDoneParams.Rssi;    // 读取 RSSI
-    local_snr = RxDoneParams.Snr;      // 读取 SNR
-    local_size = RxDoneParams.Size;    // 读取数据长度
-    if (local_size > RX_LEN)
-      local_size = RX_LEN; // 防止缓冲区溢�?
-    for (uint8_t i = 0; i < local_size; i++)
-      local_buf[i] = RxDoneParams.Payload[i]; // 拷贝数据到本地缓冲区
-    __enable_irq();                           // 开中断
-
-    /* 与上次接收的数据对比，判断是否重�?*/
-    if (local_size == prev_rx_size && prev_rx_size > 0) {
-      is_same = 1; // 假设相同
-      for (uint8_t i = 0; i < local_size; i++) {
-        if (local_buf[i] != prev_rx_buf[i]) {
-          is_same = 0; // 发现不同，标记为不同
-          break;
-        }
-      }
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    int textSize = centen_text_payload_size(RxDoneParams.Payload, RxDoneParams.Size, RX_LEN);
+    if (textSize <= 0) {
+      radioRxRejected++;
+      radioEnterRx();
+      return;
     }
-
-    // 打印接收信息
-    printf("Rssi: %d  ",
-           local_rssi - 256);          // RSSI 值（需减去 256 得到实际 dBm�?
-    printf("Snr: %.1f   ", local_snr); // SNR 值（dB�?
-    printf("Len: %d  ", local_size);   // 数据长度
-    printf("Str: ");
-    for (uint8_t i = 0; i < local_size; i++) {
-      if (local_buf[i] == 0)
-        break;                    // 遇到字符串结束符停止
-      printf("%c", local_buf[i]); // 打印字符
+    local_size = (uint8_t)textSize;
+    local_rssi = RxDoneParams.Rssi;
+    local_snr = RxDoneParams.Snr;
+    memcpy(local_buf, RxDoneParams.Payload, local_size);
+    local_buf[local_size] = 0;
+    if (local_buf[0] < '1' || local_buf[0] > '9' || local_buf[1] != '|') {
+      radioRxRejected++; return;
     }
-    if (is_same)
-      printf("  [SAME]"); // 标记为重复数�?
-    else
-      printf("  [DIFF]"); // 标记为新数据
-    printf("\r\n");
-
-    /* 保存当前数据作为上次数据，用于下次对�?*/
-    prev_rx_size = local_size;
-    for (uint8_t i = 0; i < local_size; i++)
-      prev_rx_buf[i] = local_buf[i];
-
-    /* PB15 (LED1) 点亮，指示收到LoRa数据�?00ms后由主循环熄�?*/
+    msgType = local_buf[0] - '0';
+    p1 = (const char *)local_buf + 2;
+    p2 = strchr(p1, '|');
+    idLen = p2 ? (size_t)(p2 - p1) : 0;
+    if (!idLen || idLen >= sizeof(loraDevId)) { radioRxRejected++; return; }
+    memcpy(loraDevId, p1, idLen); loraDevId[idLen] = 0;
+    printf("[LoRa RX] rssi=%d snr=%d len=%u %s\r\n",
+           local_rssi - 256, (int)local_snr, local_size, local_buf);
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-    led1OnTick = HAL_GetTick();
-    led1On = 1;
-
-    /* 解析消息类型并处理上�?*/
-    if (local_size < RX_LEN)
-      local_buf[local_size] = '\0';
-    int msgType = atoi((char *)local_buf);
-    printf("[LoRa] MsgType: %d\r\n", msgType);
-
-    if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_UP_GPS|| msgType == MSG_TYPE_TIME) {
-      /* �?LoRa 数据中提�?deviceId（第二个 |
-       * 分隔字段），检查是否有缓存的待执行指令 */
-      uint8_t hasPendingCmd = 0;
-      char loraDevId[32] = {0};
-      const char *p1 = strchr((char *)local_buf, '|');
-      if (p1) {
-        const char *p2 = p1 + 1;
-        const char *p3 = strchr(p2, '|');
-        int idLen = p3 ? (int)(p3 - p2) : (int)strlen(p2);
-        if (idLen > 31)
-          idLen = 31;
-        memcpy(loraDevId, p2, idLen);
-        loraDevId[idLen] = '\0';
-        hasPendingCmd = checkPendingCommand(loraDevId);
-      }
-
-      char reportBuf[RX_LEN];
-
-      if (msgType == MSG_TYPE_TIME) {
-        // 调用 common 函数替换时间字段（仅用于上报 DTU�?
-        int ret = common_replaceTimeSegment((char *)local_buf, reportBuf,
-                                            sizeof(reportBuf),
-                                            getCurrentTimestamp(), NULL);
-        if (ret == 0) {
-          printf("[LoRa RX] : %s\r\n", reportBuf);
-          sendToDtu(reportBuf, local_rssi - 256, (int)local_snr);
-        } else {
-          sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
-        }
-      } else {
-        // MSG_TYPE_GPS: 相对偏移帧先还原成绝对坐标，其余原样上报
-        char fixBuf[48];
-        if (restoreRelCoord((char *)local_buf, fixBuf, sizeof(fixBuf))) {
-          printf("[LoRa FIX] : %s\r\n", fixBuf);
-          sendToDtu(fixBuf, local_rssi - 256, (int)local_snr);
-        } else {
-          sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
-        }
-      }
-		  if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
-
-				/* 三选一下发：有缓存指令→指令；gpstm 有效→upgps；否则回对时�?
-				 * 延时在各自分支里：指令与对时的下发延时分开可调 */
-
-				if (hasPendingCmd) {
-					HAL_Delay(LORA_CMD_DELAY_MS);
-					sendPendingCommand(loraDevId);
-				} else if (gpstmActive && (HAL_GetTick() - gpstmRecvTick) <
-																			gpstmTimeoutMin * 60 * 1000) {
-					/* gpstm 中继有效：在有效期内，任意设备上报时下发 upgps 指令 */
-					HAL_Delay(LORA_CMD_DELAY_MS);
-					char txData[64];
-					int txLen = snprintf(txData, sizeof(txData), "%d|%s|upgps|0",
-															 MSG_TYPE_COM, loraDevId);
-					uint32_t tx_time = 0;
-					rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-					printf("[LoRa gpstm relay] %s\r\n", txData);
-
-					/* 等待发送完�?*/
-					uint32_t waitStart = HAL_GetTick();
-					while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
-						if (HAL_GetTick() - waitStart > 3000)
-							break;
-					}
-					rf_set_transmit_flag(RADIO_FLAG_IDLE);
-				} else {
-					// 构造下发数�? 4|timestamp|NN|deviceName
-					// deviceName = 本中继的中继名，天然就是时间源标识（多中继场景）
-					// 子设备用它识�?哪台中继发来的对�?，换中继自动重设锚点重新收敛
-					// 验证码算法（必须与子设备 ONLY_SEND 端完全一致）�?
-					//   NN = timestamp 各位数字之和的个�?十位（即 数位�?% 100�?
-					//   �? 1794048626 �?1+7+9+4+0+4+8+6+2+6=47 �?"47"
-					// 子设备重算比对，不匹配拒绝本次对�?—�?排除干扰�?ts 损坏的大多数情况
-					HAL_Delay(LORA_SYNCTIME_DELAY_MS);
-					uint32_t syncTs = getCurrentTimestamp();
-					uint32_t digitSum = 0u, t = syncTs;
-					while (t) { digitSum += t % 10u; t /= 10u; }
-					uint32_t syncCode = digitSum % 100u;
-					char txData[64];
-					int txLen =
-							snprintf(txData, sizeof(txData), "%d|%lu|%02lu|%s", MSG_TYPE_SYN_TIME,
-												 (unsigned long)syncTs, (unsigned long)syncCode, deviceName);
-					(void)txLen;
-
-					// 发�?LoRa 数据
-					uint32_t tx_time = 0;
-					rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-					printf("[LoRa TX sync] %s\r\n", txData);
-
-					// 等待发送完�?
-					uint32_t waitStart = HAL_GetTick();
-					while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
-						if (HAL_GetTick() - waitStart > 3000)
-							break; // 3秒超时保�?
-					}
-					rf_set_transmit_flag(RADIO_FLAG_IDLE);
-				}
-			}
-		}
-
-    /* MSG_TYPE_CONFIG MSG_TYPE_READINFO  直接上报原始数据，不对时 */
-    if (msgType == MSG_TYPE_CONFIG|| msgType == MSG_TYPE_READINFO) {
+    led1OnTick = HAL_GetTick(); led1On = 1;
+    if (msgType == MSG_TYPE_TIME) {
+      if (common_replaceTimeSegment((char *)local_buf, reportBuf, sizeof(reportBuf),
+                                    getCurrentTimestamp(), NULL) == 0)
+        sendToDtu(reportBuf, local_rssi - 256, (int)local_snr);
+      else sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+    } else if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_UP_GPS) {
+      if (restoreRelCoord((char *)local_buf, reportBuf, sizeof(reportBuf)))
+        sendToDtu(reportBuf, local_rssi - 256, (int)local_snr);
+      else sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+    } else if (msgType == MSG_TYPE_CONFIG || msgType == MSG_TYPE_READINFO)
       sendToDtu((char *)local_buf, local_rssi - 256, (int)local_snr);
+    if (msgType == MSG_TYPE_GPS || msgType == MSG_TYPE_TIME) {
+      uint8_t kind = checkPendingCommand(loraDevId) ? 1u :
+          (gpstmActive && HAL_GetTick() - gpstmRecvTick < gpstmTimeoutMin * 60000u ? 2u : 0u);
+      if (kind || dtuTimeValid) scheduleLoraReply(loraDevId, kind);
     }
-
-
-    rf_enter_continous_rx(); // 重新进入连续接收模式（一直监听，不再有超时空隙）
-  }
-
-  // 处理 CRC 校验错误
-  if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
-    printf("crc error\r\n");
+    /* Continuous RX is already active; do not stop it while waiting to reply. */
+  } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR ||
+             rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
     rf_set_recv_flag(RADIO_FLAG_IDLE);
-    rf_enter_continous_rx(); // 重新进入连续接收模式
-  }
-
-  // 处理接收超时（连续接收模式下不会再产�?RX_TIMEOUT，此分支保留作兜底）
-  if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
-    printf(".");
-    rf_set_recv_flag(RADIO_FLAG_IDLE);
-    rf_enter_continous_rx(); // 重新进入连续接收模式
+    radioEnterRx();
   }
 }
 
@@ -551,14 +553,6 @@ static void OnSlave(void) {
  *         3. 打印模式切换信息
  *         4. 进入单次超时接收模式，超时时�?5 �?
  */
-static void enter_rx_mode(void) {
-  workMode = MODE_RX; // 设置工作模式为接�?
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // 关闭 LED1
-  led1On = 0; // 同步 LED1 状态变�?
-  printf("\r\n>> Switch to RX mode\r\n");
-  rf_enter_continous_rx(); // 进入连续接收模式（一直监听）
-}
-
 /* =====================================================================
  * @brief  关闭 LoRa 射频，进入深度休�?
  * @note   只关 LoRa 芯片，MCU �?4G/DTU 继续运行�?
@@ -569,7 +563,12 @@ static void enter_rx_mode(void) {
  *          都跑在主循环里，不在被门禁挡住的 OnSlave() 内，休眠期间照常运行
  * ===================================================================== */
 static void lora_rf_sleep(void) {
+  memset(loraJobs, 0, sizeof(loraJobs));
+  radioTxActive = 0;
+  radioTxPendingSlot = -1;
+  radioIrqPending = 0;
   rf_deepsleep();
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
   loraSwOn = 0;
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // 关闭 LED1
   led1On = 0;
@@ -584,6 +583,7 @@ static void lora_rf_sleep(void) {
  * ===================================================================== */
 static uint8_t lora_rf_wake(void) {
   int retry = 0;
+  centen_radio_spi_clear();
 
   /* 与开机初始化一致：先确�?RST 为高，失败则复位后重试一�?*/
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
@@ -593,9 +593,10 @@ static uint8_t lora_rf_wake(void) {
   while (rf_init() != RF_OK) {
     if (retry >= 2) {
       printf("[LoRa] RF wake FAIL, check wiring\r\n");
-      return 0;
+      goto failed;
     }
     retry++;
+    centen_radio_spi_clear();
     printf("[LoRa] init FAIL, retry after RST (%d)\r\n", retry);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
     HAL_Delay(100);
@@ -603,11 +604,22 @@ static uint8_t lora_rf_wake(void) {
     HAL_Delay(100);
   }
 
-  rf_set_default_para();          // 恢复频率/SF/BW/功率等参�?
-  rf_enter_continous_rx(); // 立即进入连续接收
+  if (rf_set_default_para() != RF_OK || rf_set_tx_power(localTxPower) != RF_OK ||
+      centen_radio_spi_failed()) goto failed;
+  rf_set_recv_flag(RADIO_FLAG_IDLE);
+  rf_set_transmit_flag(RADIO_FLAG_IDLE);
+  radioIrqPending = 0;
+  // 恢复频率/SF/BW/功率等参�?
+  if (!radioEnterRx()) goto failed; // 立即进入连续接收
   loraSwOn = 1;
+  radioPowerDirty = radioRecoverPending = 0;
   printf("[LoRa] RF on, RX resumed\r\n");
   return 1;
+failed:
+  loraSwOn = 0;
+  radioRecoverPending = 1;
+  radioRecoverTick = HAL_GetTick();
+  return 0;
 }
 
 /* do_tx_send()（每 3 秒发 "I LOVE YOU" 的测试发射）已删�?
@@ -623,20 +635,8 @@ static uint8_t lora_rf_wake(void) {
  */
 static uint32_t dateTimeToTimestamp(int year, int month, int day, int hour,
                                     int min, int sec) {
-  static const int daysBeforeMonth[] = {0,   0,   31,  59,  90,  120, 151,
-                                        181, 212, 243, 273, 304, 334};
-  uint32_t days, timestamp;
-  int y;
-
-  // 计算�?1970-01-01 到指定日期的天数
-  y = year - 1;
-  days = (uint32_t)(year - 1970) * 365 + (y / 4 - y / 100 + y / 400) -
-         (1969 / 4 - 1969 / 100 + 1969 / 400) + daysBeforeMonth[month] + day -
-         1;
-  if (month > 2 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)))
-    days++;
-  timestamp = days * 86400UL + (uint32_t)hour * 3600 + (uint32_t)min * 60 +
-              (uint32_t)sec;
+  uint32_t timestamp = 0;
+  centen_datetime(year, month, day, hour, min, sec, &timestamp);
   return timestamp;
 }
 
@@ -738,7 +738,7 @@ static uint8_t workWindowEndAdj(uint8_t end) {
  *          避免未对上时把假 1970 时间戳上报给云端�?
  * ===================================================================== */
 static uint8_t getWorkClockHour(void) {
-  uint32_t ts = dtuTimestamp + (HAL_GetTick() - dtuSyncTick) / 1000;
+  uint32_t ts = getCurrentTimestamp();
   return (uint8_t)((ts % 86400UL) / 3600UL);
 }
 
@@ -802,68 +802,6 @@ static int getWorkTimeFromConfig(void) {
  * @brief  打印工作时间的完整解码过程（供核对，暂不参与任何逻辑�?
  * @note   把每个字符在字典里的位置也打出来，方便一眼看出字典顺序对不对
  * ===================================================================== */
-static void printWorkTimeDebug(void) {
-  const char *comma = strchr(configStr, ',');
-  const char *p0 = NULL;
-  const char *p1 = NULL;
-  int wt = getWorkTimeFromConfig();
-  char f[3];
-
-  if (comma != NULL && comma[1] != '\0' && comma[2] != '\0') {
-    f[0] = comma[1];
-    f[1] = comma[2];
-    f[2] = '\0';
-    p0 = strchr(TIME_DICT, f[0]);
-    p1 = strchr(TIME_DICT, f[1]);
-  } else {
-    f[0] = '?';
-    f[1] = '?';
-    f[2] = '\0';
-  }
-
-  printf("[WORK] config=%s field=%s period=%lu min\r\n", configStr, f,
-         (unsigned long)(getConfigIntervalMs() / 60000));
-
-  if (p0 == NULL || p1 == NULL) {
-    printf("[WORK] parse fail: char not in dict\r\n");
-    return;
-  }
-
-  printf("[WORK] hi '%c'=%d lo '%c'=%d idx=%d\r\n", f[0],
-         (int)(p0 - TIME_DICT), f[1], (int)(p1 - TIME_DICT), wt);
-
-  /* 换算成时间窗口；idx 超过 275 说明这个配置值根本没有对应的窗口 */
-  {
-    uint8_t ws = 0;
-    uint8_t we = 0;
-
-    if (indexToTimeWindow(wt, &ws, &we)) {
-      uint8_t e = workWindowEndAdj(we);
-
-      if (e >= 24) {
-        /* 最大窗口按整天显示，结束点写成 24:00（即次日 00:00�?*/
-        printf("[WORK] window %02u:00~24:00 (%u h)\r\n",
-               (unsigned int)ws, (unsigned int)(e - ws));
-      } else {
-        printf("[WORK] window %02u:00~%02u:00 (%u h)\r\n",
-               (unsigned int)ws, (unsigned int)e, (unsigned int)(e - ws));
-      }
-    } else {
-      printf("[WORK] idx=%d out of range 0~275\r\n", wt);
-    }
-  }
-
-  /* 当前时刻与判定结果，供核对自动开关行�?*/
-  if (dtuTimeValid) {
-    /* 刻意不写�?... ? "在区间内" : "在区间外"�?
-     * 中文末字节紧贴闭合引号，�?GBK 解码吞引号的高危写法 */
-    printf("[WORK] now=%02u in=%d\r\n",
-           (unsigned int)getWorkClockHour(), isInWorkWindow() ? 1 : 0);
-  } else {
-    printf("[WORK] no 4G time, always on\r\n");
-  }
-}
-
 /**
  * @brief  获取当前实时时间戳（基于网络对时 + HAL 计时�?
  * @note   对时后以 dtuTimestamp 为基准，加上经过的秒�?
@@ -871,7 +809,12 @@ static void printWorkTimeDebug(void) {
 static uint32_t getCurrentTimestamp(void) {
   if (!dtuTimeValid)
     return 0;
-  return dtuTimestamp + (HAL_GetTick() - dtuSyncTick) / 1000;
+  {
+    uint32_t elapsed = (HAL_GetTick() - dtuSyncTick) / 1000u;
+    dtuTimestamp += elapsed;
+    dtuSyncTick += elapsed * 1000u;
+    return dtuTimestamp;
+  }
 }
 
 /* =====================================================================
@@ -890,44 +833,41 @@ static void flash_read_str(uint32_t addr, char *dst, int dstSize) {
  *         STM32F1 只能半字编程；用 i+1<=len 兜底�?
  *         避免读到源串 '\0' 之后的越界字�?
  * ===================================================================== */
-static void flash_write_str(uint32_t addr, const char *str) {
-  int len = (int)strlen(str);
-  int i;
-  for (i = 0; i <= len; i += 2) {
-    uint16_t halfWord = (uint16_t)str[i];
-    if (i + 1 <= len)
-      halfWord |= ((uint16_t)str[i + 1]) << 8;
-    HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, addr + i, halfWord);
-  }
-}
-
-/* =====================================================================
- * @brief  整页重写：对时配�?+ 农场中心坐标
- * @note   必须两项一起写：Flash 擦除以页为单位，
- *         只写其中一项会把同页里的另一项一起擦�?
- * ===================================================================== */
-static void flash_save_all(void) {
+static uint8_t flash_save_all(void) {
+  CentenConfigRecord record;
   FLASH_EraseInitTypeDef eraseInit;
-  uint32_t pageError = 0;
-
+  uint32_t pageError, address, offset;
+  const uint8_t *bytes = (const uint8_t *)&record;
+  uint8_t ok = 1;
+  if (!centen_config_valid(configStr)) return 0;
+  if (configActiveAddr) {
+    const CentenConfigRecord *old = (const CentenConfigRecord *)configActiveAddr;
+    if (centen_record_valid(old) && strcmp(old->config, configStr) == 0 &&
+        strcmp(old->center, centerStr) == 0) return 1;
+  }
+  address = configActiveAddr == CONFIG_PAGE_A ? CONFIG_PAGE_B : CONFIG_PAGE_A;
+  centen_record_prepare(&record, configStr, centerStr, configSequence + 1u);
   eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseInit.PageAddress = CONFIG_FLASH_ADDR;
+  eraseInit.PageAddress = address;
   eraseInit.NbPages = 1;
-
-  HAL_FLASH_Unlock();
-  HAL_FLASHEx_Erase(&eraseInit, &pageError);
-
-  /* 对时配置�?*/
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CONFIG_FLASH_ADDR, CONFIG_MAGIC);
-  flash_write_str(CONFIG_FLASH_ADDR + 4, configStr);
-
-  /* 农场中心坐标�?*/
-  HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-                    CONFIG_FLASH_ADDR + CENTER_FLASH_OFF, CENTER_MAGIC);
-  flash_write_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4, centerStr);
-
+  if (HAL_FLASH_Unlock() != HAL_OK) return 0;
+  if (HAL_FLASHEx_Erase(&eraseInit, &pageError) != HAL_OK) ok = 0;
+  for (offset = 0; ok && offset < offsetof(CentenConfigRecord, commit); offset += 2u) {
+    uint16_t value = (uint16_t)(bytes[offset] | ((uint16_t)bytes[offset + 1u] << 8));
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address + offset, value) != HAL_OK) ok = 0;
+  }
+  if (ok && memcmp((const void *)address, &record, offsetof(CentenConfigRecord, commit)) != 0) ok = 0;
+  if (ok && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+      address + offsetof(CentenConfigRecord, commit), CENTEN_CONFIG_COMMIT) != HAL_OK) ok = 0;
   HAL_FLASH_Lock();
-  printf("[FLASH] saved: cfg=%s center=%s\r\n", configStr, centerStr);
+  if (!ok || !centen_record_valid((const CentenConfigRecord *)address)) {
+    printf("[FLASH] save failed, previous record retained\r\n");
+    return 0;
+  }
+  configActiveAddr = address;
+  configSequence = record.sequence;
+  printf("[FLASH] committed sequence=%lu\r\n", (unsigned long)configSequence);
+  return 1;
 }
 
 /**
@@ -935,30 +875,32 @@ static void flash_save_all(void) {
  * @note   开机时调用，如�?Flash 中有有效数据则加�?
  */
 static void loadConfigFromFlash(void) {
-  /* 对时配置 */
-  if (*(volatile uint32_t *)CONFIG_FLASH_ADDR == CONFIG_MAGIC) {
-    flash_read_str(CONFIG_FLASH_ADDR + 4, configStr, sizeof(configStr));
-    printf("[FLASH] cfg loaded: %s\r\n", configStr);
+  const CentenConfigRecord *a = (const CentenConfigRecord *)CONFIG_PAGE_A;
+  const CentenConfigRecord *b = (const CentenConfigRecord *)CONFIG_PAGE_B;
+  const CentenConfigRecord *selected = NULL;
+  double lat, lng;
+  if (centen_record_valid(a)) selected = a;
+  if (centen_record_valid(b) && (!selected || (int32_t)(b->sequence - selected->sequence) > 0)) selected = b;
+  if (selected) {
+    strcpy(configStr, selected->config); strcpy(centerStr, selected->center);
+    configActiveAddr = (uint32_t)selected; configSequence = selected->sequence;
   } else {
-    printf("[FLASH] no cfg, default: %s\r\n", configStr);
+    char legacy[32];
+    /* Upgrade compatibility: the previous one-page format stays untouched
+     * until a new record has been committed in page A. */
+    if (*(volatile uint32_t *)CONFIG_FLASH_ADDR == CONFIG_MAGIC) {
+      flash_read_str(CONFIG_FLASH_ADDR + 4u, legacy, sizeof(legacy));
+      if (centen_config_valid(legacy)) strcpy(configStr, legacy);
+    }
+    if (*(volatile uint32_t *)(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF) == CENTER_MAGIC) {
+      flash_read_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4u, legacy, sizeof(legacy));
+      if (centen_center_parse(legacy, &lat, &lng)) strcpy(centerStr, legacy);
+    }
   }
-
-  /* 农场中心坐标 */
-  if (*(volatile uint32_t *)(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF) ==
-      CENTER_MAGIC) {
-    flash_read_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4, centerStr,
-                   sizeof(centerStr));
-    printf("[FLASH] center loaded: %s\r\n", centerStr);
-  } else {
-    centerStr[0] = '\0';
-    printf("[FLASH] no center\r\n");
-  }
-
-  /* 中心坐标数值缓存（相对偏移还原用） */
   syncRelayCenter();
-
-  /* LoRa 射频开关不落盘：默认就是可收发，重启后同样回到可收�?*/
   loraSwOn = 1;
+  printf("[FLASH] cfg=%s center=%s sequence=%lu\r\n", configStr, centerStr,
+         (unsigned long)configSequence);
 }
 
 /**
@@ -971,11 +913,11 @@ static void enqueueDtuMsg(const char *msg, int len) {
   if (len <= 0 || len >= DTU_MSG_MAX_LEN)
     return;
 
-  __disable_irq();
   if (dtuQueueCount >= DTU_QUEUE_SIZE) {
     // 队列满，丢弃最早的一条（队头前移�?
     dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
     dtuQueueCount--;
+    dtuQueueDropped++;
     printf("[DTU Q] full, drop old\r\n");
   }
   // 拷贝消息到队�?
@@ -984,7 +926,6 @@ static void enqueueDtuMsg(const char *msg, int len) {
   dtuQueue[dtuQueueTail].len = (uint16_t)len;
   dtuQueueTail = (dtuQueueTail + 1) % DTU_QUEUE_SIZE;
   dtuQueueCount++;
-  __enable_irq();
 }
 
 /**
@@ -995,22 +936,28 @@ static void enqueueDtuMsg(const char *msg, int len) {
  *         csq/nettime 等短命令 2 秒间隔同样安�?
  */
 static void processDtuQueue(void) {
-  if (dtuQueueCount == 0)
+  uint32_t now = HAL_GetTick();
+  HAL_StatusTypeDef status;
+  DtuQueueItem_t *item;
+  if (!dtuQueueCount || now - dtuLastSendTick < 2000u) return;
+  /* A deferred attempt is not a send. Do not restart the two-second throttle
+   * until a UART transmission is actually attempted. */
+  if (dtuQueryStage || dtuQueryPending || now - dtuQueryTick < 500u ||
+      now - dtuRecoveryStart < 5000u) return;
+  item = &dtuQueue[dtuQueueHead];
+  dtuLastSendTick = now;
+  status = HAL_UART_Transmit(&huart3, (uint8_t *)item->buf, item->len, 100);
+  if (status == HAL_OK)
+    status = HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 20);
+  if (status != HAL_OK) {
+    dtuTxFailures++;
+    printf("[DTU TX FAIL] status=%u err=%lu q=%u; retained\r\n",
+           (unsigned int)status, (unsigned long)huart3.ErrorCode, dtuQueueCount);
     return;
-
-  if (HAL_GetTick() - dtuLastSendTick >= 2000) {
-    dtuLastSendTick = HAL_GetTick();
-
-    // 从队头取出一条消�?
-    DtuQueueItem_t *item = &dtuQueue[dtuQueueHead];
-    HAL_UART_Transmit(&huart3, (uint8_t *)item->buf, item->len, 1000);
-    HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 100);
-    printf("[DTU Q TX] %s\r\n", item->buf);
-
-    // 出队
-    dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
-    dtuQueueCount--;
   }
+  printf("[DTU Q TX] %s\r\n", item->buf);
+  dtuQueueHead = (dtuQueueHead + 1) % DTU_QUEUE_SIZE;
+  dtuQueueCount--;
 }
 
 /**
@@ -1021,8 +968,13 @@ static void processDtuQueue(void) {
  * @param  snr:     SNR 信噪�?
  */
 static void sendToDtu(const char *loraStr, int rssi, int snr) {
-  char txBuf[DTU_MSG_MAX_LEN];
-  int len = snprintf(txBuf, sizeof(txBuf),
+  static char txBuf[DTU_MSG_MAX_LEN];
+  static char escaped[(RX_LEN + 32u) * 6u + 1u];
+  int len;
+  if (centen_json_escape(loraStr, escaped, sizeof(escaped)) < 0) {
+    dtuQueueDropped++; return;
+  }
+  len = snprintf(txBuf, sizeof(txBuf),
                      "{"
                      "\"version\":\"1.0\","
                      "\"method\":\"thing.event.property.post\","
@@ -1034,12 +986,15 @@ static void sendToDtu(const char *loraStr, int rssi, int snr) {
                      "\"snr\":%d"
                      "}"
                      "}",
-                     loraStr, (char *)deviceName,
+                     escaped, (char *)deviceName,
                      (unsigned long)getCurrentTimestamp(), rssi, snr);
 
   if (len > 0 && len < (int)sizeof(txBuf)) {
     enqueueDtuMsg(txBuf, len);
-    printf("[DTU Q] %d/%d\r\n", dtuQueueCount, DTU_QUEUE_SIZE);
+    printf("[DTU Q] %u/%u len=%d\r\n", dtuQueueCount, DTU_QUEUE_SIZE, len);
+  } else {
+    dtuQueueDropped++;
+    printf("[DTU Q DROP] JSON len=%d\r\n", len);
   }
 }
 
@@ -1079,7 +1034,6 @@ static void sendCenterToDtu(void) {
 
   snprintf(dataStr, sizeof(dataStr), "%d|%s|%s|", MSG_TYPE_GPS, deviceName,
            coord);
-  printf("[DTU] center tx: %s\r\n", dataStr);
   sendToDtu(dataStr, dtuCsqRssi, 0);
 }
 
@@ -1090,7 +1044,7 @@ static void sendCenterToDtu(void) {
 static void syncRelayCenter(void) {
   double la = 0.0, lo = 0.0;
 
-  if (centerStr[0] != '\0' && sscanf(centerStr, "%lf,%lf", &la, &lo) == 2) {
+  if (centerStr[0] != '\0' && centen_center_parse(centerStr, &la, &lo)) {
     relayCenterLat = (int32_t)(la * 100000.0 + (la >= 0.0 ? 0.5 : -0.5));
     relayCenterLng = (int32_t)(lo * 100000.0 + (lo >= 0.0 ? 0.5 : -0.5));
     relayCenterValid = 1;
@@ -1150,14 +1104,24 @@ static uint8_t restoreRelCoord(const char *in, char *out, int outSize) {
   if (!comma)
     return 0;
 
-  coord1e5ToStr(relayCenterLat + (int32_t)strtol(seg, NULL, 10), latBuf);
-  coord1e5ToStr(relayCenterLng + (int32_t)strtol(comma + 1, NULL, 10), lngBuf);
-  snprintf(out, outSize, "%.*s|%.*s|%s,%s|%s",
+  {
+    char *end;
+    long dlat = strtol(seg, &end, 10), dlng;
+    int32_t lat, lng;
+    if (end != comma || end == seg || dlat < -18000000L || dlat > 18000000L) return 0;
+    dlng = strtol(comma + 1, &end, 10);
+    if (end == comma + 1 || *end || dlng < -36000000L || dlng > 36000000L) return 0;
+    lat = relayCenterLat + (int32_t)dlat;
+    lng = relayCenterLng + (int32_t)dlng;
+    if (lat < -9000000 || lat > 9000000 || lng < -18000000 || lng > 18000000) return 0;
+    coord1e5ToStr(lat, latBuf); coord1e5ToStr(lng, lngBuf);
+  }
+  int result = snprintf(out, outSize, "%.*s|%.*s|%s,%s|%s",
            (int)(p1 - in), in,           /* 类型�?*/
            (int)(p2 - (p1 + 1)), p1 + 1, /* 设备名段 */
            latBuf, lngBuf,
            p3 + 1);                      /* 尾段（搜星秒数|计数|�?*/
-  return 1;
+  return result > 0 && result < outSize;
 }
 
 /**
@@ -1189,8 +1153,8 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
       strncpy(pendingCmdCache[i].val, val, sizeof(pendingCmdCache[i].val) - 1);
       pendingCmdCache[i].val[sizeof(pendingCmdCache[i].val) - 1] = '\0';
       pendingCmdCache[i].expireTick = expire;
-      printf("[PENDING CMD] Replaced %s: %s,%s t=%lu\r\n", deviceId, cmd, val,
-             (unsigned long)timeMin);
+      pendingCmdCache[i].hasExpiry = timeMin != 0;
+      pendingCmdCache[i].generation = ++pendingGeneration;
       return;
     }
     if (!pendingCmdCache[i].used && freeSlot < 0)
@@ -1201,6 +1165,8 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
   if (freeSlot >= 0) {
     pendingCmdCache[freeSlot].used = 1;
     pendingCmdCache[freeSlot].expireTick = expire;
+    pendingCmdCache[freeSlot].hasExpiry = timeMin != 0;
+    pendingCmdCache[freeSlot].generation = ++pendingGeneration;
     strncpy(pendingCmdCache[freeSlot].deviceId, deviceId,
             sizeof(pendingCmdCache[freeSlot].deviceId) - 1);
     pendingCmdCache[freeSlot]
@@ -1213,8 +1179,6 @@ static void cachePendingCommand(const char *deviceId, const char *cmd,
             sizeof(pendingCmdCache[freeSlot].val) - 1);
     pendingCmdCache[freeSlot].val[sizeof(pendingCmdCache[freeSlot].val) - 1] =
         '\0';
-    printf("[PENDING CMD] Cach %s:%s,%s t%lu\r\n", deviceId, cmd, val,
-           (unsigned long)timeMin);
   } else {
     printf("[PENDING CMD] full, drop=%s\r\n", deviceId);
   }
@@ -1234,7 +1198,7 @@ static void cleanupExpiredPendingCmds(void) {
   lastCleanTick = now;
 
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
-    if (pendingCmdCache[i].used && pendingCmdCache[i].expireTick != 0 &&
+    if (pendingCmdCache[i].used && pendingCmdCache[i].hasExpiry &&
         (int32_t)(now - pendingCmdCache[i].expireTick) >= 0) {
       printf("[PENDING CMD] expired: %s %s\r\n", pendingCmdCache[i].deviceId,
              pendingCmdCache[i].cmd);
@@ -1254,7 +1218,7 @@ static uint8_t checkPendingCommand(const char *deviceId) {
     if (pendingCmdCache[i].used &&
         strcmp(pendingCmdCache[i].deviceId, deviceId) == 0) {
       /* 时效已过：清除且不下�?*/
-      if (pendingCmdCache[i].expireTick != 0 &&
+      if (pendingCmdCache[i].hasExpiry &&
           (int32_t)(HAL_GetTick() - pendingCmdCache[i].expireTick) >= 0) {
         printf("[PENDING CMD] expired: %s %s\r\n", deviceId,
                pendingCmdCache[i].cmd);
@@ -1262,8 +1226,6 @@ static uint8_t checkPendingCommand(const char *deviceId) {
         memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
         continue;
       }
-      printf("[PENDING CMD] hit %s: %s,%s\r\n", deviceId,
-             pendingCmdCache[i].cmd, pendingCmdCache[i].val);
       return 1; /* 有缓存指�?*/
     }
   }
@@ -1276,32 +1238,16 @@ static uint8_t checkPendingCommand(const char *deviceId) {
  * @retval 1=已发�? 0=无缓�?
  */
 static uint8_t sendPendingCommand(const char *deviceId) {
-  for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
-    if (pendingCmdCache[i].used &&
-        strcmp(pendingCmdCache[i].deviceId, deviceId) == 0) {
-      /* 通过 LoRa 下发指令给目标设备，格式: 9|deviceId|cmd|val| */
-      char txData[64];
-      int txLen = snprintf(txData, sizeof(txData), "%d|%s|%s|%s", MSG_TYPE_COM,
-                           pendingCmdCache[i].deviceId, pendingCmdCache[i].cmd,
-                           pendingCmdCache[i].val);
-      uint32_t tx_time = 0;
-      rf_single_tx_data((uint8_t *)txData, txLen, &tx_time);
-      printf("[PENDING CMD] LoRa TX: %s\r\n", txData);
-
-      /* 等待发送完�?*/
-      uint32_t waitStart = HAL_GetTick();
-      while (rf_get_transmit_flag() != RADIO_FLAG_TXDONE) {
-        if (HAL_GetTick() - waitStart > 3000)
-          break;
-      }
-      rf_set_transmit_flag(RADIO_FLAG_IDLE);
-
-      /* 清除该缓存槽�?*/
-      pendingCmdCache[i].used = 0;
-      memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
-      printf("[PENDING CMD] delivered %s\r\n", deviceId);
-      return 1;
-    }
+  int i;
+  char txData[CENTEN_COMMAND_FRAME_SIZE];
+  if (!checkPendingCommand(deviceId)) return 0;
+  for (i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
+    int len;
+    if (!pendingCmdCache[i].used || strcmp(pendingCmdCache[i].deviceId, deviceId) != 0) continue;
+    len = centen_command_frame(txData, sizeof(txData), deviceId,
+                               pendingCmdCache[i].cmd, pendingCmdCache[i].val);
+    if (len < 0) { printf("[PENDING CMD] invalid frame retained\r\n"); return 0; }
+    return (uint8_t)startLoraTx((uint8_t *)txData, len, i);
   }
   return 0;
 }
@@ -1311,11 +1257,7 @@ static uint8_t sendPendingCommand(const char *deviceId) {
  * @retval 1=合法, 0=非法
  * ===================================================================== */
 static int center_coord_valid(double lat, double lng) {
-  if (lat < -90.0 || lat > 90.0)
-    return 0;
-  if (lng < -180.0 || lng > 180.0)
-    return 0;
-  return 1;
+  return lat >= -90.0 && lat <= 90.0 && lng >= -180.0 && lng <= 180.0;
 }
 
 /**
@@ -1331,6 +1273,14 @@ static void dtuHardwareReset(void) {
    * (5s query) after re-registration, don't carry stale/fake time over */
   dtuTimeValid = 0;
   dtuNetTimeFailCount = 0;
+  dtuQueryStage = dtuQueryPending = dtuQueryAnswered = 0;
+  syncReportPending = 0;
+  dtuRecoveryStart = dtuCsqTick = HAL_GetTick();
+  dtuPingGraceStart = dtuRecoveryStart;
+  dtuPingGot = 0;
+  dtuCsqAnswerTick = 0;
+  centenDtuRxRecover = 1;
+  dtuResetCount++;
 }
 
 /**
@@ -1339,90 +1289,16 @@ static void dtuHardwareReset(void) {
  *         内部格式: {"cmd":"xxx","value":"xxx","deviceId":"xxx"}
  */
 static void parseDtuCommand(char *buf) {
-  /* Step 1: 从外�?JSON 提取 cominfo 字段值（处理转义�?*/
-  char *pCominfo = strstr(buf, "\"cominfo\":\"");
-  if (!pCominfo) {
-    printf("[DTU JSON] cominfo not found\r\n");
+  CentenCommand parsed;
+  char *cmd = parsed.cmd, *devId = parsed.deviceId, *val = parsed.value;
+  uint32_t timeMin;
+  if (!centen_parse_command(buf, &parsed)) {
+    dtuParseRejected++;
+    printf("[DTU JSON] invalid command rejected\r\n");
     return;
   }
-
-  pCominfo += 11; // 跳过 "cominfo":"
-  char unescaped[200];
-  int ui = 0;
-
-  // 读取 cominfo 字符串值，处理转义序列
-  while (*pCominfo && ui < (int)sizeof(unescaped) - 1) {
-    if (*pCominfo == '\\' && *(pCominfo + 1) != '\0') {
-      char next = *(pCominfo + 1);
-      if (next == '"' || next == '\\' || next == '/') {
-        unescaped[ui++] = next;
-        pCominfo += 2;
-        continue;
-      }
-    } else if (*pCominfo == '"') {
-      break; // 未转义的引号 = cominfo 字符串结�?
-    }
-    unescaped[ui++] = *pCominfo++;
-  }
-  unescaped[ui] = '\0';
-  printf("[DTU JSON] cominfo: %s\r\n", unescaped);
-
-  /* Step 2: 从反转义后的 JSON 提取各字�?*/
-  char cmd[32] = {0}, devId[32] = {0}, val[32] = {0};
-
-  // 提取 cmd
-  char *p = strstr(unescaped, "\"cmd\":");
-  if (p) {
-    p += 6;
-    while (*p == ' ' || *p == '"')
-      p++;
-    int i = 0;
-    while (*p && *p != '"' && i < 31)
-      cmd[i++] = *p++;
-    cmd[i] = '\0';
-  }
-
-  // 提取 deviceId
-  p = strstr(unescaped, "\"deviceId\":");
-  if (p) {
-    p += 11;
-    while (*p == ' ' || *p == '"')
-      p++;
-    int i = 0;
-    while (*p && *p != '"' && i < 31)
-      devId[i++] = *p++;
-    devId[i] = '\0';
-  }
-
-  // 提取 value
-  p = strstr(unescaped, "\"value\":");
-  if (p) {
-    p += 8;
-    while (*p == ' ' || *p == '"')
-      p++;
-    int i = 0;
-    while (*p && *p != '"' && i < 31)
-      val[i++] = *p++;
-    val[i] = '\0';
-    // 去除 value 尾部多余的逗号
-    int vlen = (int)strlen(val);
-    while (vlen > 0 && val[vlen - 1] == ',')
-      val[--vlen] = '\0';
-  }
-
-  // 提取 time（指令缓存时效分钟数�? 或缺�?= 永久缓存�?
-  uint32_t timeMin = 0;
-  p = strstr(unescaped, "\"time\":");
-  if (p)
-    timeMin = (uint32_t)atoi(p + 7);
-
-  printf("[DTU JSON] %s dev=%s val=%s\r\n", cmd, devId, val);
-
-  /* debug 指令特殊处理：无�?deviceId 是否匹配都执行（复位 DTU�?*/
-
-  /* Step 3: 检�?deviceId 是否为本�?*/
-  if (strcmp(devId, (char *)deviceName) != 0) {
-    printf("[DTU CMD] cache %s t%lu\r\n", devId, (unsigned long)timeMin);
+  timeMin = parsed.timeMin;
+  if (strcmp(devId, deviceName) != 0) {
     cachePendingCommand(devId, cmd, val, timeMin);
     return;
   }
@@ -1437,13 +1313,18 @@ static void parseDtuCommand(char *buf) {
      * �?double 解析，避�?109.39087 这类 8 位有效数字被 float 截断�?*/
     double la = 0.0, lo = 0.0;
 
-    if (sscanf(val, "%lf,%lf", &la, &lo) == 2 && center_coord_valid(la, lo)) {
+    if (centen_center_parse(val, &la, &lo) && center_coord_valid(la, lo)) {
       /* 归一化成 5 位小数存储：帧长固定，且天然不含 " \ | 等会破坏
        * JSON 拼接的字�?*/
-      snprintf(centerStr, sizeof(centerStr), "%.5f,%.5f", la, lo);
+      char previous[32];
+      strcpy(previous, centerStr);
+      char latText[16], lngText[16];
+      coord1e5ToStr((int32_t)(la * 100000.0 + (la >= 0.0 ? 0.5 : -0.5)), latText);
+      coord1e5ToStr((int32_t)(lo * 100000.0 + (lo >= 0.0 ? 0.5 : -0.5)), lngText);
+      snprintf(centerStr, sizeof(centerStr), "%s,%s", latText, lngText);
       syncRelayCenter();          /* 同步数值缓存（相对偏移还原用） */
-      flash_save_all();
-      printf("[DTU CMD] center saved %s\r\n", centerStr);
+      if (!flash_save_all()) { strcpy(centerStr, previous); syncRelayCenter(); }
+      printf("[DTU CMD] center current %s\r\n", centerStr);
     } else {
       /* 非法：不写内存、不�?Flash，保持上一次的合法�?*/
       printf("[DTU CMD] center invalid, keep\r\n");
@@ -1454,20 +1335,21 @@ static void parseDtuCommand(char *buf) {
     sendCenterToDtu();
   } else if (strcmp(cmd, "debug") == 0) {
     /* debug: value=2 时复�?DTU 模块（远程手动触发异常恢复） */
-    int debugVal = atoi(val);
+    uint32_t debugVal;
+    if (!centen_parse_uint(val, 0, 2, &debugVal)) return;
     if (debugVal == 2) {
       dtuHardwareReset();
     } else {
       printf("[DTU CMD] dbg=%d\r\n", debugVal);
     }
   } else if (strcmp(cmd, "A") == 0) {
-    if (val[0] != '\0') {
+    if (centen_config_valid(val)) {
+      char previous[32];
+      strcpy(previous, configStr);
       strncpy(configStr, val, sizeof(configStr) - 1);
       configStr[sizeof(configStr) - 1] = '\0';
-      flash_save_all();
-      printf("[DTU CMD] Config updated: %s\r\n", configStr);
-      printWorkTimeDebug(); /* 配置变了，打印一次解码结果供核对 */
-      HAL_Delay(1000);
+      if (!flash_save_all()) strcpy(configStr, previous);
+      printf("[DTU CMD] Config current: %s\r\n", configStr);
       sendConfigToDtu();
       printf("[DTU CMD] cfg reported\r\n");
     } else {
@@ -1479,9 +1361,9 @@ static void parseDtuCommand(char *buf) {
       printf("[DTU CMD] gpstm skip(%s)\r\n", devId);
       return;
     }
+    if (!centen_parse_uint(val, 0, 120, &gpstmTimeoutMin)) return;
     gpstmActive = 1;
     gpstmRecvTick = HAL_GetTick();
-    gpstmTimeoutMin = (uint32_t)atoi(val);
     if (gpstmTimeoutMin == 0)
       gpstmTimeoutMin = 30; // 默认 30 分钟
     printf("[DTU CMD] gpstm %lu min\r\n", (unsigned long)gpstmTimeoutMin);
@@ -1497,7 +1379,9 @@ static void parseDtuCommand(char *buf) {
       return;
     }
 
-    if (atoi(val) != 0) {
+    uint32_t enabled;
+    if (!centen_parse_uint(val, 0, 1, &enabled)) return;
+    if (enabled) {
       /* 1 �?唤醒
        * @warning 工作时间优先：不在工作区间内时一律拒绝开启，
        *          lorasw 只能在区间内生效，不能越权把区间外的射频打开 */
@@ -1510,6 +1394,8 @@ static void parseDtuCommand(char *buf) {
       }
     } else {
       /* 0 �?休眠（任何时候都允许关闭，不受工作区间限制） */
+      radioRecoverPending = 0;
+      centen_radio_spi_clear();
       if (!loraSwOn) {
         printf("[DTU CMD] lorasw off\r\n");
       } else {
@@ -1520,16 +1406,22 @@ static void parseDtuCommand(char *buf) {
     /* txpower: 走到这里必是本机（子设备目标已在 Step 3 缓存）—�?
      * 只做一件事：改中继自己的发射功率。不缓存自己（避免死缓存占槽），
      * 不重�?CSQ/nettime（旧逻辑遗留）；功率不落盘，重启恢复默认 */
-    uint8_t p = (uint8_t)atoi(val);
-    localTxPower = p;
-    rf_set_tx_power(p);
+    uint32_t p;
+    if (!centen_parse_uint(val, 1, DEFAULT_FREQ < 565000000u ? 23u : 22u, &p)) return;
+    if (!loraSwOn || radioTxActive) {
+      localTxPower = (uint8_t)p;
+      radioPowerDirty = 1;
+    } else if (rf_set_tx_power((uint8_t)p) == RF_OK && !centen_radio_spi_failed()) {
+      localTxPower = (uint8_t)p;
+      radioPowerDirty = 0;
+    }
     printf("[DTU CMD] txpower=%d\r\n", p);
     return;
   } else if (strcmp(cmd, "realyname") == 0) {
     /* realyname 更换设备名字 */
     /* value 格式: "v3-10=v3-11"  �? 目标设备=v3-10, 新名�?v3-11 */
     char *eq = strchr(val, '=');
-    if (eq != NULL) {
+    if (eq != NULL && eq != val && eq[1] != 0) {
       *eq = '\0';
       char *targetDevId = val;
       char *newName = eq + 1;
@@ -1548,6 +1440,10 @@ static void parseDtuCommand(char *buf) {
      * 帧C IMSI:  8|deviceName|IMSI|
      * �? 开机后 ICCID/IMSI 尚未查到时对应段为空，重�?readinfo 即可 */
     char infoStr[48];
+    printf("[HEALTH] uart_drop=%lu parse=%lu txerr=%lu qdrop=%lu rst=%lu rf_timeout=%lu rf_drop=%lu\r\n",
+      (unsigned long)centenDtuRing.dropped, (unsigned long)(dtuParseRejected + dtuFrame.rejected),
+      (unsigned long)dtuTxFailures, (unsigned long)dtuQueueDropped, (unsigned long)dtuResetCount,
+      (unsigned long)radioTxTimeouts, (unsigned long)(radioRxRejected + radioJobsDropped));
     snprintf(infoStr, sizeof(infoStr), "%d|%s|%dT|%luHZ|%ddbm|%s|%lu|",
              MSG_TYPE_READINFO, deviceName, 0,
              (unsigned long)(DEFAULT_FREQ / 1000000u),
@@ -1577,6 +1473,170 @@ static void parseDtuCommand(char *buf) {
  *         5. 默认进入接收模式
  *         5. 主循环：LED 心跳、模式处�?
  */
+static void processDtuFrame(char *pBuf) {
+  printf("[DTU RX] %s\r\n", pBuf);
+  /* JSON and module replies are separate frames; a JSON payload containing
+   * words such as PING or config,csq must never suppress command execution. */
+  if (pBuf[0] == '{') { parseDtuCommand(pBuf); return; }
+      /* platform PING heartbeat: "PING1200" -> window=1200s.
+       * presence of this frame proves the full server->4G->DTU link is up */
+      {
+        char *pPing = strncmp(pBuf, "PING", 4) == 0 ? pBuf : NULL;
+
+        if (pPing) {
+          uint32_t pingSec;
+          if (!centen_parse_uint(pPing + 4, 60, 86400, &pingSec)) return;
+
+          if (pingSec >= 60 && pingSec <= 86400)
+            dtuPingWinMs = (uint32_t)pingSec * 1000u;
+          dtuPingGot = 1;
+          dtuLastPingTick = HAL_GetTick();
+          printf("[DTU PING] ok w=%lus\r\n",
+                 (unsigned long)(dtuPingWinMs / 1000u));
+        }
+      }
+
+      /* 解析 CSQ 信号质量: config,csq,ok,<value> */
+      char *pCsq = strstr(pBuf, "config,csq,ok,");
+      if (pCsq) {
+        int csqVal = 0;
+        if (sscanf(pCsq, "config,csq,ok,%d", &csqVal) == 1 && ((csqVal >= 0 && csqVal <= 31) || csqVal == 99)) {
+          dtuCsqRssi = csqVal; // 保存 CSQ 值供对时上报使用
+          dtuCsqAnswerTick = HAL_GetTick(); // CSQ 有应�?= DTU 活着
+        }
+      }
+
+      /* 解析网络时间: config,nettime,ok,�?�?�?�?�?�?毫秒 */
+      char *pNet = strstr(pBuf, "config,nettime,ok,");
+      if (pNet) {
+        int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
+        if (sscanf(pNet, "config,nettime,ok,%d,%d,%d,%d,%d,%d,%d", &y, &mo, &d,
+                   &h, &mi, &s, &ms) >= 6 &&
+            dateTimeToTimestamp(y, mo, d, h, mi, s) != 0) {
+          /* 保存时间戳供 LoRa 上报使用 */
+          dtuTimestamp = dateTimeToTimestamp(y, mo, d, h, mi, s);
+          dtuSyncTick = HAL_GetTick(); // 记录对时时刻
+          dtuTimeValid = 1;
+          dtuQueryAnswered = 1;
+          dtuQueryPending = 0; // 标记网络时间已获�?
+          dtuNetTimeFailCount = 0;
+          printf("[DTU TIME] ts=%lu\r\n", (unsigned long)dtuTimestamp);  /* 重置连续失败计数�?*/
+
+          /* 上报延迟 10 秒：拿到 nettime �?DTU 已连上服务器——重启后
+           * DTU 注网/建立平台连接有窗口期，立即入队的 JSON 会被挤丢
+           * （实测对时帧丢失、配置帧成功）。到期后由主循环统一入队 */
+          syncReportDue = HAL_GetTick() + 10000;
+          syncReportPending = 1;
+        }
+      }
+
+      /* 解析 SIM �?ICCID: config,iccid,ok,<20位号�? —�?开机查询一次即�?*/
+      char *pIccid = strstr(pBuf, "config,iccid,ok,");
+      if (pIccid) {
+        char iccid[24] = {0};
+        if (sscanf(pIccid, "config,iccid,ok,%22s", iccid) == 1 && iccid[0]) {
+          strncpy(dtuIccidStr, iccid, sizeof(dtuIccidStr) - 1);
+          dtuIccidStr[sizeof(dtuIccidStr) - 1] = '\0';
+          dtuIccidGot = 1;
+        }
+      }
+
+      /* 解析 SIM �?IMSI: config,imsi,ok,<15�? —�?开机查询一次即�?*/
+      char *pImsi = strstr(pBuf, "config,imsi,ok,");
+      if (pImsi) {
+        char imsi[24] = {0};
+        if (sscanf(pImsi, "config,imsi,ok,%22s", imsi) == 1 && imsi[0]) {
+          strncpy(dtuImsiStr, imsi, sizeof(dtuImsiStr) - 1);
+          dtuImsiStr[sizeof(dtuImsiStr) - 1] = '\0';
+          dtuImsiGot = 1;
+        }
+      }
+
+      /* 都没匹配到，原样打印明文�?
+       * config,get, 开头的�?DTU 对配置命令的回显（如 config,get,iccid），
+       * 不是云端 JSON 指令，不能进 parseDtuCommand —�?iccid/imsi 的真�?
+       * 应答在后续帧里由上面�?pIccid/pImsi 分支处理 */
+      if (!pCsq && !pNet && !pIccid && !pImsi && !strstr(pBuf, "config,get,") &&
+          !strstr(pBuf, "PING")) {
+        /* 收到 DTU 下发数据：先把当前生效的工作时间打出来，
+         * 放在 parseDtuCommand() 之前，方便对�?指令执行�?/ 执行�? */
+
+        /* JSON 解析 DTU 下发的指�?*/
+        parseDtuCommand(pBuf);
+      }
+
+
+}
+
+static void processDtuInput(void) {
+  uint8_t byte;
+  uint32_t count = 0, primask;
+  if (centenDtuRxRecover) {
+    primask = __get_PRIMASK(); __disable_irq();
+    HAL_UART_AbortReceive(&huart3);
+    __HAL_UART_CLEAR_OREFLAG(&huart3);
+    centenDtuRing.tail = centenDtuRing.head;
+    memset(&dtuFrame, 0, sizeof(dtuFrame));
+    centenDtuRxRecover = 0;
+    centen_dtu_receive_start(&huart3);
+    __set_PRIMASK(primask);
+  }
+  if (dtuOverflowSeen != centenDtuRing.dropped) {
+    primask = __get_PRIMASK(); __disable_irq();
+    dtuOverflowSeen = centenDtuRing.dropped;
+    centenDtuRing.tail = centenDtuRing.head;
+    memset(&dtuFrame, 0, sizeof(dtuFrame));
+    dtuFrame.dropping = 1;
+    __set_PRIMASK(primask);
+  }
+  while (count++ < CENTEN_RX_RING_SIZE && centen_ring_pop(&centenDtuRing, &byte)) {
+    if (centen_frame_feed(&dtuFrame, byte)) processDtuFrame(dtuFrame.data);
+    if (centenDtuRxRecover) break;
+  }
+  if (centenDtuRing.head == centenDtuRing.tail && HAL_GetTick() - centenDtuLastRxTick > 500u &&
+      centen_frame_idle(&dtuFrame)) processDtuFrame(dtuFrame.data);
+}
+
+static void processDtuQueries(void) {
+  uint32_t now = HAL_GetTick();
+  const char *cmd = NULL;
+  if (radioTxActive) return;
+  if (dtuQueryStage && now - dtuQueryTick >= 300u) {
+    if (dtuQueryStage == 1) {
+      cmd = "config,get,nettime\r\n";
+      dtuQueryPending = 1; dtuQueryAnswered = 0;
+    } else if (dtuQueryStage == 2 && !dtuImsiGot) cmd = "config,get,imsi\r\n";
+    dtuQueryStage = 0;
+    dtuQueryTick = now;
+  } else if (dtuQueryPending && now - dtuQueryTick >= DTU_QUERY_WAIT_MS) {
+    dtuQueryPending = 0;
+    if (!dtuQueryAnswered && !dtuTimeValid && now - dtuRecoveryStart >= DTU_RECOVERY_GRACE_MS) {
+      if (++dtuNetTimeFailCount >= 5) { dtuHardwareReset(); return; }
+    }
+  } else if (!dtuQueryStage && !dtuQueryPending &&
+      now - dtuCsqTick >= (dtuTimeValid ? getConfigIntervalMs() : 10000u)) {
+    dtuCsqTick = now; dtuQueryTick = now; dtuQueryStage = 1;
+    cmd = "config,get,csq\r\n";
+  } else if (!dtuQueryStage && !dtuQueryPending && dtuTimeValid &&
+      (!dtuIccidGot || !dtuImsiGot) && now - dtuIccidTick >= 5000u) {
+    dtuIccidTick = now; dtuQueryTick = now;
+    if (!dtuIccidGot) { cmd = "config,get,iccid\r\n"; dtuQueryStage = 2; }
+    else cmd = "config,get,imsi\r\n";
+  }
+  if (cmd) {
+    HAL_StatusTypeDef status = HAL_UART_Transmit(&huart3, (uint8_t *)cmd, (uint16_t)strlen(cmd), 100);
+    printf("[DTU QUERY] %s", cmd);
+    if (status != HAL_OK) {
+      dtuTxFailures++;
+      dtuQueryStage = dtuQueryPending = 0;
+      printf("[DTU QUERY FAIL] status=%u\r\n", (unsigned int)status);
+    }
+  }
+  if (dtuTimeValid && dtuCsqAnswerTick && now - dtuCsqAnswerTick > 65UL * 60000UL) {
+    dtuRstByCsq = 1; dtuHardwareReset();
+  }
+}
+
 int main(void) {
   /* USER CODE BEGIN 1 */
 
@@ -1609,21 +1669,10 @@ int main(void) {
   /* USER CODE BEGIN 2 */
 
   // 打印启动信息
-  printf("\r\n===== LoRa Receiver Start =====\r\n");
-  printf("DTU UART (USART3): PB10=TX, PB11=RX, 115200 8N1\r\n");
-  printf("USART3 CR1=0x%04X CR2=0x%04X CR3=0x%04X BRR=0x%04X SR=0x%04X\r\n",
-         (uint16_t)huart3.Instance->CR1, (uint16_t)huart3.Instance->CR2,
-         (uint16_t)huart3.Instance->CR3, (uint16_t)huart3.Instance->BRR,
-         (uint16_t)huart3.Instance->SR);
   printf_logo(); // 显示工程信息 Logo
 
   /* 打印芯片唯一 ID 并根�?UID 生成 deviceName */
   {
-    uint32_t uid0 = *(volatile uint32_t *)0x1FFFF7E8;
-    uint32_t uid1 = *(volatile uint32_t *)0x1FFFF7EC;
-    uint32_t uid2 = *(volatile uint32_t *)0x1FFFF7F0;
-    printf("Chip UID    : %08X-%08X-%08X\r\n", (unsigned int)uid2,
-           (unsigned int)uid1, (unsigned int)uid0);
 
     int devIndex = getDeviceIndex();
     if (devIndex >= 0) {
@@ -1639,17 +1688,13 @@ int main(void) {
   loadConfigFromFlash();
 
   /* 开机打印一次工作时间解码结果，供核对字典顺序是否正�?*/
-  printWorkTimeDebug();
 
   /* 测试公共模块 */
-  commonTest_PrintInfo();
-  printf("commonTest_Increment = %lu\r\n",
-         (unsigned long)commonTest_Increment());
+
 
   HAL_Delay(1); // 短暂延时，等待串口输出完�?
 
   /* LoRa PAN3029 模块初始�?*/
-  printf("LoRa init...\r\n");
 
   /* 确保 CSN �?RST 引脚为高电平（LoRa 模块空闲状态） */
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET); // CSN 拉高
@@ -1657,61 +1702,29 @@ int main(void) {
   HAL_Delay(100); // 等待模块电源稳定
 
   // 初始�?LoRa 射频模块
-  if (rf_init() != RF_OK) {
-    // 第一次初始化失败，尝�?RST 复位后重�?
-    printf("[LoRa] init FAIL, RST retry...\r\n");
-    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET); // RST 拉低
-    HAL_Delay(100);                                                       // 保持 100ms
-    HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);   // RST 拉高
-    HAL_Delay(100);                                                       // 等待模块稳定
-    
-    // 重新初始�?
-    if (rf_init() != RF_OK) {
-      // 仍然失败，进入错误循�?
-      printf("[LoRa] init FAIL after RST! check wiring\r\n");
-      while (1) {
-        HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin); // LED1 快速闪烁表示错�?
-        HAL_Delay(100);
-      }
-    }
-    printf("[LoRa] init OK after RST\r\n");
+  if (!lora_rf_wake()) {
+    loraSwOn = 0;
+    radioRecoverPending = 1;
+    radioRecoverTick = HAL_GetTick();
+    printf("[LoRa] unavailable, DTU stays active\r\n");
   }
-  printf("RF init ok\r\n");
-
-  /* 设置 LoRa 默认参数（与 CenterReceiveBLE_v4 ETSI_868 配置一致）�?
-   *   频率 = 915 MHz, 扩频因子 SF = 10, 带宽 BW = 125 kHz
-   *   编码�?CR = 4/5, 发射功率 = 22 dBm
-   * 此函数还会打�? FREQ= xxx  SF=x   BW=x  CR=x */
-  rf_set_default_para();
-
-  // 打印 LoRa 配置摘要（K1/K2 按键说明已随按键移除，rf_set_default_para
-  // 内部还会打印 FREQ/SF/BW/CR 明细�?
-  printf("===== LoRa Ready %dMHz SF%d =====\r\n", DEFAULT_FREQ / 1000000,
-         DEFAULT_SF);
-
-  /* LoRa 射频开关不落盘，开机恒�?可收�?�?
-   * 任何掉电/复位都自动恢复收发，无需远程唤醒 */
-  enter_rx_mode(); // 默认进入接收模式
-
-  /* 记录启动时间，用�?5 秒后�?DTU 发�?CSQ 查询 */
   dtuCsqTick = HAL_GetTick();
+  dtuRecoveryStart = dtuPingGraceStart = dtuCsqTick;
 
   /* USER CODE END 2 */
 
   /* 无限循环 */
   /* USER CODE BEGIN WHILE */
   while (1) {
+    processDtuInput();
+    serviceRadio();
+    getCurrentTimestamp();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
     /* [调试] 每秒打印一�?STM32 实时时间 */
-    if (dtuTimeValid && HAL_GetTick() - lastPrintTick >= 1000) {
-      lastPrintTick = HAL_GetTick();
-      char timeBuf[24];
-      common_formatTimestamp(getCurrentTimestamp(), timeBuf, sizeof(timeBuf));
-      // printf("[TIME] %s\r\n", timeBuf);
-    }
+
 
     /* PB15 (LED1) 接收指示：点�?00ms后自动熄�?*/
     if (led1On && HAL_GetTick() - led1OnTick >= 500) {
@@ -1721,8 +1734,8 @@ int main(void) {
 
     /* 上报到期：nettime 成功后延�?10 秒，DTU 平台连接已稳定，
      * 统一入队 对时�?+ rst_dtu 告知（如有）+ 开机配置帧（如有） */
-    if (syncReportDue && HAL_GetTick() >= syncReportDue) {
-      syncReportDue = 0;
+    if (syncReportPending && dtuTimeValid && centen_due(HAL_GetTick(), syncReportDue)) {
+      syncReportPending = 0;
       sendTimeSyncToDtu();
       /* CSQ 死机复位�?DTU：补发一条告知帧（只发一次）
        * 格式: 8|deviceName|rst_dtu —�?服务器据此知道中继曾自动恢复�?*/
@@ -1759,9 +1772,9 @@ int main(void) {
 
       if (nowT - dtuPingGraceStart < 180000u) {
         /* grace: DTU still registering after boot/reset (3 min) */
-      } else if (!dtuPingGot) {
+      } else if (!dtuPingGot && nowT - dtuPingGraceStart > dtuPingWinMs) {
         pingRst = 1;                    /* zero PING since boot */
-      } else if (nowT - dtuLastPingTick > dtuPingWinMs) {
+      } else if (dtuPingGot && nowT - dtuLastPingTick > dtuPingWinMs) {
         pingRst = 1;                    /* heartbeat lost */
       }
       if (pingRst) {
@@ -1811,176 +1824,9 @@ int main(void) {
       break;
     }
 
-    /* DTU 一帧完成判断：收到数据�?500ms 无新字节 �?缓冲区满 */
-    if ((dtuRxLen > 0 && HAL_GetTick() - dtuLastRxTick > 500) ||
-        dtuRxLen >= DTU_RX_BUF_SIZE) {
-      /* 确保字符串结�?*/
-      if (dtuRxLen < DTU_RX_BUF_SIZE)
-        dtuRxBuf[dtuRxLen] = '\0';
-      else
-        dtuRxBuf[DTU_RX_BUF_SIZE - 1] = '\0';
-
-      char *pBuf = (char *)dtuRxBuf;
-
-      /* [TEST] ÿһ֡ DTU �յ���ԭ�Ķ�ԭ����ӡ��AT Ӧ��/JSON �·�/����ȫ�ԣ� */
-      printf("[DTU RX] \"%s\"\r\n", pBuf);
-
-      /* platform PING heartbeat: "PING1200" -> window=1200s.
-       * presence of this frame proves the full server->4G->DTU link is up */
-      {
-        char *pPing = strstr(pBuf, "PING");
-
-        if (pPing) {
-          int pingSec = atoi(pPing + 4);
-
-          if (pingSec >= 60 && pingSec <= 86400)
-            dtuPingWinMs = (uint32_t)pingSec * 1000u;
-          dtuPingGot = 1;
-          dtuLastPingTick = HAL_GetTick();
-          printf("[DTU PING] ok w=%lus\r\n",
-                 (unsigned long)(dtuPingWinMs / 1000u));
-        }
-      }
-
-      /* 解析 CSQ 信号质量: config,csq,ok,<value> */
-      char *pCsq = strstr(pBuf, "config,csq,ok,");
-      if (pCsq) {
-        int csqVal = 0;
-        if (sscanf(pCsq, "config,csq,ok,%d", &csqVal) == 1) {
-          int percent = csqVal * 100 / 31;
-          printf("[DTU] CSQ:%d(%d%%)\r\n", csqVal, percent);
-          dtuCsqRssi = csqVal; // 保存 CSQ 值供对时上报使用
-          dtuCsqAnswerTick = HAL_GetTick(); // CSQ 有应�?= DTU 活着
-        }
-      }
-
-      /* 解析网络时间: config,nettime,ok,�?�?�?�?�?�?毫秒 */
-      char *pNet = strstr(pBuf, "config,nettime,ok,");
-      if (pNet) {
-        int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0, ms = 0;
-        if (sscanf(pNet, "config,nettime,ok,%d,%d,%d,%d,%d,%d,%d", &y, &mo, &d,
-                   &h, &mi, &s, &ms) >= 6) {
-          printf("[DTU] %04d-%02d-%02d %02d:%02d:%02d\r\n", y, mo, d, h, mi, s);
-          /* 保存时间戳供 LoRa 上报使用 */
-          snprintf(dtuNetTimeStr, sizeof(dtuNetTimeStr),
-                   "%04d%02d%02d%02d%02d%02d", y, mo, d, h, mi, s);
-          dtuTimestamp = dateTimeToTimestamp(y, mo, d, h, mi, s);
-          dtuSyncTick = HAL_GetTick(); // 记录对时时刻
-          printf("[DTU] ts=%lu\r\n", (unsigned long)dtuTimestamp);
-          dtuTimeValid = 1; // 标记网络时间已获�?
-          dtuNetTimeFailCount = 0;  /* 重置连续失败计数�?*/
-          printf("[DTU] time OK, %lu min sync\r\n",
-                 (unsigned long)(getConfigIntervalMs() / 60000));
-
-          /* 上报延迟 10 秒：拿到 nettime �?DTU 已连上服务器——重启后
-           * DTU 注网/建立平台连接有窗口期，立即入队的 JSON 会被挤丢
-           * （实测对时帧丢失、配置帧成功）。到期后由主循环统一入队 */
-          syncReportDue = HAL_GetTick() + 10000;
-        }
-      }
-
-      /* 解析 SIM �?ICCID: config,iccid,ok,<20位号�? —�?开机查询一次即�?*/
-      char *pIccid = strstr(pBuf, "config,iccid,ok,");
-      if (pIccid) {
-        char iccid[24] = {0};
-        if (sscanf(pIccid, "config,iccid,ok,%22s", iccid) == 1 && iccid[0]) {
-          strncpy(dtuIccidStr, iccid, sizeof(dtuIccidStr) - 1);
-          dtuIccidStr[sizeof(dtuIccidStr) - 1] = '\0';
-          dtuIccidGot = 1;
-          printf("[DTU] ICCID:%s\r\n", dtuIccidStr);
-        }
-      }
-
-      /* 解析 SIM �?IMSI: config,imsi,ok,<15�? —�?开机查询一次即�?*/
-      char *pImsi = strstr(pBuf, "config,imsi,ok,");
-      if (pImsi) {
-        char imsi[24] = {0};
-        if (sscanf(pImsi, "config,imsi,ok,%22s", imsi) == 1 && imsi[0]) {
-          strncpy(dtuImsiStr, imsi, sizeof(dtuImsiStr) - 1);
-          dtuImsiStr[sizeof(dtuImsiStr) - 1] = '\0';
-          dtuImsiGot = 1;
-          printf("[DTU] IMSI:%s\r\n", dtuImsiStr);
-        }
-      }
-
-      /* 都没匹配到，原样打印明文�?
-       * config,get, 开头的�?DTU 对配置命令的回显（如 config,get,iccid），
-       * 不是云端 JSON 指令，不能进 parseDtuCommand —�?iccid/imsi 的真�?
-       * 应答在后续帧里由上面�?pIccid/pImsi 分支处理 */
-      if (!pCsq && !pNet && !pIccid && !pImsi && !strstr(pBuf, "config,get,") &&
-          !strstr(pBuf, "PING")) {
-        /* 收到 DTU 下发数据：先把当前生效的工作时间打出来，
-         * 放在 parseDtuCommand() 之前，方便对�?指令执行�?/ 执行�? */
-        printWorkTimeDebug();
-
-        /* JSON 解析 DTU 下发的指�?*/
-        parseDtuCommand(pBuf);
-      }
-
-      dtuRxLen = 0;
-      /* 重新启动中断接收 */
-      HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
-    }
-
-    /* �?DTU 发�?csq + nettime 查询
-     * 未获取到时间前：�?5 秒查询一�?
-     * 获取到时间后：由 configStr 配置决定（默�?30 分钟，范�?5~60 分钟�?*/
-    {
-      uint32_t queryInterval = dtuTimeValid ? getConfigIntervalMs() : 5000;
-      if (HAL_GetTick() - dtuCsqTick >= queryInterval) {
-        dtuCsqTick = HAL_GetTick();
-        uint8_t cmd1[] = "config,get,csq\r\n";
-        printf("[DTU TX] config,get,csq\r\n");
-        HAL_UART_Transmit(&huart3, cmd1, sizeof(cmd1) - 1, 1000);
-        HAL_Delay(300); // 等待 csq 响应
-        uint8_t cmd2[] = "config,get,nettime\r\n";
-        printf("[DTU TX] config,get,nettime\r\n");
-        HAL_UART_Transmit(&huart3, cmd2, sizeof(cmd2) - 1, 1000);
-        if (!dtuTimeValid) {
-          dtuNetTimeFailCount++;
-          printf("[DTU] wait time(%d/5)\r\n", dtuNetTimeFailCount);
-          /* 连续 5 次拿不到网络时间 = 断网�?DTU 异常：只复位 DTU�?
-           * MCU 不自动重启（常供电设计：只有 relayreboot 指令或断电才重启）�?
-           * 纯无信号场景 RST 白打也无害：DTU 重启 ~30 秒注网，LoRa 不中�?*/
-          if (dtuNetTimeFailCount >= 5) {
-            printf("[DTU] 5x no net time, RST dtu\r\n");
-            dtuHardwareReset();
-            dtuNetTimeFailCount = 0;
-          }
-        }
-      }
-    }
-
-    /* ICCID/IMSI 查询（独立计时）：只在已拿到网络时间（注网成功）后才查，
-     * 开机抢时间阶段绝不掺和 —�?DTU 配置命令一次一条，挤在一起会�?
-     * nettime 应答挤丢。两条命令之间留 300ms �?DTU 处理完上一条�?
-     * 各拿到一次即停（SIM 换卡才变�?*/
-    if (dtuTimeValid && (!dtuIccidGot || !dtuImsiGot) &&
-        HAL_GetTick() - dtuIccidTick >= 5000u) {
-      dtuIccidTick = HAL_GetTick();
-      if (!dtuIccidGot) {
-        uint8_t cmd3[] = "config,get,iccid\r\n";
-        printf("[DTU TX] config,get,iccid\r\n");
-        HAL_UART_Transmit(&huart3, cmd3, sizeof(cmd3) - 1, 1000);
-        HAL_Delay(300);
-      }
-      if (!dtuImsiGot) {
-        uint8_t cmd4[] = "config,get,imsi\r\n";
-        printf("[DTU TX] config,get,imsi\r\n");
-        HAL_UART_Transmit(&huart3, cmd4, sizeof(cmd4) - 1, 1000);
-      }
-    }
-
-    /* DTU 死机检测：曾经拿到�?CSQ 应答（说�?DTU 活过）之后，
-     * 超过 65 分钟（错�?2 �?30 分钟周期查询）仍无任�?CSQ 应答
-     * = 模块串口/固件假死 —�?RST 复位 DTU，MCU 本身不重�?*/
-    if (dtuTimeValid && dtuCsqAnswerTick != 0 &&
-        HAL_GetTick() - dtuCsqAnswerTick > 65UL * 60UL * 1000UL) {
-      printf("[DTU] no CSQ reply, RST dtu\r\n");
-      dtuRstByCsq = 1; /* DTU 恢复联网后上�?8|名|rst_dtu 告知服务�?*/
-      dtuHardwareReset();
-      dtuCsqAnswerTick = HAL_GetTick(); /* �?DTU 重启后的注网时间 */
-    }
+    processDtuInput();
+    processDtuQueries();
+    serviceRadio();
 
     HAL_Delay(1); // 短延�?
   }
@@ -2100,10 +1946,14 @@ static void MX_GPIO_Init(void) {
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* 配置 LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
-  GPIO_InitStruct.Pin = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
+  GPIO_InitStruct.Pin = LORA_SCK_Pin | LORA_MOSI_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;       // 复用推挽输出（硬�?SPI�?
   GPIO_InitStruct.Pull = GPIO_NOPULL;           // 无上下拉
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH; // 高�?
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LORA_MISO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* 配置 LoRa CSN 片选引�?(PB0) - 默认高电平（未选中�?*/
@@ -2195,7 +2045,7 @@ static void MX_NVIC_Init(void) {
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   /* LoRa IRQ 中断: PA2 -> 调用射频中断处理函数 */
   if (GPIO_Pin == GPIO_PIN_2) {
-    rf_irq_process(); // 处理 LoRa 模块的中断事�?
+    radioIrqPending = 1; // 处理 LoRa 模块的中断事�?
   }
 
   /* 本板无按键，K1(PB4)/K2(PB5) 已从工程彻底删除
@@ -2229,25 +2079,13 @@ static void MX_USART3_UART_Init(void) {
   }
 
   /* 启动中断接收，每个字节触发一次回�?*/
-  HAL_UART_Receive_IT(&huart3, dtuRxBuf, 1);
+  centen_dtu_receive_start(&huart3);
 }
 
 /**
  * @brief  USART3 接收完成回调（HAL 库弱函数重写�?
  * @note   每收�?1 字节触发一次，记录时间戳并续接缓冲�?
  */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if (huart->Instance == USART3) {
-    dtuRxLen++;
-    dtuLastRxTick = HAL_GetTick(); // 记录收到字节的时�?
-    if (dtuRxLen < DTU_RX_BUF_SIZE) {
-      HAL_UART_Receive_IT(&huart3, &dtuRxBuf[dtuRxLen], 1);
-    } else {
-      dtuRxLen = 0; // 缓冲区满，丢�?
-    }
-  }
-}
-
 /**
  * @brief  错误处理函数
  * @note   当系统发生严重错误时调用此函�?
