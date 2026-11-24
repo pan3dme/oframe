@@ -193,6 +193,12 @@ static uint32_t dtuLastSendTick = 0; // 上次发送时间戳（用�?100ms 间�
 #define NAME_MAGIC      0x4E414D45u /* "NAME" */
 #define NAME_COMMIT     0x4E414D31u /* "NAM1" */
 
+/* txpower persistence: 16-byte record at +320 inside the config page
+ * (magic, power, ~power, commit) �� inverse check instead of CRC. */
+#define POWER_REC_OFF   320u
+#define POWER_MAGIC     0x52574F50u /* "POWR" */
+#define POWER_COMMIT    0x52573031u /* "POW1" */
+
 typedef struct {
   uint32_t magic;    /* NAME_MAGIC */
   char     name[16]; /* device name, NUL terminated */
@@ -350,8 +356,8 @@ PUTCHAR_PROTOTYPE {
  * @note   在系统启动时调用，显示工程名称、版本、日期、硬件配置等信息
  */
 static void printf_logo(void) {
-  printf("CENTEN %s %s %luMHz SF%u\r\n", DEMO_VER, EXAMPLE_DATE,
-         (unsigned long)(DEFAULT_FREQ / 1000000u), DEFAULT_SF);
+  printf("CENTEN %s %luMHz\r\n", DEMO_VER,
+         (unsigned long)(DEFAULT_FREQ / 1000000u));
 }
 
 /**
@@ -418,7 +424,7 @@ static void serviceRadio(void) {
       radioTxActive = 0;
       radioTxPendingSlot = -1;
       memset(loraJobs, 0, sizeof(loraJobs));
-      printf("[LoRa] spi fault\r\n");
+      printf("[LoRa] spi\r\n");
     }
   }
   if (radioRecoverPending) {
@@ -435,12 +441,12 @@ static void serviceRadio(void) {
       if (radioTxPendingSlot >= 0 && pendingCmdCache[radioTxPendingSlot].used &&
           pendingCmdCache[radioTxPendingSlot].generation == radioTxGeneration) {
         memset(&pendingCmdCache[radioTxPendingSlot], 0, sizeof(PendingCmd_t));
-        printf("[PENDING] tx done\r\n");
+        printf("[PND] tx\r\n");
       }
     } else if (now - radioTxStart < 3000u) return;
     else {
       radioTxTimeouts++;
-      printf("[LoRa] tx timeout\r\n");
+      printf("[LoRa] tmo\r\n");
     }
     radioTxActive = 0;
     radioTxPendingSlot = -1;
@@ -566,7 +572,7 @@ static void lora_rf_sleep(void) {
   loraSwOn = 0;
   HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // 关闭 LED1
   led1On = 0;
-  printf("[LoRa] rf off\r\n");
+  printf("[RF] off\r\n");
 }
 
 /* =====================================================================
@@ -586,12 +592,12 @@ static uint8_t lora_rf_wake(void) {
 
   while (rf_init() != RF_OK) {
     if (retry >= 2) {
-      printf("[LoRa] wake fail\r\n");
+      printf("[LoRa] wake\r\n");
       goto failed;
     }
     retry++;
     centen_radio_spi_clear();
-    printf("[LoRa] init fail %d\r\n", retry);
+    printf("[LoRa] init %d\r\n", retry);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
     HAL_Delay(100);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
@@ -607,7 +613,7 @@ static uint8_t lora_rf_wake(void) {
   if (!radioEnterRx()) goto failed; // 立即进入连续接收
   loraSwOn = 1;
   radioPowerDirty = radioRecoverPending = 0;
-  printf("[LoRa] rf on\r\n");
+  printf("[RF] on\r\n");
   return 1;
 failed:
   loraSwOn = 0;
@@ -847,6 +853,12 @@ static void prepare_name_record(CentenNameRecord *r) {
   r->commit = NAME_COMMIT;
 }
 
+static int power_record_valid_at(uint32_t addr) {
+  const uint32_t *p = (const uint32_t *)addr;
+  return p[0] == POWER_MAGIC && p[3] == POWER_COMMIT &&
+      p[2] == ~p[1] && p[1] >= 1u && p[1] <= 23u;
+}
+
 static uint8_t flash_program_hwords(uint32_t addr, const uint8_t *bytes,
                                     uint32_t len) {
   uint32_t off;
@@ -861,6 +873,7 @@ static uint8_t flash_program_hwords(uint32_t addr, const uint8_t *bytes,
 static uint8_t flash_save_all(void) {
   CentenConfigRecord record;
   CentenNameRecord nameRec;
+  uint32_t powerRec[4];
   FLASH_EraseInitTypeDef eraseInit;
   uint32_t pageError, address;
   const uint8_t *bytes = (const uint8_t *)&record;
@@ -871,15 +884,22 @@ static uint8_t flash_save_all(void) {
     const CentenConfigRecord *old = (const CentenConfigRecord *)configActiveAddr;
     if (centen_record_valid(old) && strcmp(old->config, configStr) == 0 &&
         strcmp(old->center, centerStr) == 0 &&
-        name_record_valid_at(configActiveAddr + NAME_RECORD_OFF)) {
+        name_record_valid_at(configActiveAddr + NAME_RECORD_OFF) &&
+        power_record_valid_at(configActiveAddr + POWER_REC_OFF)) {
       const CentenNameRecord *on =
           (const CentenNameRecord *)(configActiveAddr + NAME_RECORD_OFF);
-      if (strcmp(on->name, deviceName) == 0) return 1;
+      if (strcmp(on->name, deviceName) == 0 &&
+          (uint32_t)localTxPower ==
+              *(const uint32_t *)(configActiveAddr + POWER_REC_OFF + 4u))
+        return 1;
     }
   }
   address = configActiveAddr == CONFIG_PAGE_A ? CONFIG_PAGE_B : CONFIG_PAGE_A;
   centen_record_prepare(&record, configStr, centerStr, configSequence + 1u);
   prepare_name_record(&nameRec);
+  powerRec[0] = POWER_MAGIC;
+  powerRec[1] = localTxPower;
+  powerRec[2] = ~localTxPower;
   eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
   eraseInit.PageAddress = address;
   eraseInit.NbPages = 1;
@@ -892,20 +912,24 @@ static uint8_t flash_save_all(void) {
                                   offsetof(CentenNameRecord, commit))) ok = 0;
   if (ok && memcmp((const void *)(address + NAME_RECORD_OFF), &nameRec,
                    offsetof(CentenNameRecord, commit)) != 0) ok = 0;
+  if (ok && !flash_program_hwords(address + POWER_REC_OFF, (const uint8_t *)powerRec, 12u)) ok = 0;
+  if (ok && memcmp((const void *)(address + POWER_REC_OFF), powerRec, 12u) != 0) ok = 0;
   if (ok && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
       address + offsetof(CentenConfigRecord, commit), CENTEN_CONFIG_COMMIT) != HAL_OK) ok = 0;
   if (ok && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
       address + NAME_RECORD_OFF + offsetof(CentenNameRecord, commit), NAME_COMMIT) != HAL_OK) ok = 0;
+  if (ok && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
+      address + POWER_REC_OFF + 12u, POWER_COMMIT) != HAL_OK) ok = 0;
   HAL_FLASH_Lock();
   if (!ok || !centen_record_valid((const CentenConfigRecord *)address) ||
-      !name_record_valid_at(address + NAME_RECORD_OFF)) {
-    printf("[FLASH] save failed\r\n");
+      !name_record_valid_at(address + NAME_RECORD_OFF) ||
+      !power_record_valid_at(address + POWER_REC_OFF)) {
+    printf("[FLASH] fail\r\n");
     return 0;
   }
   configActiveAddr = address;
   configSequence = record.sequence;
-  printf("[FLASH] seq=%lu name=%s\r\n",
-         (unsigned long)configSequence, deviceName);
+  printf("[FLASH] seq=%lu\r\n", (unsigned long)configSequence);
   return 1;
 }
 
@@ -942,22 +966,26 @@ static void loadConfigFromFlash(void) {
          (unsigned long)configSequence);
 }
 
-/* Device name: prefer the record on the active config page, else scan
- * both pages (a page switch during the last save moves the record). */
+/* Device name + tx power: prefer records on the active config page, else
+ * scan both pages (a page switch during the last save moves them). */
 static void loadNameFromFlash(void) {
   uint32_t pages[2];
-  int i, bound = 0;
+  int i, bound = 0, pset = 0;
   pages[0] = configActiveAddr ? configActiveAddr : CONFIG_PAGE_A;
   pages[1] = CONFIG_PAGE_B;
-  for (i = 0; i < 2 && !bound; i++) {
-    if (name_record_valid_at(pages[i] + NAME_RECORD_OFF)) {
-      const CentenNameRecord *r =
-          (const CentenNameRecord *)(pages[i] + NAME_RECORD_OFF);
-      strcpy(deviceName, r->name);
+  for (i = 0; i < 2 && (!bound || !pset); i++) {
+    if (!bound && name_record_valid_at(pages[i] + NAME_RECORD_OFF)) {
+      strcpy(deviceName,
+             ((const CentenNameRecord *)(pages[i] + NAME_RECORD_OFF))->name);
       bound = 1;
     }
+    if (!pset && power_record_valid_at(pages[i] + POWER_REC_OFF)) {
+      localTxPower = (uint8_t)*(const uint32_t *)(pages[i] + POWER_REC_OFF + 4u);
+      pset = 1;
+    }
   }
-  printf("[FLASH] n=%s %s\r\n", deviceName, bound ? "bound" : "default");
+  printf("[FLASH] %s %s p=%u\r\n",
+         deviceName, bound ? "bound" : "default", localTxPower);
 }
 
 /**
@@ -1376,7 +1404,7 @@ static void parseDtuCommand(char *buf) {
         status = "save failed";
       }
     }
-    printf("[DTU] bindid '%s': %s\r\n", val, status);
+    printf("[DTU] bindid %s %s\r\n", val, status);
     {
       char ackStr[48];
       snprintf(ackStr, sizeof(ackStr), "8|%s|bindid", deviceName);
@@ -1384,14 +1412,14 @@ static void parseDtuCommand(char *buf) {
     }
     return;
   }
-  if (strcmp(devId, deviceName) != 0) {
+  if (strcmp(devId, deviceName) != 0 && strcmp(cmd, "txpower") != 0) {
     cachePendingCommand(devId, cmd, val, timeMin);
     return;
   }
 
   /* Step 4: 执行指令 */
   if (strcmp(cmd, "relayreboot") == 0) {
-    printf("[DTU CMD] relayreboot\r\n");
+    printf("[DTU] reboot\r\n");
     HAL_Delay(500);
     NVIC_SystemReset();
   } else if (strcmp(cmd, "mapcenter") == 0) {
@@ -1410,10 +1438,10 @@ static void parseDtuCommand(char *buf) {
       snprintf(centerStr, sizeof(centerStr), "%s,%s", latText, lngText);
       syncRelayCenter();          /* 同步数值缓存（相对偏移还原用） */
       if (!flash_save_all()) { strcpy(centerStr, previous); syncRelayCenter(); }
-      printf("[DTU CMD] center current %s\r\n", centerStr);
+      printf("[DTU] center %s\r\n", centerStr);
     } else {
       /* 非法：不写内存、不�?Flash，保持上一次的合法�?*/
-      printf("[DTU CMD] center invalid, keep\r\n");
+      printf("[DTU] center bad\r\n");
     }
     /* 无论本次是否合法，都上报当前内存中的坐标�?
      * 合法  -> 回新坐标；非�?-> 回上一个合法值（未设过则 "0,0"�?
@@ -1426,7 +1454,7 @@ static void parseDtuCommand(char *buf) {
     if (debugVal == 2) {
       dtuHardwareReset();
     } else {
-      printf("[DTU CMD] dbg=%d\r\n", debugVal);
+      printf("[DTU] dbg=%d\r\n", debugVal);
     }
   } else if (strcmp(cmd, "A") == 0) {
     if (centen_config_valid(val)) {
@@ -1435,16 +1463,15 @@ static void parseDtuCommand(char *buf) {
       strncpy(configStr, val, sizeof(configStr) - 1);
       configStr[sizeof(configStr) - 1] = '\0';
       if (!flash_save_all()) strcpy(configStr, previous);
-      printf("[DTU CMD] Config current: %s\r\n", configStr);
+      printf("[DTU] cfg %s\r\n", configStr);
       sendConfigToDtu();
-      printf("[DTU CMD] cfg reported\r\n");
     } else {
-      printf("[DTU CMD] empty value\r\n");
+      printf("[DTU] badval\r\n");
     }
   } else if (strcmp(cmd, "gpstm") == 0) {
     /* gpstm 中继指令：仅�?deviceId 匹配本机时激活，记录当前时间和有效时�?*/
     if (strcmp(devId, (char *)deviceName) != 0) {
-      printf("[DTU CMD] gpstm skip(%s)\r\n", devId);
+      printf("[DTU] gskip\r\n");
       return;
     }
     if (!centen_parse_uint(val, 0, 120, &gpstmTimeoutMin)) return;
@@ -1452,7 +1479,7 @@ static void parseDtuCommand(char *buf) {
     gpstmRecvTick = HAL_GetTick();
     if (gpstmTimeoutMin == 0)
       gpstmTimeoutMin = 30; // 默认 30 分钟
-    printf("[DTU CMD] gpstm %lu min\r\n", (unsigned long)gpstmTimeoutMin);
+    printf("[DTU] gpstm %lu\r\n", (unsigned long)gpstmTimeoutMin);
   } else if (strcmp(cmd, "lorasw") == 0) {
     /* lorasw 中继 LoRa 射频开�?
      *   value=1 �?开启射频，恢复收发
@@ -1461,7 +1488,7 @@ static void parseDtuCommand(char *buf) {
      * 重启后同样回到可收发（掉�?复位相当于自动恢复）
      * 云端可经 4G 下发 lorasw|1 远程唤醒 */
     if (strcmp(devId, (char *)deviceName) != 0) {
-      printf("[DTU CMD] lorasw skip(%s)\r\n", devId);
+      printf("[DTU] lskip\r\n");
       return;
     }
 
@@ -1472,9 +1499,9 @@ static void parseDtuCommand(char *buf) {
        * @warning 工作时间优先：不在工作区间内时一律拒绝开启，
        *          lorasw 只能在区间内生效，不能越权把区间外的射频打开 */
       if (!isInWorkWindow()) {
-        printf("[DTU CMD] lorasw reject\r\n");
+        printf("[DTU] lorasw no\r\n");
       } else if (loraSwOn) {
-        printf("[DTU CMD] lorasw on\r\n");
+        printf("[DTU] rf on\r\n");
       } else {
         lora_rf_wake();
       }
@@ -1483,7 +1510,7 @@ static void parseDtuCommand(char *buf) {
       radioRecoverPending = 0;
       centen_radio_spi_clear();
       if (!loraSwOn) {
-        printf("[DTU CMD] lorasw off\r\n");
+        printf("[DTU] rf off\r\n");
       } else {
         lora_rf_sleep();
       }
@@ -1494,14 +1521,14 @@ static void parseDtuCommand(char *buf) {
      * 不重�?CSQ/nettime（旧逻辑遗留）；功率不落盘，重启恢复默认 */
     uint32_t p;
     if (!centen_parse_uint(val, 1, DEFAULT_FREQ < 565000000u ? 23u : 22u, &p)) return;
-    if (!loraSwOn || radioTxActive) {
-      localTxPower = (uint8_t)p;
-      radioPowerDirty = 1;
-    } else if (rf_set_tx_power((uint8_t)p) == RF_OK && !centen_radio_spi_failed()) {
-      localTxPower = (uint8_t)p;
-      radioPowerDirty = 0;
-    }
-    printf("[DTU CMD] txpower=%d\r\n", p);
+    localTxPower = (uint8_t)p;
+    radioPowerDirty = 1;
+    if (loraSwOn && !radioTxActive &&
+        rf_set_tx_power((uint8_t)p) == RF_OK && !centen_radio_spi_failed())
+      radioPowerDirty = 0; /* applied now; dirty retries on SPI hiccup */
+    printf("[DTU] txp %d\r\n", p);
+    if (!flash_save_all())
+      printf("[DTU] save fail\r\n");
     return;
   } else if (strcmp(cmd, "realyname") == 0) {
     /* realyname 更换设备名字 */
@@ -1511,10 +1538,10 @@ static void parseDtuCommand(char *buf) {
       *eq = '\0';
       char *targetDevId = val;
       char *newName = eq + 1;
-      printf("[DTU CMD] realyname %s=%s\r\n", targetDevId, newName);
+      printf("[DTU] rn %s=%s\r\n", targetDevId, newName);
       cachePendingCommand(targetDevId, cmd, newName, timeMin);
     } else {
-      printf("[DTU CMD] realyname fmt err\r\n");
+      printf("[DTU] realyname bad\r\n");
     }
 
 
@@ -1543,7 +1570,7 @@ static void parseDtuCommand(char *buf) {
              deviceName, dtuImsiStr);
     sendToDtu(infoStr, dtuCsqRssi, 0);
   } else {
-    printf("[DTU CMD] ? %s\r\n", cmd);
+    printf("[DTU] ? %s\r\n", cmd);
   }
 }
 
@@ -1784,7 +1811,7 @@ int main(void) {
     loraSwOn = 0;
     radioRecoverPending = 1;
     radioRecoverTick = HAL_GetTick();
-    printf("[LoRa] unavailable\r\n");
+    printf("[LoRa] n/a\r\n");
   }
   dtuCsqTick = HAL_GetTick();
   dtuRecoveryStart = dtuPingGraceStart = dtuCsqTick;
