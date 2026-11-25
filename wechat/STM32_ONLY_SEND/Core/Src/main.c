@@ -148,7 +148,7 @@ static uint32_t anchorTimestamp = 0;  /* 首次对时�?Unix 时间戳基�?*/
 static int32_t  rtcDriftPerHour = 0;  /* 当前采用的晶振偏差（�?小时�?*/
 static uint8_t  driftConverged = 0;   /* 1=偏差已收�? 补偿生效 */
 static int32_t  lastDriftSample = 0;  /* 上一次对时测得的偏差（收敛判定用�?*/
-static uint8_t  configNeedReport = 1;  /* 配置需要上报（开�?1，收到指令更�?1，上报后=0�?*/
+static uint8_t  configNeedReport = 0;  /* config report only after a cloud config update (C cmd sets it) */
 static uint8_t  centerNeedReport = 0;  /* 中心坐标需要上报（收到 C 指令=1，上报后=0�?*/
 static uint8_t  readInfoNeedReport = 0;/* 设备信息需要上报（收到 readinfo 指令=1，上报后=0�?*/
 /* readinfo 指令�?value 参数（每次只上报一�?8 帧，帧长 �?2 字节）：

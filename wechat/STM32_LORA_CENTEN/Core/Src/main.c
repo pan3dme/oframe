@@ -389,6 +389,7 @@ static int startLoraTx(const uint8_t *data, int len, int pendingSlot) {
   radioTxStart = HAL_GetTick();
   radioTxPendingSlot = pendingSlot;
   if (pendingSlot >= 0) radioTxGeneration = pendingCmdCache[pendingSlot].generation;
+  printf("[TX] %s\r\n", (const char *)data);
   return 1;
 }
 
@@ -1285,8 +1286,7 @@ static void cleanupExpiredPendingCmds(void) {
   for (int i = 0; i < PENDING_CMD_MAX_SLOTS; i++) {
     if (pendingCmdCache[i].used && pendingCmdCache[i].hasExpiry &&
         (int32_t)(now - pendingCmdCache[i].expireTick) >= 0) {
-      printf("[PENDING CMD] expired: %s %s\r\n", pendingCmdCache[i].deviceId,
-             pendingCmdCache[i].cmd);
+      printf("[PND] exp %s\r\n", pendingCmdCache[i].cmd);
       pendingCmdCache[i].used = 0;
       memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
     }
@@ -1305,8 +1305,7 @@ static uint8_t checkPendingCommand(const char *deviceId) {
       /* 时效已过：清除且不下�?*/
       if (pendingCmdCache[i].hasExpiry &&
           (int32_t)(HAL_GetTick() - pendingCmdCache[i].expireTick) >= 0) {
-        printf("[PENDING CMD] expired: %s %s\r\n", deviceId,
-               pendingCmdCache[i].cmd);
+        printf("[PND] exp %s\r\n", pendingCmdCache[i].cmd);
         pendingCmdCache[i].used = 0;
         memset(&pendingCmdCache[i], 0, sizeof(PendingCmd_t));
         continue;
@@ -1331,7 +1330,7 @@ static uint8_t sendPendingCommand(const char *deviceId) {
     if (!pendingCmdCache[i].used || strcmp(pendingCmdCache[i].deviceId, deviceId) != 0) continue;
     len = centen_command_frame(txData, sizeof(txData), deviceId,
                                pendingCmdCache[i].cmd, pendingCmdCache[i].val);
-    if (len < 0) { printf("[PENDING CMD] invalid frame retained\r\n"); return 0; }
+    if (len < 0) { printf("[PND] bad frame\r\n"); return 0; }
     return (uint8_t)startLoraTx((uint8_t *)txData, len, i);
   }
   return 0;
