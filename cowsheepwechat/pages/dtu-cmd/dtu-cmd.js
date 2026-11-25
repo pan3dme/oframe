@@ -280,6 +280,15 @@ Page({
     this.addLog('info', '已生成农场中心指令: ' + value)
   },
 
+  // 设备数量：value 为农场配置的设备台数（如 "15"，用于对时分段），
+  // 默认填 15，用户在文本框里改成实际台数后再点发送
+  onQuickDeviceCount() {
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'devicecount', value: '15', time: Number(this.data.cmdTime) || 0 }),
+      quickSelected: 24
+    })
+  },
+
   onQuickConfig() {
     const device = this.data.deviceList[this.data.deviceIndex]
     if (!device) {
