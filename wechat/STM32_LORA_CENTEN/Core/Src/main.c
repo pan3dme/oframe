@@ -60,7 +60,7 @@ typedef struct {
 #define CENTEN_LORA_TX_MAX 36 /* max bytes sent in one LoRa frame (truncated) */
 /* LoRa 接收后延时下发时间（ms）：指令�?upgps �?1000，对时帧�?1500 */
 #define LORA_CMD_DELAY_MS      800  // 有缓存指令或 gpstm 有效时，收到上行后延时下发指�?
-#define LORA_SYNCTIME_DELAY_MS 1200 // 无指令时，收到上行后延时回对时帧
+#define LORA_SYNCTIME_DELAY_MS 2200 // after uplink: wait past cmd frame air time (~1.0s @SF11) before timesync reply
 
 /* Work mode - 工作模式定义 */
 #define MODE_IDLE 0 // 空闲模式

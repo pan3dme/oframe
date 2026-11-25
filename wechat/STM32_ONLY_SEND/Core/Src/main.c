@@ -385,7 +385,7 @@ static uint8_t isInGpsWorkWindowAt(uint32_t ts);  /* 指定时刻是否�?GPS �
 static uint8_t gpsBatteryOk(void);
 static uint8_t gpsNeededTimelyAt(uint32_t ts);    /* 该时刻是�?必须准点"�?GPS �?类型1) */
 static void    gpsPreSearch(void);                /* 提前搜星（到点前必须完成�?*/
-static void    openRxWindow3000(void);    /* 开 3 秒接收窗口并解析（可重复调用�?*/
+static void    openRxWindow4000(void);    /* open 4s RX window and parse (repeatable) */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 �?Full on */
 static void gpsPowerOff(void);              /* GPS 休眠：PB1(WAKE_UP) 置低 �?Standby */
@@ -2631,13 +2631,13 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   *         保证节点报完定位后仍处于可被下发指令的状态；
   *         �?MSG_TYPE_UP_GPS(5) 的首次跟踪上报后不再开窗口
   */
-static void openRxWindow3000(void)
+static void openRxWindow4000(void)
 {
   Safety_Begin(STAGE_RX, 6000u);
   rf_set_recv_flag(RADIO_FLAG_IDLE);
-  if (rf_enter_single_timeout_rx(3000u) != RF_OK) Safety_Reset(RESET_RX);
+  if (rf_enter_single_timeout_rx(4000u) != RF_OK) Safety_Reset(RESET_RX);
   if (!windowPrintOff)
-    printf("[RX] 3s listen\r\n");
+    printf("[RX] 4s listen\r\n");
 
   /* 等待接收完成或超时（芯片�?3 �?RX 超时本应产生 RX_TIMEOUT 中断置标志；
    * 若模块半�?中断丢失标志停在 IDLE�? 秒兜底超时复位自愈，防整机卡死） */
@@ -2794,7 +2794,7 @@ static void OnMaster(void)
    * 只在本轮发了定时帧时在这里开；跳过定时帧的轮次改为在末尾 MSG_TYPE_GPS
    * 上报之后再开（见下面 GPS 块），避�?没发帧还白等 3 �? */
   if (!skipTimeFrame)
-    openRxWindow3000();
+    openRxWindow4000();
 
   /* 窗口里收到的 A/C 等设置指令，本轮就回�?*/
   reportPendingMessages();
@@ -2889,7 +2889,7 @@ static void OnMaster(void)
       /* MSG_TYPE_GPS(1) 上报后开接收窗口（对�?+ 收下发指令）�?
        * MSG_TYPE_UP_GPS(5) 的首次跟踪上报不开窗口，保持老逻辑 */
       if (useType1) {
-        openRxWindow3000();
+        openRxWindow4000();
 
         /* 这个窗口里收到的指令照常处理：upgps �?�?gpsWaitReport 下一轮执行；
          * A/C 等设�?�?本轮立即回包，不等下一�?*/
