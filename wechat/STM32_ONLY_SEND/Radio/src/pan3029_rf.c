@@ -518,7 +518,7 @@ RF_Err_t rf_ft_calibr(void)
  */
 RF_Err_t rf_reg_cfg(void)
 {
-    for(int i = 0; i < sizeof(g_reg_cfg)/sizeof(pan_reg_cfg_t); i++)
+    for(unsigned int i = 0; i < sizeof(g_reg_cfg)/sizeof(pan_reg_cfg_t); i++)
     {
         RF_ASSERT(rf_write_spec_page_reg(g_reg_cfg[i].page, g_reg_cfg[i].addr, g_reg_cfg[i].value));
     }

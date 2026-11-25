@@ -48,18 +48,9 @@ typedef struct {
 
 extern rf_port_t rf_port;
 
-/* Port function implementations */
-uint8_t spi_readwritebyte(uint8_t tx_data);
-void    spi_cs_set_high(void);
-void    spi_cs_set_low(void);
-void    rf_delay_ms(uint32_t time);
+/* shared with pan3029_rf.c (the rest of the port funcs are static in
+ * pan3029_port.c - no non-static declarations for static definitions) */
 void    rf_delay_us(uint32_t time);
-void    rf_antenna_init(void);
-void    rf_tcxo_init(void);
-void    rf_tcxo_close(void);
-void    rf_antenna_rx(void);
-void    rf_antenna_tx(void);
-void    rf_antenna_close(void);
 
 /* PAN3029 internal GPIO control (defined in pan3029_rf.c) */
 

@@ -60,9 +60,15 @@ void Safety_Init(void)
   } else if (!(flags & RCC_CSR_PORRSTF)) {
     bootCause = "PIN";
   }
-  if ((flags & (RCC_CSR_IWDGRSTF | RCC_CSR_SFTRSTF)) &&
-      reason != RESET_REMOTE && streak < 15u)
-    ++streak;
+  /* Count real faults only: an IWDG bite (no chance to record a reason),
+   * or a Safety_Reset with a recorded reason.  A bare software reset with
+   * reason == RESET_NONE is a debugger/download artifact (SysWResreq) and
+   * must not accumulate the fault streak. */
+  if ((flags & (RCC_CSR_IWDGRSTF | RCC_CSR_SFTRSTF)) && streak < 15u) {
+    if ((flags & RCC_CSR_IWDGRSTF) ||
+        (reason != RESET_NONE && reason != RESET_REMOTE))
+      ++streak;
+  }
   if (reason == RESET_RTC)
     forceLsi = 1u;
   RCC->CSR |= RCC_CSR_RMVF;
