@@ -32,6 +32,7 @@
       <button class="quick-btn {{quickSelected === 18 ? 'quick-active' : ''}}" bindtap="onQuickRelayReboot">🔄 重启中继</button>
       <button class="quick-btn {{quickSelected === 19 ? 'quick-active' : ''}}" bindtap="onQuickConfig">⚙️ 配置下发</button>
       <button class="quick-btn {{quickSelected === 24 ? 'quick-active' : ''}}" bindtap="onQuickBindImu">📟 绑定IMU卡</button>
+      <button class="quick-btn {{quickSelected === 25 ? 'quick-active' : ''}}" bindtap="onQuickRelayName">📝 修改设备名</button>
       <button class="quick-btn {{quickSelected === 4 ? 'quick-active' : ''}}" bindtap="onQuickDebug">🐛 开关Debug</button>
     </view>
   </view>

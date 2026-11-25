@@ -170,6 +170,14 @@ Page({
       quickSelected: 24
     })
   },
+  // 修改设备名：value 格式为 "目标设备名=新设备名"（如 v3-0=v3-5），
+  // 点击后填入可编辑模板，用户把两端改成实际名字后再点发送
+  onQuickRelayName() {
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'realyname', value: 'v0-0=v0-0', time: Number(this.data.cmdTime) || 0 }),
+      quickSelected: 25
+    })
+  },
   onQuickConfig() {
     const device = this.data.deviceList[this.data.deviceIndex]
     if (!device) {
