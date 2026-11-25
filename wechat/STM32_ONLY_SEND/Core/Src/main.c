@@ -44,11 +44,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.5"
+#define DEMO_VER     "V2.6"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       128   /* build buffer: frames may be composed freely */
-#define LORA_TX_MAX  36    /* policy cap: max 36 text bytes on air; relay RX window (96) still accepts it */
+#define LORA_TX_MAX  36    /* policy cap: max 36 bytes on air INCLUDING the trailing NUL */
 #define RX_LEN       64
 
 /* 消息类型定义（与 PAN3029_F030 对齐�?*/
@@ -97,7 +97,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         16u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         17u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -651,11 +651,11 @@ static void txCountNext(void)
 static void loraTx(const char *msg)
 {
   /* build side ignores frame length; strip the tail here before air time
-   * (LORA_TX_MAX keeps the payload inside the relay's RX_LEN window) */
+   * (text capped at LORA_TX_MAX-1 so text+NUL stays at 36 bytes on air) */
   uint32_t len = strlen(msg);
   uint32_t tx_time = 1000u, start = HAL_GetTick();
-  if (len > LORA_TX_MAX)
-    len = LORA_TX_MAX;
+  if (len > LORA_TX_MAX - 1u)
+    len = LORA_TX_MAX - 1u;
   Safety_Begin(STAGE_TX, 6000u);
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
   if (rf_single_tx_data((uint8_t *)msg, len + 1u, &tx_time) != RF_OK)
@@ -695,7 +695,7 @@ static void loraTx(const char *msg)
  *           0(default):    8|name|INFO|countT|freqHZ|powerdbm|version|txcnt| (26~38 bytes)
  *           1:            8|设备|偏差s/h|计数|             (19 字节, 偏差范围±300)
  *           2:            8|设备|Rssi,Snr|计数|            (20 字节; 开机未收过包报 noRX)
- * @note   概况帧已恢复 HZ 频率段——TX_LEN=64，最长约33字节，安�?
+ * @note   INFO frame kept compact - TX_LEN=64, max ~33 bytes, safe
  */
 static void sendReadInfoMessage(void)
 {
@@ -2633,20 +2633,36 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   */
 static void openRxWindow4000(void)
 {
-  Safety_Begin(STAGE_RX, 6000u);
-  rf_set_recv_flag(RADIO_FLAG_IDLE);
-  if (rf_enter_single_timeout_rx(4000u) != RF_OK) Safety_Reset(RESET_RX);
-  if (!windowPrintOff)
-    printf("[RX] 4s listen\r\n");
-
-  /* 等待接收完成或超时（芯片�?3 �?RX 超时本应产生 RX_TIMEOUT 中断置标志；
-   * 若模块半�?中断丢失标志停在 IDLE�? 秒兜底超时复位自愈，防整机卡死） */
+  /* single-mode window: at most ONE frame, but a CRC-failed frame must not
+   * kill the window - re-arm with the remaining budget so a later clean
+   * frame (relay timesync after a weak command) still gets through */
   uint32_t rxStart = HAL_GetTick();
-  while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
-    wdg_feed();   /* RX window wait: feed inside the loop */
-    if (HAL_GetTick() - rxStart > 5000u) {
-      Safety_Reset(RESET_RX);
+  Safety_Begin(STAGE_RX, 6000u);
+  for (;;) {
+    uint32_t spent = HAL_GetTick() - rxStart;
+    if (spent >= 4000u) break;
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    if (rf_enter_single_timeout_rx(4000u - spent) != RF_OK) Safety_Reset(RESET_RX);
+    if (!windowPrintOff)
+      printf("[RX] 4s listen\r\n");
+
+    /* wait done/timeout/err; SW guard: reset self-heal if chip IRQ lost */
+    while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
+      wdg_feed();
+      if (HAL_GetTick() - rxStart > 5000u) {
+        Safety_Reset(RESET_RX);
+      }
     }
+    if (rf_get_recv_flag() == RADIO_FLAG_RXDONE)
+      break;                     /* got one - parse below */
+    if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
+      rf_set_recv_flag(RADIO_FLAG_IDLE);
+      if (!windowPrintOff)
+        printf("[RX] CRC err\r\n");
+      continue;                  /* re-arm for the rest of the window */
+    }
+    rf_set_recv_flag(RADIO_FLAG_IDLE); /* RXTIMEOUT: budget exhausted */
+    break;
   }
 
   if (rf_get_recv_flag() == RADIO_FLAG_RXDONE) {
@@ -2660,7 +2676,6 @@ static void openRxWindow4000(void)
     local_rssi = RxDoneParams.Rssi;
     local_snr = RxDoneParams.Snr;
     local_size = RxDoneParams.Size;
-    /* 记录最近收包质量：readinfo value=2 上报�?*/
     lastRxRssi = local_rssi;
     lastRxSnr  = local_snr;
     lastRxSeen = 1;
@@ -2678,14 +2693,7 @@ static void openRxWindow4000(void)
       printf("[RX] len=%d rssi=%d snr=%d data=%s\r\n",
              local_size, local_rssi - 256, local_snr, (char *)local_buf);
 
-    /* 解析消息 */
     parse_rx_message(local_buf, local_size);
-  } else if (rf_get_recv_flag() == RADIO_FLAG_RXTIMEOUT) {
-    rf_set_recv_flag(RADIO_FLAG_IDLE);   /* 空窗是常�? 不打�?�?Flash) */
-  } else if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
-    rf_set_recv_flag(RADIO_FLAG_IDLE);
-    if (!windowPrintOff)
-      printf("[RX] CRC err\r\n");
   }
   Safety_Begin(STAGE_MAIN, 15000u);
 }

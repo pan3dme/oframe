@@ -53,14 +53,14 @@ typedef struct {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define EXAMPLE_NAME "CENTEN LoRa gateway" // 工程名称
-#define DEMO_VER "V1.1.2"                // 演示版本�?
+#define DEMO_VER "V1.1.3"                // 演示版本�?
 #define EXAMPLE_DATE "2026/11/24"      // 工程日期
 
 #define RX_LEN 96             // LoRa 接收缓冲区最大长度（字节�?
 #define CENTEN_LORA_TX_MAX 36 /* max bytes sent in one LoRa frame (truncated) */
 /* LoRa 接收后延时下发时间（ms）：指令�?upgps �?1000，对时帧�?1500 */
-#define LORA_CMD_DELAY_MS      800  // 有缓存指令或 gpstm 有效时，收到上行后延时下发指�?
-#define LORA_SYNCTIME_DELAY_MS 2200 // after uplink: wait past cmd frame air time (~1.0s @SF11) before timesync reply
+#define LORA_CMD_DELAY_MS      800 // 有缓存指令或 gpstm 有效时，收到上行后延时下发指�?
+#define LORA_SYNCTIME_DELAY_MS 2300 // after uplink: wait past cmd frame air time (~1.0s @SF11) before timesync reply
 
 /* Work mode - 工作模式定义 */
 #define MODE_IDLE 0 // 空闲模式
