@@ -1151,72 +1151,117 @@ Page({
       wx.showToast({ title: '未选中设备', icon: 'none' })
       return
     }
-    console.log('[getvisoininfo] 请求 deviceId=' + deviceId)
+    console.log('[getallinfo] 请求 deviceId=' + deviceId)
     wx.showLoading({ title: '获取中' })
     wx.request({
       url: API_URL,
       method: 'POST',
       data: {
-        action: 'getvisoininfo',
-        // prefix：服务端对 lorastr 做 WildcardQuery 的通配串，只取 INFO 帧
-        // （readinfo 参数帧），排除 ICCID/IMSI 等其它 type=8 帧
-        info: { deviceId: deviceId, prefix: '*|INFO|*', wechatid: getApp().getWechatId() }
+        // getallinfo：返回该设备最新的全部 type=8 帧（INFO参数/ICCID/IMSI等，最多6条）
+        action: 'getallinfo',
+        info: { deviceId: deviceId, wechatid: getApp().getWechatId() }
       },
       timeout: 10000,
       success: (res) => {
-        console.log('[getvisoininfo] statusCode=' + res.statusCode + ' 返回:', res.data)
-        console.log('[getvisoininfo] 返回JSON:', JSON.stringify(res.data))
-        const rows = (res.data && Array.isArray(res.data.data)) ? res.data.data : []
+        console.log('[getallinfo] statusCode=' + res.statusCode + ' 返回:', res.data)
+        console.log('[getallinfo] 返回JSON:', JSON.stringify(res.data))
         if (res.data && res.data.errorMessage) {
           wx.showToast({ title: '服务器异常', icon: 'none' })
           return
         }
-        if (!rows.length) {
+        // data 为按帧类型分组的对象：{ DRIFT, RSSI, COORD, INFO, UID, SRCH }
+        // 各帧含义（STM32_TEST_SEND readinfo 上报，段2=帧标识，段3=内容）：
+        //   DRIFT  RTC漂移   8|dev|DRIFT|0s/h|3|
+        //   RSSI   收包质量  8|dev|RSSI|-60dBm,3|4|（开机未收过包为 noRX）
+        //   COORD  农场中心  8|dev|COORD|lat,lng|5|（未设置为 0,0）
+        //   INFO   概况     8|dev|INFO|15T|433HZ|20dbm|V2.6|6|
+        //   UID    芯片UID  8|dev|UID|67183727|7|（96位UID尾字，8位hex）
+        //   SRCH   搜星时间  8|dev|SRCH|240s|9|
+        // 兼容旧数组结构：取首条当 INFO 处理
+        const raw = res.data && res.data.data
+        let groups = null
+        if (raw && !Array.isArray(raw) && typeof raw === 'object') groups = raw
+        else if (Array.isArray(raw) && raw.length) groups = { INFO: raw[0] }
+        if (!groups || !Object.keys(groups).length) {
           wx.showToast({ title: '暂无设备信息', icon: 'none' })
           this.setData({ visionInfo: null })
           return
         }
-        // 汇总 primaryKey + attributes 为普通对象
-        const row = rows[0]
-        const attr = {}
-        const pk = Array.isArray(row.primaryKey) ? row.primaryKey : []
-        pk.forEach(k => { attr[k.name] = k.value })
-        const attrs = Array.isArray(row.attributes) ? row.attributes : []
-        attrs.forEach(k => { attr[k.columnName] = k.columnValue })
-
-        // 解析 lorastr（逐段模式匹配，兼容新旧格式，段数可变）：
-        //   旧 8|v3-1|15T|16dbm|V2.1|335|
-        //   新 8|v3-10|INFO|15T|433HZ|16dbm|V2.5|15|  （段2=帧标识INFO，多一个频率段）
-        //   15T=农场设备数  16dbm=发射功率  V2.5=固件版本  末尾纯数字=上报数
-        const segs = String(attr.lorastr || '').split(/[｜|]/)
+        // 每帧汇总 primaryKey + attributes 为普通对象；行缺失/非对象/字段畸形一律返回 {}
+        const pick = (key) => {
+          const row = groups ? groups[key] : null
+          if (!row || typeof row !== 'object') return {}
+          const a = {}
+          try {
+            const pk = Array.isArray(row.primaryKey) ? row.primaryKey : []
+            pk.forEach(k => { if (k && k.name !== undefined) a[k.name] = k.value })
+            const attrs = Array.isArray(row.attributes) ? row.attributes : []
+            attrs.forEach(k => { if (k && k.columnName !== undefined) a[k.columnName] = k.columnValue })
+          } catch (err) { /* 单帧畸形不影响其它帧 */ }
+          return a
+        }
+        const infoF = pick('INFO')
+        const driftF = pick('DRIFT')
+        const rssiF = pick('RSSI')
+        const coordF = pick('COORD')
+        const uidF = pick('UID')
+        const srchF = pick('SRCH')
+        // 各帧内容段（8|设备|标识|内容|上报数| → 索引3）
+        const segOf = (a) => (String((a && a.lorastr) || '').split(/[｜|]/)[3] || '').trim()
+        // INFO 帧逐段解析（模式匹配，段数可变）
+        const segs = String(infoF.lorastr || '').split(/[｜|]/)
         let txPower = ''
         let version = ''
         let farmCount = ''
+        let freq = ''
         for (let i = 2; i < segs.length; i++) {
           const seg = String(segs[i] || '').trim()
           if (!seg) continue
           const m = seg.match(/^(\d+(?:\.\d+)?)\s*dbm$/i)
-          if (m && !txPower) { txPower = m[1] + 'dbm'; continue }
+          if (m && !txPower) { txPower = seg; continue }
           if (/^v\d+(\.\d+)*$/i.test(seg) && !version) { version = seg; continue }
           const fc = seg.match(/^(\d+)t$/i)
-          if (fc && !farmCount) { farmCount = fc[1] + '台' }
+          if (fc && !farmCount) { farmCount = fc[1] + '台'; continue }
+          if (/^\d+HZ$/i.test(seg) && !freq) { freq = seg }
         }
-        this.setData({
-          visionInfo: {
-            deviceId: attr.deviceId || deviceId,
-            version: version,
-            txPower: txPower,
-            farmCount: farmCount,
-            time: attr.time || '',
-            lorastr: attr.lorastr || ''
-          }
+        // 记录时间取各帧里最新的
+        const tsOf = (a) => {
+          const t = new Date(String((a && a.time) || '').replace(/-/g, '/')).getTime()
+          return isNaN(t) ? 0 : t
+        }
+        let latest = infoF
+        ;[driftF, rssiF, coordF, uidF, srchF].forEach(a => {
+          if (a && a.lorastr && tsOf(a) > tsOf(latest)) latest = a
         })
-        // 这条记录同样是 type=8 报文：写进版本号缓存，让标题别名后立即显示并持久化
-        dataCache.cacheType8FromRecords(res.data)
+        // setData 套兜底：任何未预料的解析异常都不崩页面，面板提示数据异常
+        try {
+          this.setData({
+            visionInfo: {
+              deviceId: infoF.deviceId || deviceId,
+              version: version,
+              txPower: txPower,
+              freq: freq,
+              farmCount: farmCount,
+              drift: segOf(driftF),
+              lastRx: segOf(rssiF),
+              coord: segOf(coordF),
+              uid: segOf(uidF),
+              searchTime: segOf(srchF),
+              time: (latest && latest.time) || '',
+              lorastr: infoF.lorastr || ''
+            }
+          })
+        } catch (err) {
+          console.error('[getallinfo] 面板渲染异常:', err)
+          wx.showToast({ title: '数据格式异常', icon: 'none' })
+          this.setData({ visionInfo: null })
+        }
+        // 各帧同为 type=8 报文：写进版本号缓存（分组对象 → 行数组）
+        dataCache.cacheType8FromRecords(Object.keys(groups).map(k => groups[k]))
         this._refreshType8Info(deviceId)
       },
       fail: (err) => {
-        console.error('[getvisoininfo] 请求失败:', JSON.stringify(err))
+        console.error('[getallinfo] 请求失败:', JSON.stringify(err))
         wx.showToast({ title: '请求失败', icon: 'none' })
       },
       complete: () => {

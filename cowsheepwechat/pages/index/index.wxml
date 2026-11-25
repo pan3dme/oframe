@@ -80,7 +80,13 @@
           <view class="vision-item"><text class="vision-label">设备ID</text><text class="vision-value">{{visionInfo.deviceId || '-'}}</text></view>
           <view class="vision-item"><text class="vision-label">固件版本</text><text class="vision-value">{{visionInfo.version || '-'}}</text></view>
           <view class="vision-item"><text class="vision-label">发射功率</text><text class="vision-value">{{visionInfo.txPower || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">频率</text><text class="vision-value">{{visionInfo.freq || '-'}}</text></view>
           <view class="vision-item"><text class="vision-label">农场设备数</text><text class="vision-value">{{visionInfo.farmCount || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">RTC漂移</text><text class="vision-value">{{visionInfo.drift || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">收包质量</text><text class="vision-value">{{visionInfo.lastRx || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">农场中心</text><text class="vision-value">{{visionInfo.coord || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">芯片UID</text><text class="vision-value">{{visionInfo.uid || '-'}}</text></view>
+          <view class="vision-item"><text class="vision-label">搜星时间</text><text class="vision-value">{{visionInfo.searchTime || '-'}}</text></view>
         </view>
         <view class="vision-row"><text class="vision-label">记录时间</text><text class="vision-value">{{visionInfo.time || '-'}}</text></view>
         <view class="vision-raw">原始报文：{{visionInfo.lorastr}}</view>
