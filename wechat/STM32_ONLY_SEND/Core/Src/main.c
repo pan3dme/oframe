@@ -155,8 +155,10 @@ static uint8_t  readInfoNeedReport = 0;/* 设备信息需要上报（收到 read
  *   0=设备概况(默认,无value/乱码)  1=晶振偏差  2=最近收�?RSSI/SNR */
 static uint8_t  readInfoValue = 0;
 /* readinfo value: 1=drift 2=last rssi/snr 3=farm center 4=device overview
- * 5=chip UID (tail word, 8 hex) 6=device settings (existing config frame);
- * 0 (default/missing/garbled) = report all (1..6) back to back */
+ * 5=chip UID (tail word, 8 hex) 6=device settings (existing config frame)
+ * 7=configured max GPS search time (SRCH, searchtime cmd);
+ * 0 (default/missing/garbled) or >7 (out of range) = report all (1..7) back
+ * to back, in order */
 static uint8_t  lastRxRssi = 0;        /* 最近一次接收窗口收到的 RSSI 原�?上报�?-256) */
 static uint8_t  lastRxSnr  = 0;        /* 最近一次接收窗口收到的 SNR */
 static uint8_t  lastRxSeen = 0;        /* 1=开机至今收到过�?未收到过上报 noRX) */
@@ -701,20 +703,24 @@ static void sendReadInfoMessage(void)
 {
   char tx_msg[TX_LEN];
 
-  /* value 0 (default/missing/garbled): report all 6 kinds back to back,
+  /* out-of-range value (8+): clamp to 0 = report all 7 kinds, in order */
+  if (readInfoValue > 7u)
+    readInfoValue = 0;
+
+  /* value 0 (default/missing/garbled): report all 7 kinds back to back,
    * 2s apart so CENTEN can relay each frame to DTU; then normal sleep flow */
   if (readInfoValue == 0) {
     uint8_t v;
 
-    /* 6 frames x (tx+2s gap) ~ 15s: re-arm the MAIN stage deadline,
+    /* 7 frames x (tx+2s gap) ~ 17s: re-arm the MAIN stage deadline,
      * it would otherwise fire at 15s mid-burst (Safety_Feed cannot
      * extend it - only Safety_Begin re-arms phaseTick/phaseLimit) */
     Safety_Begin(STAGE_MAIN, 30000u);
-    for (v = 1; v <= 6; v++) {
+    for (v = 1; v <= 7; v++) {
       readInfoValue = v;
-      wdg_feed();   /* 6 frames x (tx~1s + 2s gap) = ~15s total, must feed */
+      wdg_feed();   /* 7 frames x (tx~1s + 2s gap) = ~17s total, must feed */
       sendReadInfoMessage();
-      if (v < 6)
+      if (v < 7)
         HAL_Delay(2000);
     }
     readInfoValue = 0;
@@ -783,6 +789,16 @@ static void sendReadInfoMessage(void)
 #else
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|UID|%08lX|",
              MSG_TYPE_READINFO, deviceName, (unsigned long)uidW);
+#endif
+  } else if (readInfoValue == 7) {
+    /* configured max GPS search time (searchtime cmd, 1~10 min) */
+#if TX_COUNT_ENABLE
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|SRCH|%lus|%lu|",
+             MSG_TYPE_READINFO, deviceName,
+             (unsigned long)(gpsSearchMaxMs / 1000u), (unsigned long)tx_count);
+#else
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|SRCH|%lus|",
+             MSG_TYPE_READINFO, deviceName, (unsigned long)(gpsSearchMaxMs / 1000u));
 #endif
   } else {
 #if TX_COUNT_ENABLE
