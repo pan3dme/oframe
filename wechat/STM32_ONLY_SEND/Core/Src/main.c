@@ -547,7 +547,7 @@ static void checkVersionReportFlag(void)
 
   readInfoNeedReport = 1;
   readInfoValue = 0;   /* 0 = report all 6 readinfo kinds once */
-  printf("[VER] fw %lu new (flash %lu), readinfo x6 pending\r\n",
+  printf("[VER] 固件%lu为新(已存flash %lu)，readinfo x6待上报\r\n",
          (unsigned long)cur, (unsigned long)stored);
   nvSaveOrReset(VER_FLASH_ADDR, VER_MAGIC, &cur, sizeof(cur));
 }
@@ -632,7 +632,7 @@ static uint8_t loraTryInit(void)
 static void loraInitFirstTime(void)
 {
   if (!loraTryInit()) Safety_Reset(RESET_RADIO);
-  printf("[LoRa] %dM SF%d PWR=%d\r\n",
+  printf("[LoRa] %dM SF%d 功率=%d\r\n",
          DEFAULT_FREQ / 1000000, DEFAULT_SF, currentTxPower);
 }
 
@@ -855,7 +855,7 @@ static void sendCenterMessage(void)
 static void fmtRxBytes(uint32_t bytes, char *buf, uint8_t len)
 {
   if (bytes < 1024u) {
-    snprintf(buf, len, "%luByte", (unsigned long)bytes);
+    snprintf(buf, len, "%lu字节", (unsigned long)bytes);
   } else if (bytes < 1024u * 1024u) {
     snprintf(buf, len, "%lu.%02luK",
              (unsigned long)(bytes / 1024u),
@@ -970,7 +970,7 @@ static uint8_t gpsSearchAndReport(uint8_t useGpsType)
 
   /* 打印状态恢复成本轮进来看之前的样子（默认回到静默） */
   gpsPrintEn = savedPrint;
-  printf("[GPS] done %s, gpsPrint=%s\r\n",
+  printf("[GPS] 完成 %s，gpsPrint=%s\r\n",
          hasFix ? "(已定�?" : "(未定�?", gpsPrintEn ? "ON" : "OFF");
 
   return hasFix;
@@ -996,14 +996,14 @@ static void gpsPreSearch(void)
   gpsPreBytes    = 0;
 
   if (availMs < GPS_WAIT_MIN_MS) {
-    printf("[GPS] prewindow short\r\n");
+    printf("[GPS] 预搜窗口过短\r\n");
     return;
   }
 
   maxMs = (availMs > gpsSearchMaxMs) ? gpsSearchMaxMs : availMs;
   minMs = (maxMs > GPS_WAIT_MIN_MS) ? GPS_WAIT_MIN_MS : maxMs;
 
-  printf("[GPS] presearch %lus(max %lus)\r\n",
+  printf("[GPS] 预搜 %lus(上限 %lus)\r\n",
          (unsigned long)(availMs / 1000u), (unsigned long)(maxMs / 1000u));
 
   savedPrint = gpsPrintEn;
@@ -1019,7 +1019,7 @@ static void gpsPreSearch(void)
 
   gpsPrintEn = savedPrint;
   gpsPreFixOk = hasFix;
-  printf("[GPS] presearch done: %s, %lus, rx %luB\r\n",
+  printf("[GPS] 预搜完成: %s，%lus，收%luB\r\n",
          hasFix ? "(已定�? 到点直接上报缓存坐标)" : "(未定�? 到点上报 0.0,0.0)",
          (unsigned long)gpsPreSec, (unsigned long)gpsPreBytes);
 }
@@ -1054,7 +1054,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
   uint32_t rounds      = 0;
   uint8_t  everFixed   = 0;
 
-  printf("[CONT] start %u min\r\n", (unsigned int)totalMin);
+  printf("[CONT] 连续定位开始 %u 分钟\r\n", (unsigned int)totalMin);
 
   while (1) {
     uint32_t slotStart = HAL_GetTick();
@@ -1069,21 +1069,21 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
       everFixed = 1;
 
     if (hasFix) {
-      printf("[CONT] #%lu fix\r\n", (unsigned long)rounds);
+      printf("[CONT] 第%lu轮 有坐标\r\n", (unsigned long)rounds);
 
       /* 拿到坐标：期限收回参数设定值。若已超时，下面的判断会正常结束�?
        * 刚报出坐标的这一帧就是最后一�?—�?参数语义保持不变 */
       if (deadlineSec > totalSec)
         deadlineSec = totalSec;
     } else {
-      printf("[CONT] #%lu 0.0,0.0\r\n", (unsigned long)rounds);
+      printf("[CONT] 第%lu轮 0.0,0.0\r\n", (unsigned long)rounds);
     }
 
     /* 定位成功导向：至今没有有效坐�?�?跟踪期限保底延长�?60 分钟�?
      * 继续按原间隔每轮上报（每�?+1 计数），直到定位成功或到上限 */
     if (!everFixed && (deadlineSec < GPS_CONT_MAX_SEC)) {
       deadlineSec = GPS_CONT_MAX_SEC;
-      printf("[CONT] no fix, extend to 60 min\r\n");
+      printf("[CONT] 无坐标，期限延至60分钟\r\n");
     }
 
     /* upgps 跟踪不受工作时段/GPS 时段约束：云端主动指令，
@@ -1098,7 +1098,7 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
     if (remain < (uint32_t)GPS_CONT_INTERVAL_SEC) {
       /* 剩下的时间凑不满一轮（一轮最短也�?GPS_CONT_INTERVAL_SEC 秒）�?
        * 不再空等，直接结束连续定位，回到正常定时调度（该休眠就休眠） */
-      printf("[CONT] end\r\n");
+      printf("[CONT] 结束\r\n");
       break;
     }
 
@@ -1115,10 +1115,10 @@ static uint8_t gpsRunContinuous(uint16_t totalMin, uint8_t useGpsType)
   }
 
   if (everFixed)
-    printf("[CONT] end: %lu rounds, had fix\r\n",
+    printf("[CONT] 结束: 共%lu轮，曾定位\r\n",
            (unsigned long)rounds);
   else
-    printf("[CONT] end: %lu rounds, no fix\r\n",
+    printf("[CONT] 结束: 共%lu轮，未定位\r\n",
            (unsigned long)rounds);
 
   return everFixed;
@@ -1160,7 +1160,7 @@ static void calcNextTxTime(void)
   } else {
     nextTxTimestamp = nowTs + intervalSec;
   }
-  printf("[SCHED] next=%lu wait=%lus\r\n", (unsigned long)nextTxTimestamp,
+  printf("[SCHED] 下次=%lu 等待=%lus\r\n", (unsigned long)nextTxTimestamp,
          (unsigned long)(nextTxTimestamp - nowTs));
 }
 
@@ -1180,7 +1180,7 @@ static void scheduleAfterSync(void)
 
   if (tx_count == 0) {
     nextTxTimestamp = getCurrentTimestamp();   /* 立即 �?主循环下一圈就上报 */
-    printf("[SCHED] first sync, report now\r\n");
+    printf("[SCHED] 首次对时，立即上报\r\n");
   } else {
     calcNextTxTime();
   }
@@ -1203,12 +1203,12 @@ static uint32_t getConfigIntervalSec(void)
     min = 1;                    /* 非数字或 0 �?�?1 分钟执行 */
     if (!warned) {
       warned = 1;
-      printf("[CFG] period invalid(0/non-num), use 1 min\r\n");
+      printf("[CFG] 周期无效(0/非数字)，按1分钟\r\n");
     }
   } else if (min > 60) {
     if (!warned) {
       warned = 1;
-      printf("[CFG] period %lu min >60, use 60\r\n",
+      printf("[CFG] 周期 %lu 分钟>60，按60\r\n",
              (unsigned long)min);
     }
     min = 60;
@@ -1475,7 +1475,7 @@ static void linkSilenceCheck(void)
     linkRecoveryStep = 1u;
     if (loraInitialized) loraSleep();
     loraInitialized = 0u;
-    printf("[LINK] silence: radio reinit next slot\r\n");
+    printf("[LINK] 链路静默，下个时隙重初始化射频\r\n");
   } else {
     Safety_Reset(RESET_LINK);
   }
@@ -1492,11 +1492,11 @@ static void printTimeWindows(const char *tag)
   uint8_t s0, e0, s1, e1;
   if (timeIdxToRange(getConfigWorkStartIdx(), &s0, &e0) &&
       timeIdxToRange(getConfigGpsEndIdx(), &s1, &e1)) {
-    printf("%s work=%u-%u GPS=%u-%u\r\n", tag,
+    printf("%s 工作=%u-%u GPS=%u-%u\r\n", tag,
            s0, (e0 == TIME_HOUR_END) ? 24u : e0,
            s1, (e1 == TIME_HOUR_END) ? 24u : e1);
   } else {
-    printf("%s invalid window\r\n", tag);
+    printf("%s 时间窗无效\r\n", tag);
   }
 }
 
@@ -2178,7 +2178,7 @@ static void gpsTrySyncFromSat(void)
 
     /* Log the local time actually used for scheduling. */
     formatTimestamp(ts, cstBuf, sizeof(cstBuf));
-    printf("[SYNC] GPS BJT=%s\r\n", cstBuf);
+    printf("[SYNC] GPS北京时间=%s\r\n", cstBuf);
   }
 
   /* 对时成功后按真实时间重算下次上报时间（首次开机则立即补报一次） */
@@ -2201,7 +2201,7 @@ static void gpsPrintSearchStatus(uint32_t elapsedMs)
   formatTimestamp(getCurrentTimestamp(), rtcBuf, sizeof(rtcBuf));
   deg1e5ToStr(gpsFix.lat, latBuf);
   deg1e5ToStr(gpsFix.lng, lngBuf);
-  printf("[GPS] fix=%u %s,%s sat=%u t=%lus rx=%lu RTC=%s\r\n",
+  printf("[GPS] 定位=%u %s,%s 卫星=%u 耗时=%lus 收=%lu RTC=%s\r\n",
          (unsigned)gpsFixFresh(), latBuf, lngBuf, (unsigned)gpsFix.sats,
          (unsigned long)(elapsedMs / 1000u), (unsigned long)gpsRxCount, rtcBuf);
 }
@@ -2214,7 +2214,7 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
   uint32_t elapsed;
   uint32_t lastStatus = 0;   /* 上次打印状态行的时刻（相对 startTick 的毫秒数�?*/
 
-  printf("[GPS] search start, min %lus max %lus..\r\n",
+  printf("[GPS] 开始搜星，最短%lus 最长%lus..\r\n",
          (unsigned long)(minMs / 1000), (unsigned long)(timeoutMs / 1000));
 
   if (gpsPrintEn)
@@ -2234,7 +2234,7 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
     /* 先判"是否已满足上报条�?，再判超�?—�?
      * 否则最后一刻刚好定上位，会被超时分支覆盖成失败 */
     if (elapsed >= minMs && gpsFixFresh()) {
-      printf("[GPS] fixed @%lus (min %lus), report\r\n",
+      printf("[GPS] 定位成功@%lus(最短%lus)，上报\r\n",
              (unsigned long)(elapsed / 1000), (unsigned long)(minMs / 1000));
       return 1;
     }
@@ -2246,7 +2246,7 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
     HAL_Delay(100);
   }
 
-  printf("[GPS] search timeout(%lus), no fix\r\n",
+  printf("[GPS] 搜星超时(%lus)，未定位\r\n",
          (unsigned long)(timeoutMs / 1000));
   return 0;
 }
@@ -2262,7 +2262,7 @@ static uint8_t gpsWaitForFix(uint32_t minMs, uint32_t timeoutMs)
 static uint8_t cmdIsForMe(char *fields[])
 {
   if (strcmp(fields[1], deviceName) != 0) {
-    printf("[CMD] %s: dst=%s != me=%s, skip",
+    printf("[CMD] %s: 目标=%s 非本机=%s，跳过",
            fields[2], fields[1], deviceName);
     return 0;
   }
@@ -2294,7 +2294,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   }
 
   if (field_count < 2) {
-    printf("[RX] invalid msg\r\n");
+    printf("[RX] 无效帧\r\n");
     return;
   }
 
@@ -2319,7 +2319,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
         /* 验证码不匹配 �?拒绝本次对时 */
         if (recvCode != wantCode) {
-          printf("[SYNC] code err(%02lu/%02lu), reject\r\n",
+          printf("[SYNC] 代号错误(%02lu/%02lu)，拒绝\r\n",
                  (unsigned long)recvCode, (unsigned long)wantCode);
           break;
         }
@@ -2329,7 +2329,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          * 覆盖场景：atoi 解析失败(=0�?970 之前按无效算不上,�?0 明显�?�?
          * 下发错误值、时间戳字段损坏�?*/
         if (recvTs == 0 || timestampYear(recvTs) > 2032u) {
-          printf("[SYNC] ts=%lu year OOR, ignore\r\n",
+          printf("[SYNC] 时间戳=%lu 年份越界，忽略\r\n",
                  (unsigned long)recvTs);
           break;   /* 丢弃这条对时，锚�?晶振偏差都不�?*/
         }
@@ -2343,7 +2343,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         {
           const char *rid = (field_count >= 4) ? fields[3] : "";
           if (lastSyncRelaySeen && strcmp(rid, lastSyncRelay) != 0) {
-            printf("[Sync] relay %s->%s, re-anchor\r\n",
+            printf("[Sync] 中继%s->%s，重新锚定\r\n",
                    lastSyncRelay[0] ? lastSyncRelay : "?",
                    rid[0] ? rid : "?");
             timeSynced = 0;
@@ -2361,7 +2361,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           int32_t  driftPerHour = (remoteElapsedSec > 0)
               ? (int32_t)((int64_t)driftSec * 3600 / (int64_t)remoteElapsedSec)
               : 0;
-          printf("[DRIFT] sample=%ds/h\r\n", (int)driftPerHour);
+          printf("[DRIFT] 采样=%ds/h\r\n", (int)driftPerHour);
 
           /* 收敛判定（含异常剔除）：
            * �?区间过短(<10分钟)不采�?—�?上报周期可设（含 1 分钟快速轮），
@@ -2373,11 +2373,11 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
            * �?连续两次可信样本�?�?DRIFT_CONVERGE_TOL 才启用补偿；
            * �?收敛后：小变化静默更新，大变化暂不采用、等下次对时确认 */
           if (localElapsedSec < 600u) {
-            printf("[DRIFT] span %lus short, no sample\r\n",
+            printf("[DRIFT] 区间%lus过短，不采样\r\n",
                    (unsigned long)localElapsedSec);
           } else if (driftPerHour > DRIFT_SAMPLE_MAX ||
                      driftPerHour < -DRIFT_SAMPLE_MAX) {
-            printf("[DRIFT] %ds/h abnormal, drop\r\n", (int)driftPerHour);
+            printf("[DRIFT] %ds/h异常，丢弃\r\n", (int)driftPerHour);
           } else if (!driftConverged) {
             int32_t diff = driftPerHour - lastDriftSample;
 
@@ -2385,10 +2385,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             if (diff <= DRIFT_CONVERGE_TOL) {
               rtcDriftPerHour = driftPerHour;
               driftConverged  = 1;
-              printf("[DRIFT] converged, comp %ds/h\r\n", (int)rtcDriftPerHour);
+              printf("[DRIFT] 已收敛，补偿%ds/h\r\n", (int)rtcDriftPerHour);
             } else {
               lastDriftSample = driftPerHour;
-              printf("[DRIFT] sample=%ds/h unconverged\r\n", (int)driftPerHour);
+              printf("[DRIFT] 采样=%ds/h 未收敛\r\n", (int)driftPerHour);
             }
           } else {
             int32_t diff = driftPerHour - rtcDriftPerHour;
@@ -2398,7 +2398,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               /* EMA smoothing: new=(3*cur+sample+2)/4, noise var /7,
                * no per-round alarm jump, tracking tau=4 syncs (2h) */
               rtcDriftPerHour = (3 * rtcDriftPerHour + driftPerHour + 2) / 4;
-              printf("[DRIFT] ema comp %ds/h\r\n", (int)rtcDriftPerHour);
+              printf("[DRIFT] EMA补偿%ds/h\r\n", (int)rtcDriftPerHour);
             } else
               lastDriftSample = driftPerHour;   /* 变化�? 暂不采用, 等下次确�?*/
           }
@@ -2406,7 +2406,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
           /* 首次对时：记录锚�?*/
           anchorRtcSec = nowTick;
           anchorTimestamp = recvTs;
-          printf("[DRIFT] anchor\r\n");
+          printf("[DRIFT] 锚定\r\n");
         }
 
         /* 补偿残差验证：本�?含补�?时间 vs 中绷新下发对时的差值�?
@@ -2415,7 +2415,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          * 重测偏差并更新补偿值，补偿值随每次对时持续趋向正确 */
         if (timeSynced) {
           int32_t syncErr = (int32_t)(getCurrentTimestamp() - recvTs);
-          printf("[SYNC] residual=%ds\r\n", (int)syncErr);
+          printf("[SYNC] 残差=%ds\r\n", (int)syncErr);
         }
 
         linkNoteValid();
@@ -2428,7 +2428,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
           /* 本机此刻的时间（含日期），对时完成后立即生效 */
           formatTimestamp(getCurrentTimestamp(), tsBuf, sizeof(tsBuf));
-          printf("[SYNC] ts=%lu day=%lu now=%s\r\n",
+          printf("[SYNC] 时间戳=%lu 当天=%lu 现在=%s\r\n",
                  (unsigned long)syncedTimestamp,
                  (unsigned long)getTodaySecond(), tsBuf);
         }
@@ -2438,7 +2438,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
       break;
     case MSG_TYPE_COM: /* 9: 指令  9|deviceId|cmd|value */
       if (field_count >= 3) {
-        printf("[CMD] %s %s %s\r\n",
+        printf("[CMD] 收到 %s %s %s\r\n",
                fields[1], fields[2], field_count > 3 ? fields[3] : "");
         /* realyname: 9|v3-10|realyname|v3-11  �? 本机改名
          * @note 新名最�?5 字符（前缀2字符 + '-' + 2位序号，�?v3-23）：
@@ -2446,12 +2446,12 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             if (strlen(fields[3]) > 5) {
-              printf("[CMD] invalid value\r\n");
+              printf("[CMD] 参数无效\r\n");
             } else {
               strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
               deviceName[sizeof(deviceName) - 1] = '\0';
               saveDeviceNameToFlash(deviceName);
-              printf("[CMD] name: %s\r\n", deviceName);
+              printf("[CMD] 新设备名: %s\r\n", deviceName);
             }
           }
         }
@@ -2468,7 +2468,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             if (!gpsBatteryOk()) {
-              printf("[GPS] low battery, skip\r\n");
+              printf("[GPS] 电量低，跳过\r\n");
               break;
             }
             int mins = atoi(fields[3]);        /* atoi 自动跳过前导空格 */
@@ -2477,7 +2477,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               mins = 0;
             if ((unsigned int)mins > (unsigned int)GPS_CONT_MAX_MIN) {
               mins = GPS_CONT_MAX_MIN;
-              printf("[CMD] upgps: min OOR, clamp %d\r\n",
+              printf("[CMD] upgps: 分钟越界，钳到%d\r\n",
                      GPS_CONT_MAX_MIN);
             }
 
@@ -2485,10 +2485,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             gpsWaitReport = 1;
 
             if (mins > 0)
-              printf("[CMD] upgps: cont %d min, >=%us/round\r\n",
+              printf("[CMD] upgps: 连续%d分钟，每轮>=%us\r\n",
                      mins, (unsigned int)GPS_CONT_INTERVAL_SEC);
             else
-              printf("[CMD] upgps: single shot(0, max %lus)\r\n",
+              printf("[CMD] upgps: 单次(0，上限%lus)\r\n",
                      (unsigned long)(gpsSearchMaxMs / 1000u));
           }
         }
@@ -2498,7 +2498,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             /* TODO: 后续功能在此实现 */
-            printf("[CMD] sendmode=%d: reserved\r\n", atoi(fields[3]));
+            printf("[CMD] sendmode=%d: 保留值\r\n", atoi(fields[3]));
           }
         }
         /* devicecount: 9|v0-0|devicecount|30  �? 设置分时隙上报的子设备总台�?
@@ -2513,13 +2513,13 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             if (cnt >= 1 && cnt <= 60) {
               deviceCount = (uint8_t)cnt;
               saveDeviceCountToFlash(deviceCount);
-              printf("[CMD] devcnt=%d, slot offset -> %lus\r\n",
+              printf("[CMD] 组台数=%d，时隙偏移->%lus\r\n",
                      deviceCount,
                      (unsigned long)getSlotOffsetSec(
                          ((fastStartRounds > 0) && (getConfigIntervalSec() > 60u))
                              ? 60u : getConfigIntervalSec()));
             } else {
-              printf("[CMD] invalid value\r\n");
+              printf("[CMD] 参数无效\r\n");
             }
           }
         }
@@ -2538,12 +2538,12 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             int newPwr = atoi(fields[3]);
 
             if (newPwr < 10 || newPwr > 20) {
-              printf("[CMD] invalid value\r\n");
+              printf("[CMD] 参数无效\r\n");
             } else {
               currentTxPower = (uint8_t)newPwr;
               rf_set_tx_power((uint8_t)newPwr);
               saveTxPowerToFlash((uint8_t)newPwr);
-              printf("[CMD] pwr set: %d dBm\r\n", newPwr);
+              printf("[CMD] 功率设置: %d dBm\r\n", newPwr);
             }
           }
         }
@@ -2567,10 +2567,10 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               centerLng1e5 = lo;
               centerValid  = 1;
               saveCenterToFlash(centerStr);
-              printf("[CMD] center saved: %s\r\n", centerStr);
+              printf("[CMD] 中心坐标已存: %s\r\n", centerStr);
             } else {
               /* 非法：不写内存、不�?Flash，保留上一次的合法�?*/
-              printf("[CMD] C: invalid, keep %s: %s\r\n",
+              printf("[CMD] C: 无效，保留%s: %s\r\n",
                      (centerStr[0] != '\0') ? centerStr : "(未设�?", fields[3]);
             }
             /* 无论本次是否合法都上报当前坐标：
@@ -2593,20 +2593,20 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
             if (!configTimeFieldValid(wf) || !configTimeFieldValid(gf)) {
               /* 中文值不写三元表达式（ARMCC5 GBK 吞引号），用 if/else */
-              printf("[CMD] invalid value\r\n");
-              printf("[CMD]   work=\"%s\" gps=\"%s\"", wf, gf);
+              printf("[CMD] 参数无效\r\n");
+              printf("[CMD]   工作窗=\"%s\" GPS窗=\"%s\"", wf, gf);
             } else if (newMin >= 1 && newMin <= 60) {
               strncpy(configStr, fields[3], sizeof(configStr) - 1);
               configStr[sizeof(configStr) - 1] = '\0';
               saveConfigToFlash(configStr);
               configNeedReport = 1;  /* 标记需要上报配�?*/
-              printf("[CMD] cfg updated: %s\r\n", configStr);
+              printf("[CMD] 配置已更新: %s\r\n", configStr);
 
               /* 工作时间�?/ GPS 上报时间段都是从 configStr 实时解析的，
                * 这里不用做额外的"重新加载"，直接把生效的区间打出来核对 */
               printTimeWindows("[指令] 新时�?: ");
             } else {
-              printf("[CMD] invalid value\r\n");
+              printf("[CMD] 参数无效\r\n");
             }
           }
         }
@@ -2617,7 +2617,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
          *       快速上�?3 �?�?等对�?�?恢复正常调度 */
         else if (strcmp(fields[2], "relayreboot") == 0) {
           if (cmdIsForMe(fields)) {
-            printf("[CMD] relayreboot, resetting\r\n");
+            printf("[CMD] 中继重启指令，即将复位\r\n");
             HAL_Delay(100);            /* 让日志从串口发完 */
             Safety_Reset(RESET_REMOTE);
           }
@@ -2631,18 +2631,18 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
             if (newMin >= GPS_SEARCH_MIN_MIN && newMin <= GPS_SEARCH_MAX_MIN) {
               gpsSearchMaxMs = (uint32_t)newMin * 60000UL;
               saveSearchTimeToFlash(gpsSearchMaxMs);
-              printf("[CMD] searchtime: %d min\r\n", newMin);
+              printf("[CMD] 最大搜星时间: %d分钟\r\n", newMin);
             } else {
-              printf("[CMD] invalid value\r\n");
+              printf("[CMD] 参数无效\r\n");
             }
           }
         } else {
-          printf("[CMD] unknown: %s\r\n", fields[2]);
+          printf("[CMD] 未知指令: %s\r\n", fields[2]);
         }
       }
       break;
     default:
-      printf("[RX] type=%d\r\n", msg_type);
+      printf("[RX] 类型=%d\r\n", msg_type);
       break;
   }
 }
@@ -2666,7 +2666,7 @@ static void openRxWindow4000(void)
     rf_set_recv_flag(RADIO_FLAG_IDLE);
     if (rf_enter_single_timeout_rx(4000u - spent) != RF_OK) Safety_Reset(RESET_RX);
     if (!windowPrintOff)
-      printf("[RX] 4s listen\r\n");
+      printf("[RX] 开4秒接收窗\r\n");
 
     /* wait done/timeout/err; SW guard: reset self-heal if chip IRQ lost */
     while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
@@ -2680,7 +2680,7 @@ static void openRxWindow4000(void)
     if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
       rf_set_recv_flag(RADIO_FLAG_IDLE);
       if (!windowPrintOff)
-        printf("[RX] CRC err\r\n");
+        printf("[RX] CRC错误\r\n");
       continue;                  /* re-arm for the rest of the window */
     }
     rf_set_recv_flag(RADIO_FLAG_IDLE); /* RXTIMEOUT: budget exhausted */
@@ -2712,7 +2712,7 @@ static void openRxWindow4000(void)
       local_buf[RX_LEN - 1] = '\0';
 
     if (!windowPrintOff)
-      printf("[RX] len=%d rssi=%d snr=%d data=%s\r\n",
+      printf("[RX] 长度=%d RSSI=%d SNR=%d 数据=%s\r\n",
              local_size, local_rssi - 256, local_snr, (char *)local_buf);
 
     parse_rx_message(local_buf, local_size);
@@ -2845,7 +2845,7 @@ static void OnMaster(void)
     uint8_t inGpsWin = isInGpsWorkWindow();
 
     if (!gpsBatteryOk()) {
-      printf("[GPS] low battery, skip\r\n");
+      printf("[GPS] 电量低，跳过\r\n");
       gpsWaitReport = 0u;
       gpsContTotalMin = 0u;
       gpsPreSearched = 0u;
@@ -2874,9 +2874,9 @@ static void OnMaster(void)
 
         /* 中文值不要写进三元表达式：ARMCC5 �?GBK 解析会吞掉引�?*/
         if (preOk)
-          printf("[GPS] pre: fixed(%lus)\r\n", (unsigned long)gpsPreSec);
+          printf("[GPS] 预搜: 已定位(%lus)\r\n", (unsigned long)gpsPreSec);
         else
-          printf("[GPS] pre: nofix(%lus)\r\n", (unsigned long)gpsPreSec);
+          printf("[GPS] 预搜: 未定位(%lus)\r\n", (unsigned long)gpsPreSec);
 
         sendGpsPositionMessage(preOk, useType1, gpsPreSec, gpsPreBytes);
 
@@ -2905,7 +2905,7 @@ static void OnMaster(void)
 
           linkLastRtc = rtc_read_counter();
           gpsContTotalMin = 0;
-          printf("[GPS] tracking end\r\n");
+          printf("[GPS] 跟踪结束\r\n");
         } else {
           /* 单次搜星上报（参数为 0 �?upgps 指令，或失败后的自动重试�?*/
           (void)gpsSearchAndReport(useType1);   /* one search, one report - done either way */
@@ -2954,13 +2954,13 @@ static void OnMaster(void)
 
     if (waitSec > 10) {
       /* 下次上报 > 10 秒后 �?PAN3029 进入深度休眠省电 */
-      printf("[SLEEP] deep %lum%lus, %s\r\n",
+      printf("[SLEEP] 深睡%lum%lus，%s\r\n",
              (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
              nextBuf + 11);
       loraSleep();
       loraInitialized = 0;  /* 标记需要唤醒后重新初始�?*/
     } else {
-      printf("[ACTIVE] LoRa ready, tx in %lum%lus, %s\r\n",
+      printf("[ACTIVE] LoRa就绪，%lum%lus后发送，%s\r\n",
              (unsigned long)(waitSec / 60u), (unsigned long)(waitSec % 60u),
              nextBuf + 11);
     }
@@ -2999,13 +2999,13 @@ int main(void)
 
   strncpy(bootRstCause, Safety_BootCause(), sizeof(bootRstCause) - 1u);
   bootRstPending = 1u;
-  printf("[BOOT] reset=%s stage=%u clock=%s\r\n", bootRstCause,
+  printf("[BOOT] 复位=%s 阶段=%u 时钟=%s\r\n", bootRstCause,
          (unsigned)Safety_LastStage(), clockFallback ? "HSI64" : "HSE72");
   rtc_init();
   {
     uint32_t backoff = Safety_BackoffSeconds();
     if (backoff) {
-      printf("[BOOT] repeated fault, backoff %lus\r\n", (unsigned long)backoff);
+      printf("[BOOT] 连续故障，退避%lus\r\n", (unsigned long)backoff);
       /* Recover a retained TX/RX state before the long fault backoff. If the
        * module cannot initialize, hold reset asserted to inhibit activity. */
       if (!loraTryInit() || rf_deepsleep() != RF_OK)
@@ -3028,10 +3028,10 @@ int main(void)
   checkVersionReportFlag();   /* new firmware? -> one readinfo x6 cycle */
 
   /* 打印启动信息 */
-  printf("\r\n[BOOT] LoRa\r\n");
-  printf("dev: %s\r\n", deviceName);
-  printf("cfg: %s\r\n", configStr);
-  printf("slot=%u total=%u\r\n", getDeviceIndex(), deviceCount);
+  printf("\r\n[BOOT] LoRa初始化\r\n");
+  printf("设备: %s\r\n", deviceName);
+  printf("配置: %s\r\n", configStr);
+  printf("时隙=%u 组台数=%u\r\n", getDeviceIndex(), deviceCount);
   printTimeWindows("时段  : ");   /* 工作时间�?+ GPS 上报时间�?*/
 
   /* 首次 TX 延迟到主循环中执行（LoRa 在首�?TX 前才初始化） */
@@ -3087,7 +3087,7 @@ int main(void)
         /* Keep the radio asleep (or in boot reset) throughout automatic GPS search. */
         if (doPreSearch) {
           if (leadSec < GPS_PRESEARCH_LEAD_SEC)
-            printf("[GPS] period<search max: lead=%lus, best effort\r\n",
+            printf("[GPS] 周期<搜星上限: 提前=%lus，尽力而为\r\n",
                    (unsigned long)leadSec);
 
           gpsPreSearch();
@@ -3098,7 +3098,7 @@ int main(void)
                            nextTxTimestamp - RADIO_WAKE_LEAD_SEC : now2;
           if (wake2 > now2 + RADIO_WAKE_LEAD_SEC) {
             /* Also wait asleep if battery/window checks skipped the GPS search. */
-            printf("[SCHED] TX preparation in %lus\r\n", (unsigned long)(wake2 - now2));
+            printf("[SCHED] %lus后进入发送准备\r\n", (unsigned long)(wake2 - now2));
             enterStopUntil(wake2);
             SystemClock_Config(); /* STOP returns on HSI; restore UART/SPI clocks. */
           }
@@ -3453,7 +3453,7 @@ static uint8_t GetBatteryPercent(void)
 
   if (percent > 99) percent = 99;
 
-  printf("[BAT] ADC=%d V=%lu.%01luV => %d%%\r\n",
+  printf("[BAT] ADC=%d 电压=%lu.%01luV => %d%%\r\n",
          adc_val, (unsigned long)(bat_mv / 1000), (unsigned long)((bat_mv / 100) % 10), percent);
 
   return percent;
@@ -3531,7 +3531,7 @@ static void gpsPowerOn(void)
   HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);   /* �?= 上电 */
   HAL_Delay(GPS_PWR_ON_DELAY_MS);
   gpsPowerState = 1;
-  printf("[GPS] Power ON (PB15 low, PB1 Full on)\r\n");
+  printf("[GPS] 上电(PB15低电平, PB1=Full on)\r\n");
 }
 
 /**
@@ -3553,7 +3553,7 @@ static void gpsPowerOff(void)
   gpsRd = gpsWr;
   gpsLineLen = 0;
 
-  printf("[GPS] off\r\n");
+  printf("[GPS] 断电\r\n");
 }
 
 /* USER CODE END 4 */

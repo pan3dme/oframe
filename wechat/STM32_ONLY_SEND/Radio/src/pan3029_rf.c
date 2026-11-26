@@ -546,7 +546,7 @@ RF_Err_t rf_init(void)
 
     if (porreg == 0x00 || porreg == 0xFF)
     {
-        printf("[PAN3029] Reg0x04=0x%02X, module not detected\r\n", porreg);
+        printf("[PAN3029] Reg0x04=0x%02X，未检测到模块\r\n", porreg);
         return RF_FAIL;
     }
 
@@ -554,7 +554,7 @@ RF_Err_t rf_init(void)
     readback1 = rf_read_reg(0x04);
     if (readback1 != porreg)
     {
-        printf("[PAN3029] Unstable read: 1st=0x%02X 2nd=0x%02X\r\n", porreg, readback1);
+        printf("[PAN3029] 读取不稳定: 第1次=0x%02X 第2次=0x%02X\r\n", porreg, readback1);
         return RF_FAIL;
     }
 
@@ -568,7 +568,7 @@ RF_Err_t rf_init(void)
 
         if (rstreg != test_val)
         {
-            printf("[PAN3029] Readback fail: wrote=0x%02X read=0x%02X\r\n", test_val, rstreg);
+            printf("[PAN3029] 回读失败: 写入=0x%02X 读到=0x%02X\r\n", test_val, rstreg);
             rf_write_reg(0x04, porreg);
             return RF_FAIL;
         }
@@ -2590,6 +2590,6 @@ RF_Err_t rf_set_default_para(void)
     RF_ASSERT(rf_set_bw(DEFAULT_BW));
     RF_ASSERT(rf_set_sf(DEFAULT_SF));	   
     RF_ASSERT(rf_set_tx_power(DEFAULT_PWR));
-	  printf("FREQ= %d  SF=%d   BW=%d  CR=%d \r\n",DEFAULT_FREQ,DEFAULT_SF,DEFAULT_BW,DEFAULT_CR);
+	  printf("频率= %d  SF=%d   BW=%d  CR=%d \r\n",DEFAULT_FREQ,DEFAULT_SF,DEFAULT_BW,DEFAULT_CR);
     return OK;
 }
