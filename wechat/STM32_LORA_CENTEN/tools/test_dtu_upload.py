@@ -15,7 +15,7 @@ from unicorn.arm_const import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-image = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'build/CENTEN.axf'
+image = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'build/test-image/CENTEN.axf'
 data = image.read_bytes()
 header = struct.unpack_from('<16sHHIIIIIHHHHHH', data)
 assert header[0][:7] == b'\x7fELF\x01\x01\x01'
@@ -93,7 +93,8 @@ def call(name, *args):
     check(cpu.reg_read(UC_ARM_REG_PC) == 0x0800fff0, name + ' did not return')
 
 cpu.mem_write(symbols['deviceName'], b'v3-108\0')
-write_value('loraSwOn', 1, 1)
+# ArmClang may invert private boolean storage to save initialized RAM.
+# Use its compiled startup value rather than guessing its representation.
 write_value('radioTxPendingSlot', 0xffffffff)
 
 # Real OnSlave: reproduce the user's exact first uplink, including optional NUL.
@@ -156,7 +157,11 @@ now = 11000
 call('processDtuQueue')
 check(read_value('dtuLastSendTick') == 9000, 'query deferral consumed throttle')
 cpu.mem_write(scratch, b'config,nettime,ok,2026,11,24,17,30,12,0\0')
-call('processDtuFrame', scratch)
+# Feed the real ring/framer path. A compiler can specialize a private
+# processDtuFrame parameter to its sole production buffer.
+for byte in b'config,nettime,ok,2026,11,24,17,30,12,0\r\n':
+    call('centen_ring_push', symbols['centenDtuRing'], byte)
+call('processDtuInput')
 check(read_value('dtuQueryPending', 1) == 0, 'valid nettime did not release query wait')
 check(read_value('dtuTimeValid', 1) == 1, 'nettime was not accepted')
 call('processDtuQueue')

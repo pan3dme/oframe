@@ -1,5 +1,94 @@
 # CENTEN firmware
 
+## V1.3 outdoor recovery update (2026-11-26)
+
+This is the current build and recovery specification. The V1.1 notes below
+are historical. The Keil project now uses its own `Common/` and Arm Compiler
+6.24; the build script follows that compiler selection.
+
+- `SystemInit()` starts IWDG before the C runtime, HAL, HSE/PLL, peripherals
+  or logs. This function uses only registers and a bounded synchronization
+  wait. It must remain connected when replacing generated startup code.
+  The reload is nominally 10 seconds; actual timeout follows the LSI clock.
+- BKP DR1 uses a 16-bit cookie. DR2/DR3 hold the streak and its complement;
+  DR4/DR5 hold a requested recovery reset reason and its complement. Software
+  recovery resets count as faults; an ordinary `relayreboot` does not add one.
+- From the third consecutive fault boot, startup waits 30/60/120/240 seconds,
+  then caps at 300 seconds. This happens on HSI after HAL_Init, before HSE/PLL.
+  IWDG is fed during this bounded wait. HSE/PLL configuration errors request a
+  marked reset. Startup logging occurs after UART initialization.
+- Uptime alone no longer clears the streak. Sixty continuous seconds of
+  healthy local UART/module replies and expected RF service are required.
+  The RF register probe includes RX mode and the saved frequency value;
+  it is not an RF/antenna reception test. No platform PING is required to
+  qualify local health. An intentional RF-off state or closed work window
+  suspends RF recovery. Normal quiet RF does not by itself escalate to MCU reset.
+- RF recovery always pulses the hardware reset. It rebuilds SPI after a
+  bus error or repeated failures. Failure history survives a successful init
+  until stable local operation. Twenty accumulated unstable recovery failure
+  events cause a marked MCU reset. Three consecutive TX timeouts schedule RF
+  recovery. Recovery status `8|name|RFREC|failures|` can be uploaded with RF off,
+  at most once per minute while recovering in a work window.
+- Three local UART errors request abort/deinit/peripheral-reset/init/re-arm.
+  Three rebuild attempts without stable recovery lead to a marked MCU reset
+  on the next required rebuild. Overflowed/bad frames alone are not reboot
+  triggers. The existing RAM queue retains failed UART transmissions.
+- Automatic DTU resets for missing network time/platform heartbeats back off
+  by 3/6/12/24/30 minutes, capped at 30 minutes. A valid PING resets this network
+  backoff. A locally silent DTU has an independent three-minute response
+  window (after a valid time, query interval plus one minute). Three modem
+  resets without a valid local reply lead to a marked MCU reset on the next
+  no-response recovery request. Valid CSQ, time, SIM, PING or platform command
+  replies prove local liveness; platform failure alone does not reboot MCU.
+- `[BOOT]` and `[REC]` diagnostics identify reset cause/streak. Recovery reason
+  numbers are 1=RF, 2=UART, 3=unresponsive DTU, 4=clock, 5=IWDG. Software recovery
+  reports use existing type 8: `8|name|RECBOOT|reason|`; IWDG keeps `rst_iwdg`.
+  These uploads use the existing queue/UART protocol, without a new server ACK.
+
+### Atomic settings and upgrade behavior
+
+V2 settings occupy 104 bytes at the start of each existing reserved 1 KB page
+(`0x0800F800`, `0x0800FC00`). Version, sequence, configuration, center coordinate,
+device name and power share one CRC and one final commit word. Every save
+erases only the inactive page, writes/reads back the payload and commits last.
+Boot selects one complete snapshot. Unchanged V2 settings cause no erase.
+
+Original single-page settings and V1.1/V1.2 records remain readable. Complete
+V1 pages are preferred over a V1.2 page interrupted between its three commits;
+legacy identity fallback checks the other page correctly. Migration occurs on
+the first requested save, leaving the selected legacy page intact until the
+new snapshot commits. No migration write occurs merely because the board boots.
+Preserve the reserved pages during programming. Old firmware cannot read V2;
+after both pages migrate, downgrading requires exporting/migrating settings.
+
+### Current build and verification
+
+```powershell
+.\tools\build.ps1
+.\tools\build.ps1 -TestImage
+python -m pip install -r .\tests\requirements.txt
+python .\tools\test_support.py
+python .\tools\test_dtu_upload.py
+python .\tools\test_recovery.py
+```
+
+Use `-CompilerBin` for a nonstandard compiler installation, and set
+`CENTEN_COMPILER_BIN` for the support-test compiler. Production HEX/AXF are in
+`build/`; the distinct test image in `build/test-image/` disables C inlining
+to expose private entry points for fault injection. It is not the release HEX.
+
+Recovery tests execute actual ARM settings save/load, early watchdog, backup
+state, UART rebuild and recovery control flow with hardware substitutes. They
+cut saves at every halfword/commit boundary in both directions, including V1
+migration. They also cover failed writes, sequence/tick wrap, corrupt backup
+state, RF-off reporting, intentional shutdown/work windows, stable-health
+timers, and network versus local-fault recovery.
+
+These tests do not program a device or verify real brownout, watchdog timing,
+SPI/RF signals, DTU registration or environmental lifetime. The board still
+needs physical fault injection and outdoor validation. No controllable module
+power supply has been added; power-cycle-only failures need hardware support.
+
 ## V1.1.1 DTU upload diagnostics and scheduling fix
 
 - Restores USART1 queue/send/receive/query diagnostics: `[DTU Q]`,

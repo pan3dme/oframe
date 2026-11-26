@@ -396,6 +396,11 @@
           <GroupName>Application/User/Core</GroupName>
           <Files>
             <File>
+              <FileName>centen_recovery.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../user/centen_recovery.c</FilePath>
+            </File>
+            <File>
               <FileName>centen_uart.c</FileName>
               <FileType>1</FileType>
               <FilePath>../user/centen_uart.c</FilePath>

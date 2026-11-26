@@ -1,13 +1,24 @@
-param([string]$CompilerBin = 'D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin')
+param([string]$CompilerBin = '', [switch]$TestImage)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $mdkRoot = Join-Path $projectRoot 'MDK-ARM'
 $buildRoot = Join-Path $projectRoot 'build'
+if ($TestImage) { $buildRoot = Join-Path $buildRoot 'test-image' }
 New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 [xml]$projectXml = Get-Content -LiteralPath (Join-Path $mdkRoot 'STM32_LORA_CENTEN.uvprojx') -Raw
+$useAc6 = [string]$projectXml.Project.Targets.Target.uAC6 -eq '1'
+if (!$CompilerBin) {
+    $CompilerBin = if ($useAc6) { 'D:\Keil_v5\ARM\ARMCLANG\Bin' } else { 'D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin' }
+}
 $includeDirs = @('Core/Inc','Drivers/STM32F1xx_HAL_Driver/Inc','Drivers/STM32F1xx_HAL_Driver/Inc/Legacy','Drivers/CMSIS/Device/ST/STM32F1xx/Include','Drivers/CMSIS/Include','user') | ForEach-Object { Join-Path $projectRoot $_ }
 $includeDirs += @((Join-Path $projectRoot 'Common/RadioF103/inc'), (Join-Path $projectRoot 'Common/inc'))
 $compileArgs = @('--cpu','Cortex-M3','--c99','-O2','-Ospace','--apcs=interwork','--library_type=microlib','-g','--split_sections','-D__MICROLIB','-DUSE_HAL_DRIVER','-DSTM32F103xB')
+$compiler = 'armcc.exe'
+if ($useAc6) {
+    $compiler = 'armclang.exe'
+    $compileArgs = @('--target=arm-arm-none-eabi','-mcpu=cortex-m3','-mthumb','-mfloat-abi=soft','-std=c99','-Oz','-g','-ffunction-sections','-fdata-sections','-fshort-enums','-fshort-wchar','-D__MICROLIB','-DUSE_HAL_DRIVER','-DSTM32F103xB','-Wno-invalid-source-encoding')
+    if ($TestImage) { $compileArgs += '-fno-inline-functions' }
+}
 foreach ($includeDir in $includeDirs) { $compileArgs += @('-I', $includeDir) }
 $objects = @()
 $log = New-Object System.Collections.Generic.List[string]
@@ -18,7 +29,7 @@ foreach ($file in $projectXml.Project.Targets.Target.Groups.Group.Files.File) {
     if ($file.FileType -eq '2') {
         $output = & (Join-Path $CompilerBin 'armasm.exe') '--cpu' 'Cortex-M3' '--apcs=interwork' '--pd' '__MICROLIB SETA 1' '-g' '-o' $objectPath $sourcePath 2>&1
     } else {
-        $output = & (Join-Path $CompilerBin 'armcc.exe') @compileArgs '-c' '-o' $objectPath $sourcePath 2>&1
+        $output = & (Join-Path $CompilerBin $compiler) @compileArgs '-c' '-o' $objectPath $sourcePath 2>&1
     }
     $output | ForEach-Object { $log.Add([string]$_); Write-Output $_ }
     if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $sourcePath" }

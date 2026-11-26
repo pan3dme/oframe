@@ -1,5 +1,6 @@
 --cpu Cortex-M3
 "ly-020-software\startup_stm32f103xb.o"
+"ly-020-software\centen_recovery.o"
 "ly-020-software\centen_uart.o"
 "ly-020-software\centen_support.o"
 "ly-020-software\main.o"

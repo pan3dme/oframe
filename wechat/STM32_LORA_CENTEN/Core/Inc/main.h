@@ -51,6 +51,7 @@ extern "C" {
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
+void centen_watchdog_start_early(void);
 
 /* USER CODE BEGIN EFP */
 

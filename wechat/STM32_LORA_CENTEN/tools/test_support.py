@@ -1,4 +1,4 @@
-"""Execute ARMCC-built production C in a Cortex-M3 Unicorn CPU.
+"""Execute Arm Compiler 6 production C in a Cortex-M3 Unicorn CPU.
 
 Requires Python 3 and unicorn==2.1.4. No board or firmware flash operations.
 The production centen_uart.c callback is linked with UART/tick test doubles.
@@ -13,11 +13,11 @@ from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS
 from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = Path(os.environ.get("CENTEN_ARMCC_BIN", r"D:\Keil_v5\ARM\ARM_Compiler_5.06u7\Bin"))
+BIN = Path(os.environ.get("CENTEN_COMPILER_BIN", r"D:\Keil_v5\ARM\ARMCLANG\Bin"))
 BUILD = ROOT / "build"
 BUILD.mkdir(exist_ok=True)
 includes = [ROOT / p for p in ["user", "Core/Inc", "Drivers/STM32F1xx_HAL_Driver/Inc", "Drivers/CMSIS/Device/ST/STM32F1xx/Include", "Drivers/CMSIS/Include"]]
-args = [str(BIN / "armcc.exe"), "--cpu", "Cortex-M3", "--c99", "-O2", "-Ospace", "--library_type=microlib", "--split_sections", "-D__MICROLIB", "-DUSE_HAL_DRIVER", "-DSTM32F103xB"]
+args = [str(BIN / "armclang.exe"), "--target=arm-arm-none-eabi", "-mcpu=cortex-m3", "-mthumb", "-mfloat-abi=soft", "-std=c99", "-Oz", "-fshort-enums", "-fshort-wchar", "-ffunction-sections", "-fdata-sections", "-D__MICROLIB", "-DUSE_HAL_DRIVER", "-DSTM32F103xB"]
 for include in includes:
     args += ["-I", str(include)]
 subprocess.run(args + ["-c", "-o", str(BUILD / "test_support.o"), str(ROOT / "tests/test_support.c")], check=True)

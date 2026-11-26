@@ -3,6 +3,7 @@
 CentenRxRing centenDtuRing;
 volatile uint32_t centenDtuLastRxTick;
 volatile uint8_t centenDtuRxRecover;
+volatile uint32_t centenDtuErrorEvents;
 static uint8_t receiveByte;
 
 void centen_dtu_receive_start(UART_HandleTypeDef *uart)
@@ -21,5 +22,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
-    if (uart->Instance == USART3) centenDtuRxRecover = 1;
+    if (uart->Instance == USART3) {
+        centenDtuErrorEvents++;
+        centenDtuRxRecover = 1;
+    }
 }

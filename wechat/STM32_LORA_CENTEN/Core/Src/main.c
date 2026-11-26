@@ -16,6 +16,7 @@
 /* USER CODE BEGIN Includes */
 #include "centen_support.h"
 #include "centen_uart.h"
+#include "centen_recovery.h"
   #include "common_test.h"  /* device-name/msg-type helpers (project-local Common/) */
 #include "pan3029_port.h" // PAN3029 硬件端口适配层头文件
 #include "pan3029_rf.h"   // PAN3029 LoRa 射频驱动头文�?
@@ -42,14 +43,24 @@ static uint32_t dtuLastPingTick   = 0;       /* HAL_GetTick() of last PING */
 static uint8_t  dtuPingGot        = 0;       /* 1 = at least one PING seen */
 static uint32_t dtuPingGraceStart = 0;       /* grace start (boot / post-RST) */
 static uint8_t  dtuRstByPing      = 0;       /* 1 = RST'd by PING timeout */
-/* ===== MCU 硬件看门狗（IWDG）：主循环/任意代码卡死超 10s 咬狗复位自愈 ===== */
+/* IWDG: nominal 10s; budget against the fastest LSI, not an exact ten seconds. */
 #define WDG_IWDG_RELOAD 1561u        /* LSI 40kHz/256 ≈ 156Hz → 1561 计数 ≈ 10s */
-#define WDG_STREAK_MAGIC 0x43454Eu   /* BKP DR1 魔术字：DR2 = 连续咬狗计数（跨复位保持） */
-static uint32_t wdgStreak = 0;       /* 连续故障重启计数（健康运行 60s 清零） */
+#define WDG_STREAK_MAGIC CENTEN_BOOT_COOKIE   /* BKP DR1 魔术字：DR2 = 连续咬狗计数（跨复位保持） */
+static uint32_t wdgStreak = 0;       /* Clear only after 60s of stable local services. */
 static uint8_t  wdgIwdgBoot = 0;     /* 1=本次复位由 IWDG 咬狗引起，联网后上报 rst_iwdg */
 #define RF_CHK_INTERVAL_MS 30000u   /* RF 健康探针周期：30s 一次 */
 #define RF_CHK_FAIL_LIMIT  3u       /* 连续 3 次回读异常 → 重初始化射频 */
 static uint32_t rfChkTick = 0;       /* 探针节流时间戳 */
+static uint32_t bootResetFlags, bootBackoffMs;
+static uint16_t recoveryBootReason;
+static uint8_t recoveryBootReportPending;
+static CentenRecovery bootHealth, rfRecovery, uartRecovery;
+static uint8_t radioProbeGood, radioTxFailStreak;
+static uint32_t radioProbeTick, radioRecoveryReportTick;
+static uint8_t uartRecoveryPending, uartRebuildCount;
+static uint32_t uartRebuildTick, uartErrorSeen;
+static uint8_t dtuAutoResets, dtuNoReplyResets, dtuLocalReplySeen;
+static uint32_t dtuNextAutoReset, dtuLastLocalReplyTick;
 static uint8_t  rfChkFails = 0;      /* 连续回读异常计数（成功清零） */
 
 typedef struct {
@@ -62,8 +73,8 @@ typedef struct {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define EXAMPLE_NAME "CENTEN LoRa gateway" // 工程名称
-#define DEMO_VER "V1.2"                // 演示版本�?
-#define EXAMPLE_DATE "2026/11/24"      // 工程日期
+#define DEMO_VER "V1.3"                // 演示版本�?
+#define EXAMPLE_DATE "2026/11/26"      // 工程日期
 
 #define RX_LEN 96             // LoRa 接收缓冲区最大长度（字节�?
 #define LORA_SILENT_REPORT_MS 600000u  // LoRa 静默看门狗阈值（工作区间内连续 10 分钟无帧即上报）
@@ -171,7 +182,7 @@ static uint8_t dtuTimeValid = 0;     // 网络时间是否已获取成�?
 static int dtuCsqRssi = 0;           // DTU CSQ 信号强度�?
 static uint8_t dtuNetTimeFailCount = 0;  // DTU 网络时间连续失败计数器（达到 3 次复�?DTU�?
 static uint32_t rtcSendCount = 0;    // 对时上报计数�?
-static uint8_t localTxPower = DEFAULT_PWR; // 中继当前发射功率（txpower 指令修改，不落盘，重启恢复默认）
+static uint8_t localTxPower = DEFAULT_PWR; /* Persisted with the complete settings snapshot. */
 static int batteryValue = 85;        // 电池电量�?�?
 static char configStr[32] = "30,0M"; // 配置信息字符串（可通过DTU修改�?
 static char centerStr[32] = "";      // 农场中心坐标 "lat,lng"（空=未设置）
@@ -198,7 +209,7 @@ static uint32_t dtuLastSendTick = 0; // 上次发送时间戳（用�?100ms 间
 #define CENTER_FLASH_OFF 64          // 农场中心坐标区在配置页内的偏�?
 #define CENTER_MAGIC 0x5A5A5A5A      // 中心坐标有效数据标志
 
-/* bindDeviceId persistence: name record inside the active config page. */
+/* Legacy V1.2 name/power formats: read-only migration support. */
 #define NAME_RECORD_OFF 256
 #define NAME_MAGIC      0x4E414D45u /* "NAME" */
 #define NAME_COMMIT     0x4E414D31u /* "NAM1" */
@@ -324,22 +335,22 @@ static void processDtuFrame(char *frame);
 static void processDtuQueries(void);
 static void dtuHardwareReset(void);
 static int radioEnterRx(void);
+static void scheduleRadioRecovery(void);
+static void noteUartFailure(void);
+static void serviceUartRecovery(void);
+static void serviceRecovery(void);
+static void noteDtuReply(void);
+static uint8_t dtuAutomaticReset(uint8_t noReply);
+static void recoveryReboot(uint16_t reason);
+static void wdg_capture_boot(void);
+static void wdg_boot_backoff(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 /* bindDeviceId value check: 1..15 chars, alnum plus '-' and '_'. */
 static int device_name_valid(const char *name) {
-  size_t len = 0;
-  if (name == NULL || !*name) return 0;
-  while (name[len]) {
-    char c = name[len];
-    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-          (c >= '0' && c <= '9') || c == '-' || c == '_'))
-      return 0;
-    len++;
-  }
-  return len < 16u; /* fits deviceName[16] with its NUL */
+  return centen_device_name_valid(name);
 }
 
 /* armclang defines __GNUC__ for GCC compatibility, but MicroLIB's printf()
@@ -396,7 +407,7 @@ static int startLoraTx(const uint8_t *data, int len, int pendingSlot) {
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
   if (rf_single_tx_data((uint8_t *)data, (uint8_t)len, &txTime) != RF_OK ||
       centen_radio_spi_failed()) {
-    radioEnterRx();
+    scheduleRadioRecovery();
     return 0;
   }
   radioTxActive = 1;
@@ -431,28 +442,25 @@ static void serviceRadio(void) {
     radioIrqPending = 0;
     rf_irq_process();
   }
-  if (centen_radio_spi_failed()) {
-    if (!radioRecoverPending) {
-      radioRecoverPending = 1;
-      radioRecoverTick = now;
-      loraSwOn = 0;
-      radioTxActive = 0;
-      radioTxPendingSlot = -1;
-      memset(loraJobs, 0, sizeof(loraJobs));
-      printf("[LoRa] spi\r\n");
-    }
-  }
+  if (centen_radio_spi_failed() && !radioRecoverPending) scheduleRadioRecovery();
   if (radioRecoverPending) {
-    if (now - radioRecoverTick >= 5000u && isInWorkWindow()) {
-      radioRecoverTick = now;
-      centen_radio_spi_clear();
-      if (lora_rf_wake()) radioRecoverPending = 0;
+    if (isInWorkWindow()) {
+      if (rfRecovery.failures >= CENTEN_RF_RECOVERY_LIMIT) recoveryReboot(CENTEN_FAULT_RF);
+      if (now - radioRecoveryReportTick >= 60000u) {
+        char report[48];
+        radioRecoveryReportTick = now;
+        snprintf(report, sizeof(report), "8|%s|RFREC|%u|", deviceName, rfRecovery.failures);
+        sendToDtu(report, dtuCsqRssi, 0);
+      }
+      if (now - radioRecoverTick >= 5000u) lora_rf_wake();
     }
     return;
   }
+
   if (!loraSwOn) return;
   if (radioTxActive) {
     if (rf_get_transmit_flag() == RADIO_FLAG_TXDONE) {
+      radioTxFailStreak = 0;
       if (radioTxPendingSlot >= 0 && pendingCmdCache[radioTxPendingSlot].used &&
           pendingCmdCache[radioTxPendingSlot].generation == radioTxGeneration) {
         memset(&pendingCmdCache[radioTxPendingSlot], 0, sizeof(PendingCmd_t));
@@ -461,6 +469,12 @@ static void serviceRadio(void) {
     } else if (now - radioTxStart < 3000u) return;
     else {
       radioTxTimeouts++;
+      centen_recovery_failed(&rfRecovery, now);
+      bootHealth.stable = 0;
+      if (++radioTxFailStreak >= 3u) {
+        scheduleRadioRecovery();
+        return;
+      }
       printf("[LoRa] tmo\r\n");
     }
     radioTxActive = 0;
@@ -597,44 +611,55 @@ static void lora_rf_sleep(void) {
  *         不能直接 rf_enter_single_timeout_rx
  * @retval 1=唤醒成功, 0=唤醒失败
  * ===================================================================== */
+static void scheduleRadioRecovery(void) {
+  centen_recovery_failed(&rfRecovery, HAL_GetTick());
+  bootHealth.stable = 0;
+  radioRecoverPending = 1;
+  radioRecoverTick = HAL_GetTick();
+  radioProbeGood = loraSwOn = radioTxActive = radioIrqPending = 0;
+  radioTxPendingSlot = -1;
+  memset(loraJobs, 0, sizeof(loraJobs));
+}
+
 static uint8_t lora_rf_wake(void) {
-  int retry = 0;
-  centen_radio_spi_clear();
-
-  /* 与开机初始化一致：先确�?RST 为高，失败则复位后重试一�?*/
+  int retry;
+  radioTxActive = radioIrqPending = radioProbeGood = 0;
+  radioTxPendingSlot = -1;
+  memset(loraJobs, 0, sizeof(loraJobs));
   HAL_GPIO_WritePin(LORA_CSN_GPIO_Port, LORA_CSN_Pin, GPIO_PIN_SET);
-  HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
-  HAL_Delay(100);
-
-  while (rf_init() != RF_OK) {
-    if (retry >= 2) {
-      printf("[LoRa] wake\r\n");
-      goto failed;
-    }
-    retry++;
+  /* Rebuild the MCU peripheral too, not just the RF driver's error latch. */
+  if (centen_radio_spi_failed() || rfRecovery.failures >= 3u ||
+      hspi1.State != HAL_SPI_STATE_READY) {
+    HAL_SPI_DeInit(&hspi1);
+    __HAL_RCC_SPI1_FORCE_RESET();
+    __HAL_RCC_SPI1_RELEASE_RESET();
+    MX_SPI1_Init();
+  }
+  for (retry = 0; retry < 3; ++retry) {
     centen_radio_spi_clear();
-    printf("[LoRa] init %d\r\n", retry);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_RESET);
     HAL_Delay(100);
     HAL_GPIO_WritePin(LORA_RST_GPIO_Port, LORA_RST_Pin, GPIO_PIN_SET);
     HAL_Delay(100);
+    if (rf_init() == RF_OK) break;
   }
-
-  if (rf_set_default_para() != RF_OK || rf_set_tx_power(localTxPower) != RF_OK ||
-      centen_radio_spi_failed()) goto failed;
+  if (retry == 3 || rf_set_default_para() != RF_OK ||
+      rf_set_tx_power(localTxPower) != RF_OK || centen_radio_spi_failed()) goto failed;
   rf_set_recv_flag(RADIO_FLAG_IDLE);
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
   radioIrqPending = 0;
-  // 恢复频率/SF/BW/功率等参�?
-  if (!radioEnterRx()) goto failed; // 立即进入连续接收
-  loraSwOn = 1;
+  if (!radioEnterRx() || rf_read_freq() != DEFAULT_FREQ ||
+      rf_get_mode() != RF_MODE_RX || centen_radio_spi_failed()) goto failed;
+  loraSwOn = radioProbeGood = 1;
+  radioProbeTick = HAL_GetTick();
   radioPowerDirty = radioRecoverPending = 0;
-  printf("[RF] on\r\n");
+  rfChkFails = 0;
+  loraLastRxTick = HAL_GetTick();
+  printf("[RF] on; verify stable before clearing failures\r\n");
   return 1;
 failed:
-  loraSwOn = 0;
-  radioRecoverPending = 1;
-  radioRecoverTick = HAL_GetTick();
+  scheduleRadioRecovery();
+  printf("[RF] recovery failed=%u\r\n", rfRecovery.failures);
   return 0;
 }
 
@@ -849,10 +874,7 @@ static void flash_read_str(uint32_t addr, char *dst, int dstSize) {
  *         STM32F1 只能半字编程；用 i+1<=len 兜底�?
  *         避免读到源串 '\0' 之后的越界字�?
  * ===================================================================== */
-/* Device-name flash record helpers: the record lives INSIDE the active
- * config page at +256 and is rewritten by flash_save_all in the same
- * erase/program pass (data+crc first, commit sentinel last, so a torn
- * write never validates). */
+/* Read committed identity records written by V1.2. V2 uses one CRC/commit. */
 static int name_record_valid_at(uint32_t addr) {
   const CentenNameRecord *r = (const CentenNameRecord *)addr;
   return r->magic == NAME_MAGIC && r->commit == NAME_COMMIT &&
@@ -861,13 +883,7 @@ static int name_record_valid_at(uint32_t addr) {
       r->crc == centen_crc32(r, offsetof(CentenNameRecord, crc));
 }
 
-static void prepare_name_record(CentenNameRecord *r) {
-  memset(r, 0, sizeof(*r));
-  r->magic = NAME_MAGIC;
-  strncpy(r->name, deviceName, sizeof(r->name) - 1u);
-  r->crc = centen_crc32(r, offsetof(CentenNameRecord, crc));
-  r->commit = NAME_COMMIT;
-}
+
 
 static int power_record_valid_at(uint32_t addr) {
   const uint32_t *p = (const uint32_t *)addr;
@@ -887,65 +903,38 @@ static uint8_t flash_program_hwords(uint32_t addr, const uint8_t *bytes,
 }
 
 static uint8_t flash_save_all(void) {
-  CentenConfigRecord record;
-  CentenNameRecord nameRec;
-  uint32_t powerRec[4];
-  FLASH_EraseInitTypeDef eraseInit;
+  CentenSettingsRecord record;
+  FLASH_EraseInitTypeDef eraseInit = {0};
   uint32_t pageError, address;
-  const uint8_t *bytes = (const uint8_t *)&record;
-  const uint8_t *nbytes = (const uint8_t *)&nameRec;
+  const CentenSettingsRecord *old = (const CentenSettingsRecord *)configActiveAddr;
   uint8_t ok = 1;
-  if (!centen_config_valid(configStr)) return 0;
-  if (configActiveAddr) {
-    const CentenConfigRecord *old = (const CentenConfigRecord *)configActiveAddr;
-    if (centen_record_valid(old) && strcmp(old->config, configStr) == 0 &&
-        strcmp(old->center, centerStr) == 0 &&
-        name_record_valid_at(configActiveAddr + NAME_RECORD_OFF) &&
-        power_record_valid_at(configActiveAddr + POWER_REC_OFF)) {
-      const CentenNameRecord *on =
-          (const CentenNameRecord *)(configActiveAddr + NAME_RECORD_OFF);
-      if (strcmp(on->name, deviceName) == 0 &&
-          (uint32_t)localTxPower ==
-              *(const uint32_t *)(configActiveAddr + POWER_REC_OFF + 4u))
-        return 1;
-    }
-  }
+  centen_settings_prepare(&record, configStr, centerStr, deviceName,
+                          localTxPower, configSequence + 1u);
+  if (!centen_settings_valid(&record)) return 0;
+  if (configActiveAddr && centen_settings_valid(old) &&
+      strcmp(old->config, configStr) == 0 && strcmp(old->center, centerStr) == 0 &&
+      strcmp(old->name, deviceName) == 0 && old->power == localTxPower) return 1;
   address = configActiveAddr == CONFIG_PAGE_A ? CONFIG_PAGE_B : CONFIG_PAGE_A;
-  centen_record_prepare(&record, configStr, centerStr, configSequence + 1u);
-  prepare_name_record(&nameRec);
-  powerRec[0] = POWER_MAGIC;
-  powerRec[1] = localTxPower;
-  powerRec[2] = ~localTxPower;
   eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
   eraseInit.PageAddress = address;
   eraseInit.NbPages = 1;
   if (HAL_FLASH_Unlock() != HAL_OK) return 0;
   if (HAL_FLASHEx_Erase(&eraseInit, &pageError) != HAL_OK) ok = 0;
-  if (ok && !flash_program_hwords(address, bytes,
-                                  offsetof(CentenConfigRecord, commit))) ok = 0;
-  if (ok && memcmp((const void *)address, &record, offsetof(CentenConfigRecord, commit)) != 0) ok = 0;
-  if (ok && !flash_program_hwords(address + NAME_RECORD_OFF, nbytes,
-                                  offsetof(CentenNameRecord, commit))) ok = 0;
-  if (ok && memcmp((const void *)(address + NAME_RECORD_OFF), &nameRec,
-                   offsetof(CentenNameRecord, commit)) != 0) ok = 0;
-  if (ok && !flash_program_hwords(address + POWER_REC_OFF, (const uint8_t *)powerRec, 12u)) ok = 0;
-  if (ok && memcmp((const void *)(address + POWER_REC_OFF), powerRec, 12u) != 0) ok = 0;
+  if (ok && !flash_program_hwords(address, (const uint8_t *)&record,
+                                 offsetof(CentenSettingsRecord, commit))) ok = 0;
+  if (ok && memcmp((const void *)address, &record,
+                   offsetof(CentenSettingsRecord, commit)) != 0) ok = 0;
+  /* This is the only commit. It covers config, center, name AND power. */
   if (ok && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-      address + offsetof(CentenConfigRecord, commit), CENTEN_CONFIG_COMMIT) != HAL_OK) ok = 0;
-  if (ok && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-      address + NAME_RECORD_OFF + offsetof(CentenNameRecord, commit), NAME_COMMIT) != HAL_OK) ok = 0;
-  if (ok && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-      address + POWER_REC_OFF + 12u, POWER_COMMIT) != HAL_OK) ok = 0;
+      address + offsetof(CentenSettingsRecord, commit), CENTEN_CONFIG_COMMIT) != HAL_OK) ok = 0;
   HAL_FLASH_Lock();
-  if (!ok || !centen_record_valid((const CentenConfigRecord *)address) ||
-      !name_record_valid_at(address + NAME_RECORD_OFF) ||
-      !power_record_valid_at(address + POWER_REC_OFF)) {
-    printf("[FLASH] fail\r\n");
+  if (!ok || !centen_settings_valid((const CentenSettingsRecord *)address)) {
+    printf("[FLASH] fail; old page retained\r\n");
     return 0;
   }
   configActiveAddr = address;
   configSequence = record.sequence;
-  printf("[FLASH] seq=%lu\r\n", (unsigned long)configSequence);
+  printf("[FLASH] v2 seq=%lu\r\n", (unsigned long)configSequence);
   return 1;
 }
 
@@ -953,27 +942,58 @@ static uint8_t flash_save_all(void) {
  * @brief  �?Flash 加载配置信息 + 农场中心坐标
  * @note   开机时调用，如�?Flash 中有有效数据则加�?
  */
+/* V1.1 had no name/power records. V1.2 wrote those records separately.
+ * Prefer complete V1 pages over a newer page interrupted between commits. */
+static int legacy_page_complete(uint32_t address) {
+  return centen_record_valid((const CentenConfigRecord *)address) &&
+      (*(const uint32_t *)(address + NAME_RECORD_OFF) == 0xffffffffu ||
+       name_record_valid_at(address + NAME_RECORD_OFF)) &&
+      (*(const uint32_t *)(address + POWER_REC_OFF) == 0xffffffffu ||
+       power_record_valid_at(address + POWER_REC_OFF));
+}
+
 static void loadConfigFromFlash(void) {
-  const CentenConfigRecord *a = (const CentenConfigRecord *)CONFIG_PAGE_A;
-  const CentenConfigRecord *b = (const CentenConfigRecord *)CONFIG_PAGE_B;
-  const CentenConfigRecord *selected = NULL;
+  const CentenSettingsRecord *a = (const CentenSettingsRecord *)CONFIG_PAGE_A;
+  const CentenSettingsRecord *b = (const CentenSettingsRecord *)CONFIG_PAGE_B;
+  const CentenSettingsRecord *selected = NULL;
+  const CentenConfigRecord *legacy = NULL;
+  uint32_t pages[2] = {CONFIG_PAGE_A, CONFIG_PAGE_B};
+  int i, pass;
   double lat, lng;
-  if (centen_record_valid(a)) selected = a;
-  if (centen_record_valid(b) && (!selected || (int32_t)(b->sequence - selected->sequence) > 0)) selected = b;
+  configActiveAddr = configSequence = 0;
+  if (centen_settings_valid(a)) selected = a;
+  if (centen_settings_valid(b) && (!selected ||
+      (int32_t)(b->sequence - selected->sequence) > 0)) selected = b;
   if (selected) {
-    strcpy(configStr, selected->config); strcpy(centerStr, selected->center);
-    configActiveAddr = (uint32_t)selected; configSequence = selected->sequence;
+    strcpy(configStr, selected->config);
+    strcpy(centerStr, selected->center);
+    strcpy(deviceName, selected->name);
+    localTxPower = (uint8_t)selected->power;
+    configActiveAddr = (uint32_t)selected;
+    configSequence = selected->sequence;
   } else {
-    char legacy[32];
-    /* Upgrade compatibility: the previous one-page format stays untouched
-     * until a new record has been committed in page A. */
-    if (*(volatile uint32_t *)CONFIG_FLASH_ADDR == CONFIG_MAGIC) {
-      flash_read_str(CONFIG_FLASH_ADDR + 4u, legacy, sizeof(legacy));
-      if (centen_config_valid(legacy)) strcpy(configStr, legacy);
+    /* If no complete V1 exists, salvage a valid core. Identity fallback below
+     * checks BOTH pages. No automatic write erases the remaining old copy. */
+    for (pass = 0; pass < 2 && !legacy; ++pass) {
+      for (i = 0; i < 2; ++i) {
+        const CentenConfigRecord *r = (const CentenConfigRecord *)pages[i];
+        if ((pass == 0 ? legacy_page_complete(pages[i]) : centen_record_valid(r)) &&
+            (!legacy || (int32_t)(r->sequence - legacy->sequence) > 0)) legacy = r;
+      }
     }
-    if (*(volatile uint32_t *)(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF) == CENTER_MAGIC) {
-      flash_read_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4u, legacy, sizeof(legacy));
-      if (centen_center_parse(legacy, &lat, &lng)) strcpy(centerStr, legacy);
+    if (legacy) {
+      strcpy(configStr, legacy->config); strcpy(centerStr, legacy->center);
+      configActiveAddr = (uint32_t)legacy; configSequence = legacy->sequence;
+    } else {
+      char text[32];
+      if (*(const uint32_t *)CONFIG_FLASH_ADDR == CONFIG_MAGIC) {
+        flash_read_str(CONFIG_FLASH_ADDR + 4u, text, sizeof(text));
+        if (centen_config_valid(text)) strcpy(configStr, text);
+      }
+      if (*(const uint32_t *)(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF) == CENTER_MAGIC) {
+        flash_read_str(CONFIG_FLASH_ADDR + CENTER_FLASH_OFF + 4u, text, sizeof(text));
+        if (centen_center_parse(text, &lat, &lng)) strcpy(centerStr, text);
+      }
     }
   }
   syncRelayCenter();
@@ -982,17 +1002,22 @@ static void loadConfigFromFlash(void) {
          (unsigned long)configSequence);
 }
 
-/* Device name + tx power: prefer records on the active config page, else
- * scan both pages (a page switch during the last save moves them). */
 static void loadNameFromFlash(void) {
   uint32_t pages[2];
   int i, bound = 0, pset = 0;
-  pages[0] = configActiveAddr ? configActiveAddr : CONFIG_PAGE_A;
-  pages[1] = CONFIG_PAGE_B;
-  for (i = 0; i < 2 && (!bound || !pset); i++) {
+  if (configActiveAddr &&
+      centen_settings_valid((const CentenSettingsRecord *)configActiveAddr)) {
+    /* V2 values have already been loaded together from this single page. */
+    printf("[FLASH] v2 %s p=%u\r\n", deviceName, localTxPower);
+    return;
+  }
+  pages[0] = configActiveAddr ? configActiveAddr : CONFIG_PAGE_B;
+  pages[1] = pages[0] == CONFIG_PAGE_A ? CONFIG_PAGE_B : CONFIG_PAGE_A;
+  for (i = 0; i < 2 && (!bound || !pset); ++i) {
+    if (!centen_record_valid((const CentenConfigRecord *)pages[i]) &&
+        !(pages[i] == CONFIG_FLASH_ADDR && *(const uint32_t *)pages[i] == CONFIG_MAGIC)) continue;
     if (!bound && name_record_valid_at(pages[i] + NAME_RECORD_OFF)) {
-      strcpy(deviceName,
-             ((const CentenNameRecord *)(pages[i] + NAME_RECORD_OFF))->name);
+      strcpy(deviceName, ((const CentenNameRecord *)(pages[i] + NAME_RECORD_OFF))->name);
       bound = 1;
     }
     if (!pset && power_record_valid_at(pages[i] + POWER_REC_OFF)) {
@@ -1000,8 +1025,8 @@ static void loadNameFromFlash(void) {
       pset = 1;
     }
   }
-  printf("[FLASH] %s %s p=%u\r\n",
-         deviceName, bound ? "bound" : "default", localTxPower);
+  printf("[FLASH] legacy %s %s p=%u\r\n", deviceName,
+         bound ? "bound" : "default", localTxPower);
 }
 
 /**
@@ -1040,6 +1065,7 @@ static void processDtuQueue(void) {
   uint32_t now = HAL_GetTick();
   HAL_StatusTypeDef status;
   DtuQueueItem_t *item;
+  if (uartRecoveryPending) return;
   if (!dtuQueueCount || now - dtuLastSendTick < 2000u) return;
   /* A deferred attempt is not a send. Do not restart the two-second throttle
    * until a UART transmission is actually attempted. */
@@ -1052,6 +1078,7 @@ static void processDtuQueue(void) {
     status = HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, 20);
   if (status != HAL_OK) {
     dtuTxFailures++;
+    noteUartFailure();
     printf("[DTU TX FAIL] status=%u err=%lu q=%u; retained\r\n",
            (unsigned int)status, (unsigned long)huart3.ErrorCode, dtuQueueCount);
     return;
@@ -1378,6 +1405,7 @@ static void dtuHardwareReset(void) {
   dtuPingGraceStart = dtuRecoveryStart;
   dtuPingGot = 0;
   dtuCsqAnswerTick = 0;
+  dtuLocalReplySeen = 0;
   centenDtuRxRecover = 1;
   dtuResetCount++;
 }
@@ -1397,6 +1425,7 @@ static void parseDtuCommand(char *buf) {
     return;
   }
   timeMin = parsed.timeMin;
+  noteDtuReply(); /* A valid platform command also proves the local UART path. */
 
   /* bindDeviceId renames THIS relay. Self-executed regardless of the
    * deviceId field (the cloud may not know the current/default name);
@@ -1568,6 +1597,9 @@ static void parseDtuCommand(char *buf) {
      * If ICCID/IMSI not yet queried after boot the field is empty;
      * re-issue readinfo to refresh. */
     char infoStr[48];
+    printf("[REC] boot=%u streak=%lu rf_fail=%u uart_rebuild=%u dtu_auto=%u\r\n",
+      recoveryBootReason, (unsigned long)wdgStreak, rfRecovery.failures,
+      uartRebuildCount, dtuAutoResets);
     printf("[H] uart=%lu parse=%lu tx=%lu qd=%lu rst=%lu rfto=%lu rfdr=%lu\r\n",
       (unsigned long)centenDtuRing.dropped, (unsigned long)(dtuParseRejected + dtuFrame.rejected),
       (unsigned long)dtuTxFailures, (unsigned long)dtuQueueDropped, (unsigned long)dtuResetCount,
@@ -1617,6 +1649,9 @@ static void processDtuFrame(char *pBuf) {
 
           if (pingSec >= 60 && pingSec <= 86400)
             dtuPingWinMs = (uint32_t)pingSec * 1000u;
+          noteDtuReply();
+          dtuAutoResets = 0;
+          dtuNextAutoReset = 0;
           dtuPingGot = 1;
           dtuLastPingTick = HAL_GetTick();
           printf("[DTU PING] ok w=%lus\r\n",
@@ -1629,6 +1664,7 @@ static void processDtuFrame(char *pBuf) {
       if (pCsq) {
         int csqVal = 0;
         if (sscanf(pCsq, "config,csq,ok,%d", &csqVal) == 1 && ((csqVal >= 0 && csqVal <= 31) || csqVal == 99)) {
+          noteDtuReply();
           dtuCsqRssi = csqVal; // 保存 CSQ 值供对时上报使用
           dtuCsqAnswerTick = HAL_GetTick(); // CSQ 有应�?= DTU 活着
         }
@@ -1642,6 +1678,7 @@ static void processDtuFrame(char *pBuf) {
                    &h, &mi, &s, &ms) >= 6 &&
             dateTimeToTimestamp(y, mo, d, h, mi, s) != 0) {
           /* 保存时间戳供 LoRa 上报使用 */
+          noteDtuReply();
           dtuTimestamp = dateTimeToTimestamp(y, mo, d, h, mi, s);
           dtuSyncTick = HAL_GetTick(); // 记录对时时刻
           dtuTimeValid = 1;
@@ -1665,6 +1702,7 @@ static void processDtuFrame(char *pBuf) {
         if (sscanf(pIccid, "config,iccid,ok,%22s", iccid) == 1 && iccid[0]) {
           strncpy(dtuIccidStr, iccid, sizeof(dtuIccidStr) - 1);
           dtuIccidStr[sizeof(dtuIccidStr) - 1] = '\0';
+          noteDtuReply();
           dtuIccidGot = 1;
         }
       }
@@ -1676,6 +1714,7 @@ static void processDtuFrame(char *pBuf) {
         if (sscanf(pImsi, "config,imsi,ok,%22s", imsi) == 1 && imsi[0]) {
           strncpy(dtuImsiStr, imsi, sizeof(dtuImsiStr) - 1);
           dtuImsiStr[sizeof(dtuImsiStr) - 1] = '\0';
+          noteDtuReply();
           dtuImsiGot = 1;
         }
       }
@@ -1699,6 +1738,11 @@ static void processDtuFrame(char *pBuf) {
 static void processDtuInput(void) {
   uint8_t byte;
   uint32_t count = 0, primask;
+  if (uartRecoveryPending) return;
+  if (uartErrorSeen != centenDtuErrorEvents) {
+    uartErrorSeen = centenDtuErrorEvents;
+    noteUartFailure();
+  }
   if (centenDtuRxRecover) {
     primask = __get_PRIMASK(); __disable_irq();
     HAL_UART_AbortReceive(&huart3);
@@ -1708,6 +1752,7 @@ static void processDtuInput(void) {
     centenDtuRxRecover = 0;
     centen_dtu_receive_start(&huart3);
     __set_PRIMASK(primask);
+    if (centenDtuRxRecover) noteUartFailure();
   }
   if (dtuOverflowSeen != centenDtuRing.dropped) {
     primask = __get_PRIMASK(); __disable_irq();
@@ -1728,7 +1773,7 @@ static void processDtuInput(void) {
 static void processDtuQueries(void) {
   uint32_t now = HAL_GetTick();
   const char *cmd = NULL;
-  if (radioTxActive) return;
+  if (radioTxActive || uartRecoveryPending) return;
   if (dtuQueryStage && now - dtuQueryTick >= 300u) {
     if (dtuQueryStage == 1) {
       cmd = "config,get,nettime\r\n";
@@ -1739,7 +1784,8 @@ static void processDtuQueries(void) {
   } else if (dtuQueryPending && now - dtuQueryTick >= DTU_QUERY_WAIT_MS) {
     dtuQueryPending = 0;
     if (!dtuQueryAnswered && !dtuTimeValid && now - dtuRecoveryStart >= DTU_RECOVERY_GRACE_MS) {
-      if (++dtuNetTimeFailCount >= 5) { dtuHardwareReset(); return; }
+      if (dtuNetTimeFailCount < 5u) ++dtuNetTimeFailCount;
+      if (dtuNetTimeFailCount >= 5u && dtuAutomaticReset(0)) return;
     }
   } else if (!dtuQueryStage && !dtuQueryPending &&
       now - dtuCsqTick >= (dtuTimeValid ? getConfigIntervalMs() : 10000u)) {
@@ -1756,56 +1802,152 @@ static void processDtuQueries(void) {
     printf("[DTU QUERY] %s", cmd);
     if (status != HAL_OK) {
       dtuTxFailures++;
+      noteUartFailure();
       dtuQueryStage = dtuQueryPending = 0;
       printf("[DTU QUERY FAIL] status=%u\r\n", (unsigned int)status);
     }
   }
-  if (dtuTimeValid && dtuCsqAnswerTick && now - dtuCsqAnswerTick > 65UL * 60000UL) {
-    dtuRstByCsq = 1; dtuHardwareReset();
+
+}
+
+static void noteDtuReply(void) {
+  dtuLocalReplySeen = 1;
+  dtuLastLocalReplyTick = HAL_GetTick();
+  dtuNoReplyResets = 0;
+}
+
+static uint8_t dtuAutomaticReset(uint8_t noReply) {
+  uint32_t delay = DTU_RECOVERY_GRACE_MS;
+  uint8_t i;
+  /* A silent local module must not inherit the platform-outage backoff. */
+  if (!noReply && dtuAutoResets && !centen_due(HAL_GetTick(), dtuNextAutoReset)) return 0;
+  if (noReply) {
+    if (dtuNoReplyResets >= 3u) recoveryReboot(CENTEN_FAULT_DTU);
+    ++dtuNoReplyResets;
+  }
+  if (dtuAutoResets < 10u) ++dtuAutoResets;
+  for (i = 1; i < dtuAutoResets && delay < 1800000u; ++i) delay *= 2u;
+  if (delay > 1800000u) delay = 1800000u;
+  dtuHardwareReset();
+  dtuNextAutoReset = HAL_GetTick() + delay;
+  printf("[DTU] automatic reset=%u no_reply=%u next=%lus\r\n",
+         dtuAutoResets, dtuNoReplyResets, (unsigned long)(delay / 1000u));
+  return 1;
+}
+
+static void noteUartFailure(void) {
+  centen_recovery_failed(&uartRecovery, HAL_GetTick());
+  bootHealth.stable = 0;
+  if (uartRecovery.failures >= 3u) uartRecoveryPending = 1;
+}
+
+static void serviceUartRecovery(void) {
+  HAL_StatusTypeDef status;
+  uint32_t now = HAL_GetTick();
+  if (!uartRecoveryPending || now - uartRebuildTick < 1000u) return;
+  uartRebuildTick = now;
+  if (uartRebuildCount >= 3u) recoveryReboot(CENTEN_FAULT_UART);
+  ++uartRebuildCount;
+  HAL_NVIC_DisableIRQ(USART3_IRQn);
+  HAL_UART_Abort(&huart3);
+  HAL_UART_DeInit(&huart3);
+  __HAL_RCC_USART3_FORCE_RESET();
+  __HAL_RCC_USART3_RELEASE_RESET();
+  status = HAL_UART_Init(&huart3);
+  centenDtuRing.tail = centenDtuRing.head;
+  memset(&dtuFrame, 0, sizeof(dtuFrame));
+  dtuQueryStage = dtuQueryPending = 0;
+  if (status == HAL_OK) centen_dtu_receive_start(&huart3);
+  HAL_NVIC_ClearPendingIRQ(USART3_IRQn);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
+  uartRecoveryPending = status != HAL_OK || centenDtuRxRecover;
+  uartRecovery.stable = 0;
+  printf("[UART] rebuild=%u result=%u\r\n", uartRebuildCount, uartRecoveryPending);
+}
+
+static void serviceRecovery(void) {
+  uint32_t now = HAL_GetTick();
+  uint32_t replyWindow = dtuTimeValid ? getConfigIntervalMs() + 60000u : DTU_RECOVERY_GRACE_MS;
+  int radioExpected = isInWorkWindow() && (loraSwOn || radioRecoverPending);
+  int radioHealthy = !radioExpected || (loraSwOn && !radioRecoverPending &&
+      radioProbeGood && now - radioProbeTick < 90000u && !centen_radio_spi_failed());
+  int uartHealthy = !uartRecoveryPending && !centenDtuRxRecover &&
+      huart3.gState == HAL_UART_STATE_READY && huart3.RxState == HAL_UART_STATE_BUSY_RX &&
+      dtuLocalReplySeen && now - dtuLastLocalReplyTick < replyWindow;
+  centen_recovery_stable(&rfRecovery, now, radioHealthy);
+  if (centen_recovery_stable(&uartRecovery, now, uartHealthy)) uartRebuildCount = 0;
+  if (wdgStreak && centen_recovery_stable(&bootHealth, now, radioHealthy && uartHealthy)) {
+    wdgStreak = 0;
+    BKP->DR2 = 0;
+    BKP->DR3 = 0xffffu;
+    printf("[WDG] local services stable; streak cleared\r\n");
+  }
+  if (!uartRecoveryPending && now - dtuRecoveryStart >= DTU_RECOVERY_GRACE_MS &&
+      (!dtuLocalReplySeen || now - dtuLastLocalReplyTick >= replyWindow)) {
+    if (dtuAutomaticReset(1)) dtuRstByCsq = 1;
   }
 }
 
-/* 喂狗（写入 KR 即可，无 SysTick 依赖） */
 static void wdg_feed(void) { IWDG->KR = 0xAAAAu; }
 
-/* IWDG 启动 + 复位原因/连续故障计数读取（寄存器直操，无 tick 依赖）
- * 连续 3 次以上咬狗：开机先退避 30s（途中喂狗）再进主循环，避免重启风暴 */
-static void wdg_init(void) {
-  uint32_t flags = RCC->CSR;
-
-  IWDG->KR = 0xCCCCu;                     /* start */
-  IWDG->KR = 0x5555u;                     /* unlock PR/RLR */
-  IWDG->PR = 6u;                          /* /256 */
+/* Called by SystemInit BEFORE .data/.bss initialization. No globals, HAL,
+ * printf or tick dependency is permitted in this function. */
+void centen_watchdog_start_early(void) {
+  uint32_t guard = 100000u;
+  IWDG->KR = 0xAAAAu;
+  IWDG->KR = 0xCCCCu;
+  IWDG->KR = 0x5555u;
+  IWDG->PR = 6u;
   IWDG->RLR = WDG_IWDG_RELOAD;
-  {
-    uint32_t guard = 100000u;
-    while (IWDG->SR && --guard) { }       /* 等配置同步完成 */
-  }
-  IWDG->KR = 0xAAAAu;                     /* feed */
+  while (IWDG->SR && --guard) { }
+  if (!guard) { while (1) { } } /* IWDG resets a failed configuration. */
+  IWDG->KR = 0xAAAAu;
+}
 
+static void wdg_capture_boot(void) {
+  uint16_t previous, reason = CENTEN_FAULT_NONE;
+  int valid, powerOn;
+  bootResetFlags = RCC->CSR;
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_RCC_BKP_CLK_ENABLE();
-  SET_BIT(PWR->CR, PWR_CR_DBP);           /* 解错备份寄存器 */
-  if (!(flags & RCC_CSR_PORRSTF) && BKP->DR1 == WDG_STREAK_MAGIC)
-    wdgStreak = (BKP->DR2 <= 15u) ? BKP->DR2 : 0u;
-  if (flags & RCC_CSR_IWDGRSTF) {
-    wdgIwdgBoot = 1;
-    if (wdgStreak < 15u) wdgStreak++;     /* 咬狗 = 真故障，计数累加 */
-  } else if (flags & RCC_CSR_PORRSTF) {
-    wdgStreak = 0;                        /* 断电重新上电：计数清零 */
-  }
+  SET_BIT(PWR->CR, PWR_CR_DBP);
+  previous = (uint16_t)BKP->DR2;
+  valid = BKP->DR1 == WDG_STREAK_MAGIC &&
+          (uint16_t)BKP->DR3 == (uint16_t)~previous;
+  powerOn = (bootResetFlags & RCC_CSR_PORRSTF) != 0;
+  if (!powerOn && valid &&
+      (uint16_t)BKP->DR5 == (uint16_t)~(uint16_t)BKP->DR4 &&
+      (bootResetFlags & (RCC_CSR_SFTRSTF | RCC_CSR_IWDGRSTF)))
+    reason = (uint16_t)BKP->DR4;
+  wdgIwdgBoot = !powerOn && (bootResetFlags & RCC_CSR_IWDGRSTF) != 0;
+  wdgStreak = centen_boot_streak(previous, valid, powerOn, wdgIwdgBoot, reason);
+  recoveryBootReason = reason >= CENTEN_FAULT_RF && reason <= CENTEN_FAULT_CLOCK ?
+      reason : (wdgIwdgBoot ? CENTEN_FAULT_IWDG : CENTEN_FAULT_NONE);
+  recoveryBootReportPending = recoveryBootReason != CENTEN_FAULT_NONE;
   BKP->DR1 = WDG_STREAK_MAGIC;
   BKP->DR2 = wdgStreak;
-  RCC->CSR |= RCC_CSR_RMVF;               /* 清复位标志 */
-  if (wdgIwdgBoot)
-    printf("[WDG] IWDG reset, streak=%u\r\n", (unsigned)wdgStreak);
-  if (wdgStreak >= 3u) {
-    printf("[WDG] fault streak=%u, backoff 30s\r\n", (unsigned)wdgStreak);
-    for (uint32_t i = 0u; i < 300u; i++) {  /* 300 x 100ms = 30s, 途中喂狗 */
-      wdg_feed();
-      HAL_Delay(100);
-    }
+  BKP->DR3 = (uint16_t)~(uint16_t)wdgStreak;
+  BKP->DR4 = CENTEN_FAULT_NONE;
+  BKP->DR5 = 0xffffu;
+  RCC->CSR |= RCC_CSR_RMVF;
+  bootBackoffMs = centen_boot_backoff_ms((uint16_t)wdgStreak);
+}
+
+static void wdg_boot_backoff(void) {
+  /* Run on HSI after HAL_Init, BEFORE HSE/PLL or external peripherals. */
+  uint32_t start = HAL_GetTick();
+  while (HAL_GetTick() - start < bootBackoffMs) {
+    wdg_feed();
+    HAL_Delay(100);
   }
+}
+
+static void recoveryReboot(uint16_t reason) {
+  /* Unlike a user reboot, this software reset must increment the streak. */
+  BKP->DR4 = reason;
+  BKP->DR5 = (uint16_t)~reason;
+  __DSB();
+  NVIC_SystemReset();
 }
 
 int main(void) {
@@ -1816,7 +1958,9 @@ int main(void) {
   /* MCU 配置 --------------------------------------------------------*/
 
   /* 复位所有外设，初始�?Flash 接口�?SysTick 定时�?*/
+  wdg_capture_boot();
   HAL_Init();
+  wdg_boot_backoff();
 
   /* USER CODE BEGIN Init */
 
@@ -1841,7 +1985,9 @@ int main(void) {
 
   // 打印启动信息
   printf_logo();
-  wdg_init();  /* IWDG 看门狗：卡死 >10s 咬狗自愈，连续故障退避 */ // 显示工程信息 Logo
+  printf("[BOOT] flags=%08lX reason=%u streak=%lu backoff=%lums\r\n",
+         (unsigned long)bootResetFlags, recoveryBootReason,
+         (unsigned long)wdgStreak, (unsigned long)bootBackoffMs);
 
   /* Device name: default v0-100. A bound name (bindDeviceId command) is
    * loaded from Flash right after the config (printed there). */
@@ -1880,6 +2026,7 @@ int main(void) {
   /* USER CODE BEGIN WHILE */
   while (1) {
     wdg_feed();   /* 主循环喂狗：任意单圈卡死超 10s 即咬狗复位 */
+    serviceUartRecovery();
     processDtuInput();
     serviceRadio();
     getCurrentTimestamp();
@@ -1904,11 +2051,18 @@ int main(void) {
       /* CSQ 死机复位�?DTU：补发一条告知帧（只发一次）
        * 格式: 8|deviceName|rst_dtu —�?服务器据此知道中继曾自动恢复�?*/
       /* IWDG 咬狗重启：链接恢复后上报一次告知服务器 */
+      if (recoveryBootReportPending && !wdgIwdgBoot) {
+        char report[48];
+        snprintf(report, sizeof(report), "8|%s|RECBOOT|%u|", deviceName, recoveryBootReason);
+        sendToDtu(report, dtuCsqRssi, 0);
+        recoveryBootReportPending = 0;
+      }
       if (wdgIwdgBoot) {
         char iwdgStr[48];
         snprintf(iwdgStr, sizeof(iwdgStr), "8|%s|rst_iwdg", (char *)deviceName);
         sendToDtu(iwdgStr, dtuCsqRssi, 0);
         wdgIwdgBoot = 0;
+        recoveryBootReportPending = 0;
       }
       if (dtuRstByCsq) {
         char rstStr[48];
@@ -1948,12 +2102,9 @@ int main(void) {
       } else if (dtuPingGot && nowT - dtuLastPingTick > dtuPingWinMs) {
         pingRst = 1;                    /* heartbeat lost */
       }
-      if (pingRst) {
+      if (pingRst && dtuAutomaticReset(0)) {
         printf("[DTU PING] lost, RST dtu\r\n");
         dtuRstByPing = 1;
-        dtuHardwareReset();
-        dtuPingGot = 0;
-        dtuPingGraceStart = HAL_GetTick(); /* re-arm grace for registration */
       }
     }
 
@@ -2000,23 +2151,19 @@ int main(void) {
         loraLastRxTick = HAL_GetTick();            /* 窗口外不累计，进入窗口重新计时 */
       }
 
-      /* 连续无故障运行 60s → 清零连续咬狗计数（BKP 同步） */
-      if (wdgStreak != 0u && HAL_GetTick() > 60000u) {
-        wdgStreak = 0u;
-        BKP->DR2 = 0u;
-        printf("[WDG] healthy, streak cleared\r\n");
-      }
-
-      /* RF 健康探针：每 30s 回读频率寄存器与配置值比对。
-       * 抓住' SPI 总线正常但芯片状态机挂死/寄存器丢失'的死而不崩型故障：
-       * 读回 0 = SPI 总线级故障，乱值 = 寄存器级故障（上报带回读值供服务器分析） */
+      /* Check the stored frequency AND RX mode every 30s. These are local
+       * register probes, not proof that an over-the-air packet can arrive. */
       if (inWin && loraSwOn && !radioTxActive && !radioRecoverPending &&
           HAL_GetTick() - rfChkTick >= RF_CHK_INTERVAL_MS) {
         uint32_t freq = rf_read_freq();
+        uint8_t mode = rf_get_mode();
         rfChkTick = HAL_GetTick();
-        if (freq == DEFAULT_FREQ) {
+        if (freq == DEFAULT_FREQ && mode == RF_MODE_RX && !centen_radio_spi_failed()) {
           rfChkFails = 0;
+          radioProbeGood = 1;
+          radioProbeTick = HAL_GetTick();
         } else {
+          radioProbeGood = 0;
           rfChkFails++;
           printf("[RFCHK] fail %u: read=%lu expect=%lu\r\n",
                  (unsigned)rfChkFails, (unsigned long)freq, (unsigned long)DEFAULT_FREQ);
@@ -2027,10 +2174,7 @@ int main(void) {
                      (char *)deviceName, (unsigned long)freq);
             sendToDtu(chkStr, dtuCsqRssi, 0);
             rfChkFails = 0;
-            if (!lora_rf_wake()) {         /* 硬复位重初始化恢复连续接收 */
-              radioRecoverPending = 1;     /* 立即失败 → 5s 周期恢复机制继续重试 */
-              radioRecoverTick = HAL_GetTick();
-            }
+            scheduleRadioRecovery();
           }
         }
       }
@@ -2062,6 +2206,7 @@ int main(void) {
     processDtuInput();
     processDtuQueries();
     serviceRadio();
+    serviceRecovery();
 
     HAL_Delay(1); // 短延�?
   }
@@ -2084,7 +2229,7 @@ void SystemClock_Config(void) {
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-    Error_Handler();
+    recoveryReboot(CENTEN_FAULT_CLOCK);
   }
 
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
@@ -2095,7 +2240,7 @@ void SystemClock_Config(void) {
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
-    Error_Handler();
+    recoveryReboot(CENTEN_FAULT_CLOCK);
   }
 }
 

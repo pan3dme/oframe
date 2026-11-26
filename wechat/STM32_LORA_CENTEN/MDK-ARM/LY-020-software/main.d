@@ -23,5 +23,6 @@ ly-020-software/main.o: ..\Core\Src\main.c ..\Core\Inc\main.h \
   ..\Drivers\STM32F1xx_HAL_Driver\Inc\stm32f1xx_hal_spi.h \
   ..\Drivers\STM32F1xx_HAL_Driver\Inc\stm32f1xx_hal_uart.h \
   ..\user\centen_support.h ..\user\centen_uart.h \
-  ..\Common\inc\common_test.h ..\Common\RadioF103\inc\pan3029_port.h \
+  ..\user\centen_recovery.h ..\Common\inc\common_test.h \
+  ..\Common\RadioF103\inc\pan3029_port.h \
   ..\Common\RadioF103\inc\pan3029_rf.h ..\Common\RadioF103\inc\radio.h
