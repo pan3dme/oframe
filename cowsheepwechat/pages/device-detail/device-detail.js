@@ -599,14 +599,14 @@ Page({
           })
         }
         this._maybeCheckReportInterval()
-        if (callback) callback()
+        if (callback) callback(!srvErr)
       },
       fail: (err) => {
         console.error('设备轨迹查询失败:', err)
         if (offset > 0) {
           // 加载更多失败：仅关闭加载状态，保留已展示内容
           this.setData({ isLoadingMore: false, isRefreshing: false })
-          if (callback) callback()
+          if (callback) callback(false)
           return
         }
         // 断网兜底：网络不可用时用本地缓存拼出记录列表
@@ -623,7 +623,7 @@ Page({
         if (offlineRecords.length > 0) {
           wx.showToast({ title: '网络不可用，已显示缓存数据', icon: 'none', duration: 2000 })
         }
-        if (callback) callback()
+        if (callback) callback(false)
       }
     })
   },
@@ -737,17 +737,16 @@ Page({
     }
   },
 
-  // 下拉刷新
-  // 仅重新拉取设备配置（getDeviceConfigById）；
-  // 其它数据（设备记录列表、设备表基本信息、牛羊绑定名等）都用缓存，不再重新请求网络，
-  // 避免每次刷新都触发 getDeviceLogbyId 等接口造成冗余流量与服务器压力。
+  // 下拉刷新：重新拉取当前筛选类型的记录列表（offset=0 替换整个列表），
+  // 顶部设备配置也顺带刷新；记录请求结束会自动关闭刷新动画
   onRefreshRecords() {
     if (this.data.isRefreshing) return
     this.setData({ isRefreshing: true })
-    this.loadDeviceConfig(this.data.deviceId, () => {
-      this.setData({ isRefreshing: false })
-      wx.showToast({ title: '配置已刷新', icon: 'none', duration: 1000 })
+    this.loadTodayRecords(0, (ok) => {
+      if (ok === false) return  // 断网/服务器异常时 loadTodayRecords 已自行提示
+      wx.showToast({ title: '记录已刷新', icon: 'none', duration: 1000 })
     })
+    this.loadDeviceConfig(this.data.deviceId)
   },
 
   // 滚动到底部加载更多

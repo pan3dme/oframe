@@ -1,0 +1,97 @@
+{
+  "auditDate": "2026-11-26",
+  "version": "V2.8 / APP_VERSION 19",
+  "scope": "C-body-derived JavaScript probes with peripheral mocks; no board execution; no firmware build or flash",
+  "probes": [
+    {
+      "name": "silent GPS waits and feeds",
+      "timeoutMs": 60000,
+      "observedElapsedMs": 60000,
+      "feeds": 600,
+      "taskCalls": 601,
+      "result": 0
+    },
+    {
+      "name": "silent GPS waits and feeds",
+      "timeoutMs": 240000,
+      "observedElapsedMs": 240000,
+      "feeds": 2400,
+      "taskCalls": 2401,
+      "result": 0
+    },
+    {
+      "name": "silent GPS waits and feeds",
+      "timeoutMs": 600000,
+      "observedElapsedMs": 600000,
+      "feeds": 6000,
+      "taskCalls": 6001,
+      "result": 0
+    },
+    {
+      "name": "TX frame boundary",
+      "sourceText": "2|v3-23|43200|99|999",
+      "desiredBytes": 21,
+      "actualBytes": 21,
+      "containsNul": true,
+      "actualAscii": "2|v3-23|43200|99|999\u0000"
+    },
+    {
+      "name": "TX frame boundary",
+      "sourceText": "8|v3-23|INFO|60T|433HZ|20dbm|V2.8|999|",
+      "desiredBytes": 39,
+      "actualBytes": 36,
+      "containsNul": false,
+      "actualAscii": "8|v3-23|INFO|60T|433HZ|20dbm|V2.8|99"
+    },
+    {
+      "name": "TX frame boundary",
+      "sourceText": "8|v3-23|COORD|-90.00000,-180.00000|999|",
+      "desiredBytes": 40,
+      "actualBytes": 36,
+      "containsNul": false,
+      "actualAscii": "8|v3-23|COORD|-90.00000,-180.00000|9"
+    },
+    {
+      "name": "blind radio write",
+      "result": 0,
+      "readbackCalls": 0,
+      "transferredBytes": 2
+    },
+    {
+      "name": "unsynchronized automatic GPS gate",
+      "automaticGpsNeeded": 0
+    },
+    {
+      "name": "SPI fault bypasses radio retries",
+      "rfCalls": 1,
+      "gpioWritesBeforeReset": 3
+    }
+  ],
+  "hashes": {
+    "Core/Src/main.c": "74718a9a9264488624b0acc6116a268bb243c277369c483b2c4a555c1121331e",
+    "Core/Src/reliability.c": "95b5b5c949d71f5a2b4eb03035568bd674442f4e0f08daa18556fa130c5bea54",
+    "Core/Src/nvstore.c": "8addd00274a9910eeb7041a6de57d0b7d245bd487875400eff0c54fd7d039651",
+    "Core/Src/stm32f1xx_it.c": "e4ad232533ebeafa8c15a6f5303f51f1d7742ad0ef0df1ab3f7f76831d9687de",
+    "Core/Inc/main.h": "58c6e4f6f48b164679105af8490de8cc79cd468ae1149a812df13aab93219edb",
+    "Radio/src/pan3029_rf.c": "d20863cd621962ddb1aa74726d50b8ef3a7d8b8cc1aa1f0465a8d559780d5db1",
+    "Radio/src/pan3029_port.c": "032be24428b4f9464e7c2613df7acfab41b75c08c8b20bba80d48bc3b544a6b3",
+    "Radio/inc/pan3029_port.h": "281c5408f17bbb5f0380c20bd954c5d1bb088e0c8b3050cd58b9908db9e9a590",
+    "MDK-ARM/STM32_ONLY_SEND.uvprojx": "5ebfda5c12a8902c1a5d42f66b2a7b7fe7f1df7012f824df4d35abbe652ba601",
+    "tools/build_watchdog.cjs": "e09d577e05848a88572ee36f6f475ffd96fdb091481e34821d73deb48ea822c3",
+    "tools/test_watchdog.cjs": "6efc19d55c3cb98e8eb8d2bfaff2afa382acf9028c4ec354fa9596c82c9020b8",
+    "tools/test_low_power.cjs": "5d0741acabbca54fee2a5bed4f70d57616e144b787f6273510af278fb3b44dbf"
+  },
+  "legacyManifestCompiler": "ARMCC5",
+  "manifestMismatches": [
+    "Core\\Src\\main.c",
+    "Core\\Src\\reliability.c",
+    "Radio\\src\\pan3029_rf.c",
+    "Radio\\inc\\pan3029_port.h",
+    "MDK-ARM\\STM32_ONLY_SEND.uvprojx"
+  ],
+  "existingRegressionRuns": {
+    "watchdog": "FAIL at source manifest Core\\Src\\main.c (test_watchdog.cjs:141)",
+    "lowPower": "ERROR: openRxWindow4000 is not defined (test_low_power.cjs:252; mock still named openRxWindow3000)",
+    "note": "Existing result JSON files were preserved. Neither regression completed against the current sources."
+  }
+}
