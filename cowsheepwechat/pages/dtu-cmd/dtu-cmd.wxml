@@ -56,6 +56,7 @@
 
       <button class="quick-btn {{quickSelected === 20 ? 'quick-active' : ''}}" bindtap="onQuickFarmCenter">🏠 农场中心</button>
       <button class="quick-btn {{quickSelected === 24 ? 'quick-active' : ''}}" bindtap="onQuickDeviceCount">🔢 设备数量</button>
+      <button class="quick-btn {{quickSelected === 26 ? 'quick-active' : ''}}" bindtap="onQuickRxStat">📈 接收成功率</button>
     </view>
   </view>
 

@@ -289,6 +289,14 @@ Page({
     })
   },
 
+  // 接收成功率：查询型指令，value 固定 "0"，设备上报统计周期内的收包成功率
+  onQuickRxStat() {
+    this.setData({
+      cmdText: JSON.stringify({ cmd: 'rxstat', value: '0', time: Number(this.data.cmdTime) || 0 }),
+      quickSelected: 26
+    })
+  },
+
   onQuickConfig() {
     const device = this.data.deviceList[this.data.deviceIndex]
     if (!device) {

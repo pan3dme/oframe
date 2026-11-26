@@ -77,3 +77,5 @@ flutter/001/.idea/workspace.xml
 /python/res/local_cache
 python/res/local_cache/devicelog001.db
 python/res/local_cache/devicelog001.db
+/python/res/local_cache
+*.db

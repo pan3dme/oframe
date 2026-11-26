@@ -44,7 +44,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.7"
+#define DEMO_VER     "V2.8"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       128   /* build buffer: frames may be composed freely */
@@ -97,7 +97,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         18u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         19u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -157,12 +157,18 @@ static uint8_t  readInfoValue = 0;
 /* readinfo value: 1=drift 2=last rssi/snr 3=farm center 4=device overview
  * 5=chip UID (tail word, 8 hex) 6=device settings (existing config frame)
  * 7=configured max GPS search time (SRCH, searchtime cmd);
- * 0 (default/missing/garbled) or >7 (out of range) = report all (1..7) back
+ * 8=RX window stats (RXW open/ok counts since boot, rxstat cmd);
+ * 0 (default/missing/garbled) or >8 (out of range) = report all (1..7) back
  * to back, in order */
 static uint8_t  lastRxRssi = 0;        /* 最近一次接收窗口收到的 RSSI 原�?上报�?-256) */
 static uint8_t  lastRxSnr  = 0;        /* 最近一次接收窗口收到的 SNR */
 static uint8_t  lastRxSeen = 0;        /* 1=开机至今收到过�?未收到过上报 noRX) */
 static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自动清零 */
+/* RX 窗口收发统计（开机起累计，RAM 变量，复位清零）：
+ * rxWinCount=累计开启接收窗口次数；rxOkCount=窗口内成功收到帧(CRC过)次数
+ * 通过 rxstat / readinfo 8 指令触发 8|dev|RXW|开窗数/收到数|cnt| 上报 */
+static uint32_t rxWinCount = 0;
+static uint32_t rxOkCount = 0;
 /* gpsNeedRetry removed: a failed upgps search reports once and is DONE - no automatic re-search at later slots (each retry cycle burned ~4-8min of GPS power when no satellites were visible). */
 /* Link health uses monotonic RTC time, independent of wall-clock sync. */
 static uint32_t linkLastRtc, linkSilentSec;
@@ -674,7 +680,7 @@ static void loraTx(const char *msg)
   }
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
   Safety_Begin(STAGE_MAIN, 15000u);
-  printf("[TX] %s\r\n", msg);
+  printf("[TX] 实发%lu字节: %s\r\n", (unsigned long)(len + 1u), msg);
 }
 
 /**
@@ -709,8 +715,8 @@ static void sendReadInfoMessage(void)
 {
   char tx_msg[TX_LEN];
 
-  /* out-of-range value (8+): clamp to 0 = report all 7 kinds, in order */
-  if (readInfoValue > 7u)
+  /* out-of-range value (9+): clamp to 0 = report all 7 kinds, in order */
+  if (readInfoValue > 8u)
     readInfoValue = 0;
 
   /* value 0 (default/missing/garbled): report all 7 kinds back to back,
@@ -805,6 +811,19 @@ static void sendReadInfoMessage(void)
 #else
     snprintf(tx_msg, sizeof(tx_msg), "%d|%s|SRCH|%lus|",
              MSG_TYPE_READINFO, deviceName, (unsigned long)(gpsSearchMaxMs / 1000u));
+#endif
+  } else if (readInfoValue == 8) {
+    /* RX 窗口收发统计：8|dev|RXW|开窗数/收到数|cnt|（开机起累计）
+     * 帧长上限: 8|v3-109|RXW|99999/99999|999| = 30 字节, 36 上限内 */
+#if TX_COUNT_ENABLE
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RXW|%lu/%lu|%lu|",
+             MSG_TYPE_READINFO, deviceName,
+             (unsigned long)rxWinCount, (unsigned long)rxOkCount,
+             (unsigned long)tx_count);
+#else
+    snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RXW|%lu/%lu|",
+             MSG_TYPE_READINFO, deviceName,
+             (unsigned long)rxWinCount, (unsigned long)rxOkCount);
 #endif
   } else {
 #if TX_COUNT_ENABLE
@@ -996,7 +1015,8 @@ static void gpsPreSearch(void)
   gpsPreBytes    = 0;
 
   if (availMs < GPS_WAIT_MIN_MS) {
-    printf("[GPS] 预搜窗口过短\r\n");
+    printf("[GPS] 预搜窗口过短(%lums<%lums)，本轮不搜\r\n",
+           (unsigned long)availMs, (unsigned long)GPS_WAIT_MIN_MS);
     return;
   }
 
@@ -1475,7 +1495,7 @@ static void linkSilenceCheck(void)
     linkRecoveryStep = 1u;
     if (loraInitialized) loraSleep();
     loraInitialized = 0u;
-    printf("[LINK] 链路静默，下个时隙重初始化射频\r\n");
+    printf("[LINK] 工作时段静默超%lus，下个时隙重初始化射频\r\n", (unsigned long)LINK_SILENCE_REBOOT_SEC);
   } else {
     Safety_Reset(RESET_LINK);
   }
@@ -2294,7 +2314,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
   }
 
   if (field_count < 2) {
-    printf("[RX] 无效帧\r\n");
+    printf("[RX] 无效帧(len=%d): %s\r\n", len, str);
     return;
   }
 
@@ -2446,7 +2466,8 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         if (strcmp(fields[2], "realyname") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             if (strlen(fields[3]) > 5) {
-              printf("[CMD] 参数无效\r\n");
+              printf("[CMD] realyname 名字过长(%d字符)，上限5\r\n",
+                     (int)strlen(fields[3]));
             } else {
               strncpy(deviceName, fields[3], sizeof(deviceName) - 1);
               deviceName[sizeof(deviceName) - 1] = '\0';
@@ -2468,7 +2489,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         else if (strcmp(fields[2], "upgps") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             if (!gpsBatteryOk()) {
-              printf("[GPS] 电量低，跳过\r\n");
+              printf("[GPS] 电量低(%d%%)，跳过搜星\r\n", (int)cachedBatteryPercent);
               break;
             }
             int mins = atoi(fields[3]);        /* atoi 自动跳过前导空格 */
@@ -2498,7 +2519,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         else if (strcmp(fields[2], "sendmode") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             /* TODO: 后续功能在此实现 */
-            printf("[CMD] sendmode=%d: 保留值\r\n", atoi(fields[3]));
+            printf("[CMD] sendmode=%d: 预留指令，未实现\r\n", atoi(fields[3]));
           }
         }
         /* devicecount: 9|v0-0|devicecount|30  �? 设置分时隙上报的子设备总台�?
@@ -2519,7 +2540,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                          ((fastStartRounds > 0) && (getConfigIntervalSec() > 60u))
                              ? 60u : getConfigIntervalSec()));
             } else {
-              printf("[CMD] 参数无效\r\n");
+              printf("[CMD] devicecount 越界(%d)，范围1~60\r\n", cnt);
             }
           }
         }
@@ -2533,12 +2554,23 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
         }
         /* txpower: 9|v3-3|txpower|15  �? 动态修改发射功�?
          * @note 范围 10~20 dBm（保证接收范围下�?模块上限）；乱码 atoi=0 也被�?*/
+        /* rxstat: 9|v0-0|rxstat  → 上报 RX 窗口收发统计（类型8帧）
+         * 回帧: 8|dev|RXW|开窗数/收到数|cnt|（开机起累计）
+         * readinfo 8 也走同一分支；收到指令后同轮窗口结束即回包 */
+        else if (strcmp(fields[2], "rxstat") == 0) {
+          if (cmdIsForMe(fields)) {
+            readInfoValue = 8u;
+            readInfoNeedReport = 1;
+            printf("[CMD] rxstat: 开窗%lu 收到%lu\r\n",
+                   (unsigned long)rxWinCount, (unsigned long)rxOkCount);
+          }
+        }
         else if (strcmp(fields[2], "txpower") == 0 && field_count >= 4) {
           if (cmdIsForMe(fields)) {
             int newPwr = atoi(fields[3]);
 
             if (newPwr < 10 || newPwr > 20) {
-              printf("[CMD] 参数无效\r\n");
+              printf("[CMD] txpower 越界(%d)，范围10~20\r\n", newPwr);
             } else {
               currentTxPower = (uint8_t)newPwr;
               rf_set_tx_power((uint8_t)newPwr);
@@ -2593,7 +2625,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 
             if (!configTimeFieldValid(wf) || !configTimeFieldValid(gf)) {
               /* 中文值不写三元表达式（ARMCC5 GBK 吞引号），用 if/else */
-              printf("[CMD] 参数无效\r\n");
+              printf("[CMD] A: 时间窗字段无效\r\n");
               printf("[CMD]   工作窗=\"%s\" GPS窗=\"%s\"", wf, gf);
             } else if (newMin >= 1 && newMin <= 60) {
               strncpy(configStr, fields[3], sizeof(configStr) - 1);
@@ -2606,7 +2638,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
                * 这里不用做额外的"重新加载"，直接把生效的区间打出来核对 */
               printTimeWindows("[指令] 新时�?: ");
             } else {
-              printf("[CMD] 参数无效\r\n");
+              printf("[CMD] A: 周期越界(%lu)，范围1~60分钟\r\n", (unsigned long)newMin);
             }
           }
         }
@@ -2633,7 +2665,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
               saveSearchTimeToFlash(gpsSearchMaxMs);
               printf("[CMD] 最大搜星时间: %d分钟\r\n", newMin);
             } else {
-              printf("[CMD] 参数无效\r\n");
+              printf("[CMD] searchtime 越界(%d)，范围1~10分钟\r\n", newMin);
             }
           }
         } else {
@@ -2642,7 +2674,7 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
       }
       break;
     default:
-      printf("[RX] 类型=%d\r\n", msg_type);
+      printf("[RX] 未知帧类型=%d，忽略\r\n", msg_type);
       break;
   }
 }
@@ -2659,6 +2691,7 @@ static void openRxWindow4000(void)
    * kill the window - re-arm with the remaining budget so a later clean
    * frame (relay timesync after a weak command) still gets through */
   uint32_t rxStart = HAL_GetTick();
+  rxWinCount++;   /* 统计：开机起累计开启接收窗口次数 */
   Safety_Begin(STAGE_RX, 6000u);
   for (;;) {
     uint32_t spent = HAL_GetTick() - rxStart;
@@ -2666,7 +2699,7 @@ static void openRxWindow4000(void)
     rf_set_recv_flag(RADIO_FLAG_IDLE);
     if (rf_enter_single_timeout_rx(4000u - spent) != RF_OK) Safety_Reset(RESET_RX);
     if (!windowPrintOff)
-      printf("[RX] 开4秒接收窗\r\n");
+      printf("[RX] 开4秒接收窗(第%lu轮)\r\n", (unsigned long)bootTxRounds);
 
     /* wait done/timeout/err; SW guard: reset self-heal if chip IRQ lost */
     while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
@@ -2680,7 +2713,7 @@ static void openRxWindow4000(void)
     if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
       rf_set_recv_flag(RADIO_FLAG_IDLE);
       if (!windowPrintOff)
-        printf("[RX] CRC错误\r\n");
+        printf("[RX] CRC错误，剩余预算%lums\r\n", (unsigned long)(4000u - spent));
       continue;                  /* re-arm for the rest of the window */
     }
     rf_set_recv_flag(RADIO_FLAG_IDLE); /* RXTIMEOUT: budget exhausted */
@@ -2701,6 +2734,7 @@ static void openRxWindow4000(void)
     lastRxRssi = local_rssi;
     lastRxSnr  = local_snr;
     lastRxSeen = 1;
+    rxOkCount++;    /* 统计：开机起累计成功收到帧(CRC过)次数 */
     if (local_size > RX_LEN) local_size = RX_LEN;
     for (uint8_t i = 0; i < local_size; i++)
       local_buf[i] = RxDoneParams.Payload[i];
@@ -2845,7 +2879,7 @@ static void OnMaster(void)
     uint8_t inGpsWin = isInGpsWorkWindow();
 
     if (!gpsBatteryOk()) {
-      printf("[GPS] 电量低，跳过\r\n");
+      printf("[GPS] 电量低(%d%%)，跳过搜星\r\n", (int)cachedBatteryPercent);
       gpsWaitReport = 0u;
       gpsContTotalMin = 0u;
       gpsPreSearched = 0u;
