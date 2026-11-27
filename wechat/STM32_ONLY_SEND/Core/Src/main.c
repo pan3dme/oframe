@@ -7,7 +7,7 @@
   * @note           功能说明�?
   *                 1. TX 模式：每隔一段时间上报一�?MSG_TYPE_TIME|设备名|当天秒数|电量|计数|
                        （固定发时间帧；GPS 坐标�?upgps 指令单独触发上报�?
-  *                 2. 发送后开�?3 �?RX 窗口，解析对时消息（MSG_TYPE_SYN_TIME�?
+  *                 2. 发送后开启最多5秒 RX 窗口，解析对时消息（MSG_TYPE_SYN_TIME）。
   *                 3. 调试输出：通过 USART1 输出系统状�?
   ******************************************************************************
   * @attention
@@ -44,12 +44,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.8"
+#define DEMO_VER     "V2.11"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       128   /* build buffer: frames may be composed freely */
 #define LORA_TX_MAX  36    /* policy cap: max 36 bytes on air INCLUDING the trailing NUL */
 #define RX_LEN       64
+#define TX_RX_FALLBACK_MS 2000u /* no TX_DONE: force RX for windowed uplinks */
+#define RX_WINDOW_MS 5000u /* one RX window; CRC retries share this budget */
+#define RX_IRQ_GUARD_MS (RX_WINDOW_MS + 1000u) /* lost RX IRQ software guard */
+#define RX_STAGE_LIMIT_MS (RX_WINDOW_MS + 2000u) /* final watchdog deadline */
 
 /* 消息类型定义（与 PAN3029_F030 对齐�?*/
 #define MSG_TYPE_TIME     2   /* 定时上报（时间戳�?*/
@@ -97,7 +101,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         19u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         22u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -169,6 +173,10 @@ static uint8_t  gpsWaitReport = 0;     /* 收到 upgps 指令=1，处理完自�
  * 通过 rxstat / readinfo 8 指令触发 8|dev|RXW|开窗数/收到数|cnt| 上报 */
 static uint32_t rxWinCount = 0;
 static uint32_t rxOkCount = 0;
+static uint32_t rxWindowStart;
+static uint8_t rxWindowArmed; /* armed by loraTx before logging/GPS cleanup */
+static uint8_t txTimeoutNeedReport; /* RAM diagnostic, sent after the RX window */
+static uint32_t txTimeoutSourceCount; /* wire sequence of the affected uplink */
 /* gpsNeedRetry removed: a failed upgps search reports once and is DONE - no automatic re-search at later slots (each retry cycle burned ~4-8min of GPS power when no satellites were visible). */
 /* Link health uses monotonic RTC time, independent of wall-clock sync. */
 static uint32_t linkLastRtc, linkSilentSec;
@@ -393,7 +401,7 @@ static uint8_t isInGpsWorkWindowAt(uint32_t ts);  /* 指定时刻是否�?GPS �
 static uint8_t gpsBatteryOk(void);
 static uint8_t gpsNeededTimelyAt(uint32_t ts);    /* 该时刻是�?必须准点"�?GPS �?类型1) */
 static void    gpsPreSearch(void);                /* 提前搜星（到点前必须完成�?*/
-static void    openRxWindow4000(void);    /* open 4s RX window and parse (repeatable) */
+static void    openRxWindow5000(void);    /* open 5s RX window and parse (repeatable) */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 �?Full on */
 static void gpsPowerOff(void);              /* GPS 休眠：PB1(WAKE_UP) 置低 �?Standby */
@@ -662,25 +670,49 @@ static void txCountNext(void)
  * @param  msg: �?'\0' 结尾的帧字符串（连同结束符一起发送）
  * @note   原本 5 处上行帧各自复制同一段三行发送样板，统一收敛于此
  */
-static void loraTx(const char *msg)
+static void loraTx(const char *msg, uint8_t withRx)
 {
-  /* build side ignores frame length; strip the tail here before air time
-   * (text capped at LORA_TX_MAX-1 so text+NUL stays at 36 bytes on air) */
+  /* Keep the existing on-air cap, including the trailing NUL. */
   uint32_t len = strlen(msg);
-  uint32_t tx_time = 1000u, start = HAL_GetTick();
+  uint32_t tx_time = 1000u, start;
+  uint8_t forcedRx = 0u;
   if (len > LORA_TX_MAX - 1u)
     len = LORA_TX_MAX - 1u;
   Safety_Begin(STAGE_TX, 6000u);
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
+  start = HAL_GetTick();
   if (rf_single_tx_data((uint8_t *)msg, len + 1u, &tx_time) != RF_OK)
     Safety_Reset(RESET_TX);
   while (rf_get_transmit_flag() == RADIO_FLAG_IDLE) {
+    if (withRx && (uint32_t)(HAL_GetTick() - start) >= TX_RX_FALLBACK_MS) {
+      forcedRx = 1u;
+      txTimeoutSourceCount = tx_count;
+      txTimeoutNeedReport = 1u;
+      break;
+    }
     if ((uint32_t)(HAL_GetTick() - start) >= 5000u) Safety_Reset(RESET_TX);
     wdg_feed();
   }
+  if (withRx) {
+    /* Exclude a late TX ISR while retiring TX and arming RX. Clear MCU
+     * pending state BEFORE RX so an immediate downlink is preserved. */
+    HAL_NVIC_DisableIRQ(EXTI2_IRQn);
+    if (rf_set_mode(RF_MODE_STB3) != RF_OK || rf_set_ldo_pa_off() != RF_OK)
+      Safety_Reset(RESET_RX);
+    rf_clr_irq(0x7Fu);
+    rf_set_recv_flag(RADIO_FLAG_IDLE);
+    __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_2);
+    HAL_NVIC_ClearPendingIRQ(EXTI2_IRQn);
+    rxWindowStart = HAL_GetTick();
+    if (rf_enter_single_timeout_rx(RX_WINDOW_MS) != RF_OK) Safety_Reset(RESET_RX);
+    rxWindowArmed = 1u;
+    HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+  }
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
-  Safety_Begin(STAGE_MAIN, 15000u);
-  printf("[TX] 实发%lu字节: %s\r\n", (unsigned long)(len + 1u), msg);
+  Safety_Begin(withRx ? STAGE_RX : STAGE_MAIN, withRx ? RX_STAGE_LIMIT_MS : 15000u);
+  /* RX is already listening here; timeout is not reported as TX success. */
+  printf("[TX%s] %luB: %s\r\n", forcedRx ? " timeout RX" : "",
+         (unsigned long)(len + 1u), msg);
 }
 
 /**
@@ -700,7 +732,7 @@ static void loraTx(const char *msg)
             MSG_TYPE_CONFIG, deviceName, configStr);
 #endif
 
-  loraTx(tx_msg);
+  loraTx(tx_msg, 0u);
 }
 
 /**
@@ -837,7 +869,7 @@ static void sendReadInfoMessage(void)
 #endif
   }
 
-  loraTx(tx_msg);
+  loraTx(tx_msg, 0u);
 }
 
 /**
@@ -860,7 +892,7 @@ static void sendCenterMessage(void)
            MSG_TYPE_GPS, deviceName, coord);
 #endif
 
-  loraTx(tx_msg);
+  loraTx(tx_msg, 0u);
 }
 
 /**
@@ -893,7 +925,7 @@ static void fmtRxBytes(uint32_t bytes, char *buf, uint8_t len)
  * @note   两种帧类型的用法（云端按帧类�?+ 上报时机区分�?
  *           MSG_TYPE_UP_GPS(5) = 收到 upgps 指令后的跟踪上报，上报后不开接收窗口
  *           MSG_TYPE_GPS(1)    = GPS 工作时间段内的自动上报、以及搜星失败后�?
- *                                重试上报，上报后要开 3 秒接收窗�?
+ *                                重试上报，上报后开启最多5秒接收窗口。
  *         1 同时�?C 指令的农场中心坐标回显使用，但那是另一条指令路�?
  *         （收�?C 才发一次），与本函数的实时坐标不冲�?
  *         搜星失败时也必须发帧，第 3 段填 "0.0,0.0"�?
@@ -959,7 +991,7 @@ static void sendGpsPositionMessage(uint8_t hasFix, uint8_t useGpsType,
 #endif
   }
 
-  loraTx(tx_msg);
+  loraTx(tx_msg, useGpsType);
   if (useGpsType) markPeriodicReport();
 }
 
@@ -2680,31 +2712,37 @@ static void parse_rx_message(uint8_t *buf, uint8_t len)
 }
 
 /**
-  * @brief  开�?3 秒接收窗口（single 模式，最多只收一条），收到则解析
+  * @brief  开启最多5秒接收窗口（single 模式，最多只收一条），收到则解析
   * @note   抽成函数的原因：MSG_TYPE_GPS(1) 上报之后还要再开一次窗口，
   *         保证节点报完定位后仍处于可被下发指令的状态；
   *         �?MSG_TYPE_UP_GPS(5) 的首次跟踪上报后不再开窗口
   */
-static void openRxWindow4000(void)
+static void openRxWindow5000(void)
 {
   /* single-mode window: at most ONE frame, but a CRC-failed frame must not
    * kill the window - re-arm with the remaining budget so a later clean
    * frame (relay timesync after a weak command) still gets through */
-  uint32_t rxStart = HAL_GetTick();
+  uint32_t rxStart = rxWindowArmed ? rxWindowStart : HAL_GetTick();
+  uint8_t armed = rxWindowArmed;
+  rxWindowArmed = 0u;
   rxWinCount++;   /* 统计：开机起累计开启接收窗口次数 */
-  Safety_Begin(STAGE_RX, 6000u);
+  Safety_Begin(STAGE_RX, RX_STAGE_LIMIT_MS);
   for (;;) {
     uint32_t spent = HAL_GetTick() - rxStart;
-    if (spent >= 4000u) break;
-    rf_set_recv_flag(RADIO_FLAG_IDLE);
-    if (rf_enter_single_timeout_rx(4000u - spent) != RF_OK) Safety_Reset(RESET_RX);
+    if (spent >= RX_WINDOW_MS) break;
+    /* Do not discard a frame received immediately after loraTx armed RX. */
+    if (!armed) {
+      rf_set_recv_flag(RADIO_FLAG_IDLE);
+      if (rf_enter_single_timeout_rx(RX_WINDOW_MS - spent) != RF_OK) Safety_Reset(RESET_RX);
+    }
+    armed = 0u;
     if (!windowPrintOff)
-      printf("[RX] 开4秒接收窗(第%lu轮)\r\n", (unsigned long)bootTxRounds);
+      printf("[RX] 开5秒接收窗(第%lu轮)\r\n", (unsigned long)bootTxRounds);
 
     /* wait done/timeout/err; SW guard: reset self-heal if chip IRQ lost */
     while (rf_get_recv_flag() == RADIO_FLAG_IDLE) {
       wdg_feed();
-      if (HAL_GetTick() - rxStart > 5000u) {
+      if (HAL_GetTick() - rxStart > RX_IRQ_GUARD_MS) {
         Safety_Reset(RESET_RX);
       }
     }
@@ -2712,8 +2750,9 @@ static void openRxWindow4000(void)
       break;                     /* got one - parse below */
     if (rf_get_recv_flag() == RADIO_FLAG_RXERR) {
       rf_set_recv_flag(RADIO_FLAG_IDLE);
+      spent = HAL_GetTick() - rxStart; /* refresh after waiting for the CRC IRQ */
       if (!windowPrintOff)
-        printf("[RX] CRC错误，剩余预算%lums\r\n", (unsigned long)(4000u - spent));
+        printf("[RX] CRC错误，剩余预算%lums\r\n", (unsigned long)((spent < RX_WINDOW_MS) ? RX_WINDOW_MS - spent : 0u));
       continue;                  /* re-arm for the rest of the window */
     }
     rf_set_recv_flag(RADIO_FLAG_IDLE); /* RXTIMEOUT: budget exhausted */
@@ -2779,13 +2818,40 @@ static void sendResetInfoMessage(void)
   snprintf(tx_msg, sizeof(tx_msg), "%d|%s|RST|rst:%s-%u|",
            MSG_TYPE_READINFO, deviceName, bootRstCause, (unsigned)Safety_LastStage());
 #endif
-  loraTx(tx_msg);
+  loraTx(tx_msg, 0u);
+}
+
+/* Test diagnostic: 8|dev|TXTO|timeout_ms,affected_uplink_count|report_count|.
+ * No RX window for this auxiliary frame, so it cannot recursively report.
+ * Keep the pending marker until the normal TX completion path returns. */
+static void sendTxTimeoutWarning(void)
+{
+  char tx_msg[TX_LEN];
+
+  txCountNext();
+#if TX_COUNT_ENABLE
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|TXTO|%lu,%lu|%lu|",
+           MSG_TYPE_READINFO, deviceName, (unsigned long)TX_RX_FALLBACK_MS,
+           (unsigned long)txTimeoutSourceCount, (unsigned long)tx_count);
+#else
+  snprintf(tx_msg, sizeof(tx_msg), "%d|%s|TXTO|%lu,%lu|",
+           MSG_TYPE_READINFO, deviceName, (unsigned long)TX_RX_FALLBACK_MS,
+           (unsigned long)txTimeoutSourceCount);
+#endif
+  loraTx(tx_msg, 0u);
+  txTimeoutNeedReport = 0u;
 }
 
 static void reportPendingMessages(void)
 {
+  /* Both periodic paths call here only after their RX window has ended. */
+  if (txTimeoutNeedReport) {
+    HAL_Delay(1000);
+    sendTxTimeoutWarning();
+  }
+
   /* 配置需要上报时，延�?1 秒发送配置消息（开机首次或收到配置更新指令�?*/
-  /* reboot report goes first: 8|dev|RST|rst:CAUSE|cnt| (once per boot) */
+  /* reboot report: 8|dev|RST|rst:CAUSE|cnt| (once per boot) */
   if (bootRstPending) {
     HAL_Delay(1000);
     sendResetInfoMessage();
@@ -2850,15 +2916,15 @@ static void OnMaster(void)
              (unsigned long)today_sec, cachedBatteryPercent);
 #endif
 
-    loraTx(tx_msg);
+    loraTx(tx_msg, 1u);
     markPeriodicReport();
   }
 
-  /* ---- 3 秒接收窗口（single 模式，最多只收一条） ----
+  /* ---- 5 秒接收窗口（single 模式，最多只收一条） ----
    * 只在本轮发了定时帧时在这里开；跳过定时帧的轮次改为在末尾 MSG_TYPE_GPS
-   * 上报之后再开（见下面 GPS 块），避�?没发帧还白等 3 �? */
+   * 上报之后再开（见下面 GPS 块），避免没发帧还白等5秒。 */
   if (!skipTimeFrame)
-    openRxWindow4000();
+    openRxWindow5000();
 
   /* 窗口里收到的 A/C 等设置指令，本轮就回�?*/
   reportPendingMessages();
@@ -2953,7 +3019,7 @@ static void OnMaster(void)
       /* MSG_TYPE_GPS(1) 上报后开接收窗口（对�?+ 收下发指令）�?
        * MSG_TYPE_UP_GPS(5) 的首次跟踪上报不开窗口，保持老逻辑 */
       if (useType1) {
-        openRxWindow4000();
+        openRxWindow5000();
 
         /* 这个窗口里收到的指令照常处理：upgps �?�?gpsWaitReport 下一轮执行；
          * A/C 等设�?�?本轮立即回包，不等下一�?*/

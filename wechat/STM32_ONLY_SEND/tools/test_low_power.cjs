@@ -51,6 +51,231 @@ function install(ctx, src, functions) {
     vm.runInContext('function ' + name + '(' + args + '){' + js(body(src, name)) + '\n}', ctx);
 }
 
+// Execute the actual TX wait and RX-window bodies with timed IRQ injection.
+// This checks software decisions, not RF timing or physical register behavior.
+{
+  const fallback = Number(main.match(/#define TX_RX_FALLBACK_MS (\d+)u/)[1]);
+  const cap = Number(main.match(/#define LORA_TX_MAX\s+(\d+)/)[1]);
+  check(fallback === 2000, 'windowed TX fallback is exactly 2000 ms');
+  check(/#define RX_WINDOW_MS 5000u/.test(main) &&
+    /#define RX_IRQ_GUARD_MS \(RX_WINDOW_MS \+ 1000u\)/.test(main) &&
+    /#define RX_STAGE_LIMIT_MS \(RX_WINDOW_MS \+ 2000u\)/.test(main),
+    '5-second RX budget has a 6-second IRQ guard and 7-second watchdog phase');
+  const txBody = js(body(main, 'loraTx')
+    .replace(/\(uint32_t\)\(HAL_GetTick\(\) - start\)/g, '((HAL_GetTick() - start) >>> 0)')
+    .replace(/\(uint8_t \*\)/g, '').replace(/&tx_time/g, 'null'));
+  const rxBody = js(body(main, 'openRxWindow5000')
+    .replace(/HAL_GetTick\(\) - rxStart/g, '((HAL_GetTick() - rxStart) >>> 0)')
+    .replace('uint8_t local_buf[RX_LEN];', 'let local_buf = new Array(RX_LEN);')
+    .replace(/\(char \*\)/g, ''));
+  function txScenario(options = {}) {
+    let elapsed = 0, txFlag = 9, rxFlag = 0, irqEnabled = true;
+    let hardwareRx = false, pendingRx = false, pendingTx = true, deadline = 0;
+    const events = [], windows = [], logs = [], parsed = [];
+    const tick = () => ((options.base || 0) + elapsed) >>> 0;
+    const state = {
+      LORA_TX_MAX: cap, TX_RX_FALLBACK_MS: fallback, RX_WINDOW_MS: 5000,
+      RX_IRQ_GUARD_MS: 6000, RX_STAGE_LIMIT_MS: 7000, RADIO_FLAG_IDLE: 0,
+      RADIO_FLAG_RXDONE: 2, RADIO_FLAG_RXERR: 4, RF_MODE_STB3: 4, RF_OK: 0,
+      RESET_TX: 'TX', RESET_RX: 'RX', STAGE_TX: 1, STAGE_RX: 2, STAGE_MAIN: 3,
+      EXTI2_IRQn: 8, GPIO_PIN_2: 4, rxWindowStart: 0, rxWindowArmed: 0,
+      tx_count: 4, txTimeoutNeedReport: 0, txTimeoutSourceCount: 0,
+      RX_LEN: 64, rxWinCount: 0, rxOkCount: 0, windowPrintOff: 1, bootTxRounds: 1,
+      lastRxRssi: 0, lastRxSnr: 0, lastRxSeen: 0,
+      RxDoneParams: { Rssi: 180, Snr: 7, Size: 3, Payload: [52, 124, 120] },
+      HAL_GetTick: tick, strlen: value => value.length,
+      Safety_Begin: stage => events.push(['stage', stage]),
+      Safety_Reset: reason => { throw Error('reset:' + reason); },
+      rf_set_transmit_flag: flag => { txFlag = flag; }, rf_get_transmit_flag: () => txFlag,
+      rf_set_recv_flag: flag => { rxFlag = flag; }, rf_get_recv_flag: () => rxFlag,
+      rf_single_tx_data: (msg, bytes) => {
+        events.push(['send', elapsed, bytes]);
+        elapsed += options.prepareMs || 0;
+        return options.failSend ? 1 : 0;
+      },
+      wdg_feed: () => {
+        elapsed++;
+        if (!hardwareRx && options.doneAt != null && elapsed >= options.doneAt && irqEnabled)
+          txFlag = 1;
+        if (hardwareRx && elapsed >= deadline && options.receive !== 'lost') rxFlag = 3;
+        if (hardwareRx && options.rxAt != null && elapsed >= windows[0].at + options.rxAt && elapsed <= deadline)
+          rxFlag = 2;
+        if (elapsed > 10000) throw Error('unbounded wait');
+      },
+      HAL_NVIC_DisableIRQ: () => { irqEnabled = false; events.push(['disable']); },
+      rf_set_mode: mode => {
+        check(!irqEnabled && mode === 4, 'retire TX in STB3 with EXTI masked');
+        events.push(['standby']); return options.failStandby ? 1 : 0;
+      },
+      rf_set_ldo_pa_off: () => {
+        check(!irqEnabled, 'PA cleanup excludes late TX ISR');
+        events.push(['pa-off']); return options.failPa ? 1 : 0;
+      },
+      rf_clr_irq: mask => {
+        check(!irqEnabled && mask === 0x7F, 'clear stale radio IRQs before RX');
+        pendingTx = false; events.push(['clear-radio']);
+      },
+      __HAL_GPIO_EXTI_CLEAR_IT: () => events.push(['clear-exti']),
+      HAL_NVIC_ClearPendingIRQ: () => {
+        check(!hardwareRx, 'clear pending EXTI before RX can produce a frame');
+        events.push(['clear-nvic']);
+      },
+      rf_enter_single_timeout_rx: timeout => {
+        windows.push({ at: elapsed, timeout }); events.push(['rx']);
+        if (options.failRx) return 1;
+        hardwareRx = true; deadline = elapsed + timeout;
+        if (options.receive === 'immediate' || (options.receive === 'crcThenOk' && windows.length > 1)) {
+          if (irqEnabled) rxFlag = 2; else pendingRx = true;
+        }
+        return 0;
+      },
+      HAL_NVIC_EnableIRQ: () => {
+        check(state.rxWindowArmed === 1, 'publish RX handoff before unmasking EXTI');
+        irqEnabled = true; events.push(['enable']);
+        if (pendingTx) throw Error('stale TX IRQ survived cleanup');
+        if (pendingRx) { rxFlag = 2; pendingRx = false; }
+        if (options.receive === 'crcThenOk') rxFlag = 4;
+      },
+      printf: (format, ...args) => {
+        if (format.startsWith('[TX')) {
+          if (options.withRx !== 0) check(hardwareRx, 'RX starts before TX log blocks');
+          logs.push(args[0]); elapsed += 7;
+        }
+      },
+      __disable_irq: () => {}, __enable_irq: () => {},
+      parse_rx_message: (payload, size) => parsed.push(payload.slice(0, size))
+    };
+    const context = vm.createContext(state);
+    vm.runInContext('function loraTx(msg,withRx){' + txBody + '}\n' +
+      'function openRxWindow5000(){' + rxBody + '}', context);
+    return { state, context, events, windows, logs, parsed,
+      run: () => vm.runInContext('loraTx("' + 'x'.repeat(options.length || 32) + '",' +
+        (options.withRx === 0 ? 0 : 1) + ')', context, { timeout: 1000 }),
+      receive: () => vm.runInContext('openRxWindow5000()', context, { timeout: 1000 }),
+      elapsed: () => elapsed, advance: ms => { elapsed += ms; } };
+  }
+  for (const base of [0, 0xFFFFFF00]) for (const doneAt of [1, 1580, 1999, 2000, 2001, null]) {
+    const scenario = txScenario({ base, doneAt, receive: 'immediate' });
+    scenario.run();
+    const expected = doneAt != null && doneAt <= fallback ? doneAt : fallback;
+    check(scenario.windows.length === 1 && scenario.windows[0].at === expected,
+      'normal IRQ switches promptly; missing/late IRQ switches at 2000 ms ' + base + '/' + doneAt);
+    check(scenario.windows[0].timeout === 5000 && scenario.state.rxWindowStart === ((base + expected) >>> 0),
+      'fresh 5-second budget begins at actual RX handoff');
+    check(scenario.logs[0] === (doneAt == null || doneAt > fallback ? ' timeout RX' : ''),
+      'fallback has distinct log and is not labelled TX success');
+    const forced = doneAt == null || doneAt > fallback;
+    check(scenario.state.txTimeoutNeedReport === (forced ? 1 : 0) &&
+      scenario.state.txTimeoutSourceCount === (forced ? 4 : 0),
+      'only forced RX records a pending diagnostic and affected uplink sequence');
+    scenario.advance(15); scenario.receive();
+    check(scenario.windows.length === 1 && scenario.parsed.length === 1,
+      'preserve packet received during TX logging/GPS cleanup without rearming');
+    check(scenario.state.rxWinCount === 1 && scenario.state.rxOkCount === 1 && scenario.state.rxWindowArmed === 0,
+      'handoff consumed once and RX statistics remain correct');
+    check(scenario.state.txTimeoutNeedReport === (forced ? 1 : 0),
+      'successful downlink does not erase a TX timeout diagnostic');
+    check(JSON.stringify(scenario.parsed[0]) === '[52,124,120]', 'early payload retained');
+  }
+  {
+    const scenario = txScenario({ prepareMs: 20, receive: 'immediate' }); scenario.run();
+    check(scenario.windows[0].at === 2000, '2000 ms counts from TX initiation, including driver preparation');
+  }
+  for (const rxAt of [4500, 4999]) {
+    const scenario = txScenario({ rxAt }); scenario.run(); scenario.receive();
+    check(scenario.parsed.length === 1 && scenario.elapsed() === 2000 + rxAt,
+      'downlink after the former 4-second boundary is accepted at ' + rxAt);
+  }
+  for (const receive of ['timeout', 'crcThenOk', 'lost']) {
+    const scenario = txScenario({ receive, base: 0xFFFFFF00 }); scenario.run(); scenario.advance(100);
+    if (receive === 'lost') {
+      assert.throws(scenario.receive, /reset:RX/); cases++;
+      check(scenario.elapsed() === 8001, 'lost RX IRQ resets after the 6-second software guard');
+    } else {
+      scenario.receive();
+      check(receive === 'timeout' ? scenario.elapsed() === 7000 : scenario.parsed.length === 1,
+        'RX timeout/CRC retry respects window handoff ' + receive);
+      check(scenario.state.txTimeoutNeedReport === 1 && scenario.state.txTimeoutSourceCount === 4,
+        'pending diagnostic survives RX timeout and CRC retry');
+      if (receive === 'crcThenOk') check(scenario.windows[1].timeout === 4893,
+        'CRC rearm uses remaining original budget, including log and cleanup time');
+    }
+  }
+  for (const doneAt of [1580, 2500, null]) {
+    const scenario = txScenario({ withRx: 0, doneAt });
+    if (doneAt == null) { assert.throws(scenario.run, /reset:TX/); cases++; }
+    else scenario.run();
+    check(scenario.windows.length === 0, 'auxiliary/UPGPS TX never opens RX');
+    check(scenario.state.txTimeoutNeedReport === 0, 'non-windowed TX cannot queue timeout diagnostic');
+    check(scenario.elapsed() === (doneAt == null ? 5000 : doneAt + 7),
+      'non-windowed TX keeps normal IRQ wait and 5-second reset');
+  }
+  for (const failure of ['failSend', 'failStandby', 'failPa', 'failRx']) {
+    const scenario = txScenario({ [failure]: true });
+    assert.throws(scenario.run, failure === 'failSend' ? /reset:TX/ : /reset:RX/); cases++;
+    check(scenario.logs.length === 0, 'failed radio access cannot claim RX is listening ' + failure);
+  }
+  {
+    const scenario = txScenario({ length: 80, receive: 'immediate' }); scenario.run();
+    check(scenario.events.find(event => event[0] === 'send')[2] === cap, 'existing on-air cap retained');
+  }
+  check(body(main, 'OnMaster').includes('loraTx(tx_msg, 1u);'), 'periodic time report enables RX fallback');
+  check(body(main, 'sendGpsPositionMessage').includes('loraTx(tx_msg, useGpsType);'),
+    'periodic GPS enables fallback while UPGPS retains no-window policy');
+  for (const name of ['sendCenterMessage', 'sendConfigMessage', 'sendResetInfoMessage', 'sendReadInfoMessage', 'sendTxTimeoutWarning'])
+    check(body(main, name).includes('loraTx(tx_msg, 0u);'), 'auxiliary TX unchanged ' + name);
+
+  // Run the actual pending-report dispatcher and warning frame builder.
+  for (const counted of [false, true]) for (const sourceCount of [1, 4, 999]) {
+    let elapsed = 0, sent = [], failWarning = false;
+    const warning = {
+      TX_LEN: 128, MSG_TYPE_READINFO: 8, TX_RX_FALLBACK_MS: fallback,
+      deviceName: 'v3-14', tx_count: sourceCount, txTimeoutSourceCount: sourceCount,
+      txTimeoutNeedReport: 1, bootRstPending: 0, configNeedReport: 0,
+      readInfoNeedReport: 0, centerNeedReport: 0,
+      HAL_Delay: ms => { elapsed += ms; }, sizeof: () => 128,
+      txCountNext: () => { warning.tx_count = warning.tx_count === 999 ? 1 : warning.tx_count + 1; },
+      snprintf: (buffer, size, format, ...args) => {
+        let i = 0; buffer[0] = format.replace(/%(?:lu|d|s)/g, () => String(args[i++]));
+      },
+      loraTx: (buffer, withRx) => {
+        check(warning.txTimeoutNeedReport === 1, 'diagnostic remains pending through transmit');
+        check(withRx === 0 && elapsed >= 1000, 'warning waits 1 second and never opens RX');
+        if (failWarning) throw Error('warning TX reset');
+        sent.push(buffer[0]);
+      },
+      sendResetInfoMessage: () => {}, sendConfigMessage: () => {},
+      sendReadInfoMessage: () => {}, sendCenterMessage: () => {}
+    };
+    const warningContext = vm.createContext(warning);
+    const warningBody = body(main, 'sendTxTimeoutWarning')
+      .replace(/#if TX_COUNT_ENABLE\s*([\s\S]*?)#else\s*([\s\S]*?)#endif/g,
+        (_, yes, no) => counted ? yes : no)
+      .replace(/\bchar\s+(\w+)\[[^\]]+\]/g, 'let $1=[]');
+    vm.runInContext('function sendTxTimeoutWarning(){' + js(warningBody) + '}\n' +
+      'function reportPendingMessages(){' + js(body(main, 'reportPendingMessages')) + '}', warningContext);
+    vm.runInContext('reportPendingMessages()', warningContext);
+    const reportCount = sourceCount === 999 ? 1 : sourceCount + 1;
+    const expected = '8|v3-14|TXTO|2000,' + sourceCount + '|' + (counted ? reportCount + '|' : '');
+    check(sent.length === 1 && sent[0] === expected && sent[0].length + 1 <= 32,
+      'type 8 TXTO keeps source/report counters and fits 32 bytes including NUL');
+    check(warning.txTimeoutNeedReport === 0, 'successful diagnostic TX clears pending marker');
+    vm.runInContext('reportPendingMessages()', warningContext);
+    check(sent.length === 1 && elapsed === 1000, 'repeated dispatcher never duplicates warning');
+    warning.txTimeoutNeedReport = 1; failWarning = true;
+    assert.throws(() => vm.runInContext('reportPendingMessages()', warningContext), /warning TX reset/); cases++;
+    check(warning.txTimeoutNeedReport === 1, 'failed TX does not clear diagnostic before reset');
+  }
+  {
+    const dispatch = body(main, 'OnMaster');
+    check((dispatch.match(/openRxWindow5000\(\);\s*(?:\/\*[\s\S]*?\*\/\s*)?reportPendingMessages\(\);/g) || []).length === 2,
+      'time and GPS reports dispatch warnings only after the RX window returns');
+    check(!body(main, 'loraTx').includes('sendTxTimeoutWarning(') &&
+      !body(main, 'openRxWindow5000').includes('sendTxTimeoutWarning('),
+      'no warning TX interrupts the receive window');
+  }
+}
+
 // A stopped RTC must reset even if MAIN is re-armed and fed every 100 ms.
 let tick = 0, feeds = 0;
 const env = { rtcSeen: 0, rtcValue: 0, rtcTick: 0, phaseTick: 0, phaseLimit: 0,
@@ -242,7 +467,7 @@ for(const battery of [0,29,30]){
     gpsWaitReport:battery<30?1:0,gpsContTotalMin:battery<30?60:0,gpsPreSearched:1,gpsPreFixOk:1,gpsPreSec:10,gpsPreBytes:512,
     TX_LEN:64,MSG_TYPE_TIME:2,deviceName:'v3-5',tx_count:0,
     txCountNext:()=>{app.tx_count++;},markPeriodicReport:()=>{marks++;},sizeof:()=>64,snprintf:()=>{},loraTx:()=>{tx++;},
-    openRxWindow3000:()=>{rx++;app.gpsWaitReport=1;app.gpsContTotalMin=60;},reportPendingMessages:()=>{},
+    openRxWindow5000:()=>{rx++;app.gpsWaitReport=1;app.gpsContTotalMin=60;},reportPendingMessages:()=>{},
     gpsPowerOn:()=>{gps++;},gpsPowerOff:()=>{},gpsRunContinuous:()=>{gps++;return 1;},
     sendGpsPositionMessage:()=>{gps++;},rtc_read_counter:()=>100,printf:()=>{},
     fastStartRounds:3,calcNextTxTime:()=>{calc++;},getCurrentTimestamp:()=>100,
@@ -391,7 +616,9 @@ check(scheduleCase(h(19,0,5),600,5,30,null,3)===h(19,0,10),'startup fast period 
     check(context.periodicLastRtc===100,'rescheduling cannot move actual-TX anchor');
   }
 }
-const beforeSchedule=read('backups/slot_schedule_20261123/Core/Src/main.c');
+// The current firmware includes later GPS/log updates; preserve this task's
+// pre-change bodies instead of comparing against the November 23 snapshot.
+const beforeSchedule=read('backups/rx_fallback_20261127/Core/Src/main.c');
 for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport'])
   check(body(main,name)===body(beforeSchedule,name),'UPGPS timing function unchanged '+name);
 check(body(main,'sendGpsPositionMessage').includes('if (useGpsType) markPeriodicReport();'),'type 5 never updates ordinary TX anchor');
@@ -438,7 +665,7 @@ for(const noFix of [false,true])
   check(JSON.stringify(trackingTrace(false,noFix))===JSON.stringify(trackingTrace(true,noFix)),
     'UPGPS interval/deadline unchanged by repeated wall time corrections '+noFix);
 // No wake countdown; the MCU stays asleep until one-second radio preparation.
-const beforeWake=read('backups/wake_delay_20261123/Core/Src/main.c');
+const beforeWake=beforeSchedule;
 check(stop===body(beforeWake,'enterStopUntil'),'original first-sleep flashing window unchanged byte-for-byte');
 for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport'])
   check(body(main,name)===body(beforeWake,name),'wake optimization cannot alter UPGPS timing '+name);
@@ -490,7 +717,7 @@ for(const scenario of [
   if(searches)check(events.indexOf('gps')<events.indexOf('radio'),'radio initialization follows GPS completion');
   if(initialized&&slept!==null)check(events.slice(-2).join(',')==='clock,radio','STOP restores clocks immediately before radio init');
 }
-const beforeDeferredRadio=read('backups/radio_after_gps_20261123/Core/Src/main.c');
+const beforeDeferredRadio=beforeSchedule;
 for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport','enterStopUntil'])
   check(body(main,name)===body(beforeDeferredRadio,name),'deferred radio preserves UPGPS and first flash window '+name);
 check(!body(main,'gpsPreSearch').includes('loraInitFirstTime'),'automatic search never initializes radio internally');
