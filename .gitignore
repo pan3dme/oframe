@@ -79,3 +79,4 @@ python/res/local_cache/devicelog001.db
 python/res/local_cache/devicelog001.db
 /python/res/local_cache
 *.db
+/python/res/local_cache
