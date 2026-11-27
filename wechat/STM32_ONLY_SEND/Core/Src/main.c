@@ -44,13 +44,13 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.11"
+#define DEMO_VER     "V2.12"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       128   /* build buffer: frames may be composed freely */
 #define LORA_TX_MAX  36    /* policy cap: max 36 bytes on air INCLUDING the trailing NUL */
 #define RX_LEN       64
-#define TX_RX_FALLBACK_MS 2000u /* no TX_DONE: force RX for windowed uplinks */
+#define TX_RX_FALLBACK_MS 1500u /* no TX_DONE: force RX for windowed uplinks */
 #define RX_WINDOW_MS 5000u /* one RX window; CRC retries share this budget */
 #define RX_IRQ_GUARD_MS (RX_WINDOW_MS + 1000u) /* lost RX IRQ software guard */
 #define RX_STAGE_LIMIT_MS (RX_WINDOW_MS + 2000u) /* final watchdog deadline */
@@ -101,7 +101,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         22u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         23u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -207,6 +207,7 @@ static uint8_t windowPrintOff = 0;     /* 一次性标记：�?1 后窗口静�
 static uint32_t periodicLastRtc;
 static uint8_t periodicSeen;
 static uint32_t nextTxTimestamp = 0;   /* 下次上报的绝对时间戳（秒�?*/
+static uint32_t lastCountdownShown = 0u; /* åè®¡æ¶å»éï¼åä¸ç§åªæä¸æ¬¡ */
 /* 开机前 3 轮快速上报配额：配置周期 > 1 分钟时，�?3 轮先�?1 分钟
  * （让设备尽快对时、收配置、进入正常时隙节奏）�? 轮后恢复配置周期�?
  * 每完成一�?OnMaster 递减一次；掉电重启重新�?3 �?*/
@@ -252,7 +253,9 @@ static uint8_t  cachedBatteryPercent = BATTERY_VAL;  /* 缓存电量百分比（
    * 跟踪目标就是定位成功 —�?一直拿不到有效坐标时，跟踪期限自动保底延长
    * 到这里（期间每轮照常上报 0.0,0.0），拿到坐标后恢复参数设定的时长 */
 /* Automatic GPS search plus the radio initialization budget. */
-#define RADIO_WAKE_LEAD_SEC 1u /* initialization budget; no fixed wake delay */
+#define RADIO_WAKE_LEAD_SEC 3u /* wake 3s early: TCXO warm-up before TX
+                                          * (fix: relay missed frames when TX
+                                          * started right after cold init) */
 #define GPS_PRESEARCH_LEAD_SEC ((gpsSearchMaxMs / 1000u) + RADIO_WAKE_LEAD_SEC)
 #define GPS_PWR_ON_DELAY_MS  1000  /* PB15 上电后等待模块输�?NMEA 的时�?ms)
                                     * @note 电源冷启动（不用 WAKE_UP 休眠模式），
@@ -2845,35 +2848,41 @@ static void sendTxTimeoutWarning(void)
 static void reportPendingMessages(void)
 {
   /* Both periodic paths call here only after their RX window has ended. */
+  uint32_t delayMs = 4000u; /* æ¶å°æä»¤åé¦æ¡ååå»¶è¿ 4 ç§ï¼å¤æ¡æ¶åç»­ä» 1 ç§é´é */
   if (txTimeoutNeedReport) {
-    HAL_Delay(1000);
+    HAL_Delay(delayMs);
+    delayMs = 1000u;  /* 首条之后恢复原 1 秒间隔 */
     sendTxTimeoutWarning();
   }
 
   /* 配置需要上报时，延�?1 秒发送配置消息（开机首次或收到配置更新指令�?*/
   /* reboot report: 8|dev|RST|rst:CAUSE|cnt| (once per boot) */
   if (bootRstPending) {
-    HAL_Delay(1000);
+    HAL_Delay(delayMs);
+    delayMs = 1000u;  /* 首条之后恢复原 1 秒间隔 */
     sendResetInfoMessage();
     bootRstPending = 0;
   }
 
   if (configNeedReport) {
-    HAL_Delay(1000);
+    HAL_Delay(delayMs);
+    delayMs = 1000u;  /* 首条之后恢复原 1 秒间隔 */
     sendConfigMessage();
     configNeedReport = 0;  /* 标记已上�?*/
   }
 
   /* 收到 readinfo 指令后，延迟 1 秒上报设备信�?8|deviceName|台数|功率|保留| */
   if (readInfoNeedReport) {
-    HAL_Delay(1000);
+    HAL_Delay(delayMs);
+    delayMs = 1000u;  /* 首条之后恢复原 1 秒间隔 */
     sendReadInfoMessage();
     readInfoNeedReport = 0;  /* 标记已上�?*/
   }
 
   /* 收到 C 指令后，延迟 1 秒上报农场中心坐�?1|deviceName|lat,lng| */
   if (centerNeedReport) {
-    HAL_Delay(1000);
+    HAL_Delay(delayMs);
+    delayMs = 1000u;  /* 首条之后恢复原 1 秒间隔 */
     sendCenterMessage();
     centerNeedReport = 0;  /* 标记已上�?*/
   }
@@ -3156,6 +3165,16 @@ int main(void)
 
 
       /* LoRa 已激活：检查是否到达发送时�?*/
+      /* æå RADIO_WAKE_LEAD_SEC ç§å¤éå¹¶å®æå°é¢åå§åï¼TCXO é¢ç­ï¼ï¼
+       * å°ç¹åéç§åè®¡æ¶ç¡®è®¤å°é¢å·²å°±ç»ªï¼éä½ä¸­ç»§æ¶ä¸å°é¦å¸§çæ¦çï¼ */
+      if (nowTs < nextTxTimestamp) {
+        uint32_t left = nextTxTimestamp - nowTs;
+        if (left <= RADIO_WAKE_LEAD_SEC && left != lastCountdownShown) {
+          lastCountdownShown = left;
+          if (!windowPrintOff)
+            printf("[SCHED] T-%lus, LoRa warm\r\n", (unsigned long)left);
+        }
+      }
       if (nowTs >= nextTxTimestamp) {
         OnMaster();  /* 内部会处理发送、接收窗口、以及发送后的休眠判�?*/
       }
