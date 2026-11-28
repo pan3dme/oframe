@@ -416,6 +416,11 @@
               <FilePath>../Core/Src/reliability.c</FilePath>
             </File>
             <File>
+              <FileName>low_power.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/low_power.c</FilePath>
+            </File>
+            <File>
               <FileName>nvstore.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/nvstore.c</FilePath>

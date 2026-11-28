@@ -23,4 +23,5 @@ ly-020-software/main.o: ..\Core\Src\main.c ..\Core\Inc\main.h \
   ..\Drivers\STM32F1xx_HAL_Driver\Inc\stm32f1xx_hal_spi.h \
   ..\Drivers\STM32F1xx_HAL_Driver\Inc\stm32f1xx_hal_uart.h \
   ..\Radio\inc\pan3029_rf.h ..\Radio\inc\pan3029_port.h \
-  ..\Radio\inc\radio.h ..\Core\Inc\reliability.h ..\Core\Inc\nvstore.h
+  ..\Radio\inc\radio.h ..\Core\Inc\reliability.h ..\Core\Inc\nvstore.h \
+  ..\Core\Inc\low_power.h

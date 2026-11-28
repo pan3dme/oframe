@@ -71,24 +71,16 @@ void Error_Handler(void);
 #define LORA_RST_Pin      GPIO_PIN_1
 #define LORA_RST_GPIO_Port GPIOA
 
-/* --- GNSS 唤醒脚 (PB1 → GPS 模块 WAKE_UP) ---
- * @note  推挽输出，与 PB15 电源开关配合使用：
- *        搜星前先拉高 (Full on) 再上电，搜完拉低进 Standby(20uA 热启动)；
- *        初始低电平。模块Standby期间再上电=热启动，2 秒内出定位 */
+/* GNSS WAKEUP: open-drain, 0=standby, 1=release internal pull-up. */
 #define GNSS_WAKE_Pin        GPIO_PIN_1
 #define GNSS_WAKE_GPIO_Port  GPIOB
 
-/* --- GPS 电源开关 (PB15) ---
- * 低电平 = GPS 上电（开机、搜星）
- * 高电平 = GPS 断电（完全关机，0 电流） */
+/* GPS high-side power switch: 0=on, 1=off. */
 #define GPS_PWR_Pin          GPIO_PIN_15
 #define GPS_PWR_GPIO_Port    GPIOB
 
-/* --- GPS 复位脚 (PA3 → L76K RESET_N) ---
- * 两板统一"外设复位"脚约定：CENTEN=DTU RST，ONLY_SEND=GPS RESET；
- * 推挽输出，平时高（不复位），拉低 100ms = 硬复位（热复位保星历，
- * 比 PB15 断电再上电的冷启动快得多）。当前仅初始化电平，
- * 触发逻辑待接好线后再加 */
+/* L76K RESET_N: analog when off, released open-drain when powered.
+ * No MCU-side pull-up; the module supplies its own internal pull-up. */
 #define GPS_RST_Pin          GPIO_PIN_3
 #define GPS_RST_GPIO_Port    GPIOA
 

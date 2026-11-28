@@ -2,10 +2,11 @@
   "compiler": "ARMCLANG6",
   "sources": {
     "MDK-ARM\\startup_stm32f103xb.s": "8d4376c0bb1d0e3128cb31d709606d3a08fb5b05ff0578983bb206689cdf2afe",
-    "Core\\Src\\main.c": "8820cc3a405140fc8cc03e1aff642041bad2a1d59687f24fdfcf930524aaad83",
+    "Core\\Src\\main.c": "473e5d2109fae90436eddde7606a21352b2e33d451d31bf287ced5e93b04c7e8",
     "Core\\Src\\stm32f1xx_it.c": "e4ad232533ebeafa8c15a6f5303f51f1d7742ad0ef0df1ab3f7f76831d9687de",
-    "Core\\Src\\stm32f1xx_hal_msp.c": "416db48768667615d7ea78662bc1cfaf934e72c405f0f079a243586948e11981",
+    "Core\\Src\\stm32f1xx_hal_msp.c": "413bcfd17ae9092c1254bf39311472b92c0a4876df389a1adee90b98720aba5a",
     "Core\\Src\\reliability.c": "95b5b5c949d71f5a2b4eb03035568bd674442f4e0f08daa18556fa130c5bea54",
+    "Core\\Src\\low_power.c": "9e6f7ee253a2f411d6a4a861d8e4af1ad36dc39dce22f94469f94f49fa309675",
     "Core\\Src\\nvstore.c": "8addd00274a9910eeb7041a6de57d0b7d245bd487875400eff0c54fd7d039651",
     "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal_gpio_ex.c": "5ec9f22de1b3ee82e8437b3ba52725f8f031cf9075848582a0a297d4d1176450",
     "Drivers\\STM32F1xx_HAL_Driver\\Src\\stm32f1xx_hal.c": "607343f969fce8d49111fe4d8d32001c9b289742408d0452ae49761034f39f01",
@@ -23,7 +24,8 @@
     "Core\\Src\\system_stm32f1xx.c": "6f13b57054f33b4dcb8f3f23fa05b2942d9dca8abd9a2a08ecde6f99693505a5",
     "Radio\\src\\pan3029_port.c": "032be24428b4f9464e7c2613df7acfab41b75c08c8b20bba80d48bc3b544a6b3",
     "Radio\\src\\pan3029_rf.c": "d20863cd621962ddb1aa74726d50b8ef3a7d8b8cc1aa1f0465a8d559780d5db1",
-    "Core\\Inc\\main.h": "58c6e4f6f48b164679105af8490de8cc79cd468ae1149a812df13aab93219edb",
+    "Core\\Inc\\low_power.h": "c5e80aa20091b51601352a38d5387265d43dca4b4c4e5d2fa53817fe5d3d0f70",
+    "Core\\Inc\\main.h": "2301d2158cdb7e1552267eb3bd102552ef1a7c9d9c4973c7174f93f6375b9691",
     "Core\\Inc\\nvstore.h": "5a63766da2a5ed622a069643714cfbf9b4678d0572d9e16592f7319e54afe866",
     "Core\\Inc\\reliability.h": "0ff6893fe8151cad3a2892edbfc1cb8483f9ce12d3e59a45ad2055544004af83",
     "Core\\Inc\\stm32f1xx_hal_conf.h": "7d312211e481f2f2de26217564e7867fca2d11f0eb1eb010a5d37e4162f26a8d",
@@ -85,15 +87,16 @@
     "Drivers\\CMSIS\\Device\\ST\\STM32F1xx\\Include\\stm32f103xb.h": "d9c7c613d9fea74220892b4fbc3e80617493acad82a04bafadab2b4a7198399c",
     "Drivers\\CMSIS\\Device\\ST\\STM32F1xx\\Include\\stm32f1xx.h": "05e93fa3ddefb2e83d762b9ca4de36e3bba9cd8e9690400fe9f2c11fc0a3cef5",
     "Drivers\\CMSIS\\Device\\ST\\STM32F1xx\\Include\\system_stm32f1xx.h": "a54dfbb3480c672f532d472a6e84bcf34df6551771d2e9966c5a3503c676b6ab",
-    "tools\\build_watchdog.cjs": "43b8481278342d3cc6adef40ecc6c64692f968c5e4edfef1d92ca2dcbddc790d",
+    "tools\\build_watchdog.cjs": "ebd27aa5b280192ae52e27f7ecb84bdac98940dee9029a32cb11608f7130a7df",
     "tools\\test_watchdog.cjs": "6efc19d55c3cb98e8eb8d2bfaff2afa382acf9028c4ec354fa9596c82c9020b8",
-    "tools\\test_low_power.cjs": "0ea874600e2a99af40df25d68a1ae68cb6cfabf59b41061f00f0269885df2a8e",
-    "MDK-ARM\\STM32_ONLY_SEND.uvprojx": "5ebfda5c12a8902c1a5d42f66b2a7b7fe7f1df7012f824df4d35abbe652ba601",
+    "tools\\test_low_power.cjs": "508155869a1bccc01f1c5481d49c70ec05396aebfdbb6c216cded09f127f3677",
+    "tools\\test_gpio_low_power.cjs": "906c47e531aec9b242edeb4557542950132053c15b8b6dd6ef755cfc1c9b1393",
+    "MDK-ARM\\STM32_ONLY_SEND.uvprojx": "4fdda9589cddd39aa80dc3bedd3d29b6289fc26c9a0bb853a710790c50427d42",
     "MDK-ARM\\LY-020-software\\LY-020-software.sct": "4d875cf0c49546bd6ea6003f9d57b8519b0db18a8dcce82e7bea42d8217e2e5f"
   },
   "outputs": {
-    "STM32_ONLY_SEND.hex": "8955c9733b68c3058caece3ced22ed5538689a21437b8eb0bb670c2e9aef53cb",
-    "STM32_ONLY_SEND.bin": "8ff37c6dabd72e492ab821d2f65bb367e21c809b5cfd916ae51cfd5eb04368b5",
-    "STM32_ONLY_SEND.axf": "d4a0f324f326933cac267215b3b169a15932453e51ab69a477dc49e69b3c262f"
+    "STM32_ONLY_SEND.hex": "27ef8890c22c85fd6a2e1d9c2f8b6abbde8f9b53501f9eb707217f843e7f2683",
+    "STM32_ONLY_SEND.bin": "8f1d43550cf3b0017d299589b229e5f3a032f97c5d1dc0648f4e27111da1601d",
+    "STM32_ONLY_SEND.axf": "bc02675ff01be3b2fd902d12a8c3e017e40dda0390c5e77e1a416e11bcdc91e2"
   }
 }

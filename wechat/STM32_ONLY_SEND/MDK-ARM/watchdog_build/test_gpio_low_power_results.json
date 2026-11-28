@@ -1,0 +1,4 @@
+{
+  "passed": 1789,
+  "scope": "source-derived GPIO/register and GPS UART lifecycle models; no MCU execution or current measurement"
+}

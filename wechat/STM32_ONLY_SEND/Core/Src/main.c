@@ -35,6 +35,7 @@
 #include "radio.h"
 #include "reliability.h"
 #include "nvstore.h"
+#include "low_power.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,7 +45,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define DEMO_VER     "V2.12"
+#define DEMO_VER     "V2.13"
 #define GPS_MIN_BATTERY_PCT 30u /* below this: GPS off; LoRa remains available */
 
 #define TX_LEN       128   /* build buffer: frames may be composed freely */
@@ -101,7 +102,7 @@ static uint8_t centerValid  = 0;
 #define SRCHTM_MAGIC        0xA5A55A5F  /* change to invalidate flash data */
 #define VER_FLASH_ADDR      0x0800E000  /* firmware version marker (8th page from end) */
 #define VER_MAGIC           0xA5A55A60  /* change to invalidate version marker */
-#define APP_VERSION         23u          /* bump on EVERY new program: if it differs
+#define APP_VERSION         24u          /* bump on EVERY new program: if it differs
                                        * from the Flash marker, the first cycle
                                        * reports all readinfo items once, then
                                        * the new version is stored */
@@ -306,7 +307,7 @@ static const uint8_t gpsDaysInMonth[12] =   /* 平年每月天数（闰�?2 月
 
 static GpsFix_t     gpsFix;
 static uint8_t      gpsFixValid = 0;   /* 最近一�?GGA 是否有效定位 */
-static uint8_t      gpsPowerState = 0; /* 当前 PB15 状态：1=上电搜星, 0=断电
+static volatile uint8_t gpsPowerState = 0; /* 当前 PB15 状态：1=上电搜星, 0=断电
                                         * （断电诊断用：断电时不该有串口数据） */
 static uint32_t     gpsRxCount = 0;    /* 收到的字节数（诊断用�?*/
 static uint32_t     gpsFixTick = 0;    /* 最近一次拿到有效定位的时刻（HAL_GetTick�?*/
@@ -407,6 +408,7 @@ static void    gpsPreSearch(void);                /* 提前搜星（到点前必
 static void    openRxWindow5000(void);    /* open 5s RX window and parse (repeatable) */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 static void gpsPowerOn(void);               /* GPS 唤醒：PB1(WAKE_UP) 置高 �?Full on */
+static void gpsUartOff(void);
 static void gpsPowerOff(void);              /* GPS 休眠：PB1(WAKE_UP) 置低 �?Standby */
 static uint16_t ADC1_Read(void);            /* ADC1 单次读取�?2 位） */
 static uint8_t  GetBatteryPercent(void);    /* ADC �?�?电池电压 �?电量百分�?*/
@@ -1785,6 +1787,7 @@ static void enterStopUntil(uint32_t wakeTs)
   savedCtrl = SysTick->CTRL;
   SysTick->CTRL = 0u;
   SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk;
+  LowPower_PrepareStop();
   while ((int32_t)(wakeRtc - rtcNow) > 0) {
     uint32_t target = ((uint32_t)(wakeRtc - rtcNow) > WDG_SEG_SEC) ?
                        rtcNow + WDG_SEG_SEC : wakeRtc;
@@ -1814,6 +1817,7 @@ static void enterStopUntil(uint32_t wakeTs)
     EXTI->PR = EXTI_PR_PR17;
     Safety_AfterStop();
   }
+  LowPower_AfterStop();
   SystemCoreClockUpdate(); /* STOP wakes on HSI; make SysTick valid at 8 MHz. */
   if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK) Safety_Reset(RESET_INIT);
   if (!(savedCtrl & SysTick_CTRL_TICKINT_Msk)) HAL_SuspendTick();
@@ -3280,9 +3284,7 @@ void SystemClock_Config(void)
   if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_2) != HAL_OK) Safety_Reset(RESET_INIT);
   if (huart1.Instance == USART1) MX_USART1_UART_Init();
   if (huart3.Instance == USART3) {
-    HAL_NVIC_DisableIRQ(USART3_IRQn);
-    if (HAL_UART_AbortReceive(&huart3) != HAL_OK) Safety_Reset(RESET_INIT);
-    MX_USART3_UART_Init();
+    MX_USART3_UART_Init(); /* Preserves GPS off / active state. */
   }
   Safety_Begin(STAGE_MAIN, 15000u);
 }
@@ -3304,7 +3306,7 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.Mode = UART_MODE_TX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
   if (HAL_UART_Init(&huart1) != HAL_OK)
@@ -3316,13 +3318,13 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE END USART1_Init 2 */
 }
 
-/**
-  * @brief USART3 Initialization Function (GPS 模块 9600, 仅接�?
-  * @note  PB11 = USART3_RX（PB10/TX �?HAL_UART_MspInit 一并配置，但本模式不用�?
-  *        中断优先级设�?2，低�?LoRa(EXTI2=0)，避免影响射频时�?
-  */
+/** USART3 9600 RX-only; remain disabled whenever GPS is off. */
 static void MX_USART3_UART_Init(void)
 {
+  HAL_NVIC_DisableIRQ(USART3_IRQn);
+  __HAL_RCC_USART3_CLK_ENABLE();
+  if (huart3.Instance == USART3 &&
+      HAL_UART_AbortReceive(&huart3) != HAL_OK) Safety_Reset(RESET_INIT);
   /* USER CODE BEGIN USART3_Init 0 */
 
   /* USER CODE END USART3_Init 0 */
@@ -3345,22 +3347,21 @@ static void MX_USART3_UART_Init(void)
   /* USER CODE BEGIN USART3_Init 2 */
 
   HAL_NVIC_SetPriority(USART3_IRQn, 2, 0);
-  HAL_NVIC_EnableIRQ(USART3_IRQn);
-
-  /* 开�?GPS 逐字节中断接�?*/
-  HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
+  if (gpsPowerState) {
+    LowPower_GpsPinsOn();
+    __HAL_UART_CLEAR_OREFLAG(&huart3);
+    if (HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1) != HAL_OK)
+      Safety_Reset(RESET_INIT);
+    HAL_NVIC_ClearPendingIRQ(USART3_IRQn);
+    HAL_NVIC_EnableIRQ(USART3_IRQn);
+  } else {
+    gpsUartOff();
+  }
 
   /* USER CODE END USART3_Init 2 */
 }
 
-/**
-  * @brief  GPIO 初始化函�?
-  * @note   配置说明�?
-  *         1. LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1
-  *         2. LoRa 控制引脚：CSN(PB0), RST(PA1)
-  *         3. LoRa 中断引脚：IRQ(PA2) - 上升沿触发，下拉
-  *         4. PB15：控制引脚，推挽输出，保持低电平
-  */
+/** Configure ONLY_SEND power controls and radio pins. */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -3382,28 +3383,19 @@ static void MX_GPIO_Init(void)
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
-  /* GNSS 唤醒�?(PB1 �?模块 WAKE_UP)：搜星状态同步控�?
-   *   搜星�?  gpsPowerOn()  拉高 �?Full on（先拉高再上电，见该函数时序说明�?
-   *   非搜星时 gpsPowerOff() 拉低 �?Standby(20uA)，RTC 域保持可热启�?
-   * 初始为低：开机即"非搜�?状态（此时 PB15 也是断电，低电平无副作用�?
-   * 若模块因硬件过渡期常供电，则�?Standby 省电，等第一次搜星拉高唤醒） */
-  /* GPS 复位引脚 (PA3 �?L76K RESET_N) - 平时高电�?不复�? */
-  GPIO_InitStruct.Pin   = GPS_RST_Pin;
-  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull  = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPS_RST_GPIO_Port, &GPIO_InitStruct);
-  HAL_GPIO_WritePin(GPS_RST_GPIO_Port, GPS_RST_Pin, GPIO_PIN_SET);
+  /* Park unused pins and powered-off GPS interfaces at boot. */
+  LowPower_InitUnusedPins();
 
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
   GPIO_InitStruct.Pin   = GNSS_WAKE_Pin;
-  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD; /* Module internal pull-up. */
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GNSS_WAKE_GPIO_Port, &GPIO_InitStruct);
   HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET); /* �?= Standby */
 
   /* LoRa SPI 引脚 (PA5/PA6/PA7) - 硬件 SPI1 复用推挽输出 */
-  GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MISO_Pin | LORA_MOSI_Pin;
+  GPIO_InitStruct.Pin  = LORA_SCK_Pin | LORA_MOSI_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
@@ -3431,6 +3423,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* MISO is an input in SPI master mode. */
+  GPIO_InitStruct.Pin = LORA_MISO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(LORA_MISO_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
@@ -3598,7 +3596,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == USART3)
+  if (huart->Instance == USART3 && gpsPowerState)
   {
     uint16_t next = (gpsWr + 1u) % GPS_RING_LEN;
 
@@ -3621,7 +3619,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
  */
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == USART3)
+  if (huart->Instance == USART3 && gpsPowerState)
   {
     HAL_UART_Receive_IT(&huart3, (uint8_t *)&gpsByte, 1);
   }
@@ -3634,9 +3632,24 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
  *         2) 清掉环形缓冲里可能残留的半截语句，避免解析出�?
  *         3) 每次上电模块时钟域都是冷的，首次定位时间比热启动长，属正�?
  */
+/* Idempotent shutdown: abort RX before gating the clock or floating pins. */
+static void gpsUartOff(void)
+{
+  HAL_NVIC_DisableIRQ(USART3_IRQn);
+  __HAL_RCC_USART3_CLK_ENABLE();
+  if (HAL_UART_AbortReceive(&huart3) != HAL_OK) Safety_Reset(RESET_INIT);
+  __HAL_UART_DISABLE(&huart3);
+  __HAL_UART_CLEAR_OREFLAG(&huart3);
+  HAL_NVIC_ClearPendingIRQ(USART3_IRQn);
+  __HAL_RCC_USART3_CLK_DISABLE();
+  LowPower_GpsPinsOff();
+}
+
 static void gpsPowerOn(void)
 {
   if (!gpsBatteryOk()) return;
+  HAL_NVIC_DisableIRQ(USART3_IRQn);
+  LowPower_GpsPinsOn();
   gpsRd = gpsWr;      /* 丢弃残留字节（关中断非必需：ISR 只改 gpsWr�?*/
   gpsLineLen = 0;
   gpsRxCount = 0;     /* 本轮重新统计串口数据量，便于观察模块有没有在吐数�?*/
@@ -3648,8 +3661,9 @@ static void gpsPowerOn(void)
    *   - 模块此前�?Standby(PB1=低保�?：拉高即完成唤醒（热启动 ~2 秒） */
   HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_SET); /* �?= Full on */
   HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_RESET);   /* �?= 上电 */
-  HAL_Delay(GPS_PWR_ON_DELAY_MS);
   gpsPowerState = 1;
+  MX_USART3_UART_Init(); /* Arm RX before the module starts NMEA output. */
+  HAL_Delay(GPS_PWR_ON_DELAY_MS);
   printf("[GPS] 上电(PB15低电平, PB1=Full on)\r\n");
 }
 
@@ -3660,15 +3674,12 @@ static void gpsPowerOn(void)
  */
 static void gpsPowerOff(void)
 {
-  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);     /* �?= 断电 */
-  /* WAKE_UP(PB1) 拉低 �?模块�?Standby(20uA)�?
-   *   - 若模块已断电：低电平被保持，下次上电�?PowerOn 会先拉高�?
-   *   - 若模块仍供电（硬件过渡期常供电）：进�?Standby 低功耗待机，
-   *     RTC 域保持，下次拉高即热启动(~2 �?，比冷启动省大量搜星电流 */
-  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET); /* �?= Standby */
-
+  /* Stop callbacks and float data/reset pins before removing module power. */
+  gpsPowerState = 0;
+  gpsUartOff();
+  HAL_GPIO_WritePin(GNSS_WAKE_GPIO_Port, GNSS_WAKE_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPS_PWR_GPIO_Port, GPS_PWR_Pin, GPIO_PIN_SET);
   gpsFixValid = 0;
-  gpsPowerState = 0;   /* 断电后串口数据一律在 gpsTask 里丢�?*/
   gpsRd = gpsWr;
   gpsLineLen = 0;
 

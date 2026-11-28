@@ -31,7 +31,7 @@ run('fromelf',['--bin','--output',path.join(out,'STM32_ONLY_SEND.bin'),axf]);
 fs.writeFileSync(path.join(out,'build.log'),logs.join('\n').replace(/[ \t]+$/gm,''));
 // Include headers and verification/build scripts, so stale binaries are rejected.
 const headers=['Core/Inc','Radio/inc','Drivers/STM32F1xx_HAL_Driver/Inc','Drivers/CMSIS/Include','Drivers/CMSIS/Device/ST/STM32F1xx/Include'].flatMap(dir=>fs.readdirSync(path.join(root,dir)).filter(p=>p.endsWith('.h')).map(p=>dir+'/'+p));
-const inputs=[...paths,...headers,'tools/build_watchdog.cjs','tools/test_watchdog.cjs','tools/test_low_power.cjs','MDK-ARM/STM32_ONLY_SEND.uvprojx','MDK-ARM/LY-020-software/LY-020-software.sct'];
+const inputs=[...paths,...headers,'tools/build_watchdog.cjs','tools/test_watchdog.cjs','tools/test_low_power.cjs','tools/test_gpio_low_power.cjs','MDK-ARM/STM32_ONLY_SEND.uvprojx','MDK-ARM/LY-020-software/LY-020-software.sct'];
 const manifest={compiler:ac6?'ARMCLANG6':'ARMCC5',sources:{},outputs:{}};
 for(const p of inputs){const abs=path.resolve(root,p);manifest.sources[path.relative(root,abs)]=crypto.createHash('sha256').update(fs.readFileSync(abs)).digest('hex');}
 for(const name of ['STM32_ONLY_SEND.hex','STM32_ONLY_SEND.bin','STM32_ONLY_SEND.axf'])manifest.outputs[name]=crypto.createHash('sha256').update(fs.readFileSync(path.join(out,name))).digest('hex');

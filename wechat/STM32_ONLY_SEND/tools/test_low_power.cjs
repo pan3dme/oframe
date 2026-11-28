@@ -56,7 +56,7 @@ function install(ctx, src, functions) {
 {
   const fallback = Number(main.match(/#define TX_RX_FALLBACK_MS (\d+)u/)[1]);
   const cap = Number(main.match(/#define LORA_TX_MAX\s+(\d+)/)[1]);
-  check(fallback === 2000, 'windowed TX fallback is exactly 2000 ms');
+  check(fallback === 1500, 'windowed TX fallback retains the current 1500 ms policy');
   check(/#define RX_WINDOW_MS 5000u/.test(main) &&
     /#define RX_IRQ_GUARD_MS \(RX_WINDOW_MS \+ 1000u\)/.test(main) &&
     /#define RX_STAGE_LIMIT_MS \(RX_WINDOW_MS \+ 2000u\)/.test(main),
@@ -154,12 +154,12 @@ function install(ctx, src, functions) {
       receive: () => vm.runInContext('openRxWindow5000()', context, { timeout: 1000 }),
       elapsed: () => elapsed, advance: ms => { elapsed += ms; } };
   }
-  for (const base of [0, 0xFFFFFF00]) for (const doneAt of [1, 1580, 1999, 2000, 2001, null]) {
+  for (const base of [0, 0xFFFFFF00]) for (const doneAt of [1, fallback - 1, fallback, fallback + 1, 1580, null]) {
     const scenario = txScenario({ base, doneAt, receive: 'immediate' });
     scenario.run();
     const expected = doneAt != null && doneAt <= fallback ? doneAt : fallback;
     check(scenario.windows.length === 1 && scenario.windows[0].at === expected,
-      'normal IRQ switches promptly; missing/late IRQ switches at 2000 ms ' + base + '/' + doneAt);
+      'normal IRQ switches promptly; missing/late IRQ switches at configured fallback ' + base + '/' + doneAt);
     check(scenario.windows[0].timeout === 5000 && scenario.state.rxWindowStart === ((base + expected) >>> 0),
       'fresh 5-second budget begins at actual RX handoff');
     check(scenario.logs[0] === (doneAt == null || doneAt > fallback ? ' timeout RX' : ''),
@@ -179,21 +179,21 @@ function install(ctx, src, functions) {
   }
   {
     const scenario = txScenario({ prepareMs: 20, receive: 'immediate' }); scenario.run();
-    check(scenario.windows[0].at === 2000, '2000 ms counts from TX initiation, including driver preparation');
+    check(scenario.windows[0].at === fallback, 'fallback counts from TX initiation, including driver preparation');
   }
   for (const rxAt of [4500, 4999]) {
     const scenario = txScenario({ rxAt }); scenario.run(); scenario.receive();
-    check(scenario.parsed.length === 1 && scenario.elapsed() === 2000 + rxAt,
+    check(scenario.parsed.length === 1 && scenario.elapsed() === fallback + rxAt,
       'downlink after the former 4-second boundary is accepted at ' + rxAt);
   }
   for (const receive of ['timeout', 'crcThenOk', 'lost']) {
     const scenario = txScenario({ receive, base: 0xFFFFFF00 }); scenario.run(); scenario.advance(100);
     if (receive === 'lost') {
       assert.throws(scenario.receive, /reset:RX/); cases++;
-      check(scenario.elapsed() === 8001, 'lost RX IRQ resets after the 6-second software guard');
+      check(scenario.elapsed() === fallback + 6001, 'lost RX IRQ resets after the 6-second software guard');
     } else {
       scenario.receive();
-      check(receive === 'timeout' ? scenario.elapsed() === 7000 : scenario.parsed.length === 1,
+      check(receive === 'timeout' ? scenario.elapsed() === fallback + 5000 : scenario.parsed.length === 1,
         'RX timeout/CRC retry respects window handoff ' + receive);
       check(scenario.state.txTimeoutNeedReport === 1 && scenario.state.txTimeoutSourceCount === 4,
         'pending diagnostic survives RX timeout and CRC retry');
@@ -240,7 +240,7 @@ function install(ctx, src, functions) {
       },
       loraTx: (buffer, withRx) => {
         check(warning.txTimeoutNeedReport === 1, 'diagnostic remains pending through transmit');
-        check(withRx === 0 && elapsed >= 1000, 'warning waits 1 second and never opens RX');
+        check(withRx === 0 && elapsed === (failWarning ? 8000 : 4000), 'first pending reply retains current 4-second delay and never opens RX');
         if (failWarning) throw Error('warning TX reset');
         sent.push(buffer[0]);
       },
@@ -256,12 +256,12 @@ function install(ctx, src, functions) {
       'function reportPendingMessages(){' + js(body(main, 'reportPendingMessages')) + '}', warningContext);
     vm.runInContext('reportPendingMessages()', warningContext);
     const reportCount = sourceCount === 999 ? 1 : sourceCount + 1;
-    const expected = '8|v3-14|TXTO|2000,' + sourceCount + '|' + (counted ? reportCount + '|' : '');
+    const expected = '8|v3-14|TXTO|' + fallback + ',' + sourceCount + '|' + (counted ? reportCount + '|' : '');
     check(sent.length === 1 && sent[0] === expected && sent[0].length + 1 <= 32,
       'type 8 TXTO keeps source/report counters and fits 32 bytes including NUL');
     check(warning.txTimeoutNeedReport === 0, 'successful diagnostic TX clears pending marker');
     vm.runInContext('reportPendingMessages()', warningContext);
-    check(sent.length === 1 && elapsed === 1000, 'repeated dispatcher never duplicates warning');
+    check(sent.length === 1 && elapsed === 4000, 'repeated dispatcher never duplicates warning or adds delay');
     warning.txTimeoutNeedReport = 1; failWarning = true;
     assert.throws(() => vm.runInContext('reportPendingMessages()', warningContext), /warning TX reset/); cases++;
     check(warning.txTimeoutNeedReport === 1, 'failed TX does not clear diagnostic before reset');
@@ -402,6 +402,7 @@ for(const mode of ['normal','spurious','frozen','jump','cold-boot','fault-boot']
     HAL_NVIC_DisableIRQ:irq=>enabled.delete(irq),HAL_NVIC_EnableIRQ:irq=>enabled.add(irq),
     HAL_NVIC_ClearPendingIRQ:()=>{},__HAL_GPIO_EXTI_CLEAR_IT:()=>{},
     rtc_clear_alarm_flag:()=>{},rtc_set_alarm:()=>{},
+    LowPower_PrepareStop:()=>{},LowPower_AfterStop:()=>{},
     __SEV:()=>{},__DSB:()=>{},__ISB:()=>{},
     SystemCoreClockUpdate:()=>{},HAL_InitTick:()=>{state.SysTick.CTRL=3;return 0;},
     HAL_SuspendTick:()=>{state.SysTick.CTRL&=~2;},
@@ -507,6 +508,7 @@ for(const battery of [29,30]){
     gpsPowerState:0,gpsRd:0,gpsWr:1,gpsLineLen:10,gpsRxCount:100,
     GNSS_WAKE_GPIO_Port:1,GNSS_WAKE_Pin:1,GPS_PWR_GPIO_Port:1,GPS_PWR_Pin:15,
     GPIO_PIN_SET:1,GPIO_PIN_RESET:0,GPS_PWR_ON_DELAY_MS:1000,
+    HAL_NVIC_DisableIRQ:()=>{},USART3_IRQn:39,LowPower_GpsPinsOn:()=>{},MX_USART3_UART_Init:()=>{},
     HAL_GPIO_WritePin:(port,pin,value)=>writes.push([pin,value]),HAL_Delay:()=>{},printf:()=>{}});
   install(powerctx,main,[['gpsBatteryOk',''],['gpsPowerOn','']]);
   vm.runInContext('gpsPowerOn()',powerctx);
@@ -664,35 +666,36 @@ function trackingTrace(jumps,noFix){
 for(const noFix of [false,true])
   check(JSON.stringify(trackingTrace(false,noFix))===JSON.stringify(trackingTrace(true,noFix)),
     'UPGPS interval/deadline unchanged by repeated wall time corrections '+noFix);
-// No wake countdown; the MCU stays asleep until one-second radio preparation.
+// Retain the current three-second radio preparation policy.
 const beforeWake=beforeSchedule;
-check(stop===body(beforeWake,'enterStopUntil'),'original first-sleep flashing window unchanged byte-for-byte');
+const stopWithoutGpio = stop.replace(/  LowPower_(?:PrepareStop|AfterStop)\(\);\r?\n/g,'');
+check(stopWithoutGpio===body(beforeWake,'enterStopUntil'),'GPIO hooks preserve original STOP logic and first-sleep flashing window');
 for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport'])
   check(body(main,name)===body(beforeWake,name),'wake optimization cannot alter UPGPS timing '+name);
 const radioLead=Number(main.match(/#define RADIO_WAKE_LEAD_SEC (\d+)u/)[1]);
-check(radioLead===1 && !main.includes('for (int i = 5; i > 0; i--)'),'one-second preparation without five-second countdown');
+check(radioLead===3 && !main.includes('for (int i = 5; i > 0; i--)'),'current three-second TCXO preparation without fixed five-second delay');
 const wakeStart=main.indexOf('      uint8_t  timelyGps   = gpsNeededTimelyAt(nextTxTimestamp);');
 const wakeEnd=main.indexOf('      /*',main.indexOf('        enterStopUntil(wakeTime);',wakeStart));
 assert(wakeStart>=0&&wakeEnd>wakeStart);
 const wakeCode=js(main.slice(wakeStart,wakeEnd));
 for(const scenario of [
-  {now:598,target:600,gps:false,interval:600,init:0,sleep:599},
-  {now:599,target:600,gps:false,interval:600,init:1,sleep:null},
+  {now:596,target:600,gps:false,interval:600,init:0,sleep:597},
+  {now:597,target:600,gps:false,interval:600,init:1,sleep:null},
   {now:1,target:0,gps:false,interval:600,init:1,sleep:null},
-  {now:358,target:600,gps:true,interval:600,init:0,sleep:359},
-  {now:359,target:600,gps:true,interval:600,init:1,sleep:599},
-  {now:40,target:100,gps:true,interval:60,init:0,sleep:41},
-  {now:359,target:600,gps:true,interval:600,init:1,sleep:null,searchSeconds:240},
-  {now:359,target:600,gps:true,interval:600,init:1,sleep:null,searchSeconds:245},
-  {now:359,target:600,gps:true,interval:600,init:1,sleep:599,searchSeconds:0},
-  {now:359,target:600,gps:true,interval:600,init:1,sleep:599,battery:29},
-  {now:500,target:600,gps:true,interval:600,init:0,sleep:599,cached:1},
-  {now:599,target:600,gps:true,interval:600,init:1,sleep:null,cached:1}
+  {now:356,target:600,gps:true,interval:600,init:0,sleep:357},
+  {now:357,target:600,gps:true,interval:600,init:1,sleep:597},
+  {now:40,target:100,gps:true,interval:60,init:0,sleep:43},
+  {now:357,target:600,gps:true,interval:600,init:1,sleep:null,searchSeconds:240},
+  {now:357,target:600,gps:true,interval:600,init:1,sleep:null,searchSeconds:245},
+  {now:357,target:600,gps:true,interval:600,init:1,sleep:597,searchSeconds:0},
+  {now:357,target:600,gps:true,interval:600,init:1,sleep:597,battery:29},
+  {now:500,target:600,gps:true,interval:600,init:0,sleep:597,cached:1},
+  {now:597,target:600,gps:true,interval:600,init:1,sleep:null,cached:1}
 ]){
   let initialized=0,slept=null,searches=0,gpsPowered=false,clockReady=false;
   const events=[];
   const wake={nowTs:scenario.now,nextTxTimestamp:scenario.target,gpsPreSearched:scenario.cached||0,gpsContTotalMin:0,
-    RADIO_WAKE_LEAD_SEC:radioLead,GPS_PRESEARCH_LEAD_SEC:241,
+    RADIO_WAKE_LEAD_SEC:radioLead,GPS_PRESEARCH_LEAD_SEC:240+radioLead,
     gpsNeededTimelyAt:()=>scenario.gps&&wake.cachedBatteryPercent>=30?1:0,getConfigIntervalSec:()=>scenario.interval,
     SystemClock_Config:()=>{clockReady=true;events.push('clock');},
     GetBatteryPercent:()=>scenario.battery??99,cachedBatteryPercent:99,
@@ -718,8 +721,9 @@ for(const scenario of [
   if(initialized&&slept!==null)check(events.slice(-2).join(',')==='clock,radio','STOP restores clocks immediately before radio init');
 }
 const beforeDeferredRadio=beforeSchedule;
-for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport','enterStopUntil'])
-  check(body(main,name)===body(beforeDeferredRadio,name),'deferred radio preserves UPGPS and first flash window '+name);
+for(const name of ['gpsRunContinuous','gpsWaitForFix','gpsSearchAndReport'])
+  check(body(main,name)===body(beforeDeferredRadio,name),'deferred radio preserves UPGPS timing '+name);
+check(stopWithoutGpio===body(beforeDeferredRadio,'enterStopUntil'),'GPIO hooks preserve deferred-radio STOP scheduling');
 check(!body(main,'gpsPreSearch').includes('loraInitFirstTime'),'automatic search never initializes radio internally');
 const summary={passed:cases,scope:'source-derived RTC/IRQ/sleep decision regressions; no board execution'};
 fs.writeFileSync(path.join(root,'MDK-ARM/watchdog_build/test_low_power_results.json'),JSON.stringify(summary,null,2));
