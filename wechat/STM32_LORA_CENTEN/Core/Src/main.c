@@ -109,9 +109,6 @@ static char deviceName[16] = "v0-100"; /* default; bindDeviceId renames+persists
  
 /* USER CODE BEGIN PV */
 
-// PB15 (LED1) 接收指示：收到LoRa数据时亮500ms
-static uint32_t led1OnTick = 0; // LED1 点亮时间�?
-static uint8_t led1On = 0;      // LED1 当前是否点亮�?=�? 1=亮）
 
 // 工作模式相关
 
@@ -548,9 +545,7 @@ static void OnSlave(void) {
     memcpy(loraDevId, p1, idLen); loraDevId[idLen] = 0;
     printf("[LoRa RX] rssi=%d snr=%d len=%u %s\r\n",
            local_rssi - 256, (int)local_snr, local_size, local_buf);
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
     loraLastRxTick = HAL_GetTick();  // 静默看门狗：收到有效 LoRa 帧，刷新基准
-    led1OnTick = HAL_GetTick(); led1On = 1;
     if (msgType == MSG_TYPE_TIME) {
       if (common_replaceTimeSegment((char *)local_buf, reportBuf, sizeof(reportBuf),
                                     getCurrentTimestamp(), NULL) == 0)
@@ -579,7 +574,6 @@ static void OnSlave(void) {
  * @brief  切换到接收模�?
  * @note   功能说明�?
  *         1. 设置工作模式�?MODE_RX
- *         2. 关闭 LED1（接收模式下 LED1 �?500ms 间隔闪烁�?
  *         3. 打印模式切换信息
  *         4. 进入单次超时接收模式，超时时�?5 �?
  */
@@ -600,8 +594,6 @@ static void lora_rf_sleep(void) {
   rf_deepsleep();
   rf_set_transmit_flag(RADIO_FLAG_IDLE);
   loraSwOn = 0;
-  HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); // 关闭 LED1
-  led1On = 0;
   printf("[RF] off\r\n");
 }
 
@@ -2037,12 +2029,6 @@ int main(void) {
     /* [调试] 每秒打印一�?STM32 实时时间 */
 
 
-    /* PB15 (LED1) 接收指示：点�?00ms后自动熄�?*/
-    if (led1On && HAL_GetTick() - led1OnTick >= 500) {
-      led1On = 0;
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-    }
-
     /* 上报到期：nettime 成功后延�?10 秒，DTU 平台连接已稳定，
      * 统一入队 对时�?+ rst_dtu 告知（如有）+ 开机配置帧（如有） */
     if (syncReportPending && dtuTimeValid && centen_due(HAL_GetTick(), syncReportDue)) {
@@ -2277,7 +2263,6 @@ static void MX_USART1_UART_Init(void) {
  * @brief  GPIO 初始化函�?
  * @note   配置说明�?
  *         1. LED 指示灯（本板仅有 1 个）�?
- *            - LED1 (PB15) - 输出，推挽，低速，默认�?
  *                            收到 LoRa 数据时点亮，500ms 后由主循环熄灭；
  *                            LoRa 初始化失败时快速闪烁报�?
  *         2. 按键输入�?
@@ -2312,10 +2297,9 @@ static void MX_GPIO_Init(void) {
   __HAL_RCC_GPIOB_CLK_ENABLE(); // GPIOB 时钟
 
   /* 配置 GPIO 输出引脚初始电平 */
-  HAL_GPIO_WritePin(GPIOB, LED1_Pin, GPIO_PIN_RESET); // LED1 默认�?
+  HAL_GPIO_WritePin(GPIOB, DTU_PWR_Pin, DTU_PWR_ON_LEVEL); /* DTU 电源 MOS：默认通电 */
 
-  /* 配置 LED1 引脚 (PB15) —�?本板唯一�?LED */
-  GPIO_InitStruct.Pin = LED1_Pin;
+  GPIO_InitStruct.Pin = DTU_PWR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;  // 推挽输出模式
   GPIO_InitStruct.Pull = GPIO_NOPULL;          // 无上下拉
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW; // 低�?

@@ -149,7 +149,9 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 
     GPIO_InitStruct.Pin = GPIO_PIN_11;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    /* PB11 <- DTU_TX：接上时 DTU 推挽输出主导，上拉不影响接收；
+     * 拔掉 DTU 时稳定读高电平（UART 空闲态），避免悬空拾噪产生帧错误 */
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
     /* USER CODE BEGIN USART3_MspInit 1 */

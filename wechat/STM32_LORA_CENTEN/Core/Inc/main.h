@@ -60,8 +60,13 @@ void centen_watchdog_start_early(void);
 /* Private defines -----------------------------------------------------------*/
 #define TNOW_Pin GPIO_PIN_4
 #define TNOW_GPIO_Port GPIOA
-#define LED1_Pin GPIO_PIN_15
-#define LED1_GPIO_Port GPIOB
+#define DTU_PWR_Pin       GPIO_PIN_15
+#define DTU_PWR_GPIO_Port GPIOB
+/* PB15 = DTU çµæº MOSï¼å LED1 æ¥æ¶æç¤ºç¯ï¼LED åè½åæ¶ï¼ï¼
+ * å®æµç¡®è®¤ MOS ä¸ºä½çµå¹³å¯¼éï¼DTU_PWR_ON_LEVELï¼ä½ï¼= DTU å¸¸éçµï¼
+ * åºä»¶ä»»ä½è·¯å¾é½ä¸å¾ä¸»å¨æ­ DTU çµ */
+#define DTU_PWR_ON_LEVEL  GPIO_PIN_RESET
+#define DTU_PWR_OFF_LEVEL GPIO_PIN_SET
 /* 本板仅 PB15 一个 LED：LED2(PB13)/LED3(PB14) 已无此硬件，定义一并删除
  * LED4(PA0) 原本只存在于注释中，从未有实际定义 */
 /* K1(PB4)/K2(PB5) 已从本板移除，引脚定义与中断配置一并删除 */
