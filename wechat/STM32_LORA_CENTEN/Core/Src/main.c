@@ -180,7 +180,7 @@ static int dtuCsqRssi = 0;           // DTU CSQ 信号强度�?
 static uint8_t dtuNetTimeFailCount = 0;  // DTU 网络时间连续失败计数器（达到 3 次复�?DTU�?
 static uint32_t rtcSendCount = 0;    // 对时上报计数�?
 static uint8_t localTxPower = DEFAULT_PWR; /* Persisted with the complete settings snapshot. */
-static int batteryValue = 85;        // 电池电量�?�?
+static int batteryValue = 85;    /* 电量(%): 每次对时上报前 ADC 实测刷新，初值 85 */
 static char configStr[32] = "30,0M"; // 配置信息字符串（可通过DTU修改�?
 static char centerStr[32] = "";      // 农场中心坐标 "lat,lng"（空=未设置）
 /* 中心坐标数值缓存（1e-5 度）：还原子设备"相对偏移"上报用�?
@@ -283,6 +283,9 @@ static void MX_GPIO_Init(void);        // GPIO 初始化函�?
 static void MX_SPI1_Init(void);        // SPI1 初始化（LoRa 硬件 SPI�?
 static void MX_USART1_UART_Init(void); // USART1 初始化（调试串口�?
 static void MX_USART3_UART_Init(void); // USART3 初始化（DTU 通信�?
+static void MX_ADC1_Init(void);           /* ADC1 电量采样（PA0 分压） */
+static uint16_t ADC1_Read(void);
+static uint8_t GetBatteryPercent(void);
 static void MX_NVIC_Init(void);        // NVIC 中断控制器初始化
 
 /* USER CODE BEGIN PFP */
@@ -1970,6 +1973,7 @@ int main(void) {
   MX_SPI1_Init();        // SPI1 初始化（LoRa 硬件 SPI�?
   MX_USART1_UART_Init(); // USART1 初始化（调试串口�?15200 波特率）
   MX_USART3_UART_Init(); // USART3 初始化（DTU 通信�?15200 波特率）
+  MX_ADC1_Init();      /* ADC1 初始化（PA0 电池分压采样，与 SEND 项目同方案：100K+100K 1:1） */
 
   /* 初始�?NVIC 中断控制器（LoRa IRQ 使用 PA2 EXTI�?*/
   MX_NVIC_Init();
@@ -2033,6 +2037,7 @@ int main(void) {
      * 统一入队 对时�?+ rst_dtu 告知（如有）+ 开机配置帧（如有） */
     if (syncReportPending && dtuTimeValid && centen_due(HAL_GetTick(), syncReportDue)) {
       syncReportPending = 0;
+      batteryValue = GetBatteryPercent();  /* 上报对时前实测一次电量（PA0 分压 ADC） */
       sendTimeSyncToDtu();
       /* CSQ 死机复位�?DTU：补发一条告知帧（只发一次）
        * 格式: 8|deviceName|rst_dtu —�?服务器据此知道中继曾自动恢复�?*/
@@ -2456,6 +2461,79 @@ static void MX_USART3_UART_Init(void) {
  *         关闭所有中断，进入死循�?
  * @retval None
  */
+/**
+  * @brief  ADC1 初始化（电池电量检测 PA0/ADC1_CH0，寄存器方式，照搬 SEND 项目）
+  * @note   硬件：电池 -> 100K -> PA0 -> 100K -> GND，1:1 分压
+  */
+static void MX_ADC1_Init(void) {
+  uint32_t timeout;
+  RCC->CFGR &= ~(3u << 14);
+  RCC->CFGR |=  (3u << 14);               /* ADCPRE = /8, 9MHz */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  GPIOA->CRL &= ~0xFu;                    /* PA0 analog input */
+  RCC->APB2ENR |= (1u << 9);              /* ADC1EN = 1 */
+  (void)RCC->APB2ENR;
+  RCC->APB2RSTR |=  (1u << 9);
+  RCC->APB2RSTR &= ~(1u << 9);
+  ADC1->CR1 = 0;
+  ADC1->CR2 = 0;
+  ADC1->SQR1 = 0;                         /* 1 个转换 */
+  ADC1->SQR2 = 0;
+  ADC1->SQR3 = 0;                         /* CH0 (PA0) */
+  ADC1->SMPR2 = (7u << 0);                /* CH0 采样 239.5 周期 */
+  ADC1->CR2 = ADC_CR2_ADON;
+  HAL_Delay(10);
+  ADC1->CR2 |= ADC_CR2_RSTCAL;
+  timeout = 1000000;
+  while ((ADC1->CR2 & ADC_CR2_RSTCAL) && --timeout);
+  ADC1->CR2 |= ADC_CR2_CAL;
+  timeout = 1000000;
+  while ((ADC1->CR2 & ADC_CR2_CAL) && --timeout);
+  (void)ADC1_Read();                      /* 空读一次，结果丢弃 */
+  ADC1->CR2 &= ~ADC_CR2_ADON;
+}
+
+/**
+  * @brief  ADC1 单次读取，返回 12 位 ADC 值（0~4095）
+  */
+static uint16_t ADC1_Read(void) {
+  uint32_t timeout = 1000000;
+  ADC1->CR2 |= ADC_CR2_ADON;              /* ADON 再次置位触发转换 */
+  while (!(ADC1->SR & ADC_SR_EOC) && --timeout);
+  return (uint16_t)(ADC1->DR & 0xFFF);
+}
+
+/**
+  * @brief  获取电池电量百分比（0~99）
+  * @note   V_bat = ADC/4096*3.3V*2（1:1 分压）；锂电映射 4.2V=99%, 3.3V=0，分段线性
+  */
+static uint8_t GetBatteryPercent(void) {
+  uint32_t adc_sum = 0;
+  uint8_t i, percent;
+  uint16_t adc_val;
+  uint32_t bat_mv;
+  ADC1->CR2 |= ADC_CR2_ADON;
+  HAL_Delay(1u);
+  for (i = 0; i < 8; i++) {               /* 8 次取平均抑制噪声 */
+    adc_sum += ADC1_Read();
+  }
+  ADC1->CR2 &= ~ADC_CR2_ADON;
+  adc_val = (uint16_t)(adc_sum / 8);
+  bat_mv = (uint32_t)adc_val * 6600 / 4096;
+  if (bat_mv >= 4200)      percent = 99;
+  else if (bat_mv >= 4000) percent = (uint8_t)(80 + (bat_mv - 4000) * 19 / 200);
+  else if (bat_mv >= 3700) percent = (uint8_t)(50 + (bat_mv - 3700) * 30 / 300);
+  else if (bat_mv >= 3500) percent = (uint8_t)(20 + (bat_mv - 3500) * 30 / 200);
+  else if (bat_mv >= 3300) percent = (uint8_t)((bat_mv - 3300) * 20 / 200);
+  else                     percent = 0;
+  if (percent > 99) percent = 99;
+  printf("[BAT] ADC=%d 电压=%lu.%01luV => %d%%\r\n",
+         adc_val, (unsigned long)(bat_mv / 1000),
+         (unsigned long)((bat_mv / 100) % 10), percent);
+  return percent;
+}
+
+
 void Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
   __disable_irq(); // 关闭所有中�?
