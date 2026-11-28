@@ -151,6 +151,11 @@ static uint32_t radioTxTimeouts;
 static uint32_t radioRxRejected;
 static uint32_t radioJobsDropped;
 #define DTU_RECOVERY_GRACE_MS 180000u
+#if DTU_WIN_GATE
+#define DTU_LINK_ON() (prevInWorkWindow) /* 工作区间内才视为 DTU 链路活跃 */
+#else
+#define DTU_LINK_ON() (1u)
+#endif
 #define DTU_QUERY_WAIT_MS 5000u
 #define CONFIG_PAGE_A 0x0800F800u
 #define CONFIG_PAGE_B 0x0800FC00u
@@ -195,6 +200,7 @@ static DtuQueueItem_t dtuQueue[DTU_QUEUE_SIZE];
 static uint8_t dtuQueueHead = 0;     // 出队索引
 static uint8_t dtuQueueTail = 0;     // 入队索引
 static uint8_t dtuQueueCount = 0;    // 当前队列中的消息数量
+static uint32_t dtuWinDropped = 0; /* 工作区间外丢弃的上报条数统计 */
 static uint32_t dtuLastSendTick = 0; // 上次发送时间戳（用�?100ms 间隔控制�?
 
 /* Flash 配置存储
@@ -794,6 +800,10 @@ static uint8_t isInWorkWindow(void) {
   uint8_t end;
   int wt;
 
+#if DTU_WIN_GATE
+  if (HAL_GetTick() < DTU_BOOT_GRACE_MS)
+    return 1; /* 开机/复位后前 10 分钟强制视为在区间内：重启必能通信对时 */
+#endif
   if (!dtuTimeValid)
     return 1; /* �?未对时：不做休眠判断，保持常开 */
 
@@ -1033,6 +1043,14 @@ static void loadNameFromFlash(void) {
 static void enqueueDtuMsg(const char *msg, int len) {
   if (len <= 0 || len >= DTU_MSG_MAX_LEN)
     return;
+#if DTU_WIN_GATE
+  if (!DTU_LINK_ON()) {                       /* 工作区间外不上报：丢弃并计数 */
+    dtuWinDropped++;
+    printf("[DTU窗] 区间外不上报，丢弃 len=%d 累计=%lu\r\n", len,
+           (unsigned long)dtuWinDropped);
+    return;
+  }
+#endif
 
   if (dtuQueueCount >= DTU_QUEUE_SIZE) {
     // 队列满，丢弃最早的一条（队头前移�?
@@ -1061,6 +1079,9 @@ static void processDtuQueue(void) {
   HAL_StatusTypeDef status;
   DtuQueueItem_t *item;
   if (uartRecoveryPending) return;
+#if DTU_WIN_GATE
+  if (!DTU_LINK_ON()) return;                 /* 工作区间外不向断电的 DTU 发送 */
+#endif
   if (!dtuQueueCount || now - dtuLastSendTick < 2000u) return;
   /* A deferred attempt is not a send. Do not restart the two-second throttle
    * until a UART transmission is actually attempted. */
@@ -1769,6 +1790,12 @@ static void processDtuQueries(void) {
   uint32_t now = HAL_GetTick();
   const char *cmd = NULL;
   if (radioTxActive || uartRecoveryPending) return;
+#if DTU_WIN_GATE
+  if (!DTU_LINK_ON()) {                       /* 工作区间外 DTU 断电：停止一切查询 */
+    dtuQueryStage = 0; dtuQueryPending = 0;
+    return;
+  }
+#endif
   if (dtuQueryStage && now - dtuQueryTick >= 300u) {
     if (dtuQueryStage == 1) {
       cmd = "config,get,nettime\r\n";
@@ -1839,6 +1866,9 @@ static void noteUartFailure(void) {
 static void serviceUartRecovery(void) {
   HAL_StatusTypeDef status;
   uint32_t now = HAL_GetTick();
+#if DTU_WIN_GATE
+  if (!DTU_LINK_ON()) return;                 /* 区间外暂停重建与升级软复位 */
+#endif
   if (!uartRecoveryPending || now - uartRebuildTick < 1000u) return;
   uartRebuildTick = now;
   if (uartRebuildCount >= 3u) recoveryReboot(CENTEN_FAULT_UART);
@@ -1877,7 +1907,7 @@ static void serviceRecovery(void) {
     BKP->DR3 = 0xffffu;
     printf("[WDG] local services stable; streak cleared\r\n");
   }
-  if (!uartRecoveryPending && now - dtuRecoveryStart >= DTU_RECOVERY_GRACE_MS &&
+  if (DTU_LINK_ON() && !uartRecoveryPending && now - dtuRecoveryStart >= DTU_RECOVERY_GRACE_MS &&
       (!dtuLocalReplySeen || now - dtuLastLocalReplyTick >= replyWindow)) {
     if (dtuAutomaticReset(1)) dtuRstByCsq = 1;
   }
@@ -2086,7 +2116,7 @@ int main(void) {
       uint32_t nowT = HAL_GetTick();
       uint8_t  pingRst = 0;
 
-      if (nowT - dtuPingGraceStart < 180000u) {
+      if (!DTU_LINK_ON() || nowT - dtuPingGraceStart < 180000u) {
         /* grace: DTU still registering after boot/reset (3 min) */
       } else if (!dtuPingGot && nowT - dtuPingGraceStart > dtuPingWinMs) {
         pingRst = 1;                    /* zero PING since boot */
@@ -2175,10 +2205,27 @@ int main(void) {
           printf("[WORK] on\r\n");
           if (!loraSwOn)
             lora_rf_wake();
+#if DTU_WIN_GATE
+          /* 工作区间开始：DTU 上电，重置链路状态重新握手/对时 */
+          HAL_GPIO_WritePin(DTU_PWR_GPIO_Port, DTU_PWR_Pin, DTU_PWR_ON_LEVEL);
+          dtuCsqTick = dtuQueryTick = dtuRecoveryStart = dtuPingGraceStart =
+            dtuLastPingTick = dtuCsqAnswerTick = HAL_GetTick();
+          dtuQueryStage = dtuQueryPending = 0;
+          dtuNetTimeFailCount = 0;
+          dtuPingGot = 0;
+#endif
         } else {
           printf("[WORK] off\r\n");
           if (loraSwOn)
             lora_rf_sleep();
+#if DTU_WIN_GATE
+          /* 工作区间结束：清队列后 DTU 断电（RTC 时间保持；
+           * 不上报、不跑 DTU 看门狗/复位链，下次进区间重新握手对时） */
+          printf("[DTU窗] 区间结束，清队列 %u 条，DTU 断电\r\n",
+                 (unsigned)dtuQueueCount);
+          dtuQueueCount = 0; dtuQueueHead = dtuQueueTail = 0;
+          HAL_GPIO_WritePin(DTU_PWR_GPIO_Port, DTU_PWR_Pin, DTU_PWR_OFF_LEVEL);
+#endif
         }
         prevInWorkWindow = inWin;
       }

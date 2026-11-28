@@ -67,6 +67,12 @@ void centen_watchdog_start_early(void);
  * åºä»¶ä»»ä½è·¯å¾é½ä¸å¾ä¸»å¨æ­ DTU çµ */
 #define DTU_PWR_ON_LEVEL  GPIO_PIN_RESET
 #define DTU_PWR_OFF_LEVEL GPIO_PIN_SET
+/* 工作区间门控 DTU：1=仅工区间内给 DTU 供电并上报（区间外 PB15 断电、
+ *    不上报 DTU 数据、暂停 PING/CSQ/UART 看门狗及复位重启链）；
+ *    0=回退旧行为（DTU 常开常报）。区间判断复用工作窗逻辑 isInWorkWindow()，
+ *    未对时/无工作时间字段/idx 越界时视为"在区间内"，保证开机必能对时 */
+#define DTU_WIN_GATE 1
+#define DTU_BOOT_GRACE_MS 600000u /* 开机/复位后前 10 分钟强制视为在区间内（保证重启后 DTU 能通信对时） */
 /* 本板仅 PB15 一个 LED：LED2(PB13)/LED3(PB14) 已无此硬件，定义一并删除
  * LED4(PA0) 原本只存在于注释中，从未有实际定义 */
 /* K1(PB4)/K2(PB5) 已从本板移除，引脚定义与中断配置一并删除 */
